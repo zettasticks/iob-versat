@@ -1,7 +1,7 @@
 V_INCLUDE+=-I$(VERSAT_DIR)/submodules/MEM/ram/tdp_ram
 V_INCLUDE+=-I$(VERSAT_DIR)/submodules/MEM/ram/2p_ram
 V_INCLUDE+=-I$(VERSAT_DIR)/submodules/MEM/ram/dp_ram
-V_INCLUDE+=-I$(VERSAT_DIR)/submodules/MEM/fifo/sfifo
+V_INCLUDE+=-I$(VERSAT_DIR)/hardware/src/patched
 V_INCLUDE+=-I$(VERSAT_DIR)/submodules/MEM/fifo
 
 VSRC+=$(VERSAT_DIR)/submodules/MEM/ram/tdp_ram/iob_tdp_ram.v # used by xmem
