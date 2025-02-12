@@ -9,6 +9,7 @@ struct Expression;
 enum CommandType{
   CommandType_JOIN = 0,
   CommandType_FOR,
+  CommandType_TEMPLATE_ARGUMENT,
   CommandType_IF,
   CommandType_END,
   CommandType_SET,

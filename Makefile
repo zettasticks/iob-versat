@@ -65,6 +65,7 @@ VERSAT_FLAGS := -rdynamic -DROOT_PATH=\"$(abspath ../)\"
 CPP_OBJ += $(VERSAT_COMMON_OBJ)
 CPP_OBJ += $(VERSAT_TEMPLATES_OBJ)
 CPP_OBJ += $(BUILD_DIR)/typeInfo.o
+#CPP_OBJ += $(BUILD_DIR)/templateTest.o
 
 CPP_OBJ_WITHOUT_COMPILER:=$(filter-out $(BUILD_DIR)/versatCompiler.o,$(CPP_OBJ))
 
@@ -85,6 +86,9 @@ $(BUILD_DIR)/embedFile: $(VERSAT_TOOLS_DIR)/embedFile.cpp $(VERSAT_COMMON_OBJ_NO
 $(BUILD_DIR)/calculateHash: $(VERSAT_TOOLS_DIR)/calculateHash.cpp $(VERSAT_COMMON_OBJ_NO_TYPE) $(VERSAT_ALL_HEADERS)
 	g++ -DPC -std=c++17 -MMD -MP -DVERSAT_DEBUG -DSTANDALONE -o $@ $(VERSAT_COMMON_FLAGS) $(VERSAT_COMMON_INCLUDE) $< $(VERSAT_COMMON_OBJ_NO_TYPE)
 
+$(BUILD_DIR)/templateCompiler: $(VERSAT_TOOLS_DIR)/templateCompiler.cpp $(VERSAT_COMMON_OBJ) $(VERSAT_ALL_HEADERS)
+	g++ -DPC -std=c++17 -MMD -MP -DVERSAT_DEBUG -DSTANDALONE -o $@ $(VERSAT_COMMON_FLAGS) $(VERSAT_COMMON_INCLUDE) $< $(VERSAT_COMMON_OBJ)
+
 $(BUILD_DIR)/typeInfo.cpp: $(TYPE_INFO_HDR) $(VERSAT_ALL_HEADERS)
 	python3 $(VERSAT_TOOLS_DIR)/structParser.py $(BUILD_DIR) $(TYPE_INFO_HDR) # -m cProfile -o temp.dat 
 
@@ -94,14 +98,23 @@ $(BUILD_DIR)/typeInfo.o: $(BUILD_DIR)/typeInfo.cpp $(VERSAT_ALL_HEADERS)
 $(BUILD_DIR)/%.o : $(VERSAT_COMPILER_DIR)/%.cpp $(BUILD_DIR)/templateData.hpp $(VERSAT_ALL_HEADERS)
 	g++ -MMD -std=c++17 $(VERSAT_FLAGS) $(FL) $(VERSAT_COMMON_FLAGS) -c -o $@ $(GLOBAL_CFLAGS) $< $(VERSAT_INCLUDE) #-DDEFAULT_UNIT_PATHS="$(SHARED_UNITS_PATH)" 
 
+ALL_TEMPLATES := $(wildcard $(VERSAT_TEMPLATE_DIR)/*.tpl)
+
+$(BUILD_DIR)/templateTest.cpp: $(BUILD_DIR)/templateCompiler
+	gdb --args $(BUILD_DIR)/templateCompiler $(ALL_TEMPLATES)
+
 $(shell mkdir -p $(BUILD_DIR))
 
-$(VERSAT_DIR)/versat: $(CPP_OBJ) $(VERSAT_ALL_HEADERS)
+$(VERSAT_DIR)/versat: $(CPP_OBJ) $(VERSAT_ALL_HEADERS) $(BUILD_DIR)/templateTest.cpp
 	g++ -MMD -std=c++17 $(FL) $(VERSAT_FLAGS) -o $@ $(VERSAT_COMMON_FLAGS) $(CPP_OBJ) $(VERSAT_INCLUDE) $(VERSAT_LIBS) 
 
 embedFile: $(BUILD_DIR)/templateData.hpp
 
 calculateHash: $(BUILD_DIR)/calculateHash
+
+templateCompiler: $(BUILD_DIR)/templateCompiler
+
+compileTemplates: $(BUILD_DIR)/templateTest.cpp
 
 versat: $(VERSAT_DIR)/versat $(BUILD_DIR)/calculateHash
 

@@ -1705,6 +1705,9 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
   //       Two things that I probably will have to do: augment the debugger to display arrays using a newline (occupy more vertical space still inside the same column row).
   //       Change most of the code that used configPos and configSize to use values directly.
   //       After the change, each config should have it's own config position. The config code cannot assume that everything works continuous (although normal units will probably not change). 
+  //LEFT HERE;
+
+  //DEBUG_BREAK();
   
   FUDeclaration* res = RegisterSubUnit(circuit,SubUnitOptions_BAREBONES);
   res->definitionArrays = PushArrayFromList(perm,allArrayDefinitons);

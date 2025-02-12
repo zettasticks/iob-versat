@@ -73,6 +73,7 @@ static Opt<Value> GetValue(Frame* frame,String var){
     }
   }
   return {};
+
 }
 
 static Value* ValueExists(Frame* frame,String id){
@@ -139,6 +140,7 @@ static void SetExpressionLine(Expression* top,int line){
 
 static CommandDefinition commandDefinitions[] = {{STRING("join"),3,CommandType_JOIN,true},
                                                  {STRING("for"),2,CommandType_FOR,true},
+                                                 {STRING("templateArgument"),2,CommandType_TEMPLATE_ARGUMENT,false},
                                                  {STRING("if"),1,CommandType_IF,true},
                                                  {STRING("end"),0,CommandType_END,false},
                                                  {STRING("set"),2,CommandType_SET,false},

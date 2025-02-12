@@ -688,7 +688,6 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
           Recurse(Recurse,top->right,max,bitAccum,out);
         }
       };
-
       NodeRecurse(NodeRecurse,top,top->value,0,out);
 
       for(AccelInfoIterator it = iter; it.IsValid(); it = it.Next()){
@@ -806,6 +805,51 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
 
   SimpleCalculateDelayResult delays = CalculateDelay(initialIter,out);
   SetDelays(SetDelays,initialIter,delays,0,out);
+}
+
+void FillStaticInfo(AccelInfo* info){
+  TEMP_REGION(temp,nullptr);
+  AccelInfoIterator iter = StartIteration(info);
+  
+  for(int i = 0; i < iter.MergeSize(); i++){
+    AccelInfoIterator it = iter;
+    it.mergeIndex = i;
+
+    TrieMap<StaticId,int>* statics = PushTrieMap<StaticId,int>(temp);
+
+    int currentStaticIndex = info->configs;
+    for(; it.IsValid(); it = it.Step()){
+      InstanceInfo* unit = it.CurrentUnit();
+      InstanceInfo* parent = it.GetParentUnit(); 
+
+      if(unit->configSize == 0){
+        continue;
+      }
+        
+      bool firstStaticSeen = parent ? unit->isStatic && !parent->isStatic : unit->isStatic;
+
+      if(firstStaticSeen || (unit->isStatic && !unit->localConfigPos.has_value())){
+        StaticId id = {};
+        id.parent = parent ? parent->decl : nullptr;
+        id.name = unit->name;
+
+        GetOrAllocateResult<int> result = statics->GetOrAllocate(id);
+        int configPos = 0;
+        if(result.alreadyExisted){
+          configPos =  *result.data;
+        } else {
+          configPos = currentStaticIndex;
+          currentStaticIndex += unit->configSize;
+        }
+          
+        *result.data = configPos;
+        unit->globalStaticPos = configPos;
+      } else if(unit->isGloballyStatic){
+        int trueConfigPos = parent->globalStaticPos.value() + unit->localConfigPos.value();
+        unit->globalStaticPos = trueConfigPos;
+      }
+    }
+  }
 }
 
 void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel){

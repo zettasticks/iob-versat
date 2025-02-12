@@ -583,6 +583,7 @@ void RegisterTypes(){
   
   RegisterParsedTypes();
 
+#if 0
 #ifndef SIMPLE_TYPES
   ValueType::POOL = GetTypeOrFail(STRING("Pool"));
   ValueType::ARRAY = GetTypeOrFail(STRING("Array"));
@@ -595,6 +596,7 @@ void RegisterTypes(){
   if(normalTemplateFunction){
     ValueType::TEMPLATE_FUNCTION = GetPointerType(normalTemplateFunction);
   }
+#endif
 #endif
 }
 

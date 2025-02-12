@@ -15,6 +15,30 @@
 #include "globals.hpp"
 #include "configurations.hpp"
 
+#include <iostream>
+#include <fstream>
+
+std::ostream& operator<<(std::ostream& out,String str){
+  out << "implement operator << for strings";
+  //out << str.data;
+  return out;
+}
+
+int CountDones(Pool<FUInstance> instances){
+  return 0;
+}
+int CountOperations(Pool<FUInstance> instances){
+  return 0;
+}
+int CountCombOperations(Pool<FUInstance> instances){
+  return 0;
+}
+int CountSeqOperations(Pool<FUInstance> instances){
+  return 0;
+}
+
+#include "../templateTest.cpp"
+
 #include "versatSpecificationParser.hpp"
 
 // TODO: REMOVE: Remove after proper implementation of AddressGenerators
@@ -389,7 +413,6 @@ void OutputIterativeSource(FUDeclaration* decl,FILE* file){
 namespace fs = std::filesystem;
 
 String GetRelativePathFromSourceToTarget(String sourcePath,String targetPath,Arena* out){
-  TEMP_REGION(temp,out);
   fs::path source(StaticFormat("%.*s",UNPACK_SS(sourcePath)));
   fs::path target(StaticFormat("%.*s",UNPACK_SS(targetPath)));
 
@@ -399,8 +422,6 @@ String GetRelativePathFromSourceToTarget(String sourcePath,String targetPath,Are
 }
 
 StructInfo* GenerateConfigStruct(AccelInfoIterator iter,Arena* out){
-  TEMP_REGION(temp,out);
-  
   StructInfo* res = PushStruct<StructInfo>(out);
 
   InstanceInfo* parent = iter.GetParentUnit();
@@ -623,49 +644,7 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topLevelDecl,const ch
   ClearTemplateEngine(); // Make sure that we do not reuse data
   
   AccelInfo info = CalculateAcceleratorInfo(accel,true,temp);
-
-  {
-    AccelInfoIterator iter = StartIteration(&info);
-    for(int i = 0; i < iter.MergeSize(); i++){
-      AccelInfoIterator it = iter;
-      it.mergeIndex = i;
-
-      TrieMap<StaticId,int>* statics = PushTrieMap<StaticId,int>(temp);
-
-      int currentStaticIndex = info.configs;
-      for(; it.IsValid(); it = it.Step()){
-        InstanceInfo* unit = it.CurrentUnit();
-        InstanceInfo* parent = it.GetParentUnit(); 
-
-        if(unit->configSize == 0){
-          continue;
-        }
-        
-        bool firstStaticSeen = parent ? unit->isStatic && !parent->isStatic : unit->isStatic;
-
-        if(firstStaticSeen || (unit->isStatic && !unit->localConfigPos.has_value())){
-          StaticId id = {};
-          id.parent = parent ? parent->decl : nullptr;
-          id.name = unit->name;
-
-          GetOrAllocateResult<int> result = statics->GetOrAllocate(id);
-          int configPos = 0;
-          if(result.alreadyExisted){
-            configPos =  *result.data;
-          } else {
-            configPos = currentStaticIndex;
-            currentStaticIndex += unit->configSize;
-          }
-          
-          *result.data = configPos;
-          unit->globalStaticPos = configPos;
-        } else if(unit->isGloballyStatic){
-          int trueConfigPos = parent->globalStaticPos.value() + unit->localConfigPos.value();
-          unit->globalStaticPos = trueConfigPos;
-        }
-      }
-    }
-  }
+  FillStaticInfo(&info);
   
   VersatComputedValues val = ComputeVersatValues(&info,globalOptions.useDMA);
   
@@ -693,6 +672,7 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topLevelDecl,const ch
   // NOTE2: Also we would remove all the need to provide iterations inside the type stuff. We probably want to remove type stuff from this project, since it's not robust enough.
   // NOTE3: Furthermore, all the stuff like iterations and representation would be done in C code, which is good because we would not need to implement generic code to iterate data.
   // NOTE4: Also a speed boost, since compilation of templates would be done at build time instead.
+  // NOTE5: If we did this, what would be the difference between using templates or writing printf style code directly? It's mainly the fact that we do not need to deal with printf formats and that we end up with a 'cleaner' mix between default code and generated code.
   // TODO: If free time this should be a weekend project since we are basically just making a different backend.
   TemplateSetString("typeName",accel->name);
 
@@ -731,7 +711,6 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topLevelDecl,const ch
   PushMergeMultiplexersUpTheHierarchy(structInfo);
   Array<StructInfo*> allStructs = ExtractStructs(structInfo,temp);
 
-  
   Array<int> indexes = PushArray<int>(temp,allStructs.size);
   Memset(indexes,2);
   for(int i = 0; i < allStructs.size; i++){
@@ -869,8 +848,17 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topLevelDecl,const ch
   TemplateSetCustom("external",MakeValue(&external));
   {
     FILE* f = OpenFileAndCreateDirectories(PushString(temp,"%s/versat_external_memory_inst.vh",hardwarePath),"w",FilePurpose_VERILOG_INCLUDE);
-    DEFER_CLOSE_FILE(f);
-    ProcessTemplate(f,BasicTemplates::externalInstTemplate);
+
+#if 1
+    if(f) fclose(f);
+    std::ofstream ofs;
+    ofs.open(StaticFormat("%s/versat_external_memory_inst.vh",hardwarePath), std::ofstream::out);
+
+    Template_external_memory_inst(ofs,external);
+#else
+    //DEFER_CLOSE_FILE(f);
+    //ProcessTemplate(f,BasicTemplates::externalInstTemplate);
+#endif
   }
 
   {
@@ -881,8 +869,17 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topLevelDecl,const ch
 
   {
     FILE* f = OpenFileAndCreateDirectories(PushString(temp,"%s/versat_external_memory_port.vh",hardwarePath),"w",FilePurpose_VERILOG_INCLUDE);
-    DEFER_CLOSE_FILE(f);
-    ProcessTemplate(f,BasicTemplates::externalPortTemplate);
+
+#if 1
+    if(f) fclose(f);
+    std::ofstream ofs;
+    ofs.open(StaticFormat("%s/versat_external_memory_port.vh",hardwarePath), std::ofstream::out);
+
+    Template_external_memory_port(ofs,external);
+#else
+    //DEFER_CLOSE_FILE(f);
+    //ProcessTemplate(f,BasicTemplates::externalPortTemplate);
+#endif
   }
 
   {
@@ -916,7 +913,7 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topLevelDecl,const ch
   int configBit = 0;
   int addr = val.versatConfigs;
   
-  // TODO: We are still relying on explicit data contained inside the 
+  // TODO: We are still relying on explicit data, at least gonna have to change to implement partial sharing.
   // Join configs statics and delays into a single array.
   // Simplifies the code gen, since we generate the same code regardless of the wire origin.
   // Only wire, position and stuff like that matters
@@ -1093,21 +1090,20 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topLevelDecl,const ch
     auto ExtractMuxInfo = [](AccelInfoIterator iter,Arena* out){
       TEMP_REGION(temp,out);
 
-      TrieSet<int>* seen = PushTrieSet<int>(temp);
-
       auto builder = StartArray<MuxInfo>(out);
+
       for(; iter.IsValid(); iter = iter.Step()){
         InstanceInfo* info = iter.CurrentUnit();
-        if(info->isMergeMultiplexer && !seen->Exists(info->globalConfigPos.value())){
-          MuxInfo* res = builder.PushElem();
-
-          res->configIndex = info->globalConfigPos.value();
-          res->val = info->mergePort;
-          res->name = info->baseName;
-          res->info = info;
+        if(info->isMergeMultiplexer){
+          int muxGroup = info->muxGroup;
+          if(!builder[muxGroup].info){
+            builder[muxGroup].configIndex = info->globalConfigPos.value();
+            builder[muxGroup].val = info->mergePort;
+            builder[muxGroup].name = info->baseName;
+            builder[muxGroup].info = info;
+          }
         }
       }
-
       return EndArray(builder);
     };
     

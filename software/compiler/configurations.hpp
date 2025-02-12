@@ -169,6 +169,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
 Array<Partition> GenerateInitialPartitions(Accelerator* accel,Arena* out);
 
 void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out);
+void FillStaticInfo(AccelInfo* info);
 
 // This function does not perform calculations that are only relevant to the top accelerator (like static units configs and such).
 AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out);

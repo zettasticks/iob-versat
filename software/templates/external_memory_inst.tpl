@@ -1,4 +1,5 @@
-#{set size external.size}
+#{templateArgument "Array<ExternalMemoryInterface>" "external"}
+
 #{for ext external}
 #{set i index}
 #{if ext.type}

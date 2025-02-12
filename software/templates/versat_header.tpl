@@ -1,3 +1,18 @@
+#{templateArgument "Array<TypeStructInfo>" "configStructures"}
+#{templateArgument "Array<String>" "namedStates"}
+#{templateArgument "Array<TypeStructInfo>" "addressStructures"}
+#{templateArgument "Array<TypeStructInfoElement>" "structuredConfigs"}
+#{templateArgument "Array<Wire>" "allStatics"}
+#{templateArgument "int" "delays"}
+#{templateArgument "int" "memoryMappedBase"}
+#{templateArgument "Array<Pair<String,int>>" "namedMem"}
+#{templateArgument "String" "typeName"}
+#{templateArgument "bool" "isSimple"}
+#{templateArgument "bool" "useDMA"}
+#{templateArgument "int" "nConfigs"}
+#{templateArgument "int" "versatConfig"}
+#{templateArgument "int" "versatState"}
+
 // This file has been auto-generated
 
 #ifndef INCLUDED_VERSAT_ACCELERATOR_HEADER

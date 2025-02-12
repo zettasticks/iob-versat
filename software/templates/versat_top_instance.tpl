@@ -1,3 +1,7 @@
+#{templateArgument "Pool<FUInstance>" "instances"}
+#{templateArgument "Accelerator" "accel"}
+
+
 `timescale 1ns / 1ps
 
 #{include "versat_common.tpl"}
@@ -45,7 +49,7 @@ module versat_instance #(
    // DP
       #{for it 2}
 	  #{set dp ext.dp[it]}
-output [@{dp.bitSize}-1:0]  ext_dp_addr_@{i}_port_@{index}_o,
+   output [@{dp.bitSize}-1:0]  ext_dp_addr_@{i}_port_@{index}_o,
    output [@{dp.dataSizeOut}-1:0] ext_dp_out_@{i}_port_@{index}_o,
    input  [@{dp.dataSizeIn}-1:0] ext_dp_in_@{i}_port_@{index}_i,
    output                       ext_dp_enable_@{i}_port_@{index}_o,

@@ -1,3 +1,9 @@
+#{templateArgument "Pool<FUInstance>" "instances"}
+#{templateArgument "FUDeclaration" "accel"}
+#{templateArgument "int" "delaySize"}
+#{templateArgument "Options" "arch"}
+#{templateArgument "int" "unitsMapped"}
+
 `timescale 1ns / 1ps
 
 #{include "versat_common.tpl"}
