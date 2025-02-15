@@ -1,3 +1,9 @@
+#{templateArgument "String" "typeName"}
+#{templateArgument "String" "generatedUnitsLocation"}
+#{templateArgument "Array<String>" "allFilenames"}
+#{templateArgument "Array<String>" "extraSources"}
+#{templateArgument "Options" "arch"}
+
 #{let TRACE_TYPE ""}
 #{if traceEnabled} 
   #{set TRACE_TYPE "--trace"}

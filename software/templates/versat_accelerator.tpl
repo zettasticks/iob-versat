@@ -3,6 +3,11 @@
 #{templateArgument "int" "delaySize"}
 #{templateArgument "Options" "arch"}
 #{templateArgument "int" "unitsMapped"}
+#{templateArgument "Array<String>" "memoryMasks"}
+#{templateArgument "int" "numberConnections"}
+
+#{templateArgument "Array<String>" "parameters"}
+#{templateArgument "Array<InstanceInfo*>" "topLevel"}
 
 `timescale 1ns / 1ps
 

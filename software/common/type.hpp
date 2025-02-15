@@ -235,6 +235,8 @@ Value MakeValue(void* val,const char* typeName);
 Value MakeValue(void* val,String typeName);
 Value MakeValue(void* val,Type* type);
 
+Type* GetIteratingTypeOfContainer(Type* containerType);
+
 String ExtractTypeNameFromPrettyFunction(String prettyFunctionFormat,Arena* out);
 
 template<typename T>

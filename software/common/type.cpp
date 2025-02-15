@@ -2148,6 +2148,81 @@ Opt<ParsedType> ParseType(String typeStr,Arena* out){
   return res;
 }
 
+Opt<Token> FindLastUntil(Tokenizer* tok,const char* toFind){
+  auto mark = tok->Mark();
+  String toFindStr = STRING(toFind);
+  Opt<Token> bestFind = {};
+  while(!tok->Done()){
+    Token peek = tok->PeekToken();
+
+    if(CompareString(peek,toFindStr)){
+      bestFind = tok->Point(mark);
+    }
+
+    tok->AdvancePeek();
+  }
+
+  return bestFind;
+}
+
+// TODO: Move this to a better place
+Opt<Token> ExtractTemplateArguments(String content){
+  Tokenizer tok(content,"<>",{});
+
+  Opt<Token> result = tok.NextFindUntil("<");
+  if(!result.has_value()){
+    return {};
+  }
+  tok.AssertNextToken("<");
+  
+  return FindLastUntil(&tok,">");
+}
+
+Type* GetIteratingTypeOfContainer(Type* containerType){
+  // TODO: Right now we are assuming that we are dealing with an Array. Not generic, for now
+  //       If needed, have the user provide the info necessary to handle this
+  TEMP_REGION(temp,nullptr);
+  
+  // TODO: This entire function is basically an hack. Not seeing a good way of automatizing this for now.
+  if(containerType->type == Subtype_ARRAY){
+    return containerType->arrayType;
+  }
+
+  if(StartsWith(containerType->name,STRING("Array<"))){
+    String offsetted = OffsetString(containerType->name,6);
+    offsetted.size -= 1;
+
+    Assert(offsetted.size > 0);
+
+    return GetType(offsetted);
+  }
+
+  if(StartsWith(containerType->name,STRING("Hashmap<"))){
+    String offsetted = OffsetString(containerType->name,8);
+    offsetted.size -= 1;
+
+    Opt<Token> test = ExtractTemplateArguments(containerType->name);
+    
+    Assert(offsetted.size > 0);
+
+    String iterType = PushString(temp,"Pair<%.*s*>",UNPACK_SS(test.value()));
+    return GetType(iterType);
+  }
+
+  if(StartsWith(containerType->name,STRING("Pool<"))){
+    String offsetted = OffsetString(containerType->name,5);
+    offsetted.size -= 1;
+
+    Assert(offsetted.size > 0);
+
+    String iterType = PushString(temp,"%.*s*",UNPACK_SS(offsetted));
+    return GetType(iterType);
+  }
+
+  NOT_IMPLEMENTED("We are kinda forcing stuff currently, but eventually want to find a good solution for this");
+  return {};
+}
+
 
 
 

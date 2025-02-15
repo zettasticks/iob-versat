@@ -12,6 +12,17 @@
 #{templateArgument "int" "nConfigs"}
 #{templateArgument "int" "versatConfig"}
 #{templateArgument "int" "versatState"}
+#{templateArgument "int" "nStatics"}
+#{templateArgument "int" "nStates"}
+#{templateArgument "int" "simpleInputs"}
+#{templateArgument "int" "simpleOutputs"}
+#{templateArgument "int" "simpleOutputs"}
+#{templateArgument "Array<Array<int>>" "mergedDelays"}
+#{templateArgument "int" "amountMerged"}
+#{templateArgument "Array<DifferenceArray>" "differences"}
+#{templateArgument "Array<String>" "mergeNames"}
+#{templateArgument "Array<Array<MuxInfo>>" "mergeMux"}
+#{templateArgument "Array<String>" "addrGen"}
 
 // This file has been auto-generated
 

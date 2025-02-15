@@ -1,6 +1,24 @@
 #{templateArgument "Pool<FUInstance>" "instances"}
 #{templateArgument "Accelerator" "accel"}
-
+#{templateArgument "Options" "arch"}
+#{templateArgument "Array<ExternalMemoryInterface>" "external"}
+#{templateArgument "int" "nInputs"}
+#{templateArgument "int" "nOutputs"}
+#{templateArgument "int" "nIO"}
+#{templateArgument "int" "memoryConfigDecisionBit"}
+#{templateArgument "int" "unitsMapped"}
+#{templateArgument "Array<String>" "memoryMasks"}
+#{templateArgument "int" "memoryAddressBits"}
+#{templateArgument "int" "configurationBits"}
+#{templateArgument "Array<WireInformation>" "wireInfo"}
+#{templateArgument "int" "stateBits"}
+#{templateArgument "int" "versatState"}
+#{templateArgument "int" "stateAddressBits"}
+#{templateArgument "Array<FUInstance*>" "ordered"}
+#{templateArgument "int" "staticStart"}
+#{templateArgument "Array<String>" "parameters"}
+#{templateArgument "int" "delayStart"}
+#{templateArgument "int" "delaySize"}
 
 `timescale 1ns / 1ps
 

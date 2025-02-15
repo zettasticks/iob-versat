@@ -1,3 +1,5 @@
+#{templateArgument "Pool<FUInstance>" "instances"}
+
 `timescale 1ns / 1ps
 
 #{include "versat_common.tpl"}

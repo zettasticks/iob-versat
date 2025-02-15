@@ -86,8 +86,8 @@ $(BUILD_DIR)/embedFile: $(VERSAT_TOOLS_DIR)/embedFile.cpp $(VERSAT_COMMON_OBJ_NO
 $(BUILD_DIR)/calculateHash: $(VERSAT_TOOLS_DIR)/calculateHash.cpp $(VERSAT_COMMON_OBJ_NO_TYPE) $(VERSAT_ALL_HEADERS)
 	g++ -DPC -std=c++17 -MMD -MP -DVERSAT_DEBUG -DSTANDALONE -o $@ $(VERSAT_COMMON_FLAGS) $(VERSAT_COMMON_INCLUDE) $< $(VERSAT_COMMON_OBJ_NO_TYPE)
 
-$(BUILD_DIR)/templateCompiler: $(VERSAT_TOOLS_DIR)/templateCompiler.cpp $(VERSAT_COMMON_OBJ) $(VERSAT_ALL_HEADERS)
-	g++ -DPC -std=c++17 -MMD -MP -DVERSAT_DEBUG -DSTANDALONE -o $@ $(VERSAT_COMMON_FLAGS) $(VERSAT_COMMON_INCLUDE) $< $(VERSAT_COMMON_OBJ)
+$(BUILD_DIR)/templateCompiler: $(VERSAT_TOOLS_DIR)/templateCompiler.cpp $(VERSAT_COMMON_OBJ) $(VERSAT_ALL_HEADERS) $(BUILD_DIR)/typeInfo.o
+	g++ -DPC -std=c++17 -MMD -MP -DVERSAT_DEBUG -DSTANDALONE -o $@ $(VERSAT_COMMON_FLAGS) $(VERSAT_COMMON_INCLUDE) $< $(VERSAT_COMMON_OBJ) $(BUILD_DIR)/typeInfo.o
 
 $(BUILD_DIR)/typeInfo.cpp: $(TYPE_INFO_HDR) $(VERSAT_ALL_HEADERS)
 	python3 $(VERSAT_TOOLS_DIR)/structParser.py $(BUILD_DIR) $(TYPE_INFO_HDR) # -m cProfile -o temp.dat 
@@ -101,7 +101,7 @@ $(BUILD_DIR)/%.o : $(VERSAT_COMPILER_DIR)/%.cpp $(BUILD_DIR)/templateData.hpp $(
 ALL_TEMPLATES := $(wildcard $(VERSAT_TEMPLATE_DIR)/*.tpl)
 
 $(BUILD_DIR)/templateTest.cpp: $(BUILD_DIR)/templateCompiler
-	gdb --args $(BUILD_DIR)/templateCompiler $(ALL_TEMPLATES)
+	$(BUILD_DIR)/templateCompiler $(ALL_TEMPLATES)
 
 $(shell mkdir -p $(BUILD_DIR))
 
@@ -114,7 +114,8 @@ calculateHash: $(BUILD_DIR)/calculateHash
 
 templateCompiler: $(BUILD_DIR)/templateCompiler
 
-compileTemplates: $(BUILD_DIR)/templateTest.cpp
+compileTemplates: $(BUILD_DIR)/templateCompiler
+	$(BUILD_DIR)/templateCompiler $(filter-out $(VERSAT_TEMPLATE_DIR)/versat_iterative.tpl,$(ALL_TEMPLATES))
 
 versat: $(VERSAT_DIR)/versat $(BUILD_DIR)/calculateHash
 
@@ -124,7 +125,7 @@ clean:
 	-rm -fr build
 	-rm -f *.a versat versat.d
 
-.PHONY: versat
+.PHONY: versat compileTemplates
 
 .SUFFIXES:
 

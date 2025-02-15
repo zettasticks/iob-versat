@@ -10,6 +10,8 @@
 
 #include "templateEngine.hpp"
 
+String currentTemplateBeingProcessed;
+
 struct MyFrame{
   Hashmap<String,Type*>* table;
   MyFrame* previousFrame;
@@ -17,7 +19,7 @@ struct MyFrame{
 
 static MyFrame* CreateFrame(MyFrame* previous,Arena* out){
   MyFrame* frame = PushStruct<MyFrame>(out);
-  frame->table = PushHashmap<String,Type*>(out,16); // Testing a fixed hashmap for now.
+  frame->table = PushHashmap<String,Type*>(out,256); // Testing a fixed hashmap for now.
   frame->previousFrame = previous;
   return frame;
 }
@@ -44,8 +46,13 @@ struct Writer{
   FILE* file;
   int spacing;
   bool lineIsEmpty;
-
+  bool disabled;
+  
   void StartStatement(){
+    if(disabled){
+      return;
+    }
+    
     if(lineIsEmpty){
       for(int i = 0; i < spacing; i++){
         fprintf(file," ");
@@ -57,11 +64,19 @@ struct Writer{
   }
 
   void EndStatement(){
+    if(disabled){
+      return;
+    }
+
     fprintf(file,";\n");
     lineIsEmpty = true;
   }
   
   void WriteStatement(const char* format,...) __attribute__ ((format (printf, 2, 3))){
+    if(disabled){
+      return;
+    }
+
     va_list args;
     va_start(args,format);
 
@@ -72,13 +87,21 @@ struct Writer{
     fprintf(file,"\"");
 
     EndStatement();
+
+    va_end(args);
   }
 
   void vWrite(const char* format,va_list args){
+    if(disabled){
+      return;
+    }
     vfprintf(file,format,args);
   }
   
   void Write(const char* format,...) __attribute__ ((format (printf, 2, 3))){
+    if(disabled){
+      return;
+    }
     va_list args;
     va_start(args,format);
 
@@ -102,6 +125,9 @@ struct Writer{
   }
 
   void Newline(){
+    if(disabled){
+      return;
+    }
     fprintf(file,"\n");
     lineIsEmpty = true;
   }
@@ -115,6 +141,9 @@ struct Writer{
   }
   
   void PushBlock(){
+    if(disabled){
+      return;
+    }
     for(int i = 0; i < spacing; i++){
       fprintf(file," ");
     }
@@ -124,6 +153,9 @@ struct Writer{
   }
   
   void PopBlock(){
+    if(disabled){
+      return;
+    }
     Dedent();
 
     for(int i = 0; i < spacing; i++){
@@ -134,16 +166,14 @@ struct Writer{
   }
 };
 
-void RegisterParsedTypes(){
-
-}
-
 char* templateNameToContent[] = {};
 
 // Every function that created a frame in the template engine, we now just add a '{' '}' block instead
 
 // SET,IF
 static void MyEval(Writer* writer,MyFrame* frame,Block* block);
+static Type* MyEvalExpression(Writer* writer,MyFrame* frame,Expression* expr);
+static Type* GetTypeOfExpression(Writer* writer,MyFrame* frame,Expression* expr);
 
 static void MyEvalBlockCommand(Writer* writer,MyFrame* frame,Block* block){
   TEMP_REGION(temp,nullptr);
@@ -152,24 +182,70 @@ static void MyEvalBlockCommand(Writer* writer,MyFrame* frame,Block* block){
 
   switch(com->definition->type){
   case CommandType_JOIN:{
-    writer->Write("<JOINING>\n");
+    writer->PushBlock();
+    writer->Write("std::stringstream myOut;\n");
+    writer->PushBlock();
+    writer->Write("std::ostream& out = myOut;\n");
+
+    
+    
+    writer->PopBlock();
+    writer->Write("out << myOut;\n");
+    writer->PopBlock();
+    //writer->Write("<JOINING>\n");
   } break;
   case CommandType_FOR:{
     String id = com->expressions[0]->id;
     writer->PushBlock();
     writer->Write("int index = 0;\n");
 
-    writer->Write("for(auto %.*s : %.*s){\n",UNPACK_SS(id),UNPACK_SS(com->expressions[1]->text));
+    Type* expressionType = GetTypeOfExpression(writer,frame,com->expressions[1]);
 
-    writer->Indent();
-    for(Block* ptr : block->innerBlocks){
-      MyEval(writer,frame,ptr);
-    }
+    if(expressionType->type == Subtype_BASE){
+      writer->Write("for(%.*s %.*s = 0; %.*s <  ",UNPACK_SS(expressionType->name),UNPACK_SS(id),UNPACK_SS(id));
+
+      MyEvalExpression(writer,frame,com->expressions[1]);
+
+      writer->Write("; %.*s++){\n",UNPACK_SS(id));
+
+      MyFrame* newFrame = CreateFrame(frame,temp);
+
+      Type* iteratorType = expressionType;
     
-    writer->Write("index += 1;\n");
-    writer->Dedent();
-    writer->Write("}\n");
-    writer->PopBlock();
+      SetValue(newFrame,id,iteratorType);
+    
+      writer->Indent();
+      for(Block* ptr : block->innerBlocks){
+        MyEval(writer,newFrame,ptr);
+      }
+    
+      writer->Write("index += 1;\n");
+      writer->Dedent();
+      writer->Write("}\n");
+      writer->PopBlock();
+    } else {
+      writer->Write("for(auto %.*s : ",UNPACK_SS(id));
+
+      MyEvalExpression(writer,frame,com->expressions[1]);
+
+      writer->Write("){\n");
+
+      MyFrame* newFrame = CreateFrame(frame,temp);
+
+      Type* iteratorType = GetIteratingTypeOfContainer(expressionType);
+    
+      SetValue(newFrame,id,iteratorType);
+    
+      writer->Indent();
+      for(Block* ptr : block->innerBlocks){
+        MyEval(writer,newFrame,ptr);
+      }
+    
+      writer->Write("index += 1;\n");
+      writer->Dedent();
+      writer->Write("}\n");
+      writer->PopBlock();
+    }
   } break;
 
 #if 0
@@ -205,11 +281,14 @@ static Type* MyEvalExpression(Writer* writer,MyFrame* frame,Expression* expr);
 static void MyEvalNonBlockCommand(Writer* writer,MyFrame* frame,Command* com){
   switch(com->definition->type){
   case CommandType_SET:{
-    writer->Write("auto %.*s",UNPACK_SS(com->expressions[0]->id));
+    String id = com->expressions[0]->id;
+    
+    writer->Write("auto %.*s",UNPACK_SS(id));
     writer->Write("=");
     Type* type = MyEvalExpression(writer,frame,com->expressions[1]);
     writer->Write(";\n");
-    SetValue(frame,com->expressions[0]->id,type);
+    //DEBUG_BREAK_IF(id == STRING("numberIOs"));
+    SetValue(frame,id,type);
   } break;
   case CommandType_LET:{
     writer->Write("auto %.*s",UNPACK_SS(com->expressions[0]->id));
@@ -219,7 +298,7 @@ static void MyEvalNonBlockCommand(Writer* writer,MyFrame* frame,Command* com){
     SetValue(frame,com->expressions[0]->id,type);
   } break;
   case CommandType_INC:{
-    writer->Write("%.*s++",UNPACK_SS(com->expressions[0]->id));
+    writer->Write("%.*s++;\n",UNPACK_SS(com->expressions[0]->id));
   } break;
   case CommandType_CALL:{
     writer->Write("%.*s(",UNPACK_SS(com->expressions[0]->id));
@@ -240,8 +319,23 @@ static void MyEvalNonBlockCommand(Writer* writer,MyFrame* frame,Command* com){
   }
 }
 
+static Type* GetTypeOfExpression(Writer* writer,MyFrame* frame,Expression* expr){
+  bool previous = writer->disabled;
+  writer->disabled = true;
+  
+  Type* type = MyEvalExpression(writer,frame,expr);
+
+  writer->disabled = previous;
+  return type;
+}
+
 static Type* MyEvalExpression(Writer* writer,MyFrame* frame,Expression* expr){
+  static Type* boolType = GetType(STRING("bool"));
+  
   switch(expr->type){
+  case Expression::UNDEFINED:{
+    Assert(false);
+  } break;
   case Expression::OPERATION:{
     if(expr->op[0] == '|'){ // Pipe operation
       String pipeName = expr->expressions[1]->id;
@@ -253,27 +347,39 @@ static Type* MyEvalExpression(Writer* writer,MyFrame* frame,Expression* expr){
     } else if(CompareString(expr->op,"!")){
       writer->Write("!");
       MyEvalExpression(writer,frame,expr->expressions[0]);
+      return boolType;
     } else if(CompareString(expr->op,"and")){
       MyEvalExpression(writer,frame,expr->expressions[0]);
       writer->Write("&&");
       MyEvalExpression(writer,frame,expr->expressions[1]);
+      return boolType;
     } else if(CompareString(expr->op,"or")){
       MyEvalExpression(writer,frame,expr->expressions[0]);
       writer->Write("||");
       MyEvalExpression(writer,frame,expr->expressions[1]);
+      return boolType;
     } else if(CompareString(expr->op,"xor")){
       MyEvalExpression(writer,frame,expr->expressions[0]);
       writer->Write("!=");
       MyEvalExpression(writer,frame,expr->expressions[1]);
+      return boolType;
     } else {
-      MyEvalExpression(writer,frame,expr->expressions[0]);
+      Type* leftType = MyEvalExpression(writer,frame,expr->expressions[0]);
       writer->Write("%s",expr->op);
-      MyEvalExpression(writer,frame,expr->expressions[1]);
+      Type* rightType = MyEvalExpression(writer,frame,expr->expressions[1]);
+      return rightType; // TODO: Kinda on an hack
     }
   } break;
   case Expression::IDENTIFIER:{
     writer->Write("%.*s",UNPACK_SS(expr->id));
-    return GetValue(frame,expr->id).value();
+
+    Opt<Type*> possible = GetValue(frame,expr->id);
+    if(!possible.has_value()){
+      printf("Did not find '%.*s' in template '%.*s'\n",UNPACK_SS(expr->id),UNPACK_SS(currentTemplateBeingProcessed));
+      exit(0);
+    }
+    
+    return possible.value();
   } break;
   case Expression::COMMAND:{
     Command* com = expr->command;
@@ -291,7 +397,7 @@ static Type* MyEvalExpression(Writer* writer,MyFrame* frame,Expression* expr){
     Type* sub = MyEvalExpression(writer,frame,expr->expressions[0]);
     writer->Write("[%ld]",expr->val.number);
 
-    return sub->arrayType;
+    return GetIteratingTypeOfContainer(sub);
   } break;
   case Expression::MEMBER_ACCESS:{
     Type* sub = MyEvalExpression(writer,frame,expr->expressions[0]);
@@ -310,7 +416,7 @@ static Type* MyEvalExpression(Writer* writer,MyFrame* frame,Expression* expr){
     }
   } break;
   }
-
+  
   return nullptr;
 }
 
@@ -421,7 +527,7 @@ int main(int argc,const char* argv[]){
   contextArenas[0] = &inst1;
   Arena inst2 = InitArena(Megabyte(64));
   contextArenas[1] = &inst2;
-
+  
   RegisterTypes();
 
   FILE* file = fopen("templateTest.cpp","w");
@@ -444,7 +550,8 @@ int main(int argc,const char* argv[]){
     String nameOnly = splittedName[0];
 
     String content = PushFile(temp2,templatePath);
-    
+
+    currentTemplateBeingProcessed = nameOnly;
     CompiledTemplate* compiledTemplate = CompileTemplate(content,StaticFormat("%.*s",UNPACK_SS(nameOnly)),temp2);
     
     GenerateTemplatePrinter(&writer,compiledTemplate);

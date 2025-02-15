@@ -1,3 +1,8 @@
+#{templateArgument "Options" "arch"}
+#{templateArgument "int" "configurationBits"}
+#{templateArgument "Array<WireInformation>" "wireInfo"}
+#{templateArgument "int" "configurationAddressBits"}
+
 #{define handleStrobe strobeWireName regName regSize regBitStart dataWireName}
   #{set size info.wire.bitSize}
   #{set wstrb 0}

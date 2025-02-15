@@ -945,6 +945,32 @@ bool Contains(String str,const char* toCheck){
   return false;
 }
 
+bool StartsWith(String toSearch,String starter){
+  if(starter.size > toSearch.size){
+    return false;
+  }
+
+  for(int i = 0; i < starter.size; i++){
+    if(toSearch[i] != starter[i]){
+      return false;
+    }
+  }
+
+  return true;
+}
+
+String OffsetString(String str,int amount){
+  if(amount > str.size){
+    return {};
+  }
+
+  String res = str;
+  res.data += amount;
+  res.size -= amount;
+
+  return res;
+}
+
 String TrimLeftWhitespaces(String in){
   const char* start = in.data;
   const char* end = &in.data[in.size-1];

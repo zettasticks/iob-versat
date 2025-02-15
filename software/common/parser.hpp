@@ -152,6 +152,9 @@ public:
 
 bool IsOnlyWhitespace(String tok);
 bool Contains(String str,const char* toCheck);
+bool StartsWith(String toSearch,String starter);
+
+String OffsetString(String str,int amount);
 
 bool CheckFormat(const char* format,String tok);
 Array<Value> ExtractValues(const char* format,String tok,Arena* arena);
