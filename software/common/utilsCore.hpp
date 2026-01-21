@@ -222,6 +222,24 @@ if(_){ \
    B = TEMP; \
    } while(0)
 
+#define HASH(TYPENAME,COND) \
+template<> struct std::hash<TYPENAME>{ \
+  std::size_t operator()(TYPENAME const& x) const noexcept{ \
+    std::size_t hash = (COND); \
+    return hash; \
+  } \
+};
+
+#define EQUALITY(TYPENAME,COND) \
+inline bool operator==(const TYPENAME& lhs,const TYPENAME& rhs){ \
+  bool res = (COND); \
+  return res; \
+} \
+inline bool operator!=(const TYPENAME& lhs,const TYPENAME& rhs){ \
+  bool res = !(COND); \
+  return res; \
+}
+
 typedef uint8_t Byte;
 typedef uint8_t u8;
 typedef int8_t i8;

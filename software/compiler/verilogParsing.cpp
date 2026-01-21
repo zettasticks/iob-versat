@@ -487,7 +487,6 @@ static Array<ParameterExpression> ParseParameters(Tokenizer* tok,TrieMap<String,
   auto params = StartArray<ParameterExpression>(out);
 
   // TODO: Not used but must parse it anyway.
-  bool sign = false;
   ExpressionRange range = {};
   ParamFlags flags = {};
   while(1){
@@ -496,7 +495,6 @@ static Array<ParameterExpression> ParseParameters(Tokenizer* tok,TrieMap<String,
     if(CompareString(peek,"parameter")){
       tok->FlushStoredTokens();
       
-      // MARK
       bool prev = tok->keepComments;
       tok->keepComments = true;
 
@@ -527,11 +525,8 @@ static Array<ParameterExpression> ParseParameters(Tokenizer* tok,TrieMap<String,
         }
       }
       tok->keepComments = prev;
-      
-      if(tok->IfPeekToken("signed")){
-        sign = true;
-      }
-      
+      tok->IfNextToken("signed");
+
       range = ParseRange(tok,out);
 
       Token paramName = tok->NextToken();
@@ -565,8 +560,6 @@ static Array<ParameterExpression> ParseParameters(Tokenizer* tok,TrieMap<String,
       p->name = paramName;
       p->expr = expr;
       p->flags = flags;
-
-      sign = false;
     } else if(CompareString(peek,")")){
       break;
     } else if(CompareString(peek,";")){ // To parse inside module parameters, technically wrong but harmless
@@ -868,7 +861,7 @@ ModuleInfo ExtractModuleInfo(Module& module,Arena* out){
 
       ExternalMemoryID id = {};
       id.interface = values[1].number;
-      id.type = ExternalMemoryType::ExternalMemoryType_DP;
+      id.type = ExternalMemoryType_DP;
 
       String wire = values[0].str;
       int port = values[2].number;
@@ -889,7 +882,7 @@ ModuleInfo ExtractModuleInfo(Module& module,Arena* out){
       }
     } else if(CheckFormat("ext_2p_%s",decl.name)){
       ExternalMemoryID id = {};
-      id.type = ExternalMemoryType::ExternalMemoryType_2P;
+      id.type = ExternalMemoryType_2P;
 
       String wire = {};
 	  bool out = false;

@@ -655,11 +655,13 @@ AddressAccess* CompileAddressGen(Token name,Array<Token> inputs,Array<AddressGen
     }
   }
 
+#if 0
   auto list = PushArenaList<Token>(temp);
   for(AddressGenForDef loop : loops){
     *list->PushElem() = loop.loopVariable;
   }
   auto allVariables = PushArrayFromList(temp,list);
+#endif
   
   if(anyError){
     return nullptr;
@@ -1270,10 +1272,12 @@ String GenerateAddressPrintFunction(AddressAccess* access,Arena* out){
     m->Argument("int",input);
   }
 
+#if 0
   for(String input : inputVars){
     //String statement = PushString(temp,"printf(\"%.*s:%%d\\n\",%.*s)",UN(input),UN(input));
     //m->Statement(statement);
   }
+#endif
   
   CAST* ast = EndCCode(m);
 

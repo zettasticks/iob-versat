@@ -63,10 +63,6 @@ struct FUDeclaration{
   int numberDelays;
   Array<Parameter> parameters;
 
-  // TODO: Should be an SymbolicExpression. We probably want everything to be a symbolic expression at this point.
-  Opt<int> memoryMapBits; // 0 is a valid memory map size, so optional indicates that no memory map exists
-  int nIOs;
-
   // TODO: Eventually remove external expression and external memory and only keep externalMemorySymbol
   Array<ExternalMemoryInterfaceExpression> externalExpressionMemory;
   Array<ExternalMemoryInterface> externalMemory;
@@ -175,7 +171,6 @@ FUDeclaration* GetTypeByNameOrFail(String name);
 void InitializeSimpleDeclarations();
 bool HasMultipleConfigs(FUDeclaration* decl);
 // Because of merge, we need units that can delay the datapath for different values depending on the datapath that is being configured.
-bool HasVariableDelay(FUDeclaration* decl);
 
 // ======================================
 // Declaration inspection

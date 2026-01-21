@@ -869,10 +869,11 @@ bool CheckFormat(const char* format,String tok){
 }
 
 Array<String> Split(String content,char sep,Arena* out){
+  TEMP_REGION(temp,out);
   int index = 0;
   int size = content.size;
 
-  auto arr = StartArray<String>(out);
+  auto list = PushArenaList<String>(temp);
   
   while(1){
     int start = index;
@@ -886,7 +887,7 @@ Array<String> Split(String content,char sep,Arena* out){
       break;
     } else if(index >= size){
       line = {&content[start],end - start};
-      *arr.PushElem() = line;
+      *list->PushElem() = line;
       break;
     } else if(content[index] == sep){
       line = {&content[start],end - start};
@@ -895,12 +896,12 @@ Array<String> Split(String content,char sep,Arena* out){
       //Assert(false);
     }
 
-    *arr.PushElem() = line;
+    *list->PushElem() = line;
 
     index += 1;
   }
   
-  Array<String> res = EndArray(arr);
+  Array<String> res = PushArrayFromList(out,list);
   return res;
 }
 
@@ -942,13 +943,15 @@ Token ParseComment(Tokenizer* tok,Arena* out){
   if(tok->IfNextToken("/*")){
     auto mark = tok->Mark();
     while(!tok->Done()){
-      if(tok->IfNextToken("*/")){
+      if(tok->IfPeekToken("*/")){
         break;
       }
       tok->NextToken();
     }
 
     res = tok->Point(mark);
+
+    tok->IfNextToken("*/");
   } else {
     tok->Rollback(mark);
   }

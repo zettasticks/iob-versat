@@ -1291,7 +1291,7 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
 
   FREE_ARENA(temp3);
   ARENA_NO_POP(temp3);
-  Env* env = StartEnvironment(temp3);
+  //Env* env = StartEnvironment(temp3);
 
   InstanceTable* table = PushHashmap<String,FUInstance*>(temp,1000);
   InstanceName* names = PushSet<String>(temp,1000);
@@ -1560,7 +1560,9 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
       *list->PushElem() = InstantiateConfigFunction(&funcDecl,res,content,globalPermanent);
     };
     
-    res->info.infos[0].userFunctions = PushArrayFromList(perm,list);
+    if(res->info.infos.size){
+      res->info.infos[0].userFunctions = PushArrayFromList(perm,list);
+    }
   }
   
   return res;

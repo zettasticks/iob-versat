@@ -1,5 +1,6 @@
 #include "delayCalculation.hpp"
 
+#include "configurations.hpp"
 #include "declaration.hpp"
 #include "versat.hpp"
 
@@ -60,9 +61,9 @@ SimpleEdge Get(AccelEdgeIterator iter){
   int inputIndex = iter.iter.GetIndex();
   
   SimpleEdge res = {};
-  res.outPort = conn.outPort;
-  res.outIndex = conn.outInst;
-  res.inPort = conn.inPort;
+  res.outPort = conn.otherPort;
+  res.outIndex = conn.otherInst;
+  res.inPort = conn.port;
   res.inIndex = inputIndex;
 
   return res;
@@ -154,7 +155,7 @@ SimpleCalculateDelayResult CalculateDelay(AccelInfoIterator top,Arena* out){
       int a = info->outputLatencies[edge.outPort];
 
       int d = 0;
-      if(info->decl == BasicDeclaration::fixedBuffer){
+      if(info->specialType == SpecialUnitType_FIXED_BUFFER){
         d = info->special;
       }
       
@@ -170,7 +171,7 @@ SimpleCalculateDelayResult CalculateDelay(AccelInfoIterator top,Arena* out){
 
       // If the node is a buffer, delays are now variable.
       // We want to preserve this information as much as possible. Even if not needed because the merge is simple, we might be able to unlock some optimizations down the line
-      if(HasVariableDelay(info->decl)){
+      if(HasVariableDelay(info)){
         edgesGlobalLatency[edgeIndex].isAny = true;
       }
       

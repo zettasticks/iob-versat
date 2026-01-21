@@ -664,7 +664,7 @@ CEmitter* StartCCode(Arena* out){
   CEmitter* res = PushStruct<CEmitter>(out);
 
   res->arena = out;
-  res->buffer = PushArray<CAST*>(out,99); // NOTE: Can always change to a dynamic array or something similar
+  res->buffer = PushArray<CAST*>(out,16); // NOTE: Can always change to a dynamic array or something similar
   
   res->topLevel = PushCAST(CASTType_TOP_LEVEL,out);
   res->topLevel->top.declarations = PushArenaList<CAST*>(out);

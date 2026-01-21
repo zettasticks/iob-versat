@@ -446,7 +446,7 @@ void FixDelays(Accelerator* accel,Hashmap<Edge,DelayInfo>* edgeDelays){
     
     FUInstance* output = edge.units[0].inst;
 
-    if(HasVariableDelay(output->declaration)){
+    if(output->declaration == BasicDeclaration::buffer){
       edgePair.second = 0;
       continue;
     }
@@ -552,7 +552,7 @@ Array<FUDeclaration*> MemSubTypes(AccelInfo* info,Arena* out){
   Array<InstanceInfo> test = info->infos[0].info;
   for(InstanceInfo& info : test){
     if(info.memMappedSize.has_value()){
-      maps->Insert(info.decl);
+      maps->Insert(GetTypeByName(info.typeName));
     }
   }
   
@@ -568,11 +568,11 @@ Hashmap<StaticId,StaticData>* CollectStaticUnits(AccelInfo* info,Arena* out){
     if(info->isStatic){
       StaticId id = {};
       id.name = info->name;
-      id.parent = info->parent;
+      id.parent = GetTypeByName(info->parentTypeName);
 
       StaticData data = {};
-      data.decl = info->decl;
-      data.configs = info->decl->configs;
+      data.decl = GetTypeByName(info->typeName);
+      data.configs = info->configs;
       staticUnits->InsertIfNotExist(id,data);
     }
   }
@@ -653,7 +653,7 @@ int ExternalMemoryByteSize(Array<ExternalMemoryInterface> interfaces){
   return size;
 }
 
-VersatComputedValues ComputeVersatValues(AccelInfo* info,Arena* out){
+VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Arena* out){
   TEMP_REGION(temp,out);
   VersatComputedValues res = {};
 
@@ -668,41 +668,40 @@ VersatComputedValues ComputeVersatValues(AccelInfo* info,Arena* out){
   auto builder = StartArray<ExternalMemoryInterface>(temp);
 
   int defaultDelaySize = 7;
+  int externalMemoryInterfaces = 0; 
   
   for(AccelInfoIterator iter = StartIteration(info); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* unit = iter.CurrentUnit();
-    FUInstance* inst = unit->inst;
-    FUDeclaration* decl = inst->declaration;
     
-    if(decl->memoryMapBits.has_value()){
-      memoryMappedDWords = AlignBitBoundary(memoryMappedDWords,decl->memoryMapBits.value());
-      memoryMappedDWords += 1 << decl->memoryMapBits.value();
+    if(unit->memMapBits.has_value()){
+      memoryMappedDWords = AlignBitBoundary(memoryMappedDWords,unit->memMapBits.value());
+      memoryMappedDWords += 1 << unit->memMapBits.value();
 
       res.unitsMapped += 1;
     }
 
-    res.nConfigs += decl->configs.size;
-    for(Wire& wire : decl->configs){
+    res.nConfigs += unit->configSize;
+    for(Wire& wire : unit->configs){
       configBits += wire.bitSize;
 
       configExpr = Normalize(SymbolicAdd(configExpr,wire.sizeExpr,temp),temp);
     }
 
-    res.nStates += decl->states.size;
-    for(Wire& wire : decl->states){
+    res.nStates += unit->stateSize;
+    for(Wire& wire : unit->states){
       res.stateBits += wire.bitSize;
     }
 
-    res.nDelays += unit->delaySize;
-    delayBits += unit->delaySize * defaultDelaySize;
+    res.nDelays += unit->numberDelays;
+    delayBits += unit->numberDelays * defaultDelaySize;
 
-    res.externalMemoryInterfaces += decl->externalMemory.size;
+    externalMemoryInterfaces += unit->externalMemory.size;
 
-    if(decl->externalMemory.size){
-      builder.PushArray(decl->externalMemory);
+    if(unit->externalMemory.size){
+      builder.PushArray(unit->externalMemory);
     }
 
-    if(decl->singleInterfaces & SingleInterfaces_DONE){
+    if(unit->singleInterfaces & SingleInterfaces_DONE){
       numberDones += 1;
     }
   }
@@ -789,6 +788,36 @@ VersatComputedValues ComputeVersatValues(AccelInfo* info,Arena* out){
   res.memoryConfigDecisionBit = std::max(stateConfigurationAddressBits,memoryMappingAddressBits) + 2;
   
   res.numberConnections = info->numberConnections;
+
+  Array<ExternalMemoryInterface> external = PushArray<ExternalMemoryInterface>(out,externalMemoryInterfaces);
+  int externalIndex = 0;
+  for(InstanceInfo& in : info->infos[0].info){
+    if(!in.isComposite){
+      for(ExternalMemoryInterface& inter : in.externalMemory){
+        external[externalIndex++] = inter;
+      }
+    }
+  }
+  res.externalMemoryInterfaces = external;
+  res.info = info;
+
+  Pool<FUInstance> instances = graph->allocated;
+  Hashmap<StaticId,StaticData>* staticUnits = CollectStaticUnits(info,out);
+  int index = 0;
+  Array<Wire> allStaticsVerilatorSide = PushArray<Wire>(out,999); // TODO: Correct size
+  for(Pair<StaticId,StaticData*> p : staticUnits){
+    for(Wire& config : p.second->configs){
+      allStaticsVerilatorSide[index] = config;
+      allStaticsVerilatorSide[index].name = ReprStaticConfig(p.first,&config,out);
+      index += 1;
+    }
+  }
+  allStaticsVerilatorSide.size = index;
+  Array<WireInformation> wireInfo = CalculateWireInformation(instances,staticUnits,res.versatConfigs,out);
+
+  res.allStaticsVerilatorSide = allStaticsVerilatorSide;
+  res.staticUnits = staticUnits;
+  res.wireInfo = wireInfo;
   
   return res;
 }
@@ -2109,8 +2138,6 @@ FlattenWithMergeResult FlattenWithMerge(Accelerator* accel,int reconIndex){
 
 Opt<Entity> GetEntityFromHierAccess(AccelInfo* info,Array<String> accessExpr){
   // TODO: This function can be simplified.
-  FUInstance* currentInstance = nullptr;
-
   AccelInfoIterator iter = StartIteration(info);
 
   // NOTE: Logic below assumes that we start with an iterator already pointing to the first unit
@@ -2153,7 +2180,7 @@ Opt<Entity> GetEntityFromHierAccess(AccelInfo* info,Array<String> accessExpr){
       }
       
       // Did not find node inside which means it must be a wire or a function.
-      for(Wire& config : outerInfo->decl->configs){
+      for(Wire& config : outerInfo->configs){
         if(config.name == access){
           Entity res = {};
           res.wire = &config;
@@ -2164,7 +2191,7 @@ Opt<Entity> GetEntityFromHierAccess(AccelInfo* info,Array<String> accessExpr){
         }
       }
 
-      for(Wire& state : outerInfo->decl->states){
+      for(Wire& state : outerInfo->states){
         if(state.name == access){
           Entity res = {};
           res.wire = &state;

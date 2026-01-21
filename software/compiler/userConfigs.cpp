@@ -513,8 +513,6 @@ ConfigFunction* InstantiateConfigFunction(ConfigFunctionDef* def,FUDeclaration* 
   String structToReturnName = "void";
   Array<ConfigVarDeclaration> variables = def->variables;
   Array<Token> variableNames = Extract(variables,temp,&ConfigVarDeclaration::name);
-
-  Array<String> variableStr = CopyArray<String,Token>(variableNames,temp);
   
   FREE_ARENA(temp3);
   ARENA_NO_POP(temp3);
@@ -619,7 +617,7 @@ ConfigFunction* InstantiateConfigFunction(ConfigFunctionDef* def,FUDeclaration* 
         //AddOrSetVariable(env,simple->rhsId.name,VariableType_VOID_PTR);
 
         AddressAccess* access = CompileAddressGen({},variableNames,loops,simple->rhsId.expr,content);
-        AddressGenInst supported = ent.inst->decl->supportedAddressGen;
+        AddressGenInst supported = ent.inst->supportedAddressGen;
 
         ConfigStuff* newAssign = list->PushElem();
         newAssign->info = ent.inst;
@@ -714,7 +712,6 @@ ConfigFunction* InstantiateConfigFunction(ConfigFunctionDef* def,FUDeclaration* 
     for(ConfigStatement* stmt : def->statements){
       ConfigIdentifier id = stmt->lhs;
       Token name = id.name;
-      Token wireName = id.wire;
 
       FULL_SWITCH(stmt->rhsType){
       case ConfigRHSType_FUNCTION_CALL:{
@@ -772,10 +769,6 @@ ConfigFunction* InstantiateConfigFunction(ConfigFunctionDef* def,FUDeclaration* 
       ConfigStatement* stmt = stmts[0];
       ConfigStatement* simple = stmts[stmts.size - 1];
 
-      ConfigIdentifier id = stmt->lhs;
-      Token name = id.name;
-      Token wireName = id.wire;
-
       FULL_SWITCH(stmt->type){
       case ConfigStatementType_STATEMENT:{
         FULL_SWITCH(stmt->rhsType){
@@ -796,7 +789,6 @@ ConfigFunction* InstantiateConfigFunction(ConfigFunctionDef* def,FUDeclaration* 
           Array<String> accessExpr = PushArray<String>(temp,1);
           accessExpr[0] = stmt->lhs.name;
 
-          // MARK
           Opt<Entity> entityOpt = GetEntityFromHierAccessWithEnvironment(&declaration->info,env,accessExpr);
 
           if(!entityOpt){
@@ -806,10 +798,8 @@ ConfigFunction* InstantiateConfigFunction(ConfigFunctionDef* def,FUDeclaration* 
           }
           Entity entity = entityOpt.value();
           Assert(entity.type == EntityType_NODE);
-          Assert(entity.inst->decl->memoryMapBits.has_value());
+          Assert(entity.inst->memMapBits.has_value());
           
-          //AddOrSetVariable(env,simple->rhsId.name,VariableType_VOID_PTR);
-
           ConfigStuff* assign = list->PushElem();
           assign->type = ConfigStuffType_MEMORY_TRANSFER;
           assign->transfer.dir = TransferDirection_READ;
@@ -820,7 +810,6 @@ ConfigFunction* InstantiateConfigFunction(ConfigFunctionDef* def,FUDeclaration* 
       }
       } break;
       case ConfigStatementType_FOR_LOOP:{
-        ConfigStatement* ptr = stmt;
         auto forLoops = PushArenaList<AddressGenForDef>(temp);
 
         for(int i = 0; i < stmts.size - 1; i++){

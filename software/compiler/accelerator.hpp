@@ -4,6 +4,7 @@
 #include "utils.hpp"
 #include "memory.hpp"
 #include "verilogParsing.hpp"
+//#include "versat.hpp"
 
 struct FUInstance;
 struct FUDeclaration;
@@ -205,11 +206,49 @@ struct Accelerator{ // Graph + data storage
   AcceleratorPurpose purpose;
 };
 
+struct StaticId{
+   FUDeclaration* parent;
+   String name;
+};
+
+template<> class std::hash<StaticId>{
+   public:
+   std::size_t operator()(StaticId const& s) const noexcept{
+      std::size_t res = std::hash<String>()(s.name) + (std::size_t) s.parent;
+      return (std::size_t) res;
+   }
+};
+
+struct StaticData{
+  FUDeclaration* decl; // Declaration of unit that contains the origin of the given configs
+  Array<Wire> configs; // The actual configs, which might differ from decl->configs because parameters might be instantiated 
+};
+
+struct StaticInfo{
+   StaticId id;
+   StaticData data;
+};
+
+
+struct WireInformation{
+  Wire wire;
+  int addr;
+  bool isStatic;
+  SymbolicExpression* startBitExpr;
+};
+
 // NOTE: These values are specific to the top accelerator only. They differ because of stuff like DMA, the config interface for the accelerator and so on.
 //       Any change that is specific to the top unit should change these values. More config space and things like that can be 'reserved' by changing the config values here and the same holds true for all the other interfaces.
 //       Code that does not care about the top level unit should just use the values found in AccelInfo.
 struct VersatComputedValues{
+  AccelInfo* info;
+  
   Array<VersatRegister> registers; // The index of the register is the same index on the accelerator. registers[0] is associated to pos 0 on the accelerator, registers[1] to pos 1 and so on.
+
+  Array<ExternalMemoryInterface> externalMemoryInterfaces;
+  Hashmap<StaticId,StaticData>* staticUnits;
+  Array<WireInformation> wireInfo;
+  Array<Wire> allStaticsVerilatorSide;
 
   // How many configs and state positions are reversed for Versat registers
   // TODO: We probably can remove this and use the size of registers to get this value.
@@ -243,7 +282,7 @@ struct VersatComputedValues{
   int memoryConfigDecisionBit;
 
   // External memories, not memory mapped.
-  int externalMemoryInterfaces;
+  //int externalMemoryInterfaces;
   int totalExternalMemory;  
 
   SymbolicExpression* configSizeExpr;
@@ -278,29 +317,6 @@ struct EdgeIterator{
   
   bool HasNext();
   Edge Next();
-};
-
-struct StaticId{
-   FUDeclaration* parent;
-   String name;
-};
-
-template<> class std::hash<StaticId>{
-   public:
-   std::size_t operator()(StaticId const& s) const noexcept{
-      std::size_t res = std::hash<String>()(s.name) + (std::size_t) s.parent;
-      return (std::size_t) res;
-   }
-};
-
-struct StaticData{
-  FUDeclaration* decl; // Declaration of unit that contains the origin of the given configs
-  Array<Wire> configs; // The actual configs, which might differ from decl->configs because parameters might be instantiated 
-};
-
-struct StaticInfo{
-   StaticId id;
-   StaticData data;
 };
 
 struct CalculatedOffsets{
@@ -426,7 +442,7 @@ int ExternalMemoryByteSize(Array<ExternalMemoryInterface> interfaces); // Size o
 
 // This computes the values for the top accelerator only.
 // Different of a regular accelerator because it can add more configs for DMA and other top level things
-VersatComputedValues ComputeVersatValues(AccelInfo* accel,Arena* out);
+VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* accel,Arena* out);
 
 //
 // Accelerator mappings. A simple way of mapping nodes and port edges from one accelerator to another.

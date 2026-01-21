@@ -7,7 +7,7 @@
 
 static TokenizerTemplate* tmpl;
 
-int TypeToBingingStrength(SymbolicExpression* expr){
+int TypeToBindingStrength(SymbolicExpression* expr){
   switch(expr->type){
   case SymbolicExpressionType_VARIABLE:
   case SymbolicExpressionType_LITERAL:
@@ -59,7 +59,7 @@ void CompileRepresentationRecursive(ArenaList<SymbolicReprAtom>* b,SymbolicExpre
     PushSymbolicRepr(b,'-');
   }
 
-  int bindingStrength = TypeToBingingStrength(expr);
+  int bindingStrength = TypeToBindingStrength(expr);
   bool bind = (parentBindingStrength >= bindingStrength);
 
   //bind = true;
@@ -151,7 +151,7 @@ static void BuildRepresentation(StringBuilder* builder,SymbolicExpression* expr,
     builder->PushString("-");
   }
 
-  int bindingStrength = TypeToBingingStrength(expr);
+  int bindingStrength = TypeToBindingStrength(expr);
   bool bind = (parentBindingStrength >= bindingStrength);
 
   //bind = true;

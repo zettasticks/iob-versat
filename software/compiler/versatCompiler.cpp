@@ -3,6 +3,7 @@
 #include <ftw.h>
 
 // TODO: Eventually need to find a way of detecting superfluous includes or something to the same effect. Maybe possible change to a unity build although the main problem to solve is organization.
+#include "accelerator.hpp"
 #include "debugVersat.hpp"
 #include "embeddedData.hpp"
 #include "filesystem.hpp"
@@ -258,7 +259,6 @@ int main(int argc,char* argv[]){
   globalPermanent = &globalPermanentInst;
   Arena tempInst = InitArena(Megabyte(128));
   Arena temp2Inst = InitArena(Megabyte(128));
-  Arena temp3Inst = InitArena(Megabyte(32));
 
   contextArenas[0] = &tempInst;
   contextArenas[1] = &temp2Inst;
@@ -814,24 +814,15 @@ int main(int argc,char* argv[]){
 
   AccelInfo info = CalculateAcceleratorInfo(accel,true,temp,true);
   FillStaticInfo(&info);
+  //InstantiateParametersInPlace(&info);
   
-  VersatComputedValues val = ComputeVersatValues(&info,temp);
-  
-  Array<ExternalMemoryInterface> external = PushArray<ExternalMemoryInterface>(temp,val.externalMemoryInterfaces);
-  int externalIndex = 0;
-  for(InstanceInfo& in : info.infos[0].info){
-    if(!in.isComposite){
-      for(ExternalMemoryInterface& inter : in.decl->externalMemory){
-        external[externalIndex++] = inter;
-      }
-    }
-  }
-  external.size = externalIndex;
+  VersatComputedValues val = ComputeVersatValues(accel,&info,temp);
+  Array<ExternalMemoryInterface> external = val.externalMemoryInterfaces;
   
   OutputTopLevelFiles(accel,type,
-                     globalOptions.hardwareOutputFilepath,
-                     globalOptions.softwareOutputFilepath,
-                      isSimple,info,val,external);
+                      globalOptions.hardwareOutputFilepath,
+                      globalOptions.softwareOutputFilepath,
+                      isSimple,val);
 
   // NOTE: This data is printed so it can be captured by the IOB python setup.
   // TODO: Probably want a more robust way of doing this. Eventually want to printout some stats so we can
@@ -935,10 +926,73 @@ int main(int argc,char* argv[]){
 
 /*
 
-Stuff to do:
+TODO: Are we even using the IsSimple stuff anymore? Need to take another look at it.
 
-Figure out why the debug folder is being created inside the iob-soc-versat folder (should always be created outside).
-- I think it is because of the differences between the makefile run and the test.py running but not sure.
+TODO: Potentially remove the growable array and replace it with a list.
+      If we end up not removing it, at least make it so that the EndFunction takes an arena and that we copied the final array into the provided arena. Otherwise the growable aspect of the array might cause some error in the future. It is the same interface as an ArenaList.
+
+TODO: Remove the tokenizerTemplate. Replace it with a function pointer that performs the tokenization.
+
+The main problem is the FUInstance.
+A FUInstance is just a node in a graph that contains all the data that we can associate to an unit. However, after we process the graph, we should never have to access a FUInstance again. A FUInstance entire purpose is to hold all the information that we have parsed. Afterwards we use it to generate the AccelInfo, which is something that we are free to manipulate as we see fit, allowing us to change data inplace in order to implement stuff like instantiation and the likes.
+
+So, what we need to do first is:
+
+1- Remove FUInstance reference from AccelInfo.
+
+Second, do we also want FUDeclaration inside AccelInfo? It is probably best that we also remove any references to as well. 
+
+Basically, this makes the AccelInfo structure completely isolated from the FUDeclaration/FUInstance stuff. It should also make it easier to change any data that we want as we please.
+
+We also want to remove the usage of hashmaps all over the code when we could just use indexes 
+
+Some notes:
+
+AccelInfo contains all the information that can be extracted from an accelerator.
+What does FUDeclaration need to contain that cannot be stored inside AccelInfo?
+- The name of the module. Accelerators techically have names but they do not need to.
+- Parameters. AccelInfo does not define parameters.
+- Data that is unique for simple modules:
+-- The operation that they define. For '+','-' and those type of operations.
+-- Supported address gen.
+
+All the info that is calculated from the accelerator should pass to AccelInfo.
+
+*/
+
+/*
+
+Parameters handling:
+
+- Right now the way we handle parameters is kinda adhoc. Need to figure out exactly what we need and maybe improve the approach that we are taking.
+
+- What I absolutely need:
+-- Units like VRead and VWrite might have parameterizable address gen wires. Because I want the firmware to be able to abstract the size of the address gen stuff, I need to have the value of the parameter at software compile time.
+---- This means that either I find a way of having the parameter be free at the verilog level and find someway of extracting it from the verilog code into the software code during the build process.
+---- OR (simpler) I force Versat to instantiate the needed value at compile time, force the user to not be able to change that parameter without passing it through Versat (no more verilog only changes, only Versat changes).
+
+-- This also applies to stuff like memory size and the likes. We solved this problem at the pc-emul level by having a script that extracts the wire sizes from the Verilator generated code before compiling the wrapper, but I do not want to do the same for the 
+
+-- Ultimately, If I cannot find a way of allowing the user to change parameters easily, we might as well force them to change stuff at the Versat level and recompiling stuff again. 
+
+---- That means that I need to have Versat instantiate the proper values for things. I cannot just let the parameters flow through.
+
+---- For the second option, I do not need to force everything to pass through Versat. For example, stuff like 
+
+-- What parameters can we just let through?
+---- ADDR_W is fine to just let through. We are probably never gonna care about ADDR_W at pc-emul levels.
+---- DATA_W is probably fine? If we can have the software use the proper type stuff (iptr and the likes) then we can probably let it pass through.
+---- AXI_ADDR_W is also fine to pass through. 
+
+---- The problem is the following. What If I have a memory or an address gen that depends on that stuff? If address gen wires depend on ADDR_W then we cannot let ADDR_W be a proper parameter since then 
+
+---- What do we lose from forcing instantiation of things? The generated hardware code cannot be parameterizable in Verilog. That's it. 
+
+---- Of course, the best way of progressing is making the code in such a way that we do not have to chose. If we can make the code depend on SymbolicExpressions and then we implement param instantiation by symbolic instantiation and have the code generation depend on symbolic expressions, then later on we can always let the params go through by not performing the symbolic instantiation.
+
+-- Params are obtained by calling the GetParametersOfUnit function.
+--- This function either returns the default value or the value of the parameter of the unit (instance node).
+--- We probably want to start putting this stuff in the acceleratorInfo struct. 
 
 */
 
@@ -1068,7 +1122,6 @@ An empty AddressGen is not working correctly. The address gen parser is programm
 /*
 
 Code generation for customizable features:
-
 - There exists a bunch of code that gets generated even though it is not needed. Stuff like profile functions are declared and even defined in wrapper and firmware. While this is not a problem, since the stuff that is extra does not affect the correctness or causes any error, one thing that is does is slow down the testing, since now every change affects all the tests even though it should only change the tests that actually use the features.
 
 -- Basically, it is not enough to control generation of functions, we also should control stuff like function declarations and the likes in order to make it so that tests that do not use the features are not forced to be recompiled and retested for a change that does not affect them.

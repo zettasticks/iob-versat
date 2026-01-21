@@ -7,6 +7,7 @@
 #include "declaration.hpp"
 #include "embeddedData.hpp"
 #include "filesystem.hpp"
+#include "globals.hpp"
 #include "textualRepresentation.hpp"
 #include "symbolic.hpp"
 #include "utilsCore.hpp"
@@ -708,10 +709,15 @@ void OutputConsolidationGraph(ConsolidationGraph graph,bool onlyOutputValid,Stri
   fprintf(outputFile,"}\n");
 }
 
+// TODO: Move into the debugVersat files
 void DebugRegionOutputConsolidationGraph(ConsolidationGraph graph,String name,bool onlyOutputValid = true){
   TEMP_REGION(temp,nullptr);
 
   String filePath = GetDebugRegionFilepath(name,temp);
+
+  if(!globalOptions.debug){
+    return;
+  }
   
   FILE* outputFile = OpenFileAndCreateDirectories(filePath,"w",FilePurpose_DEBUG_INFO);
   DEFER_CLOSE_FILE(outputFile);
@@ -2309,7 +2315,9 @@ FUDeclaration* Merge(Array<FUDeclaration*> types,
   for(int i = 0; i < iter.MergeSize(); i++){
     for(AccelInfoIterator it = iter; it.IsValid(); it = it.Next()){
       it.SetMergeIndex(i);
-      it.CurrentUnit()->parent = decl;
+
+      InstanceInfo* current = it.CurrentUnit();
+      current->parentTypeName = PushString(globalPermanent,decl->name);
     }
   }
   }
@@ -2981,13 +2989,12 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
     int muxGroup = 0;
     for(; iter.IsValid(); iter = iter.Next()){
       InstanceInfo* info = iter.CurrentUnit();
-      info->isMergeMultiplexer = info->inst->isMergeMultiplexer;
 
       FUInstance* mergeInst = info->inst;
       FUInstance* reconInst = MappingMapNode(mergedToRecon[i],mergeInst);
 
       if(reconInst){
-        info->inst = reconInst;
+        //info->inst = reconInst;
         info->debug = reconInst->debug;
         info->baseName = reconInst->name;
 
@@ -3029,18 +3036,6 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
     decl->info.infos[i].outputLatencies = ExtractOutputLatencies(iter,globalPermanent);
   }
 
-  // TODO: Honestly this shouldn't even be needed. Kinda hacky
-  //
-  if(1){
-    AccelInfoIterator iter = StartIteration(&decl->info);
-    for(int i = 0; i < iter.MergeSize(); i++){
-      for(AccelInfoIterator it = iter; it.IsValid(); it = it.Next()){
-        it.SetMergeIndex(i);
-        it.CurrentUnit()->parent = decl;
-      }
-    }
-  }
-
   DebugRegionOutputDotGraph(decl->flattenedBaseCircuit,"FlattenedMergedGraph");
 
   decl->staticUnits = CollectStaticUnits(&decl->info,globalPermanent);
@@ -3058,8 +3053,6 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
 IMPORTANT:
 
   Merge units are always flattened. That means that in the flatten approach we only need to flatten a merge unit at one level only. We never reach the point where a flatten of a merge units needs to be flattened again, because a merge unit cannot contain merge units. They are always flattened.
-
-
 
   Because we need to be able to perform delay calculation, we need to get recon of the smallest types possible (any higher order type probably cannot handle delay calculation).
 

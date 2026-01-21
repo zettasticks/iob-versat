@@ -25,13 +25,6 @@ enum GraphDotFormat : int{
   GraphDotFormat_LATENCY = 0x40 // Outputs latency information for edges and port instances which know their latency information
 };
 
-struct WireInformation{
-  Wire wire;
-  int addr;
-  bool isStatic;
-  SymbolicExpression* startBitExpr;
-};
-
 // Global parameters are verilog parameters that Versat assumes that exist and that it uses through the entire accelerator.
 // Units are not required to implement them but if they do, their values comes from Versat and user cannot change them.
 bool IsGlobalParameter(String name);

@@ -114,6 +114,8 @@ struct ExternalMemoryID{
   int interface;
   ExternalMemoryType type;
 };
+HASH(ExternalMemoryID, x.interface * 2 + (int) x.type);
+EQUALITY(ExternalMemoryID, (memcmp(&lhs,&rhs,sizeof(ExternalMemoryID)) == 0))
 
 struct ExternalInfoTwoPorts : public ExternalMemoryTwoPortsExpression{
   bool write;
@@ -132,18 +134,6 @@ struct ExternalMemoryInfo{
   };
   ExternalMemoryType type;
 };
-
-template<> struct std::hash<ExternalMemoryID>{
-  std::size_t operator()(ExternalMemoryID const& s) const noexcept{
-    std::size_t hash = s.interface * 2 + (int) s.type;
-    return hash;
-  }
-};
-
-inline bool operator==(const ExternalMemoryID& lhs,const ExternalMemoryID& rhs){
-  bool res = (memcmp(&lhs,&rhs,sizeof(ExternalMemoryID)) == 0);
-  return res;
-}
 
 enum SingleInterfaces{
   SingleInterfaces_DONE        = (1<<1),

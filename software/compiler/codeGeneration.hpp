@@ -56,18 +56,8 @@ struct SameMuxEntities{
   int configPos;
   InstanceInfo* info;
 };
-
-template<> struct std::hash<SameMuxEntities>{
-   std::size_t operator()(SameMuxEntities const& s) const noexcept{
-     std::size_t res = s.configPos;
-     return res;
-   }
-};
-
-static bool operator==(const SameMuxEntities i0,const SameMuxEntities i1){
-  bool res = (i0.configPos == i1.configPos);
-  return res;
-}
+HASH(SameMuxEntities, x.configPos);
+EQUALITY(SameMuxEntities, lhs.configPos == rhs.configPos);
 
 struct AddressGenDef;
 
@@ -96,30 +86,20 @@ struct StructInfo{
 };
 
 size_t HashStructInfo(StructInfo* info);
-
-template<> struct std::hash<StructElement>{
-  std::size_t operator()(StructElement const& s) const noexcept{
-    std::size_t res = std::hash<String>()(s.name) + s.size + s.localPos + (s.isMergeMultiplexer ? 1 : 0);
-
-    if(s.childStruct != nullptr){
-      res += HashStructInfo(s.childStruct);
-    }
-    
-    return res;
-   }
-};
-
 static bool operator==(StructInfo& l,StructInfo& r);
 
-static bool operator==(StructElement& l,StructElement& r){
-  bool res = (*l.childStruct == *r.childStruct &&
-              l.name == r.name &&
-              l.size == r.size &&
-              l.localPos == r.localPos &&
-              l.isMergeMultiplexer == r.isMergeMultiplexer);
-  
-  return res;
-}
+HASH(StructElement,
+     std::hash<String>()(x.name) + 
+     x.size + 
+     x.localPos + 
+     (x.isMergeMultiplexer ? 1 : 0) + 
+     x.childStruct != nullptr ? HashStructInfo(x.childStruct) : 0)
+EQUALITY(StructElement,
+  *lhs.childStruct == *rhs.childStruct &&
+   lhs.name == rhs.name &&
+   lhs.size == rhs.size &&
+   lhs.localPos == rhs.localPos &&
+   lhs.isMergeMultiplexer == rhs.isMergeMultiplexer);
 
 template<> struct std::hash<StructInfo>{
    std::size_t operator()(StructInfo const& s) const noexcept{
@@ -162,6 +142,6 @@ void OutputIterativeSource(FUDeclaration* decl,FILE* file);
 
 // Versat_instance, all external memory files, makefile for pc-emul, basically everything that is only generated once.
 // For the top instance and support files.
-void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topLevelDecl,String hardwarePath,String softwarePath,bool isSimple,AccelInfo info,VersatComputedValues val,Array<ExternalMemoryInterface> external);
+void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topLevelDecl,String hardwarePath,String softwarePath,bool isSimple,VersatComputedValues val);
 
 void OutputTestbench(FUDeclaration* decl,FILE* file);
