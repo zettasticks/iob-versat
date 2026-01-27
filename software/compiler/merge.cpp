@@ -3093,6 +3093,19 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
 
   DebugRegionOutputDotGraph(decl->flattenedBaseCircuit,"FlattenedMergedGraph");
 
+  // NOTE: Need to set the parent type name before collecting the static units.
+  {
+  AccelInfoIterator iter = StartIteration(&decl->info);
+  for(int i = 0; i < iter.MergeSize(); i++){
+    for(AccelInfoIterator it = iter; it.IsValid(); it = it.Next()){
+      it.SetMergeIndex(i);
+
+      InstanceInfo* current = it.CurrentUnit();
+      current->parentTypeName = PushString(globalPermanent,decl->name);
+    }
+  }
+  }
+
   decl->staticUnits = CollectStaticUnits(&decl->info,globalPermanent);
 
   FillAccelInfoFromCalculatedInstanceInfo(&decl->info,decl->fixedDelayCircuit);
