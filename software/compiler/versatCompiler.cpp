@@ -968,7 +968,6 @@ In fact, maybe the problem is that the FUDeclaration for modules is not using da
 
 Of course some data cannot come from AccelInfo since simple modules do not contain one. 
 
-
 TODO: Are we even using the IsSimple stuff anymore? Need to take another look at it.
 
 TODO: Potentially remove the growable array and replace it with a list.

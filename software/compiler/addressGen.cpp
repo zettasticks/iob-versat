@@ -857,9 +857,9 @@ static String GenerateReadCompilationFunction(AccessAndType access,Arena* out){
           c->And();
         }
 
-        c->Var(PushString(temp,"a%d",loopIndex));
+        c->Var(PushString(temp,"_VERSAT_a%d",loopIndex));
         c->GreaterThan();
-        c->Var(PushString(temp,"a%d",i));
+        c->Var(PushString(temp,"_VERSAT_a%d",i));
       }
       
       if(loopIndex == 0){
@@ -903,7 +903,7 @@ static String GenerateReadCompilationFunction(AccessAndType access,Arena* out){
     for(int i = 0; i <  initial->external->terms.size; i++){
       LoopLinearSumTerm term  =  initial->external->terms[i];
       String repr = PushRepr(temp,GetLoopHighestDecider(&term));
-      String name = PushString(temp,"a%d",i);
+      String name = PushString(temp,"_VERSAT_a%d",i);
       String comment = PushString(temp,"Loop var: %.*s",UN(term.var));
       m->Comment(comment);
       m->VarDeclare("int",name,repr);

@@ -3192,8 +3192,8 @@ Problem: If we want the address gen to take into account the limitations of spac
           b->PushString(R"FOO(
     bytesUsed = VERSAT_MAX(bytesUsed,(%.*s) * sizeof(int) * 2);
     if(((%.*s) / (sizeof(int) * 2)) < (%.*s)){
-      buffer[index]->value -= 1;
-      index += 1;
+      buffer[_VERSAT_index]->value -= 1;
+      _VERSAT_index += 1;
       continue;    
     }
 )FOO",UN(p.second),UN(p.first),UN(p.second));
@@ -3215,21 +3215,21 @@ Problem: If we want the address gen to take into account the limitations of spac
     buffer[i]->value = buffer[i]->min;
   }
 
-  int index = 0;
-  int totalSize = -1;
-  while(index < VERSAT_ARRAY_SIZE(buffer)){
-    buffer[index]->value += 1;
+  int _VERSAT_index = 0;
+  int _VERSAT_totalSize = -1;
+  while(_VERSAT_index < VERSAT_ARRAY_SIZE(buffer)){
+    buffer[_VERSAT_index]->value += 1;
 
     int bytesUsed = 0;
 
     // NOTE: Pingpong cuts the usable memory in half. The reason for the '*2' logic
     @{allStuff}
 
-    totalSize = bytesUsed;
+    _VERSAT_totalSize = bytesUsed;
 
     // Max is not included
-    if(buffer[index]->value + 1 >= buffer[index]->max){
-      index += 1;
+    if(buffer[_VERSAT_index]->value + 1 >= buffer[_VERSAT_index]->max){
+      _VERSAT_index += 1;
       continue;    
     }
   }
@@ -3245,7 +3245,7 @@ Problem: If we want the address gen to take into account the limitations of spac
       
         c->RawLine(inst);
       
-        c->Return("totalSize");
+        c->Return("_VERSAT_totalSize");
 
         c->EndBlock();
       }
@@ -3416,9 +3416,9 @@ Problem: If we want the address gen to take into account the limitations of spac
                       c->And();
                     }
 
-                    c->Var(PushString(temp,"a%d",loopIndex));
+                    c->Var(PushString(temp,"_VERSAT_a%d",loopIndex));
                     c->GreaterThan();
-                    c->Var(PushString(temp,"a%d",i));
+                    c->Var(PushString(temp,"_VERSAT_a%d",i));
                   }
       
                   if(loopIndex == 0){
@@ -3448,7 +3448,9 @@ Problem: If we want the address gen to take into account the limitations of spac
                 for(int i = 0; i <  initial->external->terms.size; i++){
                   LoopLinearSumTerm term  =  initial->external->terms[i];
                   String repr = PushRepr(temp,GetLoopHighestDecider(&term));
-                  String name = PushString(temp,"a%d",i);
+
+                  // TODO: Hardcoding the variable name like this is kinda bad. In general we need to simplify the code generation in relation to addressgens, especially after we remove address gens outside the units definitions.
+                  String name = PushString(temp,"_VERSAT_a%d",i);
                   String comment = PushString(temp,"Loop var: %.*s",UN(term.var));
                   c->Comment(comment);
                   c->VarDeclare("int",name,repr);
