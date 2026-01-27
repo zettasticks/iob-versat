@@ -3218,6 +3218,11 @@ Problem: If we want the address gen to take into account the limitations of spac
   int _VERSAT_index = 0;
   int _VERSAT_totalSize = -1;
   while(_VERSAT_index < VERSAT_ARRAY_SIZE(buffer)){
+    if(buffer[_VERSAT_index]->value >= buffer[_VERSAT_index]->max){
+      _VERSAT_index += 1;
+      continue;    
+    }
+
     buffer[_VERSAT_index]->value += 1;
 
     int bytesUsed = 0;
@@ -3226,12 +3231,6 @@ Problem: If we want the address gen to take into account the limitations of spac
     @{allStuff}
 
     _VERSAT_totalSize = bytesUsed;
-
-    // Max is not included
-    if(buffer[_VERSAT_index]->value + 1 >= buffer[_VERSAT_index]->max){
-      _VERSAT_index += 1;
-      continue;    
-    }
   }
 )FOO";
 
