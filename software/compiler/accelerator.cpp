@@ -445,7 +445,7 @@ void FixDelays(Accelerator* accel,Hashmap<Edge,DelayInfo>* edgeDelays){
     }
     
     FUInstance* output = edge.units[0].inst;
-
+    
     if(output->declaration == BasicDeclaration::buffer){
       edgePair.second = 0;
       continue;

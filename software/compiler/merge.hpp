@@ -182,6 +182,9 @@ void DebugOutputGraphs(MergeAndRecons* recons,String stageName);
 void AddEdgeSingle(MergeAndRecons* recons,Edge inputEdge,int reconBase);
 void AddEdgeMappingSingle(MergeAndRecons* recons,Edge inputEdge,GraphMapping* map,int reconBase);
 
+Opt<Edge> MapMergedEdgeToRecon(MergeAndRecons* recons,Edge mergedEdge,int reconIndex);
+void InsertNewUnit(MergeAndRecons* recons,String name,FUDeclaration* decl,PortInstance before,PortInstance after,int delay,int isStatic);
+
 bool EqualPortMapping(PortInstance p1,PortInstance p2);
 
 void OutputConsolidationGraph(ConsolidationGraph graph,bool onlyOutputValid,String moduleName,String fileName);

@@ -1271,7 +1271,7 @@ SymbolicExpression* GetParameterValue(InstanceInfo* info,String name){
 bool HasVariableDelay(InstanceInfo* info){
   // Do not know how many more units of this type we are going to add. This might not be finished altought one unit is enough to handle merge
   // TODO: This should just be a property of InstanceInfo. 
-  if(info->special == SpecialUnitType_VARIABLE_BUFFER){
+  if(info->specialType == SpecialUnitType_VARIABLE_BUFFER){
     return true;
   }
 

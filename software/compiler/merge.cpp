@@ -2605,6 +2605,52 @@ void AddEdgeSingle(MergeAndRecons* recons,Edge inputEdge,int reconBase){
   ConnectUnitsIfNotConnected(mergedOut.inst,mergedOut.port,mergedIn.inst,mergedIn.port,delay);
 }
 
+void InsertNewUnit(MergeAndRecons* recons,String name,FUDeclaration* decl,PortInstance before,PortInstance after,int delay,int isStatic){
+  Accelerator* merged = recons->mergedGraph;
+
+  // Insert unit on the merged graph.
+  FUInstance* newUnit = CreateFUInstance(merged,decl,name);
+  if(isStatic){
+    SetStatic(newUnit);
+  }
+  
+  PortInstance n0 = before;
+  PortInstance n1 = after;
+  InsertUnit(merged,n0,n1,MakePortOut(newUnit,0),MakePortIn(newUnit,0));
+
+  Edge newMergedInputEdge = MakeEdge(before,MakePortIn(newUnit,0));
+  Edge newMergedOutputEdge = MakeEdge(MakePortOut(newUnit,0),after);
+
+  for(int i = 0; i < recons->recons.size; i++){
+    Edge mergedEdge = MakeEdge(before,after);
+    Opt<Edge> edge = MapMergedEdgeToRecon(recons,mergedEdge,i);
+    
+    if(!edge.has_value()){
+      continue;
+    }
+
+    Edge reconEdge = edge.value();
+    Accelerator* recon = recons->recons[i];
+    FUInstance* newUnit = CreateFUInstance(recon,decl,name);
+    if(isStatic){
+      SetStatic(newUnit);
+    }
+
+    InsertUnit(recon,reconEdge.units[0],reconEdge.units[1],MakePortOut(newUnit,0),MakePortIn(newUnit,0));
+    AcceleratorMapping* reconToMerged = recons->reconToMerged[i];
+    
+    Edge newInputEdge = MakeEdge(reconEdge.units[0],MakePortIn(newUnit,0));
+    Edge newOutputEdge = MakeEdge(MakePortOut(newUnit,0),reconEdge.units[1]);
+
+    MappingInsertInput(reconToMerged,newInputEdge.in,newMergedInputEdge.in);
+    MappingInsertInput(reconToMerged,newOutputEdge.in,newMergedOutputEdge.in);
+
+    MappingInsertOutput(reconToMerged,newInputEdge.out,newMergedInputEdge.out);
+    MappingInsertOutput(reconToMerged,newOutputEdge.out,newMergedOutputEdge.out);
+  }
+}
+
+
 Edge MapReconEdgeToMerged(MergeAndRecons* recons,Edge reconEdge,int reconIndex){
   PortInstance mergedOut = MappingMapOutput(recons->reconToMerged[reconIndex],reconEdge.out);
   PortInstance mergedIn  = MappingMapInput(recons->reconToMerged[reconIndex],reconEdge.in);
@@ -2891,7 +2937,10 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
   Array<DAGOrderNodes> reconOrder = PushArray<DAGOrderNodes>(temp,size);
   Array<CalculateDelayResult> reconDelay = PushArray<CalculateDelayResult>(temp,size);
 
+  int attemps = -1;
   while(true){
+    attemps += 1;
+
     bool insertedBuffer = false;
     for(int i = 0; i < size; i++){
       Accelerator* recon = merged->recons[i];
@@ -2914,6 +2963,21 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
 
         Edge mergedEdge = MapReconEdgeToMerged(merged,toAdd.edge,i);
         
+        // TODO: We are inserting the units on both the merged and the recon graphs but we are not adding them to the mappings. This works because the units that are inserted will never appear in the future of this "delay fixing algorithm". But nevertheless this is poor code and will bite us in the future. Eventually fix this.
+
+        FUInstance* mergedInstance;
+        // Add to merged graph
+        {
+          PortInstance n0 = mergedEdge.out;
+          PortInstance n1 = mergedEdge.in;
+
+          FUInstance* buffer = CreateFUInstance(mergedGraph,BasicDeclaration::buffer,uniqueName);
+          SetStatic(buffer);
+          mergedInstance = buffer;
+          
+          InsertUnit(mergedGraph,n0,n1,MakePortOut(buffer,0),MakePortIn(buffer,0));
+        }
+        
         // Add to recon
         for(int i = 0; i < size; i++){
           Opt<Edge> edge = MapMergedEdgeToRecon(merged,mergedEdge,i);
@@ -2927,18 +2991,9 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
           FUInstance* buffer = CreateFUInstance(recon,BasicDeclaration::buffer,uniqueName);
           SetStatic(buffer);
           
+          // NOTE: We are inserting the unit, but where are we inserting the mapping on the recons?
+
           InsertUnit(recon,reconEdge.units[0],reconEdge.units[1],MakePortOut(buffer,0),MakePortIn(buffer,0));
-        }
-        
-        // Add to merged graph
-        {
-          PortInstance n0 = mergedEdge.out;
-          PortInstance n1 = mergedEdge.in;
-
-          FUInstance* buffer = CreateFUInstance(mergedGraph,BasicDeclaration::buffer,uniqueName);
-          SetStatic(buffer);
-
-          InsertUnit(mergedGraph,n0,n1,MakePortOut(buffer,0),MakePortIn(buffer,0));
         }
       }
     }

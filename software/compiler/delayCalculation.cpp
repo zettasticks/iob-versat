@@ -402,6 +402,8 @@ CalculateDelayResult CalculateDelay(Accelerator* accel,Arena* out){
 
   AccelInfoIterator top = StartIteration(&info);
   top.accelName = accel->name;
+
+
   SimpleCalculateDelayResult delays = CalculateDelay(top,out);
 
   EdgeDelay* edgeToDelay = PushHashmap<Edge,DelayInfo>(out,delays.edgesExtraDelay.size);
