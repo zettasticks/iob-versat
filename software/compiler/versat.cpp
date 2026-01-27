@@ -574,8 +574,6 @@ FUDeclaration* RegisterSubUnit(Accelerator* circuit,SubUnitOptions options){
   if(res->flattenedBaseCircuit)
     DebugRegionOutputDotGraph(res->flattenedBaseCircuit,"FlattenedBase");
 
-  DEBUG_BREAK();
-
   return res;
 }
 

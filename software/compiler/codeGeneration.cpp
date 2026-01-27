@@ -1184,9 +1184,11 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
   fprintf(file,"%.*s",UN(content));
 }
 
-String EmitConfiguration(VersatComputedValues val,Array<WireInformation> wireInfo,Arena* out){
+String EmitConfiguration(VersatComputedValues val,Arena* out){
   TEMP_REGION(temp,out);
-    
+  
+  Array<WireInformation> wireInfo = val.wireInfo;
+
   VEmitter* m = StartVCode(temp);
 
   // VARS
@@ -1273,10 +1275,10 @@ String EmitConfiguration(VersatComputedValues val,Array<WireInformation> wireInf
           m->If(SF("address[%d:0] == %d",configurationAddressBits + 1,info.addr));
 
           String configStartExpr = PushRepr(temp,info.startBitExpr);
-          
+            
           if(info.wire.sizeExpr && info.wire.sizeExpr->type != SymbolicExpressionType_LITERAL){
             String repr = PushRepr(temp,info.wire.sizeExpr);
-            
+
             // TODO: Need to handle endianess
             m->Loop("i = 0",SF("i < %.*s",UN(repr)),"i++");
             m->If(SF("data_wstrb[i/8]"));
@@ -1284,7 +1286,7 @@ String EmitConfiguration(VersatComputedValues val,Array<WireInformation> wireInf
             m->EndIf();
             m->EndLoop();
           } else {
-            EmitStrobe(m,"data_wstrb","shadow_configdata",configStartExpr,"data_data",info.wire.bitSize);
+            EmitStrobe(m,"data_wstrb","shadow_configdata",configStartExpr,"data_data",info.wire.sizeExpr->literal);
           }
           
           m->EndIf();
@@ -1370,7 +1372,8 @@ String EmitConfiguration(VersatComputedValues val,Array<WireInformation> wireInf
     for(WireInformation info : wireInfo){
       if(info.isStatic){
         String start = PushRepr(temp,info.startBitExpr);
-        m->Assign(info.wire.name,PushString(temp,"configdata[(%.*s)+:%d]",UN(start),info.wire.bitSize));
+        String repr = PushRepr(temp,info.wire.sizeExpr);
+        m->Assign(info.wire.name,PushString(temp,"configdata[(%.*s)+:%.*s]",UN(start),UN(repr)));
       }
     }
   }
@@ -3110,7 +3113,8 @@ void Output_Header(FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> stru
         if(func->type != ConfigFunctionType_CONFIG){
           continue;
         }
-        
+
+        // TODO: Only output this if used. Address gen with fixed addresses do not generate this ever.
         once {
           c->Struct("VersatVarSpec");
           c->Comment("Inputs, fill these with the min/max and the order of the variable");
@@ -3144,7 +3148,7 @@ Problem: If we want the address gen to take into account the limitations of spac
           if(var.type == ConfigVarType_DYN){
             c->Argument("VersatVarSpec*",var.name);
             *list->PushElem() = var.name;
-          } else {
+          } else if(var.type != ConfigVarType_ADDRESS){
             c->Argument(ConfigVarTypeToName(var.type),var.name);
           }
         }
@@ -3153,8 +3157,9 @@ Problem: If we want the address gen to take into account the limitations of spac
 
         for(ConfigStuff stuff : func->stuff){
           if(stuff.type == ConfigStuffType_ADDRESS_GEN){
-
             InstanceInfo* info = stuff.info;
+
+            // TODO: Currently this is hardcoded for the VUnits. Need to actually start modelling the concept of address interface size and do it right.
             SymbolicExpression* val = GetParameterValue(info,"ADDR_W");
             
             String symRepr = PushRepr(temp,val);
@@ -3185,13 +3190,13 @@ Problem: If we want the address gen to take into account the limitations of spac
         auto b = StartString(temp);
         for(Pair<String,String> p : bothList){
           b->PushString(R"FOO(
-          if((%.*s) > (%.*s)){
-            bytesUsed = (%.*s);
-            buffer[index]->value -= 1;
-            index += 1;
-            continue;    
-          }
-)FOO",UN(p.first),UN(p.second),UN(p.second));
+    bytesUsed = VERSAT_MAX(bytesUsed,(%.*s) * sizeof(int) * 2);
+    if(((%.*s) / (sizeof(int) * 2)) < (%.*s)){
+      buffer[index]->value -= 1;
+      index += 1;
+      continue;    
+    }
+)FOO",UN(p.second),UN(p.first),UN(p.second));
         }
         String allStuff = EndString(temp,b);
 
@@ -3217,6 +3222,7 @@ Problem: If we want the address gen to take into account the limitations of spac
 
     int bytesUsed = 0;
 
+    // NOTE: Pingpong cuts the usable memory in half. The reason for the '*2' logic
     @{allStuff}
 
     totalSize = bytesUsed;
@@ -4950,7 +4956,7 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topDecl,String hardwa
       return;
     }
 
-    String content = EmitConfiguration(val,wireInfo,temp);
+    String content = EmitConfiguration(val,temp);
     fprintf(s,"%.*s\n",UN(content));
   }
 

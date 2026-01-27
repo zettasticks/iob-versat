@@ -4,6 +4,7 @@
 
 // TODO: Eventually need to find a way of detecting superfluous includes or something to the same effect. Maybe possible change to a unity build although the main problem to solve is organization.
 #include "accelerator.hpp"
+#include "configurations.hpp"
 #include "debugVersat.hpp"
 #include "embeddedData.hpp"
 #include "filesystem.hpp"
@@ -814,10 +815,42 @@ int main(int argc,char* argv[]){
 
   AccelInfo info = CalculateAcceleratorInfo(accel,true,temp,true);
   FillStaticInfo(&info);
+  
+#if 0
+  // NOTE: At the end of this section, the parameters are "globally instantiated"
+  int maxLevel = 0;
+  for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
+    maxLevel = MAX(maxLevel,iter.CurrentUnit()->level);
+  }
+  for(int level = maxLevel; level >= 0; level--){
+    for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
+      InstanceInfo* current = iter.CurrentUnit();
+      InstanceInfo* parent = iter.GetParentUnit();
+      
+      if(!parent){
+        continue;
+      }
+
+      Hashmap<String,SymbolicExpression*>* values = PushHashmap<String,SymbolicExpression*>(temp,parent->params.size);
+      for(ParamAndValue par : parent->params){
+        values->Insert(par.paramName,par.val);
+      }
+
+      for(int i = 0; i <  current->params.size; i++){
+        ParamAndValue& val = current->params[i];
+        
+        val.val = ReplaceVariables(val.val,values,perm);
+      }
+    }
+  }
+#endif
+  
   //InstantiateParametersInPlace(&info);
   
   VersatComputedValues val = ComputeVersatValues(accel,&info,temp);
   Array<ExternalMemoryInterface> external = val.externalMemoryInterfaces;
+  
+  DEBUG_BREAK();
   
   OutputTopLevelFiles(accel,type,
                       globalOptions.hardwareOutputFilepath,
@@ -926,6 +959,16 @@ int main(int argc,char* argv[]){
 
 /*
 
+TODO:
+NOTE:
+
+Parameters are still mildly broken. The AccelInfo is not properly taking parameters into account, meaning that the accelInfo of modules is misleading. The only reason that stuff works fine right is because we are instantiating parameters when computing the configs and state wires of the modules. The actual data inside the AccelInfo is still "bad" and not properly responding to the parameters that we are putting.
+
+In fact, maybe the problem is that the FUDeclaration for modules is not using data from AccelInfo directly and instead it is doing computations over other data. This is "bad". We want AccelInfo to be the sole source of truth for all the Accelerator related data. If AccelInfo is properly calculated, then the rest of the code should work fine since all the data that is needed is already provided.
+
+Of course some data cannot come from AccelInfo since simple modules do not contain one. 
+
+
 TODO: Are we even using the IsSimple stuff anymore? Need to take another look at it.
 
 TODO: Potentially remove the growable array and replace it with a list.
@@ -937,8 +980,6 @@ The main problem is the FUInstance.
 A FUInstance is just a node in a graph that contains all the data that we can associate to an unit. However, after we process the graph, we should never have to access a FUInstance again. A FUInstance entire purpose is to hold all the information that we have parsed. Afterwards we use it to generate the AccelInfo, which is something that we are free to manipulate as we see fit, allowing us to change data inplace in order to implement stuff like instantiation and the likes.
 
 So, what we need to do first is:
-
-1- Remove FUInstance reference from AccelInfo.
 
 Second, do we also want FUDeclaration inside AccelInfo? It is probably best that we also remove any references to as well. 
 
@@ -996,19 +1037,6 @@ Parameters handling:
 
 */
 
-/*
-
-Code style changes:
-
-After studing the other code base, is there a reason why each graph has its own arena? Why not have a single arena that contains all the nodes and edges and be done with it?
-
-Maybe it would be best to create a global String repository and every time we have a string from the outside we just push it there and be done with it. We only have problem with strings that come from outside code, so why not just push it a global arena and be done with it. The biggest problem is just the strings from the parsed verilog modules, the rest should never be big enough to matter much.
-
-We are not properly handling persistant data and it is becoming a bit of a pain to ignore stuff for so long.
-
-*/
-
-
 /* ============================================================================
 // Major todo:
 
@@ -1025,60 +1053,7 @@ registering the module.
 
 */
 
-/* ============================================================================
-// Major changes
-
-Overall of versat spec usability and accelerator programming.
-
-- The idea of separating address gen from the modules that use them seems that it is causing more trouble than it is worth, kinda.
-
-- If we made it so that modules could define a set of variables as inputs and we could set config values inside VersatSpec files, including defining address gens, then we could generate functions that could program the entire module in a single step.
-
--- The embedded logic would just be Call a function (that would program the entire accelerator) passing the parameters that we define and VersatSpec would define everything related to the configuration.
-
--- What would the syntax look like?
-
-Maybe we could do something like this:
-
-Module Test(){
-  VRead read;
-  VWrite write;
-  Const const;
-#
-
-  a = read + const;
-  a -> write;
-
-  config SimpleTransfer(size,constant){
-    for x 0..size {
-      read = x;
-      write = x;
-    }
-    const.constant = constant;
-  }
-
-  // A way for the user to make a simpler function instead of reusing the more complex SimpleTransfer function above.
-  config JustChangeConstant(newConstant){
-    const.constant = constant;
-  }
-
-  // We also need a way of loading memories if we follow this route.
-  mem LoadMem(address,size){
-    for x 0..size {
-      memUnit = address[x];
-    }
-  }
-}
-
-- This also solves one other problem. We can use special modifiers when declaring the variables to indicate
-- wether the variables are gonna change frequently, often or if they are mostly constant. Afterwards, we can generate
-- code that only changes some variables and only contains logic for those variable changes. The rest just
-- stays the same value. This allow us to only generate the functions that we actually need and to generate
-- the most efficient functions possible.
-
--- What this basically amounts to is that firmware literally just becomes a vehicle to call a single function, generate by Versat, that performs the entire configuration of a given accelerator run. Different configurations are given by different functions and if we ask for user for more information in regards to the way the accelerator is gonna be used, we can implement these functions very efficiently.
-
-- Also important, if we follow this route, we need to 
+/*
 
 // ============================================================================
 // Bugs
@@ -1132,7 +1107,7 @@ Code generation lint friendly:
 
 More user error checking:
 
-- Verilog parsed content does not check direction of ports. We should encode all the interfaces that we expect as data and 
+- Verilog parsed content does not check direction of ports. We should encode all the interfaces that we expect as data and perform the checks and report errors.
 
 Error handling:
 
@@ -1186,7 +1161,7 @@ address Test(a,b){
   }
 
 Usability:
-x
+
 - Need to check parameters and sizes and report stuff at Versat compile time.
 -- An example is the xunitF which requires input to be 32 bits, meaning that we cannot just change DATA_W and expect this to work.
 
