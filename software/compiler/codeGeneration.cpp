@@ -3294,7 +3294,7 @@ Problem: If we want the address gen to take into account the limitations of spac
             Assert(assign.type == ConfigStuffType_MEMORY_TRANSFER);
             
             FunctionMemoryTransfer transf = assign.transfer;
-            
+
             FULL_SWITCH(transf.dir){
             case TransferDirection_READ: {
               String expr = PushString(temp,"VersatMemoryCopy(%.*s,%.*s,%.*s * sizeof(int));",UN(transf.identity),UN(transf.variable),UN(transf.sizeExpr));

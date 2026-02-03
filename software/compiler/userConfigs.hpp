@@ -107,7 +107,7 @@ bool IsNextTokenConfigFunctionStart(Tokenizer* tok);
 // ============================================================================
 // Instantiation and manipulation
 
-// TODO: We might not need this but for now we use it while prototyping stuff.
+// TODO: We want to remove this. Stupid to force the user to have to provide a switch when we can just figure out on our side. Still need to take care about the differences between config/mem and state.
 enum ConfigFunctionType{
   ConfigFunctionType_CONFIG,
   ConfigFunctionType_STATE,

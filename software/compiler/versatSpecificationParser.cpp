@@ -1,5 +1,6 @@
 #include "versatSpecificationParser.hpp"
 
+#include "accelerator.hpp"
 #include "declaration.hpp"
 #include "embeddedData.hpp"
 #include "globals.hpp"
@@ -311,7 +312,7 @@ SpecExpression* ParseSpecExpression(Tokenizer* tok,Arena* out){
   return expr;
 }
 
-String GetUniqueName(String name,Arena* out,InstanceName* names){
+String GetUniqueName(String name,Arena* out,InstanceTable* names){
   int counter = 0;
   String uniqueName = name;
   auto mark = MarkArena(out);
@@ -320,7 +321,7 @@ String GetUniqueName(String name,Arena* out,InstanceName* names){
     uniqueName = PushString(out,"%.*s_%d",UN(name),counter++);
   }
 
-  names->Insert(uniqueName);
+  names->Insert(uniqueName,nullptr);
 
   return uniqueName;
 }
@@ -330,15 +331,14 @@ String GetActualArrayName(String baseName,int index,Arena* out){
 }
 
 // Right now, not using the full portion of PortExpression because technically we would need to instantiate multiple things. Not sure if there is a need, when a case occurs then make the change then
-PortExpression InstantiateSpecExpression(SpecExpression* root,Accelerator* circuit,InstanceTable* table,InstanceName* names){
+PortExpression InstantiateSpecExpression(SpecExpression* root,Accelerator* circuit,InstanceTable* table){
   TEMP_REGION(temp,nullptr);
   Arena* perm = globalPermanent;
   PortExpression res = {};
 
   switch(root->type){
     // Just to remove warnings. TODO: Change expression so that multiple locations have their own expression struct, instead of reusing the same one.
-  case SpecExpression::UNDEFINED: break;
-  case SpecExpression::LITERAL:{
+  case SpecType_LITERAL:{
     int number = root->val.number;
 
     String toSearch = PushString(temp,"N%d",number);
@@ -346,18 +346,17 @@ PortExpression InstantiateSpecExpression(SpecExpression* root,Accelerator* circu
     FUInstance** found = table->Get(toSearch);
 
     if(!found){
-      String permName = PushString(perm,"%.*s",UN(toSearch));
-      String uniqueName = GetUniqueName(permName,perm,names);
+      String uniqueName = GetUniqueName(toSearch,perm,table);
 
       FUInstance* digitInst = (FUInstance*) CreateFUInstance(circuit,GetTypeByName("Literal"),uniqueName);
       digitInst->literal = number;
-      table->Insert(permName,digitInst);
+      table->Insert(digitInst->name,digitInst);
       res.inst = digitInst;
     } else {
       res.inst = *found;
     }
   }break;
-  case SpecExpression::VAR:{
+  case SpecType_VAR:{
     Var var = root->var;  
     String name = var.name;
 
@@ -370,8 +369,8 @@ PortExpression InstantiateSpecExpression(SpecExpression* root,Accelerator* circu
     res.inst = inst;
     res.extra = var.extra;
   } break;
-  case SpecExpression::OPERATION:{
-    PortExpression expr0 = InstantiateSpecExpression(root->expressions[0],circuit,table,names);
+  case SpecType_OPERATION:{
+    PortExpression expr0 = InstantiateSpecExpression(root->expressions[0],circuit,table);
 
     // Assuming right now very simple cases, no port range and no delay range
     Assert(expr0.extra.port.start == expr0.extra.port.end);
@@ -391,8 +390,9 @@ PortExpression InstantiateSpecExpression(SpecExpression* root,Accelerator* circu
       }break;
       }
 
-      String permName = GetUniqueName(typeName,perm,names);
+      String permName = GetUniqueName(typeName,perm,table);
       FUInstance* inst = CreateFUInstance(circuit,GetTypeByName(typeName),permName);
+      table->Insert(inst->name,inst);
 
       ConnectUnits(expr0.inst,expr0.extra.port.start,inst,0,expr0.extra.delay.start);
 
@@ -405,7 +405,7 @@ PortExpression InstantiateSpecExpression(SpecExpression* root,Accelerator* circu
       Assert(root->expressions.size == 2);
     }
 
-    PortExpression expr1 = InstantiateSpecExpression(root->expressions[1],circuit,table,names);
+    PortExpression expr1 = InstantiateSpecExpression(root->expressions[1],circuit,table);
 
     // Assuming right now very simple cases, no port range and no delay range
     Assert(expr1.extra.port.start == expr1.extra.port.end);
@@ -439,9 +439,10 @@ PortExpression InstantiateSpecExpression(SpecExpression* root,Accelerator* circu
 
     String typeStr = typeName;
     FUDeclaration* type = GetTypeByName(typeStr);
-    String uniqueName = GetUniqueName(type->name,perm,names);
+    String uniqueName = GetUniqueName(type->name,perm,table);
 
     FUInstance* inst = CreateFUInstance(circuit,type,uniqueName);
+    table->Insert(inst->name,inst);
 
     ConnectUnits(expr0.inst,expr0.extra.port.start,inst,0,expr0.extra.delay.start);
     ConnectUnits(expr1.inst,expr1.extra.port.start,inst,1,expr1.extra.delay.start);
@@ -506,20 +507,20 @@ Opt<ConnectionDef> ParseConnection(Tokenizer* tok,Arena* out){
 
   Token type = tok->NextToken();
   if(CompareString(type,"=")){
-    def.type = ConnectionDef::EQUALITY;
+    def.type = ConnectionType_EQUALITY;
   } else if(CompareString(type,"^=")){
     // TODO: Only added this to make it easier to port a piece of C code.
     //       Do not know if needed or worth it to add.
   } else if(CompareString(type,"->")){
     def.transforms = CheckAndParseConnectionTransforms(tok,out);
-    def.type = ConnectionDef::CONNECTION;
+    def.type = ConnectionType_CONNECTION;
   } else {
     UNEXPECTED(type);
   }
   
-  if(def.type == ConnectionDef::EQUALITY){
+  if(def.type == ConnectionType_EQUALITY){
     def.expression = ParseSpecExpression(tok,out);
-  } else if(def.type == ConnectionDef::CONNECTION){
+  } else if(def.type == ConnectionType_CONNECTION){
     Opt<VarGroup> optInPortion = ParseVarGroup(tok,out);
     PROPAGATE(optInPortion);
 
@@ -1152,30 +1153,30 @@ int GetRangeCount(Range<int> range){
 }
 
 // Connection type and number of connections
-Pair<ConnectionType,int> GetConnectionInfo(Var var){
+Pair<PortRangeType,int> GetConnectionInfo(Var var){
   int indexCount = GetRangeCount(var.index);
   int portCount = GetRangeCount(var.extra.port);
   int delayCount = GetRangeCount(var.extra.delay);
 
   if(indexCount == 1 && portCount == 1 && delayCount == 1){
-    return {ConnectionType_SINGLE,1};
+    return {PortRangeType_SINGLE,1};
   }
 
   // We cannot have more than one range at the same time because otherwise how do we decide how to connnect them?
   if((indexCount != 1 && portCount != 1) ||
      (indexCount != 1 && delayCount != 1) ||
      (portCount != 1 && delayCount != 1)){
-    return {ConnectionType_ERROR,0};
+    return {PortRangeType_ERROR,0};
   }
   
   if(var.isArrayAccess && indexCount != 1){
-    return {ConnectionType_ARRAY_RANGE,indexCount};
+    return {PortRangeType_ARRAY_RANGE,indexCount};
   }
 
   if(portCount != 1){
-    return {ConnectionType_PORT_RANGE,portCount};
+    return {PortRangeType_PORT_RANGE,portCount};
   } else if(delayCount != 1){
-    return {ConnectionType_DELAY_RANGE,delayCount};
+    return {PortRangeType_DELAY_RANGE,delayCount};
   }
 
   NOT_POSSIBLE("Every condition should have been checked by now");
@@ -1185,7 +1186,7 @@ bool IsValidGroup(VarGroup group){
   // TODO: Wether we can match the group or not.
   //       It depends on wether the ranges line up or not. 
   for(Var& var : group.vars){
-    if(GetConnectionInfo(var).first == ConnectionType_ERROR){
+    if(GetConnectionInfo(var).first == PortRangeType_ERROR){
       return false;
     }
   }
@@ -1223,34 +1224,34 @@ Var Next(GroupIterator& iter){
   Assert(HasNext(iter));
 
   Var var = iter.group.vars[iter.groupIndex];
-  Pair<ConnectionType,int> info = GetConnectionInfo(var);
+  Pair<PortRangeType,int> info = GetConnectionInfo(var);
   
-  ConnectionType type = info.first;
+  PortRangeType type = info.first;
   int maxCount = info.second;
 
-  Assert(type != ConnectionType_ERROR);
+  Assert(type != PortRangeType_ERROR);
 
   Var res = var;
 
-  if(type == ConnectionType_SINGLE){
+  if(type == PortRangeType_SINGLE){
     iter.groupIndex += 1;
   } else {
     switch(type){
-    case ConnectionType_SINGLE: break;
-    case ConnectionType_ERROR: break;
-    case ConnectionType_PORT_RANGE:{
+    case PortRangeType_SINGLE: break;
+    case PortRangeType_ERROR: break;
+    case PortRangeType_PORT_RANGE:{
       int portBase = var.extra.port.start;
     
       res.extra.port.start = portBase + iter.varIndex; 
       res.extra.port.end = portBase + iter.varIndex; 
     } break;
-    case ConnectionType_DELAY_RANGE:{
+    case PortRangeType_DELAY_RANGE:{
       int delayBase = var.extra.delay.start;
     
       res.extra.delay.start = delayBase + iter.varIndex; 
       res.extra.delay.end = delayBase + iter.varIndex; 
     } break;
-    case ConnectionType_ARRAY_RANGE:{
+    case PortRangeType_ARRAY_RANGE:{
       int indexBase = var.index.start;
 
       res.index.start = indexBase + iter.varIndex; 
@@ -1284,277 +1285,52 @@ FUInstance* CreateFUInstanceWithParameters(Accelerator* accel,FUDeclaration* typ
 
 // TODO: Move this function to a better place
 FUDeclaration* InstantiateModule(String content,ModuleDef def){
-  TEMP_REGION(temp,nullptr);
-  TEMP_REGION(temp2,temp);
   Arena* perm = globalPermanent;
   Accelerator* circuit = CreateAccelerator(def.name,AcceleratorPurpose_MODULE);
 
-  FREE_ARENA(temp3);
-  ARENA_NO_POP(temp3);
-  //Env* env = StartEnvironment(temp3);
+  FREE_ARENA(envArena);
+  FREE_ARENA(envArena2);
+  Env* env = StartEnvironment(envArena,envArena2);
 
-  InstanceTable* table = PushHashmap<String,FUInstance*>(temp,1000);
-  InstanceName* names = PushSet<String>(temp,1000);
-  bool error = false;
-
-  ArenaList<Pair<String,int>>* allArrayDefinitons = PushArenaList<Pair<String,int>>(temp);
-
-#if 0
-  for(VarDeclaration& decl : def.inputs){
-    env->AddInputs(decl);
-  }
-
-  for(InstanceDeclaration& decl : def.declarations){
-    env->AddInstance(decl);
-  }
-
-  for(ConnectionDef& decl : def.connections){
-    if(decl.type == ConnectionDef::EQUALITY){
-      
-    }
-  }
-#endif
-
-  // TODO: Need to detect when multiple instances with same name
-  int insertedInputs = 0;
+  env->circuit = circuit;
 
   for(VarDeclaration& decl : def.inputs){
-    if(CompareString(decl.name,"out")){
-      ReportError(content,decl.name,"Cannot use special out unit as module input");
-      error = true;
-    }
-    
-    if(decl.isArray){
-      *allArrayDefinitons->PushElem() = {PushString(perm,decl.name),decl.arraySize};
-      for(int i = 0; i < decl.arraySize; i++){
-        String actualName = GetActualArrayName(decl.name,i,temp);
-        FUInstance* input = CreateOrGetInput(circuit,actualName,insertedInputs++);
-        names->Insert(actualName);
-        table->Insert(actualName,input);
-      }
-    } else {
-      FUInstance* input = CreateOrGetInput(circuit,decl.name,insertedInputs++);
-      names->Insert(decl.name);
-      table->Insert(decl.name,input);
-    }
+    env->AddInput(decl);
   }
 
   int shareIndex = 0;
   for(InstanceDeclaration& decl : def.declarations){
+    if(decl.modifier | InstanceDeclarationType_SHARE_CONFIG){
+      decl.shareIndex = shareIndex++;
+    }
+  }
+
+  for(InstanceDeclaration& decl : def.declarations){
     for(VarDeclaration& var : decl.declarations){
-      if(CompareString(var.name,"out")){
-        ReportError(content,var.name,"Cannot use special out unit as module input");
-        error = true;
-        break;
-      }
-    }
-    
-    FUDeclaration* type = GetTypeByName(decl.typeName);
-    if(type == nullptr){
-      ReportError(content,decl.typeName,"Given type was not found");
-      error = true;
-      // TODO: In order to collect more errors, we could keep running using a type that contains infinite inputs and outputs. 
-      break; // For now skip over.
-    }
-
-    FUInstance* inst = nullptr;
-    
-    switch(decl.modifier){
-    case InstanceDeclarationType_SHARE_CONFIG:{
-      for(VarDeclaration& varDecl : decl.declarations){
-        if(varDecl.isArray){
-          *allArrayDefinitons->PushElem() = {PushString(perm,varDecl.name),varDecl.arraySize};
-
-          for(int i = 0; i < varDecl.arraySize; i++){
-            String actualName = GetActualArrayName(varDecl.name,i,temp);
-            inst = CreateFUInstanceWithParameters(circuit,type,actualName,decl);
-
-            inst->addressGenUsed = CopyArray<String,Token>(decl.addressGenUsed,perm); // TODO: Should be accelerator arena
-            
-            table->Insert(actualName,inst);
-            ShareInstanceConfig(inst,shareIndex);
-
-            for(Token partialShareName : decl.shareNames){
-              bool foundOne = false;
-              for(int ii = 0; ii < inst->declaration->configs.size; ii++){
-                if(inst->declaration->configs[ii].name == partialShareName){
-                  inst->isSpecificConfigShared[ii] = false;
-                  foundOne = true;
-                }
-              }
-
-              if(!foundOne){
-                // TODO: Add location to the warnings using the data stored in the tokens.
-                printf("Warning, inst '%.*s' of type '%.*s' does not have configuration of name '%.*s' to share\n",UN(inst->name),UN(inst->declaration->name),UN(partialShareName));
-              }
-            }
-          }
-        } else {
-          // TODO: Missing sharing, right?
-          inst = CreateOrGetInput(circuit,varDecl.name,insertedInputs++);
-          inst->addressGenUsed = CopyArray<String,Token>(decl.addressGenUsed,perm); // TODO: Should be accelerator arena
-
-          names->Insert(varDecl.name);
-          table->Insert(varDecl.name,inst);
-        }
-      }
-      shareIndex += 1;
-    } break;
-
-    case InstanceDeclarationType_NONE:
-    case InstanceDeclarationType_STATIC:
-    {
-      Assert(decl.declarations.size == 1);
-      
-      VarDeclaration varDecl = decl.declarations[0];
-      
-      if(varDecl.isArray){
-        *allArrayDefinitons->PushElem() = {PushString(perm,varDecl.name),varDecl.arraySize};
-        for(int i = 0; i < varDecl.arraySize; i++){
-          String actualName = GetActualArrayName(varDecl.name,i,temp);
-
-          inst = CreateFUInstanceWithParameters(circuit,type,actualName,decl);
-          inst->addressGenUsed = CopyArray<String,Token>(decl.addressGenUsed,perm); // TODO: Should be accelerator arena
-
-          table->Insert(actualName,inst);
-
-          if(decl.modifier == InstanceDeclarationType_STATIC){
-            SetStatic(inst);
-          }
-        }
-      } else {
-        inst = CreateFUInstanceWithParameters(circuit,type,varDecl.name,decl);
-        inst->addressGenUsed = CopyArray<String,Token>(decl.addressGenUsed,perm); // TODO: Should be accelerator arena
-
-        table->Insert(varDecl.name,inst);
-
-        if(decl.modifier == InstanceDeclarationType_STATIC){
-          SetStatic(inst);
-        }
-      }
-    } break;
-    }
-
-    if(inst){
-      inst->debug = decl.debug;
+      env->AddInstance(decl,var);
     }
   }
 
-  FUInstance* outputInstance = nullptr;
   for(ConnectionDef& decl : def.connections){
-    if(decl.type == ConnectionDef::EQUALITY){
-      // Make sure that not a single equality value is named out.
-
-      Assert(decl.output.vars.size == 1); // Only allow one for equality, for now
-      Var outVar = decl.output.vars[0];
-
-      if(CompareString(outVar.name,"out")){
-        ReportError(content,outVar.name,"Cannot use special out unit as input in an equality");
-        error = true;
-        break;
-      }
-      
-      String name = outVar.name;
-      if(outVar.isArrayAccess){
-        name = GetActualArrayName(name,outVar.index.low,temp);
-      }
-      
-      PortExpression portSpecExpression = InstantiateSpecExpression(decl.expression,circuit,table,names);
-      FUInstance* inst = portSpecExpression.inst;
-      String uniqueName = GetUniqueName(name,perm,names);
-      inst->name = PushString(perm,uniqueName);
-
-      names->Insert(name);
-      table->Insert(name,inst);
-    } else if(decl.type == ConnectionDef::CONNECTION){
-      // For now only allow one var on the input side
-
-      int nOutConnections = NumberOfConnections(decl.output);
-      int nInConnections = NumberOfConnections(decl.input);
-
-      // TODO: Proper error report by making VarGroup a proper struct that stores a token for the entire parsed text.
-      if(nOutConnections != nInConnections){
-        const char* text = StaticFormat("Number of connections missmatch %d to %d\n",nOutConnections,nInConnections);
-        ReportError(content,decl.output.fullText,text);
-        error = true;
-        break;
-      }
-
-      GroupIterator out = IterateGroup(decl.output);
-      GroupIterator in  = IterateGroup(decl.input);
-
-      while(HasNext(out) && HasNext(in)){
-        Var outVar = Next(out);
-        Var inVar = Next(in);
-        
-        Assert(inVar.extra.delay.high == 0); // For now, inputs cannot have delay.
-
-        String outName = outVar.name;
-        if(outVar.isArrayAccess){
-          outName = GetActualArrayName(outName,outVar.index.low,temp);
-        }
-        String inName = inVar.name;
-        if(inVar.isArrayAccess){
-          inName = GetActualArrayName(inName,inVar.index.low,temp);
-        }
-
-        if(CompareString(outName,"out")){
-          ReportError(content,outVar.name,"Cannot use special out unit as an input");
-          error = true;
-          break;
-        }
-        
-        FUInstance** optOutInstance = table->Get(outName);
-        if(optOutInstance == nullptr){
-          ReportError(content,outVar.name,"Did not find the following instance");
-          error = true;
-          break;
-        }
-        
-        FUInstance** optInInstance = nullptr;
-
-        if(CompareString(inName,"out")){
-          if(!outputInstance){
-            outputInstance = (FUInstance*) CreateFUInstance(circuit,BasicDeclaration::output,"out");
-          }
-
-          optInInstance = &outputInstance;
-        } else {
-          optInInstance = table->Get(inName);
-        }
-
-        if(optInInstance == nullptr){
-          ReportError(content,outVar.name,"Did not find the following instance");
-          error = true;
-          break;
-        }
-        
-        FUInstance* outInstance = *optOutInstance;
-        FUInstance* inInstance = *optInInstance;
-
-        int outPort = outVar.extra.port.low;
-        int inPort  = inVar.extra.port.low;
-        ConnectUnits(outInstance,outPort,inInstance,inPort,outVar.extra.delay.low);
-      }
-
-      Assert(HasNext(out) == HasNext(in));
+    if(decl.type == ConnectionType_EQUALITY){
+      env->AddEquality(decl);
+    } else if(decl.type == ConnectionType_CONNECTION){
+      env->AddConnection(decl);
     }
   }
 
-  if(error){
-    // TODO: Better error handling.
-    printf("Error on InstantiateModule\n");
+  if(!Empty(env->errors)){
+    for(String str : env->errors){
+      printf("%.*s\n",UN(str));
+    }
+    
     exit(-1);
   }
   
-  // Care to never put 'out' inside the table
-  FUInstance** outInTable = table->Get("out");
-  Assert(!outInTable);
-  
   FUDeclaration* res = RegisterSubUnit(circuit,SubUnitOptions_BAREBONES);
-  res->definitionArrays = PushArrayFromList(perm,allArrayDefinitons);
   
   {
+    TEMP_REGION(temp,nullptr);
     auto list = PushArenaList<ConfigFunction*>(temp);
     for(auto funcDecl : def.configs){
       *list->PushElem() = InstantiateConfigFunction(&funcDecl,res,content,globalPermanent);
@@ -1847,3 +1623,571 @@ Opt<AddressGenDef> ParseAddressGen(Tokenizer* tok,Arena* out){
   return def;
 }
 
+// ======================================
+// Hierarchical access
+
+Opt<Entity> GetEntityFromHierAccess(AccelInfo* info,Array<String> accessExpr){
+  // TODO: This function can be simplified.
+  AccelInfoIterator iter = StartIteration(info);
+
+  // NOTE: Logic below assumes that we start with an iterator already pointing to the first unit
+  for(; iter.IsValid();){
+    InstanceInfo* info = iter.CurrentUnit();
+    if(info->name == accessExpr[0]){
+      break;
+    } else {
+      iter = iter.Next();
+    }
+  }
+  
+  if(!iter.IsValid()){
+    return {};
+  }
+
+  for(int i = 1; i < accessExpr.size; i++){
+    String access = accessExpr[i];
+    
+    if(i == accessExpr.size - 1){
+      InstanceInfo* outerInfo = iter.CurrentUnit();
+
+      for(; iter.IsValid();){
+        InstanceInfo* info = iter.CurrentUnit();
+        if(info->name == access){
+          iter = iter.StepInsideOnly();
+
+          if(!iter.IsValid()){
+            break;
+          }
+          
+          Entity res = {};
+          res.info = iter.CurrentUnit();
+          res.type = EntityType_NODE;
+
+          return res;
+        } else {
+          iter = iter.Next();
+        }
+      }
+      
+      // Did not find node inside which means it must be a wire or a function.
+      for(Wire& config : outerInfo->configs){
+        if(config.name == access){
+          Entity res = {};
+          res.wire = &config;
+          res.type = EntityType_CONFIG_WIRE;
+          res.info = outerInfo;
+          
+          return res;
+        }
+      }
+
+      for(Wire& state : outerInfo->states){
+        if(state.name == access){
+          Entity res = {};
+          res.wire = &state;
+          res.type = EntityType_STATE_WIRE;
+          res.info = outerInfo;
+          
+          return res;
+        }
+      }
+
+      for(MergePartition part : outerInfo->decl->info.infos){
+        for(ConfigFunction* func : part.userFunctions){
+          if(func->individualName == access){
+            Entity res = {};
+            res.func = func;
+            res.type = EntityType_CONFIG_FUNCTION;
+            res.info = outerInfo;
+          
+            return res;
+          }
+        }
+      }
+    } else {
+      for(; iter.IsValid();){
+        InstanceInfo* info = iter.CurrentUnit();
+        if(info->name == access){
+          iter = iter.StepInsideOnly();
+          break;
+        } else {
+          iter = iter.Next();
+        }
+      }
+
+      if(!iter.IsValid()){
+        return {};
+      }
+    }
+  }
+
+  if(iter.IsValid()){
+    Entity res = {};
+    res.info = iter.CurrentUnit();
+    res.type = EntityType_NODE;
+    
+    return res;
+  }
+
+  return {};
+}
+
+Env* StartEnvironment(Arena* freeUse,Arena* freeUse2){
+  Env* env = PushStruct<Env>(freeUse);
+  env->scopeArena = freeUse;
+  env->miscArena = freeUse2;
+  env->scopes = PushArray<EnvScope*>(freeUse,99);
+
+  env->currentScope = -1;
+  env->PushScope();
+
+  env->errors = PushArenaList<String>(freeUse2);
+  env->table = PushTrieMap<String,FUInstance*>(freeUse2);
+
+  return env;
+}
+
+void Env::ReportError(Token badToken,String msg){
+  // TODO: More detailed error message
+  String error = PushString(miscArena,"[%.*s] %.*s: '%.*s'",UN(circuit->name),UN(msg),UN(badToken));
+  *this->errors->PushElem() = error;
+}
+
+void Env::PushScope(){
+  this->currentScope += 1;
+
+  ArenaMark mark = MarkArena(this->scopeArena);
+  this->scopes[this->currentScope] = PushStruct<EnvScope>(this->scopeArena);
+  this->scopes[this->currentScope]->mark = mark;
+  this->scopes[this->currentScope]->variable = PushTrieMap<String,Entity>(this->scopeArena);
+}
+
+void Env::PopScope(){
+  Assert(this->currentScope > 0);
+
+  ArenaMark mark = this->scopes[this->currentScope]->mark;
+  PopMark(mark);
+
+  this->currentScope -= 1;
+}
+
+FUInstance* Env::CreateInstance(FUDeclaration* type,String name){
+  FUInstance* inst = CreateFUInstance(circuit,type,name);
+
+  Token tok = {};
+  tok = *((Token*) &inst->name);
+  Entity* ent = PushNewEntity(tok);
+  ent->type = EntityType_FU;
+  ent->instance = inst;
+
+  return inst;
+}
+
+FUInstance* Env::GetFUInstance(Var var){
+  TEMP_REGION(temp,nullptr);
+  
+  FUInstance* res = nullptr;
+  if(var.name == "out"){
+    if(var.isArrayAccess){
+      ReportError(var.name,"'out' special unit cannot have array subscriptions");
+    }
+    
+    res = GetOutputInstance();
+  } else {
+    Entity* ent = GetEntity(var.name);
+    
+    String name = var.name;
+    if(ent->type == EntityType_FU_ARRAY){
+      name = GetActualArrayName(name,var.index.low,temp);
+    }
+
+    res = table->GetOrElse(name,nullptr);
+  }
+  return res;
+}
+
+FUInstance* Env::GetOutputInstance(){
+  FUInstance* res = GetUnit(circuit,"out");
+
+  if(!res){
+    res = CreateFUInstance(circuit,BasicDeclaration::output,"out");
+  }
+  
+  return res;
+}
+
+Entity* Env::PushNewEntity(Token name){
+  if(name == "out"){
+    ReportError(name,"Cannot have a variable with the reserved name out");
+  }
+
+  auto res = this->scopes[this->currentScope]->variable->GetOrAllocate(name);
+  
+  if(res.alreadyExisted){
+    ReportError(name,"Entity already exists. Rename entity to resolve conflict");
+  }
+
+  return res.data;
+}
+
+Entity* Env::GetEntity(Token name){
+  for(int i = this->currentScope; i >= 0; i--){
+    Entity* ent = this->scopes[i]->variable->Get(name);
+
+    if(ent){
+      return ent;
+    }
+  }
+
+  return nullptr;
+}
+
+void Env::AddInput(VarDeclaration var){
+  TEMP_REGION(temp,nullptr);
+
+  Entity* ent = PushNewEntity(var.name);
+
+  if(var.isArray){
+    ent->type = EntityType_FU_ARRAY;
+    ent->arrayBaseName = var.name;
+    ent->arraySize = var.arraySize;
+
+    for(int i = 0; i < var.arraySize; i++){
+      String actualName = GetActualArrayName(var.name,i,temp);
+      FUInstance* input = CreateOrGetInput(circuit,actualName,insertedInputs++);
+      table->Insert(input->name,input);
+    }
+  } else {
+    FUInstance* input = CreateOrGetInput(circuit,var.name,insertedInputs++);
+    table->Insert(input->name,input);
+    
+    ent->type = EntityType_FU;
+    ent->instance = input;
+  }
+
+  ent->isInput = true;
+}
+
+void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
+  TEMP_REGION(temp,nullptr);
+
+  FUDeclaration* type = GetTypeByName(decl.typeName);
+  
+  if(!type){
+    ReportError(decl.typeName,"Typename does not exist");
+  }
+
+  Entity* ent = PushNewEntity(var.name);
+
+  if(var.isArray){
+    ent->type = EntityType_FU_ARRAY;
+    ent->arrayBaseName = var.name;
+    ent->arraySize = var.arraySize;
+
+    for(int i = 0; i < var.arraySize; i++){
+      String actualName = GetActualArrayName(var.name,i,temp);
+      FUInstance* inst = CreateFUInstanceWithParameters(circuit,type,actualName,decl);
+      table->Insert(inst->name,inst);
+      inst->addressGenUsed = CopyArray<String,Token>(decl.addressGenUsed,globalPermanent);
+    }
+  } else {
+    FUInstance* inst = CreateFUInstanceWithParameters(circuit,type,var.name,decl);
+    table->Insert(inst->name,inst);
+    inst->addressGenUsed = CopyArray<String,Token>(decl.addressGenUsed,globalPermanent);
+
+    ent->type = EntityType_FU;
+    ent->instance = inst;
+  }
+
+  for(auto iter = StartIteration(this,ent); iter.IsValid(); iter = iter.Next()){
+    FUInstance* inst = iter.Current();
+    
+    switch(decl.modifier){
+    case InstanceDeclarationType_NONE: break;
+    case InstanceDeclarationType_SHARE_CONFIG:{
+      ShareInstanceConfig(inst,decl.shareIndex);
+      
+      for(Token partialShareName : decl.shareNames){
+        bool foundOne = false;
+        for(int ii = 0; ii < inst->declaration->configs.size; ii++){
+          if(inst->declaration->configs[ii].name == partialShareName){
+            inst->isSpecificConfigShared[ii] = false;
+            foundOne = true;
+          }
+        }
+
+        if(!foundOne){
+          TEMP_REGION(temp,nullptr);
+          String errorMsg = PushString(temp,"Cannot share config wire since it does not exist for instance '%.*s' of type '%.*s'",UN(inst->name),UN(decl.typeName));
+          ReportError(partialShareName,errorMsg);
+        }
+      }
+    } break;
+    case InstanceDeclarationType_STATIC:{
+      SetStatic(inst);
+    } break;
+    }
+  }
+}
+
+void Env::AddConnection(ConnectionDef decl){
+  Assert(decl.type == ConnectionType_CONNECTION);
+
+  int nOutConnections = NumberOfConnections(decl.output);
+  int nInConnections = NumberOfConnections(decl.input);
+
+  if(nOutConnections != nInConnections){
+    ReportError({},"Connection missmatch");
+  }
+
+  GroupIterator out = IterateGroup(decl.output);
+  GroupIterator in  = IterateGroup(decl.input);
+
+  while(HasNext(out) && HasNext(in)){
+    Var outVar = Next(out);
+    Var inVar = Next(in);
+        
+    Assert(inVar.extra.delay.high == 0); // For now, inputs cannot have delay.
+        
+    FUInstance* outInstance = GetFUInstance(outVar);
+    FUInstance* inInstance = GetFUInstance(inVar);
+
+    int outPort = outVar.extra.port.low;
+    int inPort  = inVar.extra.port.low;
+    ConnectUnits(outInstance,outPort,inInstance,inPort,outVar.extra.delay.low);
+  }
+
+  Assert(HasNext(out) == HasNext(in));
+}
+
+void Env::AddEquality(ConnectionDef decl){
+  TEMP_REGION(temp,nullptr);
+  
+  Assert(decl.type == ConnectionType_EQUALITY);
+
+  // Only allow one for equality, for now
+  Assert(decl.output.vars.size == 1);
+
+  Var outVar = decl.output.vars[0];
+  PortExpression portSpecExpression = InstantiateSpecExpression(decl.expression);
+
+  // When dealing with equality, we can just increase array size by accessing higher and higher values.
+  if(outVar.isArrayAccess){
+    auto res = this->scopes[this->currentScope]->variable->GetOrAllocate(outVar.name);
+    Entity* ent = res.data;
+
+    ent->type = EntityType_FU_ARRAY;
+    ent->arrayBaseName = outVar.name;
+    ent->arraySize = MAX(ent->arraySize,outVar.index.low);
+  }
+
+  String name = outVar.name;
+  if(outVar.isArrayAccess){
+    name = GetActualArrayName(name,outVar.index.low,temp);
+  }
+
+  FUInstance* inst = portSpecExpression.inst;
+  String uniqueName = GetUniqueName(name,globalPermanent,table);
+  inst->name = PushString(globalPermanent,uniqueName);
+
+  Token tok = {};
+  tok = *((Token*) &inst->name);
+  Entity* ent = PushNewEntity(tok);
+  ent->type = EntityType_FU;
+  ent->instance = inst;
+
+  table->Insert(inst->name,inst);
+}
+
+Opt<Entity> GetEntityFromHierAccessWithEnvironment(AccelInfo* info,Env* env,Array<String> accessExpr){
+#if 1
+  if(accessExpr.size == 1){
+    String name = accessExpr[0];
+    int currentScope = env->currentScope;
+
+    // Up the scope chain.
+    for(; currentScope >= 0; currentScope -= 1){
+      for(Pair<String,Entity> p : env->scopes[env->currentScope]->variable){
+        String str = p.first;
+        if(str == name){
+          return p.second;
+        }
+      }
+    }
+  }
+
+  return GetEntityFromHierAccess(info,accessExpr);
+#endif
+}
+
+FUInstanceIterator FUInstanceIterator::Next(){
+  FUInstanceIterator next = *this;
+  next.index += 1;
+  return next;
+}
+
+bool FUInstanceIterator::IsValid(){
+  bool res;
+  if(max == 0){
+    res = (index == 0);
+  } else {
+    res = (index < max);
+  }
+  
+  return res;
+}
+
+FUInstance* FUInstanceIterator::Current(){
+  Assert(IsValid());
+
+  FUInstance* inst;
+  if(this->max == 0){
+    return ent->instance;
+  } else {
+    TEMP_REGION(temp,nullptr);
+    String baseName = ent->arrayBaseName;
+    String actualName = GetActualArrayName(baseName,index,temp);
+
+    inst = GetUnit(this->env->circuit,actualName);
+  }
+  
+  return inst;
+}
+
+FUInstanceIterator StartIteration(Env* env,Entity* ent){
+  FUInstanceIterator iter = {};
+  iter.env = env;
+  iter.ent = ent;
+
+  if(ent->type == EntityType_FU_ARRAY){
+    iter.max = ent->arraySize;
+  }
+
+  return iter;
+}
+
+PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
+  Arena* perm = globalPermanent;
+  PortExpression res = {};
+
+  switch(root->type){
+    // Just to remove warnings. TODO: Change expression so that multiple locations have their own expression struct, instead of reusing the same one.
+  case SpecType_LITERAL:{
+    int number = root->val.number;
+
+    TEMP_REGION(temp,perm);
+    String toSearch = PushString(temp,"N%d",number);
+
+    FUInstance** found = table->Get(toSearch);
+
+    if(!found){
+      String uniqueName = GetUniqueName(toSearch,perm,table);
+
+      FUInstance* digitInst = (FUInstance*) CreateInstance(GetTypeByName("Literal"),uniqueName);
+      digitInst->literal = number;
+      table->Insert(digitInst->name,digitInst);
+      res.inst = digitInst;
+    } else {
+      res.inst = *found;
+    }
+  }break;
+  case SpecType_VAR:{
+    Var var = root->var;  
+    String name = var.name;
+
+    if(var.isArrayAccess){
+      name = GetActualArrayName(var.name,var.index.bottom,globalPermanent);
+    }
+    
+    FUInstance* inst = table->GetOrFail(name);
+
+    res.inst = inst;
+    res.extra = var.extra;
+  } break;
+  case SpecType_OPERATION:{
+    PortExpression expr0 = InstantiateSpecExpression(root->expressions[0]);
+
+    // Assuming right now very simple cases, no port range and no delay range
+    Assert(expr0.extra.port.start == expr0.extra.port.end);
+    Assert(expr0.extra.delay.start == expr0.extra.delay.end);
+
+    if(root->expressions.size == 1){
+      Assert(root->op[0] == '~' || root->op[0] == '-');
+
+      String typeName = {};
+
+      switch(root->op[0]){
+      case '~':{
+        typeName = "NOT";
+      }break;
+      case '-':{
+        typeName = "NEG";
+      }break;
+      }
+
+      String permName = GetUniqueName(typeName,perm,table);
+      FUInstance* inst = CreateInstance(GetTypeByName(typeName),permName);
+      table->Insert(inst->name,inst);
+
+      ConnectUnits(expr0.inst,expr0.extra.port.start,inst,0,expr0.extra.delay.start);
+
+      res.inst = inst;
+      res.extra.port.end  = res.extra.port.start  = 0;
+      res.extra.delay.end = res.extra.delay.start = 0;
+
+      return res;
+    } else {
+      Assert(root->expressions.size == 2);
+    }
+
+    PortExpression expr1 = InstantiateSpecExpression(root->expressions[1]);
+
+    // Assuming right now very simple cases, no port range and no delay range
+    Assert(expr1.extra.port.start == expr1.extra.port.end);
+    Assert(expr1.extra.delay.start == expr1.extra.delay.end);
+
+    String op = root->op;
+    const char* typeName;
+    if(CompareString(op,"&")){
+      typeName = "AND";
+    } else if(CompareString(op,"|")){
+      typeName = "OR";
+    } else if(CompareString(op,"^")){
+      typeName = "XOR";
+    } else if(CompareString(op,">><")){
+      typeName = "RHR";
+    } else if(CompareString(op,">>")){
+      typeName = "SHR";
+    } else if(CompareString(op,"><<")){
+      typeName = "RHL";
+    } else if(CompareString(op,"<<")){
+      typeName = "SHL";
+    } else if(CompareString(op,"+")){
+      typeName = "ADD";
+    } else if(CompareString(op,"-")){
+      typeName = "SUB";
+    } else {
+      // TODO: Proper error reporting
+      printf("%.*s\n",UN(op));
+      Assert(false);
+    }
+
+    String typeStr = typeName;
+    FUDeclaration* type = GetTypeByName(typeStr);
+    String uniqueName = GetUniqueName(type->name,perm,table);
+
+    FUInstance* inst = CreateInstance(type,uniqueName);
+    table->Insert(inst->name,inst);
+
+    ConnectUnits(expr0.inst,expr0.extra.port.start,inst,0,expr0.extra.delay.start);
+    ConnectUnits(expr1.inst,expr1.extra.port.start,inst,1,expr1.extra.delay.start);
+
+    res.inst = inst;
+    res.extra.port.end  = res.extra.port.start  = 0;
+    res.extra.delay.end = res.extra.delay.start = 0;
+  } break;
+  }
+
+  Assert(res.inst);
+  return res;
+}

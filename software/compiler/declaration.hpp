@@ -85,8 +85,9 @@ struct FUDeclaration{
   int lat; // TODO: For now this is only for iterative units. Would also useful to have a standardized way of computing this from the graph and then compute it when needed. 
   
   Hashmap<StaticId,StaticData>* staticUnits;
-
-  Array<Pair<String,int>> definitionArrays;
+  
+  // TODO: We mostly do not use this. Furthermore we could just store this info inside the FUInstances, where we store a arrayBaseName or something similar.
+  //Array<Pair<String,int>> definitionArrays;
   
   FUDeclarationType type;
   DelayType delayType;

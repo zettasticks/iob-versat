@@ -6,15 +6,14 @@
 
 struct ConfigFunctionDef;
 
-typedef Hashmap<String,FUInstance*> InstanceTable;
-typedef Set<String> InstanceName;
+typedef TrieMap<String,FUInstance*> InstanceTable;
 
-enum ConnectionType{
-  ConnectionType_SINGLE,
-  ConnectionType_PORT_RANGE,
-  ConnectionType_ARRAY_RANGE,
-  ConnectionType_DELAY_RANGE,
-  ConnectionType_ERROR
+enum PortRangeType{
+  PortRangeType_SINGLE,
+  PortRangeType_PORT_RANGE,
+  PortRangeType_ARRAY_RANGE,
+  PortRangeType_DELAY_RANGE,
+  PortRangeType_ERROR
 };
 
 // TODO: Remove Connection extra. Store every range inside Var.
@@ -35,6 +34,12 @@ struct VarGroup{
   Token fullText;
 };
 
+enum SpecType{
+  SpecType_OPERATION,
+  SpecType_VAR,
+  SpecType_LITERAL
+};
+
 struct SpecExpression{
   Array<SpecExpression*> expressions;
   union{
@@ -44,7 +49,7 @@ struct SpecExpression{
   };
   Token text;
   
-  enum {UNDEFINED,OPERATION,VAR,LITERAL} type;
+  enum {OPERATION,VAR,LITERAL} type;
 };
 
 struct VarDeclaration{
@@ -81,13 +86,24 @@ struct InstanceDeclaration{
   Array<Token> shareNames;
   bool negateShareNames;
   bool debug;
+  
+  // Set later
+  int shareIndex;
 };
 
+#if 1
+enum ConnectionType{
+  ConnectionType_EQUALITY,
+  ConnectionType_CONNECTION
+};
+#endif
+
 struct ConnectionDef{
+  ConnectionType type;
+
   Range<Cursor> loc;
 
   VarGroup output;
-  enum {EQUALITY,CONNECTION} type;
 
   Array<Token> transforms;
   
@@ -166,3 +182,122 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out);
 FUDeclaration* InstantiateSpecifications(String content,ConstructDef def);
 
 Opt<AddressGenDef> ParseAddressGen(Tokenizer* tok,Arena* out);
+
+
+// ======================================
+// Hierarchical access (WIP)
+
+// Map from name in hierarchical access (ex: a.b.c[0].d) to an entity. The VARIABLE part is that this mapping is also used inside the parser to map stuff to things like variables or to special names that are specific to a given part of the code.
+
+enum EntityType{
+  EntityType_FU,
+  EntityType_FU_ARRAY,
+  EntityType_NODE,
+  EntityType_CONFIG_WIRE,
+  EntityType_STATE_WIRE,
+  EntityType_CONFIG_FUNCTION,
+  EntityType_VARIABLE_INPUT,
+  EntityType_VARIABLE_SPECIAL // For variables that exist "by default"
+};
+
+enum VariableType{
+  VariableType_VOID_PTR,
+  VariableType_INTEGER
+};
+
+struct Entity{
+  EntityType type;
+
+  // TODO: Union
+  //union {
+  InstanceInfo* info;
+  FUInstance* instance;
+
+  bool isInput;
+
+  Wire* wire;
+
+  ConfigFunction* func;
+  String varName;
+
+  int arraySize;
+  String arrayBaseName;
+
+  VariableType varType;
+  //};
+};
+
+enum ScopeType{
+  ScopeType_CONFIG_FUNCTION,
+  ScopeType_FOR_LOOP
+};
+
+struct EnvScope{
+  ArenaMark mark;
+
+  //TrieMap<String,VariableType>* variableTypes;
+  TrieMap<String,Entity>* variable;
+};
+
+// Env is more of a parser related thing than it is an accelerator related thing.
+// Need to copy this to a better place and start using it in other parts of the code that should use it.
+// NOTE: This is more like a FUDeclaration builder than an environment, I think
+// NOTE: Make the easy changes first and then see what happens.
+struct Env{
+  Arena* scopeArena;
+  Arena* miscArena;
+
+  // Store errors in here.
+  ArenaList<String>* errors;
+  Accelerator* circuit;
+
+  InstanceTable* table;
+
+  int insertedInputs;
+
+  Array<EnvScope*> scopes;
+  int currentScope;
+
+  void ReportError(Token badToken,String msg);
+
+  // By default we are inside a module scope.
+  void PushScope();
+  void PopScope();
+
+  FUInstance* CreateInstance(FUDeclaration* type,String name);
+  
+  FUInstance* GetFUInstance(Var var);
+  FUInstance* GetOutputInstance();
+
+  Entity* PushNewEntity(Token name);
+  Entity* GetEntity(Token name);
+
+  void AddInput(VarDeclaration decl);
+  void AddInstance(InstanceDeclaration decl,VarDeclaration var);
+
+  void AddConnection(ConnectionDef def);
+  void AddEquality(ConnectionDef def);
+
+  PortExpression InstantiateSpecExpression(SpecExpression* root);
+};
+
+Env* StartEnvironment(Arena* freeUse,Arena* freeUse2);
+
+Opt<Entity> GetEntityFromHierAccess(AccelInfo* info,Array<String> accessExpr);
+Opt<Entity> GetEntityFromHierAccessWithEnvironment(AccelInfo* info,Env* env,Array<String> accessExpr);
+
+//void AddOrSetVariable(Env* env,String name,VariableType type);
+
+struct FUInstanceIterator{
+  Env* env;
+  Entity* ent;
+  int index;
+  int max;
+
+  FUInstanceIterator Next();
+  bool IsValid();
+  FUInstance* Current();
+};
+
+FUInstanceIterator StartIteration(Env* env,Entity* ent);
+

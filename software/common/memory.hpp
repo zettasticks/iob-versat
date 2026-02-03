@@ -516,6 +516,7 @@ struct TrieMap{
   Data* Get(Key key);
   Data* GetOrInsert(Key key,Data data);
   Data& GetOrFail(Key key);
+  Data& GetOrElse(Key key,Data&& other);
   GetOrAllocateResult<Data> GetOrAllocate(Key key); // More efficient way for the Get, check if null, Insert pattern
 
   bool Remove(Key key);
@@ -1108,6 +1109,16 @@ Data& TrieMap<Key,Data>::GetOrFail(Key key){
   Data* got = Get(key);
 
   Assert(got);
+  return *got;
+}
+
+template<typename Key,typename Data>
+Data& TrieMap<Key,Data>::GetOrElse(Key key,Data&& other){
+  Data* got = Get(key);
+
+  if(!got){
+    return other;
+  }
   return *got;
 }
 

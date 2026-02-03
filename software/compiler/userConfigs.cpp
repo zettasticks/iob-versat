@@ -27,6 +27,13 @@ static void ReportError(Tokenizer* tok,Token faultyToken,String error){
   ReportError3(content,faultyToken,error);
 }
 
+static void ReportErrorIf(bool cond,String error){
+  // TODO Proper error storage and report later handling.
+  if(cond){
+    printf("%.*s\n",UN(error));
+  }
+}
+
 static bool _ExpectError(Tokenizer* tok,String expected){
   TEMP_REGION(temp,nullptr);
 
@@ -514,10 +521,11 @@ ConfigFunction* InstantiateConfigFunction(ConfigFunctionDef* def,FUDeclaration* 
   Array<ConfigVarDeclaration> variables = def->variables;
   Array<Token> variableNames = Extract(variables,temp,&ConfigVarDeclaration::name);
   
-  FREE_ARENA(temp3);
-  ARENA_NO_POP(temp3);
-  Env* env = StartEnvironment(temp3);
+  FREE_ARENA(envArena);
+  FREE_ARENA(envArena2);
+  Env* env = StartEnvironment(envArena,envArena2);
 
+#if 0
   for(ConfigVarDeclaration var : variables){
     if(var.type == ConfigVarType_ADDRESS){
       AddOrSetVariable(env,var.name,VariableType_VOID_PTR);
@@ -525,6 +533,7 @@ ConfigFunction* InstantiateConfigFunction(ConfigFunctionDef* def,FUDeclaration* 
       AddOrSetVariable(env,var.name,VariableType_INTEGER);
     }
   }
+#endif
 
   // TODO: This flow is not good. With a bit more work we probably can join state and config into the same flow or at least avoid duplicating work. For now we are mostly prototyping so gonna keep pushing what we have.
 
@@ -617,10 +626,10 @@ ConfigFunction* InstantiateConfigFunction(ConfigFunctionDef* def,FUDeclaration* 
         //AddOrSetVariable(env,simple->rhsId.name,VariableType_VOID_PTR);
 
         AddressAccess* access = CompileAddressGen({},variableNames,loops,simple->rhsId.expr,content);
-        AddressGenInst supported = ent.inst->supportedAddressGen;
+        AddressGenInst supported = ent.info->supportedAddressGen;
 
         ConfigStuff* newAssign = list->PushElem();
-        newAssign->info = ent.inst;
+        newAssign->info = ent.info;
         newAssign->type = ConfigStuffType_ADDRESS_GEN;
         newAssign->access.access = access;
         newAssign->access.inst = supported;
@@ -737,7 +746,7 @@ ConfigFunction* InstantiateConfigFunction(ConfigFunctionDef* def,FUDeclaration* 
         Entity entity = entityOpt.value();
         
         if(entity.type == EntityType_CONFIG_FUNCTION){
-          InstanceInfo* info = entity.inst;
+          InstanceInfo* info = entity.info;
           ConfigFunction* func = entity.func;
 
           for(ConfigStuff stmt : func->stuff){
@@ -798,7 +807,7 @@ ConfigFunction* InstantiateConfigFunction(ConfigFunctionDef* def,FUDeclaration* 
           }
           Entity entity = entityOpt.value();
           Assert(entity.type == EntityType_NODE);
-          Assert(entity.inst->memMapBits.has_value());
+          Assert(entity.info->memMapBits.has_value());
           
           ConfigStuff* assign = list->PushElem();
           assign->type = ConfigStuffType_MEMORY_TRANSFER;
@@ -816,10 +825,38 @@ ConfigFunction* InstantiateConfigFunction(ConfigFunctionDef* def,FUDeclaration* 
           *forLoops->PushElem() = stmts[i]->def;
         }
         
+        Array<AddressGenForDef> loops = PushArrayFromList(temp,forLoops);
+
+        ReportErrorIf(loops.size != 1,"Cannot handle more than 1 loop inside a mem configuration");
+
         Assert(simple->type == ConfigStatementType_STATEMENT);
         Assert(simple->rhsType == ConfigRHSType_IDENTIFIER);
         
-        // Need to build an address gen in here or something that we can then use to extract the info that we need.
+        SymbolicExpression* end = ParseSymbolicExpression(loops[0].endSym,out);
+        
+        String name = simple->lhs.name;
+
+        Array<String> accessExpr = PushArray<String>(temp,1);
+        accessExpr[0] = simple->lhs.name;
+        Opt<Entity> entityOpt = GetEntityFromHierAccess(&declaration->info,accessExpr);
+
+        // TODO: This is currently hardcoded for some examples while we are trying to figure out how to proceed.
+        if(entityOpt.has_value() && entityOpt.value().type == EntityType_NODE){
+          // Need to build an address gen in here or something that we can then use to extract the info that we need.
+          ConfigStuff* assign = list->PushElem();
+          assign->type = ConfigStuffType_MEMORY_TRANSFER;
+          assign->transfer.dir = TransferDirection_READ;
+          assign->transfer.identity = "TOP_m_addr";
+          assign->transfer.sizeExpr = PushRepr(out,end);
+          assign->transfer.variable = "addr";//PushString(out,simple->rhsId.name);
+        } else {
+          ConfigStuff* assign = list->PushElem();
+          assign->type = ConfigStuffType_MEMORY_TRANSFER;
+          assign->transfer.dir = TransferDirection_WRITE;
+          assign->transfer.identity = "TOP_m_addr";
+          assign->transfer.sizeExpr = PushRepr(out,end);
+          assign->transfer.variable = "addr";//PushString(out,simple->rhsId.name);
+        }
       } break;
     }
     }

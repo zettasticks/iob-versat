@@ -1128,26 +1128,46 @@ void EndAccelerator(){
 void VersatMemoryCopy(volatile void* dest,volatile const void* data,int size){
   CheckVersatInitialized();
 
-  char* byteViewDest = (char*) dest;
-  char* configView = (char*) accelConfig;
-  int* view = (int*) data;
+  char* versatStart = (char*) versat_base;
+  char* versatEnd = versatStart + versatAddressSpace;
+  
+  char* destChar = (char*) dest;
+  char* dataChar = (char*) data;
 
-  bool destInsideConfig = (byteViewDest >= configView && byteViewDest < configView + AcceleratorConfigSize);
-  bool destEndOutsideConfig = destInsideConfig && (byteViewDest + size > configView + AcceleratorConfigSize);
+  bool destInsideVersat = (destChar >= versatStart && destChar < versatEnd);
+  bool dataInsideVersat = (dataChar >= versatStart && dataChar < versatEnd);
 
-  if(destEndOutsideConfig){
-    PRINT("VersatMemoryCopy: Destination starts inside config and ends outside\n");
-    PRINT("This is most likely an error, no transfer is being made\n");
+  if(destInsideVersat == true && dataInsideVersat == true){
+    PRINT("VersatMemoryCopy is not capable of performing copies from Versat to Versat");
+    return;
+  } 
+
+  if(destInsideVersat == false && dataInsideVersat == false){
+    memcpy((void*) dest,(void*) data,size);
     return;
   }
-  
-  if(destInsideConfig){
-    memcpy((void*) dest,(void*) data,size);
-  } else {
-    for(int i = 0; i < (size / 4); i++){
-      VersatUnitWrite(dest,i,view[i]);
+
+  if(destInsideVersat){
+    char* configView = (char*) accelConfig;
+    bool destInsideConfig = (destChar >= configView && destChar < configView + AcceleratorConfigSize);
+    
+    int* dataView = (int*) data;
+
+    // TODO: We technically also have to check for static and delay and stuff like that.
+    if(destInsideConfig){
+      memcpy((void*) dest,(void*) data,size);
+    } else {
+      for(int i = 0; i < (size / 4); i++){
+        VersatUnitWrite(dest,i,dataView[i]);
+      }
     }
-  }
+  } else {
+    int* destView = (int*) dest;
+  
+    for(int i = 0; i < (size / 4); i++){
+      destView[i] = VersatUnitRead(data,i);
+    }
+  } 
 }
 
 void VersatUnitWrite(volatile const void* baseaddr,int index,int val){

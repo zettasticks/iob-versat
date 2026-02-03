@@ -784,9 +784,12 @@ int main(int argc,char* argv[]){
     }
     
     type = RegisterSubUnit(accel);
+
+#if 0
     type->definitionArrays = PushArray<Pair<String,int>>(perm,2);
     type->definitionArrays[0] = (Pair<String,int>){"input",input};
     type->definitionArrays[1] = (Pair<String,int>){"output",output};
+#endif
 
     type->singleInterfaces |= SingleInterfaces_SIGNAL_LOOP;
     
@@ -849,8 +852,6 @@ int main(int argc,char* argv[]){
   
   VersatComputedValues val = ComputeVersatValues(accel,&info,temp);
   Array<ExternalMemoryInterface> external = val.externalMemoryInterfaces;
-  
-  DEBUG_BREAK();
   
   OutputTopLevelFiles(accel,type,
                       globalOptions.hardwareOutputFilepath,
