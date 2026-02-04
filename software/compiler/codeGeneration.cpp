@@ -3113,6 +3113,9 @@ void Output_Header(FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> stru
         if(func->type != ConfigFunctionType_CONFIG){
           continue;
         }
+        if(func->doesNotSupportsSizeCalc){
+          continue;
+        }
 
         // TODO: Only output this if used. Address gen with fixed addresses do not generate this ever.
         once {
@@ -3145,6 +3148,10 @@ Problem: If we want the address gen to take into account the limitations of spac
         auto list = PushArenaList<String>(temp);
         
         for(ConfigVariable var : func->variables){
+          if(!var.usedOnLoopExpressions){
+            continue;
+          }
+
           if(var.type == ConfigVarType_DYN){
             c->Argument("VersatVarSpec*",var.name);
             *list->PushElem() = var.name;
@@ -3269,6 +3276,16 @@ Problem: If we want the address gen to take into account the limitations of spac
           c->Argument(ConfigVarTypeToName(var.type),var.name);
         }
 
+        if(func->debug){
+          String str = PushString(temp,"versat_printf(\"[DEBUG] [%.*s]\\n\")",UN(func->fullName));
+          c->Statement(str);
+          
+          for(ConfigVariable var : func->variables){
+            String printVar = PushString(temp,"versat_printf(\"  %.*s : %%d\\n\",%.*s)",UN(var.name),UN(var.name));
+            c->Statement(printVar);
+          }
+        }
+
         String assignStarter = "accelConfig";
         if(isState){
           assignStarter = "accelState";
@@ -3378,7 +3395,6 @@ Problem: If we want the address gen to take into account the limitations of spac
                 c->Comment("Double is smaller (better)");
                 region(temp){
                   StringBuilder* b = StartString(temp);
-                  //EmitDebugAddressGenInfo(doubleLoop,c);
                   Repr(b,doubleLoop);
 
                   Array<Pair<String,String>> params = InstantiateRead(doubleLoop,loopIndex,true,maxLoops,extVarName,temp);
@@ -3389,7 +3405,6 @@ Problem: If we want the address gen to take into account the limitations of spac
                 c->Comment("Single is smaller (better)");
                 region(temp){
                   StringBuilder* b = StartString(temp);
-                  //EmitDebugAddressGenInfo(singleLoop,c);
                   Repr(b,singleLoop);
 
                   Array<Pair<String,String>> params = InstantiateRead(singleLoop,-1,false,maxLoops,extVarName,temp);
@@ -3399,7 +3414,7 @@ Problem: If we want the address gen to take into account the limitations of spac
                 c->EndIf();
               };
   
-              auto Recurse = [EmitDoubleOrSingleLoopCode,&initial](auto Recurse,int loopIndex,CEmitter* c,Arena* out) -> void{
+              auto Recurse = [EmitDoubleOrSingleLoopCode,&initial](auto Recurse,int loopIndex,CEmitter* c,Arena* out) -> void {
                 TEMP_REGION(temp,out);
 
                 LoopLinearSum* external = initial->external;
@@ -4557,7 +4572,7 @@ static iptr WRITE_@{0} = 0;)FOO";
             c->Assignment(left,right);
           }
 
-          c->Statement("PRINT(\"Simulating addresses for unit '%s' in merge config: %d\\n\",info.unitName,info.mergeIndex)");
+          c->Statement("versat_printf(\"Simulating addresses for unit '%s' in merge config: %d\\n\",info.unitName,info.mergeIndex)");
           c->Statement("SimulateAndPrintAddressGen(args)");
 
           c->EndIf();
@@ -4579,7 +4594,7 @@ static iptr WRITE_@{0} = 0;)FOO";
 
           c->Statement("SimulateVReadResult sim = SimulateVRead(args)");
           c->Statement("float percent = ((float) sim.amountOfInternalValuesUsed) / ((float) sim.amountOfExternalValuesRead)");
-          c->Statement("PRINT(\"Efficiency: %2f (%d/%d)\\n\",percent,sim.amountOfInternalValuesUsed,sim.amountOfExternalValuesRead)");
+          c->Statement("versat_printf(\"Efficiency: %2f (%d/%d)\\n\",percent,sim.amountOfInternalValuesUsed,sim.amountOfExternalValuesRead)");
           
           c->EndIf();
         }
@@ -4672,22 +4687,22 @@ static inline void DebugEndAccelerator(int upperBound){
       return;
     }
   } 
-  PRINT("Accelerator reached upperbound\n");
+  versat_printf("Accelerator reached upperbound\n");
 }
 
 static inline void DebugRunAcceleratorOnce(int upperbound){ // times inside value amount
-   PRINT("Gonna start accelerator: (%x,%d,%d)\n",versat_base, VersatRegister_Control);
+   versat_printf("Gonna start accelerator: (%x,%d,%d)\n",versat_base, VersatRegister_Control);
 
    MEMSET(versat_base,VersatRegister_Control,1);
    DebugEndAccelerator(upperbound);
 
-   PRINT("Ended accelerator\n");
+   versat_printf("Ended accelerator\n");
 }
 
 void DebugRunAccelerator(int times, int maxCycles){
   // Accelerator was previously stuck
   if(!MEMGET(versat_base, VersatRegister_Control)){
-    PRINT("Versat accel was previously stuck, before current call to DebugRunAccelerator\n");
+    versat_printf("Versat accel was previously stuck, before current call to DebugRunAccelerator\n");
     return;
   }
 
@@ -4768,21 +4783,21 @@ static uint64_t Percentage(uint64_t smaller,uint64_t bigger){
 }
 
 void VersatPrintProfile(VersatProfile p){
-  PRINT("Runs profiled:%llu\n", p.runCount);
-  PRINT("Total cycles:%llu\n", p.cyclesSinceLastReset);
-  PRINT("  Cycles with accelerator running: %llu (%llu%%)\n", p.runningCycles,
+  versat_printf("Runs profiled:%llu\n", p.runCount);
+  versat_printf("Total cycles:%llu\n", p.cyclesSinceLastReset);
+  versat_printf("  Cycles with accelerator running: %llu (%llu%%)\n", p.runningCycles,
         Percentage(p.runningCycles, p.cyclesSinceLastReset));
-  PRINT("    Cycles databus valid: %llu (%llu%%)\n", p.databusValid,
+  versat_printf("    Cycles databus valid: %llu (%llu%%)\n", p.databusValid,
         Percentage(p.databusValid, p.runningCycles));
-  PRINT("    Cycles databus valid and ready: %llu (%llu%%)\n", p.databusValidAndReady,
+  versat_printf("    Cycles databus valid and ready: %llu (%llu%%)\n", p.databusValidAndReady,
         Percentage(p.databusValidAndReady, p.runningCycles));
-  PRINT("      Databus efficiency: %llu%%\n",
+  versat_printf("      Databus efficiency: %llu%%\n",
         Percentage(p.databusValidAndReady, p.databusValid));
 
-  PRINT("Configurations set: %llu\n", p.configurationsSet);
-  PRINT("  Configurations set while accel running: %llu\n",
+  versat_printf("Configurations set: %llu\n", p.configurationsSet);
+  versat_printf("  Configurations set while accel running: %llu\n",
         p.configurationsSetWhileRunning);
-  PRINT("  Configurations efficiency: %llu%%\n",
+  versat_printf("  Configurations efficiency: %llu%%\n",
         Percentage(p.configurationsSet, p.configurationsSetWhileRunning));
 }
 )FOO";

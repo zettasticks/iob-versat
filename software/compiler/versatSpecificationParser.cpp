@@ -1,6 +1,7 @@
 #include "versatSpecificationParser.hpp"
 
 #include "accelerator.hpp"
+#include "debug.hpp"
 #include "declaration.hpp"
 #include "embeddedData.hpp"
 #include "globals.hpp"
@@ -2191,3 +2192,22 @@ PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
   Assert(res.inst);
   return res;
 }
+
+#if 0
+LEFT HERE - Since we are simplifying this part of the codebase, might
+as well go all out and finish the job. Parser stuff needs to be
+simplified. 
+- Remove the template stuff and implement the method based
+on taking on a tokenization function. 
+- Also want to remove the ParseOperationType and potentially replace
+it with a better approach, altought it might take a while since I
+probably gonna need to start with a small example and move upwards
+from there. Take inspiration in the approach taken by RADDBG and try
+to make it based on data firstmost so that it is still easier to
+change later on.
+- Afterwards, need to change the userConfig instantiation to take in the 
+Environment which we might change the name of because kinda weird but wathever.
+- Afterwards a small cleanup of anything that is left, any unused function, maybe 
+improve the error messages and start making better error message generation support.
+- Finally, move on to versat-ai and figure out why the convolution is giving out that bug.
+#endif

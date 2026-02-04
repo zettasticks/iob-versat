@@ -99,6 +99,7 @@ struct ConfigFunctionDef{
   Token name;
   Array<ConfigVarDeclaration> variables;
   Array<ConfigStatement*> statements;
+  bool debug;
 };
 
 ConfigFunctionDef* ParseConfigFunction(Tokenizer* tok,Arena* out);
@@ -160,6 +161,7 @@ struct ConfigStuff{
 struct ConfigVariable{
   ConfigVarType type;
   String name;
+  bool usedOnLoopExpressions;
 };
 
 struct ConfigFunction{
@@ -175,6 +177,10 @@ struct ConfigFunction{
   Array<ConfigVariable> variables;
   Array<String> newStructs;
   String structToReturnName;
+
+  bool doesNotSupportsSizeCalc;
+  // TODO: This is only worth it if we can generate extra stuff that might help figure out the problems. Otherwise just use gdb.
+  bool debug;
 };
 
 // Can fail (parsed data is validated in here)

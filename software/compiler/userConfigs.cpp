@@ -313,7 +313,10 @@ ConfigFunctionDef* ParseConfigFunction(Tokenizer* tok,Arena* out){
   
   ConfigFunctionDef* res = nullptr;
 
+  bool debug = false;
   if(tok->IfNextToken("config")){
+    debug |= tok->IfNextToken("debug");
+
     Token configName = tok->NextToken();
     CHECK_IDENTIFIER(configName);
 
@@ -347,12 +350,15 @@ ConfigFunctionDef* ParseConfigFunction(Tokenizer* tok,Arena* out){
     res->name = configName;
     res->variables = vars.value();
     res->statements = PushArrayFromList(out,configs);
+    res->debug = debug;
 
     return res;
   }
   
   // TODO: Merge logic with config because there is overlap.
   if(tok->IfNextToken("state")){
+    debug |= tok->IfNextToken("debug");
+
     Token stateName = tok->NextToken();
     CHECK_IDENTIFIER(stateName);
     
@@ -384,11 +390,14 @@ ConfigFunctionDef* ParseConfigFunction(Tokenizer* tok,Arena* out){
     res->name = stateName;
     res->variables = {};
     res->statements = PushArrayFromList(out,states);
+    res->debug = debug;
 
     return res;
   }
 
   if(tok->IfNextToken("mem")){
+    debug |= tok->IfNextToken("debug");
+
     Token memName = tok->NextToken();
     CHECK_IDENTIFIER(memName);
 
@@ -422,6 +431,7 @@ ConfigFunctionDef* ParseConfigFunction(Tokenizer* tok,Arena* out){
     res->name = memName;
     res->variables = vars.value();
     res->statements = PushArrayFromList(out,configs);
+    res->debug = debug;
 
     return res;
   }
@@ -580,6 +590,42 @@ ConfigFunction* InstantiateConfigFunction(ConfigFunctionDef* def,FUDeclaration* 
   // From this point on use this. Every N sized array is composed of N-1 FOR_LOOP types and 1 STATEMENT type.
   // TODO: Remember, after pushing every statement into an individual loop, we need to do error checking and check if the variable still exists. We cannot do variable checking globally since some statements might not be inside one of the loops.
   Array<Array<ConfigStatement*>> individualStatements = PushArrayFromList(temp,stmtList);
+
+  // TODO: Kinda stupid calculating things this way but the rest of the code needs to collapse into a simpler form for the more robust approach first.
+  auto variablesUsedOnLoopExpressions = PushTrieSet<Token>(temp);
+
+  for(Array<ConfigStatement*> arr : individualStatements){
+    for(ConfigStatement* conf : arr){
+      if(conf->type != ConfigStatementType_FOR_LOOP){
+        continue;
+      }
+
+      AddressGenForDef def = conf->def;
+
+      for(Token tok : def.startSym){
+        if(IsIdentifier(tok)){
+          variablesUsedOnLoopExpressions->Insert(tok); 
+        }
+      }
+      for(Token tok : def.endSym){
+        if(IsIdentifier(tok)){
+          variablesUsedOnLoopExpressions->Insert(tok); 
+        }
+      }
+    }
+  }
+
+  bool canCalculateSize = true;
+  for(ConfigVarDeclaration var : variables){
+    if(variablesUsedOnLoopExpressions->Exists(var.name)){
+      if(var.type != ConfigVarType_FIXED && var.type != ConfigVarType_DYN){
+        canCalculateSize = false;
+
+        // TODO: Better error calculation.
+        printf("[WARNING] UserConfig function \"%.*s\" does not support runtime size calculations because var \"%.*s\" which is part of loop logic is not defined as FIXED or DYN\n",UN(def->name),UN(var.name));
+      }
+    }
+  }
 
   if(def->type == UserConfigurationType_CONFIG){
     type = ConfigFunctionType_CONFIG;
@@ -869,6 +915,7 @@ ConfigFunction* InstantiateConfigFunction(ConfigFunctionDef* def,FUDeclaration* 
     
     var->type = decl.type;
     var->name = PushString(out,decl.name);
+    var->usedOnLoopExpressions = variablesUsedOnLoopExpressions->Exists(decl.name);
   }
 
   ConfigFunction func = {};
@@ -880,6 +927,7 @@ ConfigFunction* InstantiateConfigFunction(ConfigFunctionDef* def,FUDeclaration* 
   func.fullName = GlobalConfigFunctionName(func.individualName,declaration,out);
   func.newStructs = PushArrayFromList(out,newStructs);
   func.structToReturnName = structToReturnName;
+  func.debug = def->debug;
 
   ConfigFunction* res = nameToFunction->Insert(func.fullName,func);
   

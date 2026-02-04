@@ -56,6 +56,7 @@ void versat_init(int base);
 // Versat runtime does not provide any output unless provided with a printf like function by the user.
 typedef int (*VersatPrintf)(const char* format,...);
 void SetVersatDebugPrintfFunction(VersatPrintf function);
+extern VersatPrintf versat_printf;
 
 // In pc-emul provides a low bound on performance.
 // In sim-run refines the lower bound but still likely to be smaller than reality due to memory delays that are only present in real circuits.
