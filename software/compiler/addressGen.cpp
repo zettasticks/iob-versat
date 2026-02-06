@@ -1286,3 +1286,161 @@ String GenerateAddressPrintFunction(AddressAccess* access,Arena* out){
   String data = EndString(out,strBuilder);
   return data;
 }
+
+void EmitReadStatements(CEmitter* m,AccessAndType access,String varName,String extVarName){
+  TEMP_REGION(temp,nullptr);
+
+  AddressAccess* initial = access.access;
+  int maxLoops = access.inst.loopsSupported;
+  
+  auto EmitStoreAddressGenIntoConfig = [varName](CEmitter* emitter,Array<Pair<String,String>> params) -> void{
+    TEMP_REGION(temp,emitter->arena);
+          
+    for(int i = 0; i < params.size; i++){
+      String str = params[i].first;
+      
+      String t = PushString(temp,"%.*s.%.*s",UN(varName),UN(str));
+      String v = params[i].second;
+
+      // TODO: Kinda hacky
+      if(CompareString(str,"ext_addr")){
+        v = PushString(temp,"(iptr) (%.*s)",UN(v));
+      }
+
+      emitter->Assignment(t,v);
+    }
+  };
+
+  auto EmitDoubleOrSingleLoopCode = [extVarName,maxLoops,EmitStoreAddressGenIntoConfig](CEmitter* c,int loopIndex,AddressAccess* access){
+    TEMP_REGION(temp,c->arena);
+    
+    // TODO: The way we handle the free term is kinda sketchy.
+    // NOTE: The problem is that the convert access functions do not know how to handle duty.
+    AddressAccess* doubleLoop = ConvertAccessTo2External(access,loopIndex,temp);
+    AddressAccess* singleLoop = ConvertAccessTo1External(access,temp);
+
+    region(temp){
+      String repr = PushRepr(temp,GetLoopLinearSumTotalSize(doubleLoop->external,temp));
+      c->VarDeclare("int","doubleLoop",repr);
+    }
+
+    region(temp){
+      String repr2 = PushRepr(temp,GetLoopLinearSumTotalSize(singleLoop->external,temp));
+      c->VarDeclare("int","singleLoop",repr2);
+    }
+
+    // TODO: Maybe it would be better to just not generate single or double loop if we can check that one is always gonna be better than the other, right?
+    c->If("(!forceSingleLoop && forceDoubleLoop) || (!forceSingleLoop && (doubleLoop < singleLoop))");
+    c->Comment("Double is smaller (better)");
+    region(temp){
+      StringBuilder* b = StartString(temp);
+      EmitDebugAddressGenInfo(doubleLoop,c);
+      Repr(b,doubleLoop);
+
+      Array<Pair<String,String>> params = InstantiateRead(doubleLoop,loopIndex,true,maxLoops,extVarName,temp);
+      EmitStoreAddressGenIntoConfig(c,params);
+    }
+
+    c->Else();
+    c->Comment("Single is smaller (better)");
+    region(temp){
+      StringBuilder* b = StartString(temp);
+      EmitDebugAddressGenInfo(singleLoop,c);
+      Repr(b,singleLoop);
+
+      Array<Pair<String,String>> params = InstantiateRead(singleLoop,-1,false,maxLoops,extVarName,temp);
+      EmitStoreAddressGenIntoConfig(c,params);
+    }
+
+    c->EndIf();
+  };
+  
+  auto Recurse = [EmitDoubleOrSingleLoopCode,&initial](auto Recurse,int loopIndex,CEmitter* c) -> void{
+    TEMP_REGION(temp,nullptr);
+
+    LoopLinearSum* external = initial->external;
+          
+    int totalSize = external->terms.size;
+    int leftOverSize = totalSize - loopIndex;
+
+    // Last member must generate an 'else' instead of a 'else if'
+    if(leftOverSize > 1){
+      c->StartExpression();
+      for(int i = loopIndex + 1; i < totalSize; i++){
+        if(i != loopIndex + 1){
+          c->And();
+        }
+
+        c->Var(PushString(temp,"_VERSAT_a%d",loopIndex));
+        c->GreaterThan();
+        c->Var(PushString(temp,"_VERSAT_a%d",i));
+      }
+      
+      if(loopIndex == 0){
+        c->IfFromExpression();
+      } else {
+        // The other 'ifs' are 'elseifs' of the (loopIndex == 0) 'if'.
+        c->ElseIfFromExpression();
+      }
+
+      c->Comment(PushString(temp,"Loop var %.*s is the largest",UN(external->terms[loopIndex].var)));
+      EmitDoubleOrSingleLoopCode(c,loopIndex,initial);
+      
+      Recurse(Recurse,loopIndex + 1,c);
+    } else {
+      c->Else();
+
+      c->Comment(PushString(temp,"Loop var %.*s is the largest",UN(external->terms[loopIndex].var)));
+      EmitDoubleOrSingleLoopCode(c,loopIndex,initial);
+
+      c->EndIf();
+    }
+  };
+
+  String addressGenName = initial->name;
+  Array<String> inputVars = initial->inputVariableNames;
+  
+  if(initial->external->terms.size > 1){
+    for(int i = 0; i <  initial->external->terms.size; i++){
+      LoopLinearSumTerm term  =  initial->external->terms[i];
+      String repr = PushRepr(temp,GetLoopHighestDecider(&term));
+      String name = PushString(temp,"_VERSAT_a%d",i);
+      String comment = PushString(temp,"Loop var: %.*s",UN(term.var));
+
+      m->Comment(comment);
+      m->VarDeclare("int",name,repr);
+    }
+  
+    Recurse(Recurse,0,m);
+  } else {
+    EmitDoubleOrSingleLoopCode(m,0,initial);
+  }
+}
+
+void EmitMemStatements(CEmitter* m,AccessAndType access,String varName){
+  TEMP_REGION(temp,nullptr);
+
+  AddressAccess* initial = access.access;
+  
+  auto EmitStoreAddressGenIntoConfig = [varName](CEmitter* emitter,Array<Pair<String,String>> params) -> void{
+    TEMP_REGION(temp,emitter->arena);
+          
+    for(int i = 0; i < params.size; i++){
+      String str = params[i].first;
+      
+      String t = PushString(temp,"%.*s.%.*s",UN(varName),UN(str));
+      String v = params[i].second;
+
+      emitter->Assignment(t,v);
+    }
+  };
+
+  Assert(access.dir != Direction_NONE);
+
+  String addressStr = PushRepr(initial->external,temp);
+  m->Comment("[DEBUG] Address");
+  m->Comment(addressStr);
+
+  Array<Pair<String,String>> params = InstantiateMem(initial,access.port,access.dir == Direction_INPUT,access.inst.loopsSupported,temp);
+  EmitStoreAddressGenIntoConfig(m,params);
+}

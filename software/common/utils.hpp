@@ -6,6 +6,14 @@
 #include "filesystem.hpp"
 #include "memory.hpp"
 
+// TODO: There exists a bunch of enums that do not really have a good place to be and that are used throught the entier code base.
+//       Misc Enums that we probably want to stuff into a Defs.hpp file
+enum Direction{
+  Direction_NONE,
+  Direction_OUTPUT,
+  Direction_INPUT
+};
+
 FILE* OpenFileAndCreateDirectories(String path,const char* format,FilePurpose purpose);
 
 Array<String> Split(String content,char sep,Arena* out); // For now only split over one char. 

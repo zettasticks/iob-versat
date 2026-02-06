@@ -155,7 +155,6 @@ bool IsValid(VersatAddressSimState* state);
 
 // Needed by PC-EMUL to correctly simulate the design, embedded compiler should remove these symbols from firmware because not used by them 
 static const char* acceleratorTypeName = "@{typeName}";
-static bool isSimpleAccelerator = @{isSimple};
 static bool acceleratorSupportsDMA = @{useDMA};
 
 static const int memMappedStart = @{memMappedStart};
@@ -189,8 +188,6 @@ static inline iptr ALIGN(iptr base,iptr alignment){
 extern volatile AcceleratorStatic* accelStatic;
 
 @{allStaticDefines}
-
-@{simpleStuff}
 
 @{mergeStuff}
 

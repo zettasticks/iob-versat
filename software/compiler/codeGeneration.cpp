@@ -1987,6 +1987,10 @@ Array<StructInfo*> ExtractStructs(StructInfo* structInfo,Arena* out){
     if(top->name == "iptr"){
       return;
     }
+
+    if(Empty(top->name)){
+      return;
+    }
     
     map->InsertIfNotExist(*top,top);
   };
@@ -2867,7 +2871,7 @@ assign data_wstrb = csr_wstrb;
 }
 
 // TODO: Remove topLevelDecl after changing userConfig to work with Merge
-void Output_Header(FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> structuredConfigs,AccelInfo info,bool isSimple,Accelerator* accel,String softwarePath,Array<Wire> allStaticsVerilatorSide,VersatComputedValues val,String typeName){
+void Output_Header(FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> structuredConfigs,AccelInfo info,Accelerator* accel,String softwarePath,Array<Wire> allStaticsVerilatorSide,VersatComputedValues val,String typeName){
   TEMP_REGION(temp,nullptr);
   TEMP_REGION(temp2,temp);
 
@@ -2903,12 +2907,14 @@ void Output_Header(FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> stru
 
   // NOTE: This function also fills the instance info member of the acceleratorInfo. This function only fills the first partition, but I think that it is fine because that is the only one we use. We generate the same structs either way.
   StructInfo* structInfo = GenerateConfigStruct(iter,temp);
+  DEBUG_BREAK();
   Array<TypeStructInfo> structs = {};
   // If we only contain static configs, this will appear empty.
   if(!Empty(structInfo->memberList)){
+
     // We generate an extra level, so we just remove it here.
     structInfo = structInfo->memberList->head->elem.childStruct;
-  
+
     // NOTE: We for now push all the merge muxs to the top.
     //       It might be better to only push them to the merge struct (basically only 1 level up).
     //       Still need more examples to see.
@@ -2944,38 +2950,6 @@ void Output_Header(FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> stru
     structs = GenerateStructs(allStructs,"Config",true,temp);
   }
   
-  TE_SetBool("isSimple",isSimple);
-  FUInstance* simpleInstance = nullptr;
-  if(isSimple){
-    FUInstance* inst = nullptr; // TODO: Should probably separate isSimple to a separate function, because otherwise we are recalculating stuff that we already know.
-    for(FUInstance* ptr : accel->allocated){
-      if(CompareString(ptr->name,"TOP")){
-        inst = ptr;
-        break;
-      }
-    }
-    Assert(inst);
-
-    Accelerator* accel = inst->declaration->fixedDelayCircuit;
-    if(accel){
-      for(FUInstance* ptr : accel->allocated){
-        if(CompareString(ptr->name,"simple")){
-          inst = ptr;
-          break;
-        }
-      }
-      Assert(inst);
-
-      simpleInstance = inst;
-      
-      TE_SetNumber("simpleInputs",inst->declaration->NumberInputs());
-      TE_SetNumber("simpleOutputs",inst->declaration->NumberOutputs());
-    } else {
-      TE_SetNumber("simpleInputs",0);
-      TE_SetNumber("simpleOutputs",0);
-    }
-  }
-
   // Accelerator header
   auto arr = StartArray<int>(temp);
   for(InstanceInfo& t : info.infos[0].info){
@@ -3092,7 +3066,8 @@ void Output_Header(FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> stru
   Array<Pair<String,int>> allMem = ExtractMem(info.infos[0].info,temp2);
 
   {
-    CEmitter* c = StartCCode(temp);
+    FREE_ARENA(emitterArena);
+    CEmitter* c = StartCCode(emitterArena);
 
     bool isMerge = false;
     if(topLevelDecl->info.infos.size > 1){
@@ -3269,6 +3244,8 @@ Problem: If we want the address gen to take into account the limitations of spac
     for(MergePartition part : topLevelDecl->info.infos){
       String mergeName = part.name;
 
+      DEBUG_BREAK();
+
       for(ConfigFunction* func : part.userFunctions){
         bool isState = (func->type == ConfigFunctionType_STATE);
 
@@ -3356,135 +3333,26 @@ Problem: If we want the address gen to take into account the limitations of spac
               c->Assignment(lhs,repr);
             } break;
             case ConfigStuffType_ADDRESS_GEN:{
-              String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(assign.lhs));
-              
-              String extVarName = assign.accessVariableName;
-              String varName = lhs;
-              AddressAccess* initial = assign.access.access;
-              int maxLoops = assign.access.inst.loopsSupported;
-  
-              auto EmitStoreAddressGenIntoConfig = [varName](CEmitter* emitter,Array<Pair<String,String>> params) -> void{
-                TEMP_REGION(temp,emitter->arena);
-          
-                for(int i = 0; i < params.size; i++){
-                  String str = params[i].first;
-      
-                  String t = PushString(temp,"%.*s.%.*s",UN(varName),UN(str));
-                  String v = params[i].second;
-
-                  // TODO: Kinda hacky
-                  if(CompareString(str,"ext_addr")){
-                    v = PushString(temp,"(iptr) (%.*s)",UN(v));
-                  }
-
-                  emitter->Assignment(t,v);
-                }
-              };
-
-              auto EmitDoubleOrSingleLoopCode = [extVarName,maxLoops,EmitStoreAddressGenIntoConfig](CEmitter* c,int loopIndex,AddressAccess* access){
-                TEMP_REGION(temp,c->arena);
-    
-                // TODO: The way we handle the free term is kinda sketchy.
-                // NOTE: The problem is that the convert access functions do not know how to handle duty.
-                AddressAccess* doubleLoop = ConvertAccessTo2External(access,loopIndex,temp);
-                AddressAccess* singleLoop = ConvertAccessTo1External(access,temp);
-
-                region(temp){
-                  String repr = PushRepr(temp,GetLoopLinearSumTotalSize(doubleLoop->external,temp));
-                  c->VarDeclare("int","doubleLoop",repr);
-                }
-
-                region(temp){
-                  String repr2 = PushRepr(temp,GetLoopLinearSumTotalSize(singleLoop->external,temp));
-                  c->VarDeclare("int","singleLoop",repr2);
-                }
-
-                // TODO: Maybe it would be better to just not generate single or double loop if we can check that one is always gonna be better than the other, right?
-                c->If("(!forceSingleLoop && forceDoubleLoop) || (!forceSingleLoop && (doubleLoop < singleLoop))");
-                c->Comment("Double is smaller (better)");
-                region(temp){
-                  StringBuilder* b = StartString(temp);
-                  Repr(b,doubleLoop);
-
-                  Array<Pair<String,String>> params = InstantiateRead(doubleLoop,loopIndex,true,maxLoops,extVarName,temp);
-                  EmitStoreAddressGenIntoConfig(c,params);
-                }
-
-                c->Else();
-                c->Comment("Single is smaller (better)");
-                region(temp){
-                  StringBuilder* b = StartString(temp);
-                  Repr(b,singleLoop);
-
-                  Array<Pair<String,String>> params = InstantiateRead(singleLoop,-1,false,maxLoops,extVarName,temp);
-                  EmitStoreAddressGenIntoConfig(c,params);
-                }
-
-                c->EndIf();
-              };
-  
-              auto Recurse = [EmitDoubleOrSingleLoopCode,&initial](auto Recurse,int loopIndex,CEmitter* c,Arena* out) -> void {
-                TEMP_REGION(temp,out);
-
-                LoopLinearSum* external = initial->external;
-          
-                int totalSize = external->terms.size;
-                int leftOverSize = totalSize - loopIndex;
-
-                // Last member must generate an 'else' instead of a 'else if'
-                if(leftOverSize > 1){
-                  c->StartExpression();
-                  for(int i = loopIndex + 1; i < totalSize; i++){
-                    if(i != loopIndex + 1){
-                      c->And();
-                    }
-
-                    c->Var(PushString(temp,"_VERSAT_a%d",loopIndex));
-                    c->GreaterThan();
-                    c->Var(PushString(temp,"_VERSAT_a%d",i));
-                  }
-      
-                  if(loopIndex == 0){
-                    c->IfFromExpression();
-                  } else {
-                    // The other 'ifs' are 'elseifs' of the (loopIndex == 0) 'if'.
-                    c->ElseIfFromExpression();
-                  }
-
-                  c->Comment(PushString(temp,"Loop var %.*s is the largest",UN(external->terms[loopIndex].var)));
-                  EmitDoubleOrSingleLoopCode(c,loopIndex,initial);
-      
-                  Recurse(Recurse,loopIndex + 1,c,out);
-                } else {
-                  c->Else();
-
-                  c->Comment(PushString(temp,"Loop var %.*s is the largest",UN(external->terms[loopIndex].var)));
-                  EmitDoubleOrSingleLoopCode(c,loopIndex,initial);
-
-                  c->EndIf();
-                }
-              };
-
               c->RawLine("{");
               
-              if(initial->external->terms.size > 1){
-                for(int i = 0; i <  initial->external->terms.size; i++){
-                  LoopLinearSumTerm term  =  initial->external->terms[i];
-                  String repr = PushRepr(temp,GetLoopHighestDecider(&term));
-
-                  // TODO: Hardcoding the variable name like this is kinda bad. In general we need to simplify the code generation in relation to addressgens, especially after we remove address gens outside the units definitions.
-                  String name = PushString(temp,"_VERSAT_a%d",i);
-                  String comment = PushString(temp,"Loop var: %.*s",UN(term.var));
-                  c->Comment(comment);
-                  c->VarDeclare("int",name,repr);
-                }
-  
-                Recurse(Recurse,0,c,temp);
-              } else {
-                EmitDoubleOrSingleLoopCode(c,0,initial);
-              }
+              AccessAndType access = assign.access;
+              AddressGenInst inst = access.inst;
+              
+              FULL_SWITCH(inst.type){
+              case AddressGenType_GEN: {
+              } break;
+              case AddressGenType_MEM: {
+                String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(assign.lhs));
+                EmitMemStatements(c,access,lhs);
+              } break;
+              case AddressGenType_READ: {
+                String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(assign.lhs));
+                EmitReadStatements(c,access,lhs,assign.accessVariableName);
+              } break;
+            }
 
               c->RawLine("}");
+
             } break;
             case ConfigStuffType_MEMORY_TRANSFER:{
               NOT_POSSIBLE();
@@ -3804,20 +3672,6 @@ Problem: If we want the address gen to take into account the limitations of spac
       
     String content = PushASTRepr(c,temp);
     TE_SetString("allStaticDefines",content);
-  }
-    
-  {
-    CEmitter* c = StartCCode(temp);
-
-    if(isSimple){
-      c->Define("NumberSimpleInputs",PushString(temp,"%d",simpleInstance->declaration->NumberInputs()));
-      c->Define("NumberSimpleOutputs",PushString(temp,"%d",simpleInstance->declaration->NumberOutputs()));
-      c->Define("SimpleInputStart","((iptr*) accelConfig)");
-      c->Define("SimpleOutputStart","((int*) accelState)");
-    }
-        
-    String content = PushASTRepr(c,temp);
-    TE_SetString("simpleStuff",content);
   }
 
   {
@@ -4861,7 +4715,7 @@ void Output_PCEmulDefs(AccelInfo info,String softwarePath){
   fprintf(file,"%.*s",UN(content));
 }
 
-void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topDecl,String hardwarePath,String softwarePath,bool isSimple,VersatComputedValues val){
+void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topDecl,String hardwarePath,String softwarePath,VersatComputedValues val){
   Array<ExternalMemoryInterface> external = val.externalMemoryInterfaces;
   AccelInfo info = *val.info;
 
@@ -4992,7 +4846,7 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topDecl,String hardwa
   // MARK - We do not want to pass topDecl to outputHeader, we only do it because we are still trying to check how the userConfig functions would work and are mostly ignoring Merge stuff currently.
   String typeName = accel->name;
   
-  Output_Header(topDecl,structuredConfigs,info,isSimple,accel,softwarePath,allStaticsVerilatorSide,val,typeName);
+  Output_Header(topDecl,structuredConfigs,info,accel,softwarePath,allStaticsVerilatorSide,val,typeName);
   Output_VerilatorWrapper(typeName,allStaticsVerilatorSide,info,topDecl,structuredConfigs,softwarePath,val);
   Output_Makefile(val,typeName,softwarePath);
   Output_PCEmulDefs(info,softwarePath);

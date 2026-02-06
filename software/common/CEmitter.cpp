@@ -660,14 +660,14 @@ void CEmitter::Return(String varToReturn){
   }
 }
 
-CEmitter* StartCCode(Arena* out){
-  CEmitter* res = PushStruct<CEmitter>(out);
+CEmitter* StartCCode(Arena* freeArena){
+  CEmitter* res = PushStruct<CEmitter>(freeArena);
 
-  res->arena = out;
-  res->buffer = PushArray<CAST*>(out,16); // NOTE: Can always change to a dynamic array or something similar
+  res->arena = freeArena;
+  res->buffer = PushArray<CAST*>(freeArena,16); // NOTE: Can always change to a dynamic array or something similar
   
-  res->topLevel = PushCAST(CASTType_TOP_LEVEL,out);
-  res->topLevel->top.declarations = PushArenaList<CAST*>(out);
+  res->topLevel = PushCAST(CASTType_TOP_LEVEL,freeArena);
+  res->topLevel->top.declarations = PushArenaList<CAST*>(freeArena);
   
   return res;
 }

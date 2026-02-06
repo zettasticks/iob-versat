@@ -17,12 +17,6 @@ struct InstanceInfo;
 typedef Hashmap<FUInstance*,FUInstance*> InstanceMap;
 typedef Hashmap<Edge,Edge> EdgeMap;
 
-enum Direction{
-  Direction_NONE,
-  Direction_OUTPUT,
-  Direction_INPUT
-};
-
 struct PortInstance{
   FUInstance* inst;
   int port;

@@ -34,7 +34,6 @@ struct Options{
   String topName;
   int databusDataSize; // AXI_DATA_W
 
-  bool addInputAndOutputsToTop;
   bool debug;
   bool shadowRegister;
   bool architectureHasDatabus;

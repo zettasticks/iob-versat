@@ -660,10 +660,12 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
         String name = GetBase(simple->lhs)->name;
 
+        Entity* portEnt = nullptr;
         if(ent->type == EntityType_MEM_PORT){
+          portEnt = ent;
           ent = ent->parent;
         }
-
+        
         SymbolicExpression* expr = simple->expr;
         if(simple->rhsType == ConfigRHSType_IDENTIFIER){
           // Expressions of the form addr[expr].
@@ -681,6 +683,9 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           newAssign->type = ConfigStuffType_ADDRESS_GEN;
           newAssign->access.access = access;
           newAssign->access.inst = supported;
+          newAssign->access.dir = portEnt->dir;
+          newAssign->access.port = portEnt->port;
+
           newAssign->lhs = PushString(out,name);
         } else {
           ConfigStuff* newAssign = list->PushElem();
@@ -857,10 +862,11 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           // Only tackling simple forms, for now.
           //Assert(stmt->lhs.expr);
           //Assert(stmt->rhsId.expr);
-        
-          // Check that left entity supports memory access
-          Array<String> accessExpr = PushArray<String>(temp,1);
-          accessExpr[0] = GetBase(stmt->lhs)->name;
+
+          // TODO: HACKY REMOVE PARENT because we do not actually want to follow the array in this case.
+          if(stmt->lhs->parent){
+            stmt->lhs->parent = nullptr;
+          }
           
           Entity* ent = env->GetEntity(stmt->lhs,temp);
           
@@ -889,6 +895,13 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         
         SymbolicExpression* end = ParseSymbolicExpression(loops[0].endSym,out);
         
+        ConfigIdentifier* stmt = simple->lhs;
+
+        // TODO: HACKY REMOVE PARENT because we do not actually want to follow the array in this case.
+        if(stmt->parent){
+          stmt->parent = nullptr;
+        }
+
         Entity* ent = env->GetEntity(simple->lhs,temp);
 
         // TODO: This is currently hardcoded for some examples while we are trying to figure out how to proceed.

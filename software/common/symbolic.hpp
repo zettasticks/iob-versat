@@ -213,3 +213,4 @@ SymbolicExpression* GetLoopLinearSumTotalSize(LoopLinearSum* in,Arena* out);
 
 void Print(LoopLinearSum* sum,bool printNewLine = false);
 void Repr(StringBuilder* builder,LoopLinearSum* sum);
+String PushRepr(LoopLinearSum* sum,Arena* out);

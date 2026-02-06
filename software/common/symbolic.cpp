@@ -2708,7 +2708,14 @@ void Repr(StringBuilder* builder,LoopLinearSum* sum){
 
   SymbolicExpression* fullExpression = TransformIntoSymbolicExpression(sum,temp);
   Repr(builder,fullExpression);
-  
+}
+
+String PushRepr(LoopLinearSum* sum,Arena* out){
+  TEMP_REGION(temp,out);
+  auto builder = StartString(temp);
+  Repr(builder,sum);
+  String res = EndString(out,builder);
+  return res;
 }
 
 // ============================================================================

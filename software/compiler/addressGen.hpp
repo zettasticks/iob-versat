@@ -10,6 +10,7 @@ struct SymbolicExpression;
 struct LoopLinearSum;
 struct LoopLinearSumTerm;
 struct AddressGenDef;
+struct CEmitter;
 
 // TODO: We currently do not support loops that start at non zero values. The fix is simple, we can always shift loops from N..M to 0..(M-N) by adding more logic to the expression. Kinda not doing this for now since still have not found an example where this is needed.
 
@@ -58,8 +59,8 @@ struct CompiledAccess{
 };
 
 struct AddressGenInst{
-   AddressGenType type;
-   int loopsSupported;
+  AddressGenType type;
+  int loopsSupported;
 };
 
 template<> struct std::hash<AddressGenInst>{
@@ -80,6 +81,10 @@ static bool operator==(const AddressGenInst& l,const AddressGenInst& r){
 struct AccessAndType{
   AddressAccess* access;
   AddressGenInst inst;
+
+  // For mem type of accesses. TODO: Check if we actually want data here or not.
+  int port;
+  Direction dir;
 };
 
 template<> struct std::hash<AccessAndType>{
@@ -134,6 +139,13 @@ String GenerateAddressCompileAndLoadFunction(String structName,AddressAccess* ac
 String GenerateAddressPrintFunction(AddressAccess* initial,Arena* out);
 
 // ======================================
+// Code emission
+
+void EmitReadStatements(CEmitter* m,AccessAndType access,String varName,String extVarName);
+void EmitMemStatements(CEmitter* m,AccessAndType access,String varName);
+
+// ======================================
 // LoopLinearSumTerm handling
 
 SymbolicExpression* GetLoopHighestDecider(LoopLinearSumTerm* term);
+

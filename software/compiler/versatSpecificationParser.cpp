@@ -885,6 +885,8 @@ Opt<ModuleDef> ParseModuleDef(Tokenizer* tok,Arena* out){
 
   auto configFunctions = PushArenaList<ConfigFunctionDef>(temp);
 
+  DEBUG_BREAK_IF(def.name == "EXAMPLE_Variety1");
+
   if(tok->IfNextToken("##")){
     while(!tok->Done()){
       if(IsNextTokenConfigFunctionStart(tok)){
@@ -1859,6 +1861,8 @@ Entity* Env::GetEntity(ConfigIdentifier* id,Arena* out){
           ReportError({},"Cannot access array since entity is not an array");
         }
 
+        NOT_IMPLEMENTED();
+
 #if 0
         // TODO: We need to be able to calculate the index at this point.
         //       This also means that the symbolic expression must be a constant, right? Or at least something that we can calculate directly.
@@ -2302,16 +2306,6 @@ PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
 LEFT HERE - Since we are simplifying this part of the codebase, might
 as well go all out and finish the job. Parser stuff needs to be
 simplified. 
-- Remove the template stuff and implement the method based
-on taking on a tokenization function. 
-- Also want to remove the ParseOperationType and potentially replace
-it with a better approach, altought it might take a while since I
-probably gonna need to start with a small example and move upwards
-from there. Take inspiration in the approach taken by RADDBG and try
-to make it based on data firstmost so that it is still easier to
-change later on.
-- Afterwards, need to change the userConfig instantiation to take in the 
-Environment which we might change the name of because kinda weird but wathever.
 - Afterwards a small cleanup of anything that is left, any unused function, maybe 
 improve the error messages and start making better error message generation support.
 - Finally, move on to versat-ai and figure out why the convolution is giving out that bug.
