@@ -2283,6 +2283,8 @@ void Output_VersatInstance(Accelerator* accel,Array<Wire> allStaticsVerilatorSid
     m->If(SF("csr_addr >= %d && csr_addr < %d",index,index+4));
   };
 
+  // TODO: REMOVE THIS. WE CANNOT DEPEND ON THE ACCELERATOR ON THE CODE GENERATION PART. NEVER.
+  // nocheckin
   Pool<FUInstance> instances = accel->allocated;
   
   if(!s){
@@ -3164,11 +3166,18 @@ Problem: If we want the address gen to take into account the limitations of spac
 
         for(ConfigStuff stuff : func->stuff){
           if(stuff.type == ConfigStuffType_ADDRESS_GEN){
-            InstanceInfo* info = stuff.info;
+            InstanceInfo* info = nullptr;
+            for(InstanceInfo& in : part.info){
+              if(in.baseName == stuff.lhs){
+                info = &in;
+              }
+            }
+
+            Assert(info);
 
             // TODO: Currently this is hardcoded for the VUnits. Need to actually start modelling the concept of address interface size and do it right.
             SymbolicExpression* val = GetParameterValue(info,"ADDR_W");
-            
+
             String symRepr = PushRepr(temp,val);
             String maxSize = PushString(temp,"(1 << %.*s)",UN(symRepr));
 

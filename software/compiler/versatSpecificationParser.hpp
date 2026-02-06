@@ -182,6 +182,73 @@ FUDeclaration* InstantiateSpecifications(String content,ConstructDef def);
 Opt<AddressGenDef> ParseAddressGen(Tokenizer* tok,Arena* out);
 
 
+// nocheckin Move to a better place after we probably remove the userConfigs.hpp file.
+// TODO: We cannot represent an array access followed by a wireOrPort access.
+//       This is probably not the best way to proceed.
+enum ConfigAccessType{
+  ConfigAccessType_BASE,
+  ConfigAccessType_ACCESS,
+  ConfigAccessType_ARRAY
+};
+
+// TODO: Probably rename this.
+// ConfigIdentifier is parsed in reverse order than expected. Name appears first and access expressions appear after.
+struct ConfigIdentifier{
+  ConfigAccessType type;
+
+  ConfigIdentifier* parent;
+  union{
+    Token name;
+    SymbolicExpression* expr; // TODO: Do not forget, we want this to be a SpecExpression, not a symbolic expression yet. We want to remove all the SymbolicExpressions from the parsing code.
+  };
+
+#if 0
+  Token name;
+  Token wireOrPort;
+  SymbolicExpression* expr;
+#endif
+};
+
+inline ConfigIdentifier* GetBase(ConfigIdentifier* top){
+  return top;
+#if 0
+  if(top == nullptr){
+    return nullptr;
+  }
+
+  ConfigIdentifier* ptr = top;
+
+  while(ptr->type != ConfigAccessType_BASE){
+    ptr = ptr->child;
+  }
+  return ptr;
+#endif
+}
+
+inline ConfigIdentifier* GetBeforeBase(ConfigIdentifier* top){
+  if(top){
+    return top->parent;
+  }
+  return nullptr;
+  
+#if 0
+  if(top == nullptr){
+    return nullptr;
+  }
+
+  ConfigIdentifier* ptr = top;
+
+  if(ptr->type == ConfigAccessType_BASE){
+    return nullptr;
+  }
+
+  while(ptr->child->type != ConfigAccessType_BASE){
+    ptr = ptr->child;
+  }
+  return ptr;
+#endif
+}
+
 // ======================================
 // Hierarchical access (WIP)
 
@@ -191,6 +258,7 @@ enum EntityType{
   EntityType_FU,
   EntityType_FU_ARRAY,
   EntityType_NODE,
+  EntityType_MEM_PORT, // User can "represent" a memory port by doing something like mem.in0 (input port 0).
   EntityType_CONFIG_WIRE,
   EntityType_STATE_WIRE,
   EntityType_CONFIG_FUNCTION,
@@ -206,9 +274,16 @@ enum VariableType{
 struct Entity{
   EntityType type;
 
+  // TODO: We might want to also store the token associated to the entity in question.
+
+  // Virtual port
+  Direction dir;
+  int port;
+  Entity* parent;
+  
   // TODO: Union
   //union {
-  InstanceInfo* info;
+  //InstanceInfo* info;
   FUInstance* instance;
 
   bool isInput;
@@ -245,7 +320,6 @@ struct Env{
   Arena* scopeArena;
   Arena* miscArena;
 
-  // Store errors in here.
   ArenaList<String>* errors;
   Accelerator* circuit;
 
@@ -269,6 +343,7 @@ struct Env{
 
   Entity* PushNewEntity(Token name);
   Entity* GetEntity(Token name);
+  Entity* GetEntity(ConfigIdentifier* id,Arena* out);
 
   void AddInput(VarDeclaration decl);
   void AddInstance(InstanceDeclaration decl,VarDeclaration var);
@@ -280,11 +355,6 @@ struct Env{
 };
 
 Env* StartEnvironment(Arena* freeUse,Arena* freeUse2);
-
-Opt<Entity> GetEntityFromHierAccess(AccelInfo* info,Array<String> accessExpr);
-Opt<Entity> GetEntityFromHierAccessWithEnvironment(AccelInfo* info,Env* env,Array<String> accessExpr);
-
-//void AddOrSetVariable(Env* env,String name,VariableType type);
 
 struct FUInstanceIterator{
   Env* env;

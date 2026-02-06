@@ -1432,7 +1432,7 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
     TEMP_REGION(temp,nullptr);
     auto list = PushArenaList<ConfigFunction*>(temp);
     for(auto funcDecl : def.configs){
-      *list->PushElem() = InstantiateConfigFunction(&funcDecl,res,content,globalPermanent);
+      *list->PushElem() = InstantiateConfigFunction(env,&funcDecl,res,content,globalPermanent);
     };
     
     if(res->info.infos.size){
@@ -1728,112 +1728,6 @@ Opt<AddressGenDef> ParseAddressGen(Tokenizer* tok,Arena* out){
 // ======================================
 // Hierarchical access
 
-Opt<Entity> GetEntityFromHierAccess(AccelInfo* info,Array<String> accessExpr){
-  // TODO: This function can be simplified.
-  AccelInfoIterator iter = StartIteration(info);
-
-  // NOTE: Logic below assumes that we start with an iterator already pointing to the first unit
-  for(; iter.IsValid();){
-    InstanceInfo* info = iter.CurrentUnit();
-    if(info->name == accessExpr[0]){
-      break;
-    } else {
-      iter = iter.Next();
-    }
-  }
-  
-  if(!iter.IsValid()){
-    return {};
-  }
-
-  for(int i = 1; i < accessExpr.size; i++){
-    String access = accessExpr[i];
-    
-    if(i == accessExpr.size - 1){
-      InstanceInfo* outerInfo = iter.CurrentUnit();
-
-      for(; iter.IsValid();){
-        InstanceInfo* info = iter.CurrentUnit();
-        if(info->name == access){
-          iter = iter.StepInsideOnly();
-
-          if(!iter.IsValid()){
-            break;
-          }
-          
-          Entity res = {};
-          res.info = iter.CurrentUnit();
-          res.type = EntityType_NODE;
-
-          return res;
-        } else {
-          iter = iter.Next();
-        }
-      }
-      
-      // Did not find node inside which means it must be a wire or a function.
-      for(Wire& config : outerInfo->configs){
-        if(config.name == access){
-          Entity res = {};
-          res.wire = &config;
-          res.type = EntityType_CONFIG_WIRE;
-          res.info = outerInfo;
-          
-          return res;
-        }
-      }
-
-      for(Wire& state : outerInfo->states){
-        if(state.name == access){
-          Entity res = {};
-          res.wire = &state;
-          res.type = EntityType_STATE_WIRE;
-          res.info = outerInfo;
-          
-          return res;
-        }
-      }
-
-      for(MergePartition part : outerInfo->decl->info.infos){
-        for(ConfigFunction* func : part.userFunctions){
-          if(func->individualName == access){
-            Entity res = {};
-            res.func = func;
-            res.type = EntityType_CONFIG_FUNCTION;
-            res.info = outerInfo;
-          
-            return res;
-          }
-        }
-      }
-    } else {
-      for(; iter.IsValid();){
-        InstanceInfo* info = iter.CurrentUnit();
-        if(info->name == access){
-          iter = iter.StepInsideOnly();
-          break;
-        } else {
-          iter = iter.Next();
-        }
-      }
-
-      if(!iter.IsValid()){
-        return {};
-      }
-    }
-  }
-
-  if(iter.IsValid()){
-    Entity res = {};
-    res.info = iter.CurrentUnit();
-    res.type = EntityType_NODE;
-    
-    return res;
-  }
-
-  return {};
-}
-
 Env* StartEnvironment(Arena* freeUse,Arena* freeUse2){
   Env* env = PushStruct<Env>(freeUse);
   env->scopeArena = freeUse;
@@ -1942,6 +1836,137 @@ Entity* Env::GetEntity(Token name){
   }
 
   return nullptr;
+}
+
+Entity* Env::GetEntity(ConfigIdentifier* id,Arena* out){
+  TEMP_REGION(temp,out);
+
+  ConfigIdentifier* ptr = id;
+  Assert(ptr->type == ConfigAccessType_BASE);
+
+  Entity* ent = GetEntity(ptr->name);
+  
+  ptr = ptr->parent;
+  for(; ent && ptr; ptr = ptr->parent){
+    Entity* nextEnt = nullptr;
+
+    switch(ptr->type){
+      case ConfigAccessType_BASE:{
+        Assert(false);
+      } break;
+      case ConfigAccessType_ARRAY:{
+        if(ent->type != EntityType_FU_ARRAY){
+          ReportError({},"Cannot access array since entity is not an array");
+        }
+
+#if 0
+        // TODO: We need to be able to calculate the index at this point.
+        //       This also means that the symbolic expression must be a constant, right? Or at least something that we can calculate directly.
+        //       If we are inside a for loop and we are using a loop variable than the problem becomes more complicated, but currently we are trying to simplify this part of the code meaning that we will tackle this in the future if needed.
+        if(ent->type == EntityType_FU_ARRAY){
+          String name = GetActualArrayName(ent->arrayBaseName,index.low,temp);
+        }
+#endif
+        
+      } break;
+      case ConfigAccessType_ACCESS:{
+        Token access = ptr->name;
+
+        SWITCH(ent->type){
+        case EntityType_FU:{
+          Direction dir = Direction_NONE;
+          int port = 0;
+          if(access == "out0"){
+            dir = Direction_OUTPUT;
+          }
+          if(access == "out1"){
+            dir = Direction_OUTPUT;
+            port = 1;
+          }
+          if(access == "in0"){
+            dir = Direction_INPUT;
+          }
+          if(access == "in1"){
+            dir = Direction_INPUT;
+            port = 1;
+          }
+          
+          if(dir != Direction_NONE){
+            Entity* virtualWire = PushStruct<Entity>(out);
+            virtualWire->type = EntityType_MEM_PORT;
+            virtualWire->dir = dir;
+            virtualWire->port = port;
+            virtualWire->parent = ent;
+            
+            if(nextEnt) ReportError({},"Name collision");
+            nextEnt = virtualWire;
+          } 
+          
+          FUDeclaration* decl = ent->instance->declaration;
+            
+          // TODO: We need to check if we have the same name for stuff. If
+          //       wire has the same name as a userConfig function then we have a problem and this
+          //       code will not act correctly. Furthermore, this check needs to be done elsewhere.
+          //       By the time we reach this point we are probably too far. Otherwise we need to 
+          for(Wire& w : decl->configs){
+            if(w.name == access){
+              Entity* wire = PushStruct<Entity>(out);
+              wire->wire = &w;
+              wire->type = EntityType_CONFIG_WIRE;
+              
+              if(nextEnt) ReportError({},"Name collision");
+              nextEnt = wire;
+              break;
+            }
+          }
+
+          for(Wire& w : decl->states){
+            if(w.name == access){
+              Entity* wire = PushStruct<Entity>(out);
+              wire->wire = &w;
+              wire->type = EntityType_STATE_WIRE;
+              
+              if(nextEnt) ReportError({},"Name collision");
+              nextEnt = wire;
+              break;
+            }
+          }
+ 
+          for(MergePartition part : decl->info.infos){
+            for(ConfigFunction* func : part.userFunctions){
+              if(func->individualName == access){
+                Entity* userFunc = PushStruct<Entity>(out);
+
+                userFunc->func = func;
+                userFunc->type = EntityType_CONFIG_FUNCTION;
+          
+                if(nextEnt) ReportError({},"Name collision");
+                nextEnt = userFunc;
+              }
+            }
+          }
+        } break;
+        case EntityType_NODE:{
+          Assert(false); // We do not have nodes since Env is only used currently to store FUInstances and other parseed data stuff. Nothing concrete exists at this point in the code.
+        } break;
+
+        case EntityType_CONFIG_FUNCTION:
+        case EntityType_FU_ARRAY:
+        case EntityType_MEM_PORT:
+        case EntityType_CONFIG_WIRE:
+        case EntityType_STATE_WIRE:
+        case EntityType_VARIABLE_INPUT:
+        case EntityType_VARIABLE_SPECIAL:{
+          ReportError(access,"Cannot have access expression for entity of this type");
+        } break;
+      }
+      } break;
+    }
+
+    ent = nextEnt;
+  }
+
+  return ent;
 }
 
 void Env::AddInput(VarDeclaration var){
@@ -2099,27 +2124,6 @@ void Env::AddEquality(ConnectionDef decl){
   ent->instance = inst;
 
   table->Insert(inst->name,inst);
-}
-
-Opt<Entity> GetEntityFromHierAccessWithEnvironment(AccelInfo* info,Env* env,Array<String> accessExpr){
-#if 1
-  if(accessExpr.size == 1){
-    String name = accessExpr[0];
-    int currentScope = env->currentScope;
-
-    // Up the scope chain.
-    for(; currentScope >= 0; currentScope -= 1){
-      for(Pair<String,Entity> p : env->scopes[env->currentScope]->variable){
-        String str = p.first;
-        if(str == name){
-          return p.second;
-        }
-      }
-    }
-  }
-
-  return GetEntityFromHierAccess(info,accessExpr);
-#endif
 }
 
 FUInstanceIterator FUInstanceIterator::Next(){

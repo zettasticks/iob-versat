@@ -38,12 +38,6 @@ enum UserConfigType{
   UserConfigurationType_STATE
 };
 
-struct ConfigIdentifier{
-  Token name;
-  Token wire;
-  SymbolicExpression* expr;
-};
-
 enum ConfigRHSType{
   ConfigRHSType_SYMBOLIC_EXPR,
   ConfigRHSType_FUNCTION_CALL,
@@ -64,13 +58,13 @@ struct ConfigStatement{
   ConfigStatementType type;
 
   // TODO: Union
-  ConfigIdentifier lhs; // We currently only support <name>.<wire> assignments. NOTE: But I think that we eventually need to support N names and one wire.
+  ConfigIdentifier* lhs; // We currently only support <name>.<wire> assignments. NOTE: But I think that we eventually need to support N names and one wire.
   Array<Token> rhs;
 
   // TODO: Union
   ConfigRHSType rhsType;
   SymbolicExpression* expr;
-  ConfigIdentifier rhsId;
+  ConfigIdentifier* rhsId;
   FunctionInvocation* func;
 
   AddressGenForDef def;
@@ -149,7 +143,8 @@ struct ConfigStuff{
   // TODO: This lhs is only for access. Need to join stuff with assign and access if we eventually cleanup the code.
   String lhs;
   String accessVariableName;
-  InstanceInfo* info;
+
+  String nameOfLeftEntity;
 
   union{
     ConfigAssignment assign;
@@ -187,5 +182,5 @@ struct ConfigFunction{
  
 // Can fail (parsed data is validated in here)
 // TODO: Instead of passing the content, it would be easier if the function was capable of reporting the errors without having to accesss the text, just by storing the relevant tokens and the upper parts of the code is responsible for reporting it. The language is not that complicated meaning that we are free to just define all the possible errors in a large enum and having a simple structure that stores all the relevant data. 
-ConfigFunction* InstantiateConfigFunction(ConfigFunctionDef* def,FUDeclaration* declaration,String content,Arena* out);
+ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDeclaration* declaration,String content,Arena* out);
 

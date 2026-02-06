@@ -959,7 +959,10 @@ int main(int argc,char* argv[]){
 }
 
 #if 0
-LEFT HERE
+LEFT HERE - 
+While we are messing around with the new parser stuff, I realize that we never actually solved the configuration of memories. Memories have multiple ports and can act as input and output meaning that we need to figure out how to represent that.
+
+We cannot use graph info because there is nothing stopping the user from having a memory that is used as input in one run and as output in the next run for the same graph. Therefore the entire thing must be defined inside the user config function.
 
 There appears to be a bug in the merge of versat_ai where one of the VReads does not have the proper delay set.
 Do not know why this happens. The original module contains the proper delays but the merged one does not.
@@ -968,7 +971,7 @@ We cannot check what is really happening because no info about it.
 
 We also have the parser thing to properly finish. 
 
-I'm thinking:
+Im thinking:
 
 - Today: Finish the parser thing.
 - Tomorrow: Take a look at the merge stuff. We might need to start simplifying merge stuff as well. The primary goal is to solve the versat_ai bug but we also want to start simplifying things if possible, add proper debug facilities and cleanup bunch of old code.
