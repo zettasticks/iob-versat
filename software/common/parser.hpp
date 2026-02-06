@@ -206,6 +206,8 @@ struct TemplateMarker{
 
 #define TOKENIZER_REGION(TOK,TMPL) TemplateMarker _marker(__LINE__)(TOK,TMPL)
 
+
+
 // TODO: We want to remove this. Trying to make a generic parser for this kind of stuff is more trouble than it is worth. It is easier to copy code and make changes than it is trying to force everything into a single interface. It also makes it easier to make changes later on which we probably need to do since different languages have different ways of handling this kind of stuff.
 
 /* Generic expression parser. The ExpressionType struct needs to have the following members with the following types:

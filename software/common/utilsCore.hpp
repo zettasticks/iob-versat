@@ -389,6 +389,8 @@ struct Array{
   T* data;
   int size;
 
+  Array() = default;
+
   inline T& operator[](int index) const {Assert(index >= 0);Assert(index < size); return data[index];}
   ArrayIterator<T> begin() const{return ArrayIterator<T>{data};};
   ArrayIterator<T> end() const{return ArrayIterator<T>{data + size};};

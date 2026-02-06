@@ -45,7 +45,7 @@ struct SpecExpression{
   union{
     const char* op;
     Var var;
-    Value val;
+    int val;
   };
   Token text;
   
@@ -82,6 +82,9 @@ struct InstanceDeclaration{
   Token typeName;
   Array<VarDeclaration> declarations; // share(config) groups can have multiple different declarations. TODO: It is kinda weird that inside the syntax, the share allows groups of instances to be declared while this does not happen elsewhere. Not enought to warrant a look for now, but keep in mind for later.
   Array<Pair<String,SymbolicExpression*>> parameters;
+
+  // NOTE: We could create a different expression type 
+  Array<Pair<String,SpecExpression*>> parameters2;
   Array<Token> addressGenUsed; // NOTE: We do not check if address gen exists at parse time, we check it later.
   Array<Token> shareNames;
   bool negateShareNames;
@@ -93,6 +96,7 @@ struct InstanceDeclaration{
 
 #if 1
 enum ConnectionType{
+  ConnectionType_NONE,
   ConnectionType_EQUALITY,
   ConnectionType_CONNECTION
 };
@@ -154,12 +158,6 @@ struct ConstructDef{
     MergeDef merge;
     AddressGenDef addressGen;
   };
-};
-
-struct Transformation{
-  int inputs;
-  int outputs;
-  Array<int> map;
 };
 
 struct HierarchicalName{

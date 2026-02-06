@@ -94,8 +94,8 @@ table AddressGenWireNames(AddressGenType type,String[] names){
 };
 
 enum ParamFlags{
-   ParamFlags_Unique = 0x1,
-   ParamFlags_Order  = 0x2,
+   ParamFlags_Unique       = 0x1,
+   ParamFlags_Order        = 0x2,
    ParamFlags_ReverseOrder = 0x4
 };
 

@@ -954,8 +954,15 @@ SymbolicExpression* ParseSymbolicExpression(Tokenizer* tok,Arena* out){
   return expr;
 }
 
+SymbolicExpression* ParseSymbolicExpressionTest(String content,Arena* out);
+
 SymbolicExpression* ParseSymbolicExpression(String content,Arena* out){
+  TEMP_REGION(temp,out);
+  
   Tokenizer tok(content,"",{});
+  
+  // nocheckin
+  ParseSymbolicExpressionTest(content,temp);
 
   return ParseSymbolicExpression(&tok,out);
 }
@@ -2738,3 +2745,38 @@ static SymbolicExpression  SYM_INST_dataStrobeW = {.type = SymbolicExpressionTyp
 
 SymbolicExpression* SYM_axiStrobeW = &SYM_INST_axiStrobeW;
 SymbolicExpression* SYM_dataStrobeW = &SYM_INST_dataStrobeW;
+
+
+
+
+#include "newParser.hpp"
+
+SymbolicExpression* ParseSymbolicExpressionTest(String content,Arena* out){
+  return nullptr;
+#if 0
+  TEMP_REGION(temp,out);
+
+  FREE_ARENA(parseArena);
+
+  auto tokenizer = [](const char* start,const char* end) -> TokenizeResult {
+    TokenizeResult result = ParseWhitespace(start,end);
+    result |= ParseSymbols(start,end);
+    result |= ParseNumber(start,end);
+    result |= ParseIdentifier(start,end);
+    return result;
+  };
+  
+  Parser* parser = StartParsing(content,tokenizer,parseArena);
+
+  DEBUG_BREAK();
+  
+  while(!parser->Done()){
+    NewToken tok = parser->NextToken();
+
+    String repr = PushRepr(temp,tok);
+    printf("%.*s\n",UN(repr));
+  }
+
+  return nullptr;
+#endif
+}

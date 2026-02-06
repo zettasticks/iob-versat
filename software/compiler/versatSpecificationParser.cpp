@@ -13,6 +13,8 @@
 #include "utilsCore.hpp"
 #include "userConfigs.hpp"
 
+#include "newParser.hpp"
+
 // TODO: Rework expression parsing to support error reporting similar to module diff.
 //       A simple form of synchronization after detecting an error would vastly improve error reporting
 //       Change iterative and merge to follow module def.
@@ -269,7 +271,7 @@ SpecExpression* ParseAtom(Tokenizer* tok,Arena* out){
     int digit = ParseInt(peek);
 
     expr->type = SpecExpression::LITERAL;
-    expr->val = MakeValue(digit);
+    expr->val = digit;
   } else {
     expr->type = SpecExpression::VAR;
     Opt<Var> optVar = ParseVar(tok);
@@ -307,9 +309,102 @@ SpecExpression* ParseTerm(Tokenizer* tok,Arena* out){
   return expr;
 }
 
+// nocheckin
+SpecExpression* ParseSpecExpression2(Parser* parser,Arena* out,int bindingPower = 99);
+
+bool Equal(SpecExpression* left,SpecExpression* right){
+  if(left->type != right->type){
+    return false;
+  }
+  
+  if(left->type == SpecExpression::OPERATION){
+    if(left->op != right->op){
+      return false;
+    }
+
+    if(left->expressions.size != right->expressions.size){
+      return false;
+    }
+
+    for(int i = 0; i < left->expressions.size; i++){
+      if(!Equal(left->expressions[i],right->expressions[i])){
+        return false;
+      }
+    }
+  }
+
+  if(left->type == SpecExpression::VAR){
+    if(left->var.name != right->var.name){
+      return false;
+    }
+  }
+
+  if(left->type == SpecExpression::LITERAL){
+    if(left->val != right->val){
+      return false;
+    }
+  }
+
+  return true;
+}
+
 SpecExpression* ParseSpecExpression(Tokenizer* tok,Arena* out){
+  TEMP_REGION(temp,out);
+  String res = tok->PeekRemainingLine();
+
+  auto TokenizeFunction = [](const char* start,const char* end) -> TokenizeResult{
+    TokenizeResult res = ParseWhitespace(start,end);
+    res |= ParseComments(start,end);
+
+    res |= ParseMultiSymbol(start,end,">><",NewTokenType_ROTATE_RIGHT);
+    res |= ParseMultiSymbol(start,end,"><<",NewTokenType_ROTATE_LEFT);
+
+    res |= ParseMultiSymbol(start,end,"..",NewTokenType_DOUBLE_DOT);
+    res |= ParseMultiSymbol(start,end,"##",NewTokenType_DOUBLE_HASHTAG);
+    res |= ParseMultiSymbol(start,end,"->",NewTokenType_ARROW);
+    res |= ParseMultiSymbol(start,end,">>",NewTokenType_SHIFT_RIGHT);
+    res |= ParseMultiSymbol(start,end,"<<",NewTokenType_SHIFT_LEFT);
+
+    res |= ParseSymbols(start,end);
+    res |= ParseNumber(start,end);
+
+    res |= ParseIdentifier(start,end);
+
+    if(res.token.type == NewTokenType_IDENTIFIER){
+      String id = res.token.identifier;
+      
+      NewTokenType type = NewTokenType_INVALID;
+
+      if(id == "module")     type = NewTokenType_KEYWORD_MODULE;
+      if(id == "merge")      type = NewTokenType_KEYWORD_MERGE;
+      if(id == "addressGen") type = NewTokenType_KEYWORD_ADDRESSGEN;
+      if(id == "using")      type = NewTokenType_KEYWORD_USING;
+      if(id == "share")      type = NewTokenType_KEYWORD_SHARE;
+      if(id == "static")     type = NewTokenType_KEYWORD_STATIC;
+      if(id == "debug")      type = NewTokenType_KEYWORD_DEBUG;
+      if(id == "config")     type = NewTokenType_KEYWORD_CONFIG;
+      if(id == "state")      type = NewTokenType_KEYWORD_STATE;
+      if(id == "mem")        type = NewTokenType_KEYWORD_MEM;
+
+      if(type != NewTokenType_INVALID){
+        res.token.type = type;
+      }
+    }
+
+    return res;
+  };
+ 
+  
+  Parser* parser = StartParsing(res,TokenizeFunction,temp);
+
+  //DEBUG_BREAK();
+
+  SpecExpression* test = ParseSpecExpression2(parser,temp);
+  
   SpecExpression* expr = ParseOperationType<SpecExpression>(tok,{{"+","-"},{"&","|","^"},{">><",">>","><<","<<"}},ParseTerm,out);
 
+  Assert(Equal(test,expr));
+  
   return expr;
 }
 
@@ -340,7 +435,7 @@ PortExpression InstantiateSpecExpression(SpecExpression* root,Accelerator* circu
   switch(root->type){
     // Just to remove warnings. TODO: Change expression so that multiple locations have their own expression struct, instead of reusing the same one.
   case SpecType_LITERAL:{
-    int number = root->val.number;
+    int number = root->val;
 
     String toSearch = PushString(temp,"N%d",number);
 
@@ -512,6 +607,9 @@ Opt<ConnectionDef> ParseConnection(Tokenizer* tok,Arena* out){
   } else if(CompareString(type,"^=")){
     // TODO: Only added this to make it easier to port a piece of C code.
     //       Do not know if needed or worth it to add.
+    // NOTE: This is actually wrong, it is not equality but we only care about it if we end up implementing more
+    //       x= forms.
+    def.type = ConnectionType_EQUALITY;
   } else if(CompareString(type,"->")){
     def.transforms = CheckAndParseConnectionTransforms(tok,out);
     def.type = ConnectionType_CONNECTION;
@@ -1359,6 +1457,9 @@ void Synchronize(Tokenizer* tok,BracketList<String> syncPoints){
   }
 }
 
+// nocheckin
+Array<ConstructDef> ParseVersatSpecification2(String content,Arena* out);
+
 Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
   TEMP_REGION(temp,out);
   Tokenizer tokenizer = Tokenizer(content,".%=#[](){}+:;,*~-",{"##","->=","->",">><","><<",">>","<<","..","^="});
@@ -2074,7 +2175,7 @@ PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
   switch(root->type){
     // Just to remove warnings. TODO: Change expression so that multiple locations have their own expression struct, instead of reusing the same one.
   case SpecType_LITERAL:{
-    int number = root->val.number;
+    int number = root->val;
 
     TEMP_REGION(temp,perm);
     String toSearch = PushString(temp,"N%d",number);
@@ -2211,3 +2312,822 @@ Environment which we might change the name of because kinda weird but wathever.
 improve the error messages and start making better error message generation support.
 - Finally, move on to versat-ai and figure out why the convolution is giving out that bug.
 #endif
+
+
+// nochecking
+// TODO: Just to remove the syntax errors from the compiler
+Token C(NewToken t){
+  Token res = {};
+  res.data = t.ptr;
+  res.size = t.identifier.size;
+  return res;
+}
+
+Range<int> ParseRange2(Parser* parser){
+  Range<int> res = {};
+
+  int n1 = parser->ExpectNext(NewTokenType_NUMBER).number;
+
+  res.start = n1;
+  res.end = n1;
+
+  if(parser->IfNextToken(NewTokenType_DOUBLE_DOT)){
+    res.end = parser->ExpectNext(NewTokenType_NUMBER).number;
+  }
+  
+  return res;
+}
+
+Var ParseVar2(Parser* parser){
+  Var var = {};
+
+  Token name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+
+  if(parser->IfNextToken('[')){
+    Range<int> range = ParseRange2(parser);
+
+    var.isArrayAccess = true;
+    var.index = range;
+
+    parser->ExpectNext(']');
+  }
+  
+  int delayStart = 0;
+  int delayEnd = 0;
+  if(parser->IfNextToken('{')){
+    Range<int> range = ParseRange2(parser);
+    delayStart = range.start;
+    delayEnd = range.end;
+
+    parser->ExpectNext('}');
+  }
+
+  int portStart = 0;
+  int portEnd = 0;
+  if(parser->IfNextToken(':')){
+    Range<int> range = ParseRange2(parser);
+
+    portStart = range.start;
+    portEnd = range.end;
+  }
+
+  var.name = name;
+  var.extra.delay.start = delayStart;
+  var.extra.delay.end = delayEnd;
+  var.extra.port.start = portStart;
+  var.extra.port.end = portEnd;
+
+  return var;
+}
+
+VarDeclaration ParseVarDeclaration2(Parser* parser){
+  VarDeclaration res = {};
+
+  res.name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+  
+  // TODO: We should integrate the array parsing logic with this one
+  if(parser->IfNextToken('[')){
+    NewToken number = parser->ExpectNext(NewTokenType_NUMBER);
+    int arraySize = number.number;
+
+    parser->ExpectNext(']');
+
+    res.arraySize = arraySize;
+    res.isArray = true;
+  }
+  
+  return res;
+}
+
+Array<VarDeclaration> ParseModuleInputDeclaration2(Parser* parser,Arena* out){
+  TEMP_REGION(temp,out);
+
+  auto vars = PushArenaList<VarDeclaration>(temp);
+
+  parser->ExpectNext('(');
+
+  if(parser->IfNextToken(')')){
+    return {};
+  }
+  
+  while(!parser->Done()){
+    VarDeclaration var = ParseVarDeclaration2(parser);
+    *vars->PushElem() = var;
+    
+    if(parser->IfNextToken(',')){
+      continue;
+    } else {
+      break;
+    }
+  }
+
+  parser->ExpectNext(')');
+
+  Array<VarDeclaration> res = PushArrayFromList(out,vars);
+  return res;
+}
+
+InstanceDeclaration ParseInstanceDeclaration2(Parser* parser,Arena* out){
+  TEMP_REGION(temp,out);
+  InstanceDeclaration res = {};
+
+  InstanceDeclarationType modifier = InstanceDeclarationType_NONE;
+  while(1){
+    NewToken potentialModifier = parser->PeekToken();
+
+    InstanceDeclarationType parsedModifier = InstanceDeclarationType_NONE;
+    if(potentialModifier.type == NewTokenType_KEYWORD_DEBUG){
+      parser->NextToken();
+
+      res.debug = true;
+    } else if(potentialModifier.type == NewTokenType_KEYWORD_STATIC){
+      parser->NextToken();
+      parsedModifier = InstanceDeclarationType_STATIC;
+    } else if(potentialModifier.type == NewTokenType_KEYWORD_SHARE){
+      parser->NextToken();
+      parser->ExpectNext('(');
+      parser->ExpectNext(NewTokenType_KEYWORD_CONFIG);
+      parser->ExpectNext(')');
+
+      parsedModifier = InstanceDeclarationType_SHARE_CONFIG;
+      
+      res.typeName = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+
+      if(parser->IfNextToken('(')){
+        // TODO: For now, we assume that every wire specified inside the spec file is a negative (remove share).
+        auto toShare = StartArray<Token>(out);
+        while(!parser->Done()){
+          Token name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+
+          *toShare.PushElem() = name;
+
+          if(parser->IfNextToken(',')){
+            continue;
+          } else {
+            break;
+          }
+        }
+      
+        parser->ExpectNext(')');
+
+        res.shareNames = EndArray(toShare);
+      }
+
+      parser->ExpectNext('{');
+
+      auto array = StartArray<VarDeclaration>(out);
+    
+      while(!parser->Done()){
+        Token peek = C(parser->PeekToken());
+
+        if(CompareString(peek,"}")){
+          break;
+        }
+
+        *array.PushElem() = ParseVarDeclaration2(parser);
+      
+        parser->ExpectNext(';');
+      }
+      res.declarations = EndArray(array);
+    
+      parser->ExpectNext('}');
+      return res;
+    } else if(potentialModifier.type == NewTokenType_KEYWORD_USING){
+      parser->NextToken();
+
+      parser->ExpectNext('(');
+
+      auto array = StartArray<Token>(out);
+      while(!parser->Done()){
+        Token name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+
+        *array.PushElem() = name;
+        
+        if(parser->IfNextToken(')')){
+          break;
+        }
+        parser->ExpectNext(',');
+      }
+      res.addressGenUsed = EndArray(array);
+    } else {
+      break;
+    }
+
+    if(modifier != InstanceDeclarationType_NONE){
+      return {};
+    }
+  }
+
+  res.typeName = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+
+  Token possibleParameters = C(parser->PeekToken());
+  auto list = PushArenaList<Pair<String,SpecExpression*>>(temp);
+  if(CompareString(possibleParameters,"#")){
+    parser->NextToken();
+    parser->ExpectNext('(');
+
+    while(!parser->Done()){
+      parser->ExpectNext('.');
+      Token parameterName = C(parser->NextToken());
+
+      parser->ExpectNext('(');
+
+#if 0
+      // TODO: We need to actually parse as a SpecExpression and only then do we convert it to a symbolic expression later.
+      SymbolicExpression* expr = ParseSymbolicExpression(parse,out);
+#endif
+      SpecExpression* expr = ParseSpecExpression2(parser,out);
+
+      parser->ExpectNext(')');
+      
+      String savedParameter = PushString(out,parameterName);
+      *list->PushElem() = {savedParameter,expr}; 
+
+      if(parser->IfNextToken(',')){
+        continue;
+      }
+
+      break;
+    }
+    parser->ExpectNext(')');
+
+    res.parameters2 = PushArrayFromList(out,list);
+  }
+
+  VarDeclaration varDecl = ParseVarDeclaration2(parser);
+
+  res.declarations = PushArray<VarDeclaration>(out,1);
+  res.declarations[0] = varDecl;
+
+  parser->ExpectNext(';');
+
+  return res;
+}
+
+// A group can also be a single var. It does not necessary mean that it must be of the form {...}
+VarGroup ParseVarGroup2(Parser* parser,Arena* out){
+  TEMP_REGION(temp,out);
+  
+  if(parser->IfNextToken('{')){
+    auto vars = PushArenaList<Var>(temp);
+
+    while(!parser->Done()){
+      Var var = ParseVar2(parser);
+
+      *vars->PushElem() = var;
+
+      NewToken sepOrEnd = parser->NextToken();
+      if(sepOrEnd.type == ','){
+        continue;
+      } else if(sepOrEnd.type == '}'){
+        break;
+      } else {
+        parser->ReportUnexpectedToken(sepOrEnd);
+      }
+    }
+
+    VarGroup res = {};
+    res.vars = PushArrayFromList(out,vars);
+    return res;
+  } else {
+    Var var = ParseVar2(parser);
+
+    VarGroup res = {};
+    res.vars = PushArray<Var>(out,1);
+    res.vars[0] = var;
+    return res;
+  }
+}
+
+//SpecExpression* ParseSpecExpression2(Parser* parser,Arena* out,int bindingPower = 99);
+SpecExpression* ParseSpecExpression2(Parser* parser,Arena* out,int bindingPower){
+  SpecExpression* topUnary = nullptr;
+  SpecExpression* innerMostUnary = nullptr;
+
+  SpecExpression* res = nullptr;
+  
+  // Parse unary
+  while(!parser->Done()){
+    SpecExpression* parsed = nullptr;
+    if(!parsed && parser->IfNextToken('~')){
+      parsed = PushStruct<SpecExpression>(out);
+      parsed->op = "~";
+    }
+    if(!parsed &&  parser->IfNextToken('-')){
+      parsed = PushStruct<SpecExpression>(out);
+      parsed->op = "-";
+    }
+
+    if(parsed){
+      parsed->type = SpecExpression::OPERATION;
+    }
+
+    if(parsed && !topUnary){
+      topUnary = parsed;
+      innerMostUnary = parsed;
+      continue;
+    }
+
+    if(parsed){
+      innerMostUnary->expressions = PushArray<SpecExpression*>(out,1);
+      innerMostUnary->expressions[0] = parsed;
+      innerMostUnary = parsed;
+      continue;
+    }
+
+    break;
+  }
+
+  // Parse atom
+  NewToken atom = parser->PeekToken();
+  if(atom.type == '('){
+    parser->ExpectNext('(');
+
+    res = ParseSpecExpression2(parser,out);
+
+    parser->ExpectNext(')');
+  } else if(atom.type == NewTokenType_NUMBER){
+    NewToken number = parser->ExpectNext(NewTokenType_NUMBER);
+    res = PushStruct<SpecExpression>(out);
+
+    res->type = SpecExpression::LITERAL;
+    res->val = atom.number;
+  } else {
+    Var var = ParseVar2(parser);
+    
+    res = PushStruct<SpecExpression>(out);
+    res->var = var;
+    res->type = SpecExpression::VAR;
+  }
+
+  if(topUnary){
+    innerMostUnary->expressions = PushArray<SpecExpression*>(out,1);
+    innerMostUnary->expressions[0] = res;
+
+    res = topUnary;
+  }
+
+  struct OpInfo{
+    NewTokenType type;
+    int bindingPower;
+    const char* op;
+  };
+
+  // TODO: This should be outside the function itself.
+  TEMP_REGION(temp,out);
+  auto infos = PushArray<OpInfo>(temp,9);
+  infos[0] = {NewTokenType_ROTATE_LEFT,0,"><<"};
+  infos[1] = {NewTokenType_ROTATE_RIGHT,0,">><"};
+  infos[2] = {NewTokenType_SHIFT_LEFT,0,"<<"};
+  infos[3] = {NewTokenType_SHIFT_RIGHT,0,">>"};
+
+  infos[4] = {TOK_TYPE('&'),1,"&"};
+  infos[5] = {TOK_TYPE('|'),1,"|"};
+  infos[6] = {TOK_TYPE('^'),1,"^"};
+
+  infos[7] = {TOK_TYPE('+'),2,"+"};
+  infos[8] = {TOK_TYPE('-'),2,"-"};
+  
+  // Parse binary ops.
+  while(!parser->Done()){
+    NewToken peek = parser->PeekToken();
+
+    bool continueOuter = false;
+    for(OpInfo info : infos){
+      if(peek.type == info.type){
+        if(info.bindingPower < bindingPower){
+          parser->NextToken();
+
+          SpecExpression* right = ParseSpecExpression2(parser,out,info.bindingPower);
+      
+          SpecExpression* op = PushStruct<SpecExpression>(out);
+
+          op->op = info.op;
+          op->expressions = PushArray<SpecExpression*>(out,2);
+          op->expressions[0] = res;
+          op->expressions[1] = right;
+
+          res = op;
+          continueOuter = true;
+          break;
+        }
+      }
+    }
+
+    if(continueOuter){
+      continue;
+    }
+
+    break;
+  }
+  
+  return res;
+}
+
+ConnectionDef ParseConnection2(Parser* parser,Arena* out){
+  VarGroup optOutPortion = ParseVarGroup2(parser,out);
+
+  ConnectionType type = ConnectionType_NONE;
+
+  //Token type = tok->NextToken();
+  
+  if(parser->IfNextToken('=')){
+    type = ConnectionType_EQUALITY;
+/*
+  // TODO: Need to implement '^=' parsing 
+  } else if(parser->IfNextToken()){
+    // TODO: Only added this to make it easier to port a piece of C code.
+    //       Do not know if needed or worth it to add.
+*/
+  } else if(parser->IfNextToken(NewTokenType_ARROW)){
+    //def.transforms = CheckAndParseConnectionTransforms(tok,out);
+    type = ConnectionType_CONNECTION;
+  } else {
+    parser->ReportUnexpectedToken(parser->NextToken());
+  }
+
+  ConnectionDef def = {};
+
+  if(type == ConnectionType_EQUALITY){
+    def.expression = ParseSpecExpression2(parser,out);
+  } else if(def.type == ConnectionType_CONNECTION){
+    VarGroup optInPortion = ParseVarGroup2(parser,out);
+    def.input = optInPortion;
+  }
+
+  parser->ExpectNext(';');
+  
+  def.output = optOutPortion;
+
+  return def;
+}
+
+// Any returned String points to tokenizer content.
+// As long as tokenizer is valid, strings returned by this function are also valid.
+ModuleDef ParseModuleDef2(Parser* parser,Arena* out){
+  TEMP_REGION(temp,out);
+
+  parser->ExpectNext(NewTokenType_KEYWORD_MODULE);
+
+  Token name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+  Array<VarDeclaration> vars = ParseModuleInputDeclaration2(parser,out);
+
+  Token outputs = {};
+  if(parser->IfNextToken(NewTokenType_ARROW)){
+    NewToken outputs = parser->ExpectNext(NewTokenType_NUMBER);
+  }
+  
+  ArenaList<InstanceDeclaration>* decls = PushArenaList<InstanceDeclaration>(temp);
+  parser->ExpectNext('{');
+  
+  while(!parser->Done()){
+    NewToken peek = parser->PeekToken();
+
+    if(peek.type == ';'){
+      parser->NextToken();
+      continue;
+    }
+
+    if(peek.type == '#'){
+      break;
+    }
+    
+    InstanceDeclaration decl = ParseInstanceDeclaration2(parser,out);
+    *decls->PushElem() = decl;
+  }
+  Array<InstanceDeclaration> declarations = PushArrayFromList(out,decls);
+
+  parser->ExpectNext('#');
+  
+  ArenaList<ConnectionDef>* cons = PushArenaList<ConnectionDef>(temp);
+  while(!parser->Done()){
+    NewToken peek = parser->PeekToken();
+
+    if(peek.type == ';'){
+      parser->NextToken();
+      continue;
+    }
+
+    if(peek.type == '}'){
+      break;
+    }
+    if(peek.type == NewTokenType_DOUBLE_HASHTAG){
+      break;
+    }
+
+    ConnectionDef con = ParseConnection2(parser,out);
+ 
+    *cons->PushElem() = con;
+  }
+
+  auto configFunctions = PushArenaList<ConfigFunctionDef>(temp);
+
+#if 0
+  if(parser->IfNextToken(NewTokenType_DOUBLE_HASHTAG)){
+    while(!parser->Done()){
+      if(IsNextTokenConfigFunctionStart(tok)){
+        ConfigFunctionDef* func = ParseConfigFunction(tok,out);
+
+        if(func){
+          *configFunctions->PushElem() = *func;
+        } else {
+          printf("Error parsing user function\n");
+        }
+      } else {
+        break;
+      }
+    }
+  }
+#endif
+  
+  parser->ExpectNext('}');
+
+  ModuleDef def ={};
+
+  def.name = name;
+  def.inputs = vars;
+  def.declarations = declarations;
+  def.connections = PushArrayFromList(out,cons);
+  def.configs = PushArrayFromList(out,configFunctions);
+  
+  return def;
+}
+
+TypeAndInstance ParseTypeAndInstance2(Parser* parser){
+  NewToken typeName = parser->ExpectNext(NewTokenType_IDENTIFIER);
+
+  NewToken instanceName = {};
+  if(parser->IfNextToken(':')){
+    instanceName = parser->ExpectNext(NewTokenType_IDENTIFIER);
+  }
+
+  TypeAndInstance res = {};
+  res.typeName = C(typeName);
+  res.instanceName = C(instanceName);
+  
+  return res;
+}
+
+HierarchicalName ParseHierarchicalName2(Parser* parser){
+  NewToken topInstance = parser->ExpectNext(NewTokenType_IDENTIFIER);
+
+  parser->ExpectNext('.');
+
+  Var var = ParseVar2(parser);
+
+  HierarchicalName res = {};
+  res.instanceName = C(topInstance);
+  res.subInstance = var;
+
+  return res;
+}
+
+MergeDef ParseMerge2(Parser* parser,Arena* out){
+  TEMP_REGION(temp,out);
+  
+  parser->ExpectNext(NewTokenType_KEYWORD_MERGE);
+
+  Array<Token> mergeModifiers = {};
+  if(parser->IfNextToken('(')){
+    auto tokenList = PushArenaList<Token>(temp);
+    
+    while(!parser->Done()){
+      NewToken peek = parser->PeekToken();
+      
+      if(peek.type == ')'){
+        break;
+      }
+
+      *tokenList->PushElem() = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+
+      parser->IfNextToken(',');
+    }
+
+    mergeModifiers = PushArrayFromList(out,tokenList);
+    
+    parser->ExpectNext(')');
+  }
+
+  Token mergeName = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+  
+  parser->ExpectNext('=');
+
+  ArenaList<TypeAndInstance>* declarationList = PushArenaList<TypeAndInstance>(temp);
+  while(!parser->Done()){
+    TypeAndInstance typeInst = ParseTypeAndInstance2(parser);
+
+    *declarationList->PushElem() = typeInst;
+
+    NewToken peek = parser->PeekToken();
+    if(peek.type == '|'){
+      parser->NextToken();
+      continue;
+    } else if(peek.type == '{'){
+      break;
+    } else if(peek.type == ';'){
+      parser->NextToken();
+      break;
+    }
+  }
+  Array<TypeAndInstance> declarations = PushArrayFromList(out,declarationList);
+
+  Array<SpecNode> specNodes = {};
+  if(parser->IfNextToken('{')){
+    ArenaList<SpecNode>* specList = PushArenaList<SpecNode>(temp);
+    while(!parser->Done()){
+      NewToken peek = parser->PeekToken();
+      if(peek.type == '}'){
+        break;
+      }
+
+      HierarchicalName leftSide = ParseHierarchicalName2(parser);
+      parser->ExpectNext('-');
+      HierarchicalName rightSide = ParseHierarchicalName2(parser);
+      parser->ExpectNext(';');
+
+      *specList->PushElem() = {leftSide,rightSide};
+    }
+    specNodes = PushArrayFromList(out,specList);
+
+    parser->ExpectNext('}');
+  }
+  
+  auto specificsArr = StartArray<SpecificMergeNode>(out);
+  for(SpecNode node : specNodes){
+    int firstIndex = -1;
+    int secondIndex = -1;
+    for(int i = 0; i < declarations.size; i++){
+      TypeAndInstance& decl = declarations[i];
+      if(CompareString(node.first.instanceName,decl.instanceName)){
+        firstIndex = i;
+      } 
+      if(CompareString(node.second.instanceName,decl.instanceName)){
+        secondIndex = i;
+      } 
+    }
+
+#if 0
+    if(firstIndex == -1){
+      Assert(false);
+      // ReportError
+    }
+    if(secondIndex == -1){
+      Assert(false);
+      // ReportError
+    }
+#endif
+
+    *specificsArr.PushElem() = {firstIndex,node.first.subInstance.name,secondIndex,node.second.subInstance.name};
+  }
+  Array<SpecificMergeNode> specifics = EndArray(specificsArr);
+
+  MergeDef result = {};
+  result.name = mergeName;
+  result.declarations = declarations;
+  result.specifics = specifics;
+  result.mergeModifiers = mergeModifiers;
+  
+  return result;
+}
+
+Array<ConstructDef> ParseVersatSpecification2(String content,Arena* out){
+  TEMP_REGION(temp,out);
+
+  auto TokenizeFunction = [](const char* start,const char* end) -> TokenizeResult{
+    TokenizeResult res = ParseWhitespace(start,end);
+    res |= ParseComments(start,end);
+
+    res |= ParseMultiSymbol(start,end,">><",NewTokenType_ROTATE_RIGHT);
+    res |= ParseMultiSymbol(start,end,"><<",NewTokenType_ROTATE_LEFT);
+
+    res |= ParseMultiSymbol(start,end,"..",NewTokenType_DOUBLE_DOT);
+    res |= ParseMultiSymbol(start,end,"##",NewTokenType_DOUBLE_HASHTAG);
+    res |= ParseMultiSymbol(start,end,"->",NewTokenType_ARROW);
+    res |= ParseMultiSymbol(start,end,">>",NewTokenType_SHIFT_RIGHT);
+    res |= ParseMultiSymbol(start,end,"<<",NewTokenType_SHIFT_LEFT);
+
+    res |= ParseSymbols(start,end);
+    res |= ParseNumber(start,end);
+
+    res |= ParseIdentifier(start,end);
+
+    if(res.token.type == NewTokenType_IDENTIFIER){
+      String id = res.token.identifier;
+      
+      NewTokenType type = NewTokenType_INVALID;
+
+      if(id == "module")     type = NewTokenType_KEYWORD_MODULE;
+      if(id == "merge")      type = NewTokenType_KEYWORD_MERGE;
+      if(id == "addressGen") type = NewTokenType_KEYWORD_ADDRESSGEN;
+      if(id == "using")      type = NewTokenType_KEYWORD_USING;
+      if(id == "share")      type = NewTokenType_KEYWORD_SHARE;
+      if(id == "static")     type = NewTokenType_KEYWORD_STATIC;
+      if(id == "debug")      type = NewTokenType_KEYWORD_DEBUG;
+      if(id == "config")     type = NewTokenType_KEYWORD_CONFIG;
+      if(id == "state")      type = NewTokenType_KEYWORD_STATE;
+      if(id == "mem")        type = NewTokenType_KEYWORD_MEM;
+
+      if(type != NewTokenType_INVALID){
+        res.token.type = type;
+      }
+    }
+
+    return res;
+  };
+
+  FREE_ARENA(parseArena);
+  Parser* parser = StartParsing(content,TokenizeFunction,parseArena);
+
+  ArenaList<ConstructDef>* typeList = PushArenaList<ConstructDef>(temp);
+
+  while(!parser->Done()){
+    NewToken tok = parser->NextToken();
+
+    ConstructDef def = {};
+    if(tok.type == NewTokenType_KEYWORD_MODULE){
+      def.type = ConstructType_MODULE;
+      def.module = ParseModuleDef2(parser,out);
+    } else if(tok.type == NewTokenType_KEYWORD_MERGE){
+      def.type = ConstructType_MERGE;
+      def.merge = ParseMerge2(parser,out);
+    } else if(tok.type == NewTokenType_KEYWORD_ADDRESSGEN){
+      parser->Synch({NewTokenType_KEYWORD_MODULE,NewTokenType_KEYWORD_MERGE});
+    } else {
+      parser->ReportUnexpectedToken(tok);
+      parser->Synch({NewTokenType_KEYWORD_MODULE,NewTokenType_KEYWORD_MERGE,NewTokenType_KEYWORD_ADDRESSGEN});
+    }
+
+    *typeList->PushElem() = def;
+
+#if 0
+    String repr = PushRepr(temp,tok);
+    printf("%.*s\n",UN(repr));
+    break;
+#endif
+  }
+
+  return PushArrayFromList(out,typeList);
+ 
+#if 0  
+
+  Tokenizer tokenizer = Tokenizer(content,".%=#[](){}+:;,*~-",{"##","->=","->",">><","><<",">>","<<","..","^="});
+  Tokenizer* tok = &tokenizer;
+
+  ArenaList<ConstructDef>* typeList = PushArenaList<ConstructDef>(temp);
+  
+  bool anyError = false;
+  while(!tok->Done()){
+    Token peek = tok->PeekToken();
+
+    if(CompareString(peek,"module")){
+      Opt<ModuleDef> moduleDef = ParseModuleDef(tok,out);
+
+      if(moduleDef.has_value()){
+        ConstructDef def = {};
+        def.type = ConstructType_MODULE;
+        def.module = moduleDef.value();
+
+        *typeList->PushElem() = def;
+      } else {
+        anyError = true;
+      }
+    } else if(CompareString(peek,"merge")){
+      Opt<MergeDef> mergeDef = ParseMerge(tok,out);
+      
+      if(mergeDef.has_value()){
+        ConstructDef def = {};
+        def.type = ConstructType_MERGE;
+        def.merge = mergeDef.value();
+
+        *typeList->PushElem() = def;
+      } else {
+        anyError = true;
+      }
+    } else if(CompareString(peek,"addressGen")){
+      Opt<AddressGenDef> addressDef = ParseAddressGen(tok,out);
+      
+      if(addressDef.has_value()){
+        ConstructDef def = {};
+        def.type = ConstructType_ADDRESSGEN;
+        def.addressGen = addressDef.value();
+
+        *typeList->PushElem() = def;
+      } else {
+        anyError = true;
+      }
+    } else {
+      ReportError(tok,peek,"Unexpected token in global scope");
+      tok->AdvancePeek();
+      Synchronize(tok,{"module","merge","addressGen"});
+    }
+  }
+
+  if(anyError){
+    // NOTE: Error messages have already been printed at this point. Just terminate the program 
+    exit(-1);
+  }
+
+  return PushArrayFromList(out,typeList);
+#endif
+}
+

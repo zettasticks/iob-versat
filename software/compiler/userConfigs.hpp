@@ -179,10 +179,12 @@ struct ConfigFunction{
   String structToReturnName;
 
   bool doesNotSupportsSizeCalc;
+
   // TODO: This is only worth it if we can generate extra stuff that might help figure out the problems. Otherwise just use gdb.
+  // NOTE: Some stuff that we might want is to profile (gather statistics data) and stuff like that that we can then report at the end of a run.
   bool debug;
 };
-
+ 
 // Can fail (parsed data is validated in here)
 // TODO: Instead of passing the content, it would be easier if the function was capable of reporting the errors without having to accesss the text, just by storing the relevant tokens and the upper parts of the code is responsible for reporting it. The language is not that complicated meaning that we are free to just define all the possible errors in a large enum and having a simple structure that stores all the relevant data. 
 ConfigFunction* InstantiateConfigFunction(ConfigFunctionDef* def,FUDeclaration* declaration,String content,Arena* out);

@@ -958,6 +958,22 @@ int main(int argc,char* argv[]){
   return 0;
 }
 
+#if 0
+LEFT HERE
+
+There appears to be a bug in the merge of versat_ai where one of the VReads does not have the proper delay set.
+Do not know why this happens. The original module contains the proper delays but the merged one does not.
+Furthermore the debug info generated on the merged module seems buggy and incomplete.
+We cannot check what is really happening because no info about it.
+
+We also have the parser thing to properly finish. 
+
+I'm thinking:
+
+- Today: Finish the parser thing.
+- Tomorrow: Take a look at the merge stuff. We might need to start simplifying merge stuff as well. The primary goal is to solve the versat_ai bug but we also want to start simplifying things if possible, add proper debug facilities and cleanup bunch of old code.
+#endif
+
 /*
 
 TODO:
