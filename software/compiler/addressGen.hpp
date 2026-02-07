@@ -143,6 +143,7 @@ String GenerateAddressPrintFunction(AddressAccess* initial,Arena* out);
 
 void EmitReadStatements(CEmitter* m,AccessAndType access,String varName,String extVarName);
 void EmitMemStatements(CEmitter* m,AccessAndType access,String varName);
+void EmitGenStatements(CEmitter* m,AccessAndType access,String varName);
 
 // ======================================
 // LoopLinearSumTerm handling

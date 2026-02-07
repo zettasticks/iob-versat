@@ -231,7 +231,6 @@ TokenizeResult ParseWhitespace(const char* start,const char* end){
 
   const char* ptr = start;
   res.token.ptr = start;
-  char ch = *ptr;
   
   auto IsWhitespace = [](char ch){
     bool res = (ch == ' ' || 
@@ -417,4 +416,62 @@ TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,
   res.token.type = result;  
 
   return res;
+}
+
+bool Parse_IsCKeyword(String str){
+
+#define CHR(STR) if(STR == str) return true
+
+  // TODO: We really need a fast way of checking this using size + character by character branching path.
+  //       However this is something that we want to push to the meta function generation. We do not want to actually write this and potentially get it wrong.
+  switch(str.size){
+    case 2:{
+      CHR("if"); CHR("do");	
+    } break;
+    case 3:{
+      CHR("for"); CHR("int");	
+    } break;
+    case 4:{
+      CHR("auto"); CHR("else"); CHR("long");
+      CHR("enum"); CHR("case"); CHR("char");
+      CHR("void"); CHR("goto");
+    } break;
+    case 5:{
+      CHR("break"); CHR("union");
+      CHR("float"); CHR("short");
+      CHR("const"); CHR("while");
+    } break;
+    case 6:{
+      CHR("switch"); CHR("extern");
+      CHR("return"); CHR("signed");
+      CHR("sizeof"); CHR("static");
+      CHR("struct"); CHR("double");
+    } break;
+    case 7:{
+      CHR("typedef"); CHR("default");	
+      CHR("_Packed");
+    } break;
+    case 8:{
+      CHR("register"); CHR("unsigned");
+      CHR("continue"); CHR("volatile");
+    } break;
+  }
+
+#undef CHR
+
+   return false;
+}
+
+bool Parse_IsVerilogKeyword(String str){
+  // TODO: We really need a fast way of checking this using size + character by character branching path.
+  //       However this is something that we want to push to the meta function generation. We do not want to actually write this and potentially get it wrong.
+  String keywords[] = {"always","and","assign","automatic","begin","buf","bufif0","bufif1","case","casex","casez","cell","cmos","config","deassign","default","defparam","design","disable","edge","else","end","endcase","endconfig","endfunction","endgenerate","endmodule","endprimitive","endspecify","endtable","endtask","event","for","force","forever","fork","function","generate","genvar","highz0","highz1","if","ifnone","incdir","include","initial","inout","input","instance","integer","join","large","liblist","library","localparam","macromodule","medium","module","nand","negedge","nmos","nor","noshowcancelled","not","notif0","notif1","or","output","parameter","pmos","posedge","primitive","pull0","pull1","pulldown","pullup","pulsestyle_onevent","pulsestyle_ondetect","remos","real","realtime","reg","release","repeat","rnmos","rpmos","rtran","rtranif0","rtranif1","scalared","showcancelled","signed","small","specify","specparam","strong0","strong1","supply0","supply1","table","task","time","tran","tranif0","tranif1","tri","tri0","tri1","triand","trior","trireg","unsigned","use","vectored","wait","wand","weak0","weak1","while","wire","wor","xnor","xor"};
+  
+  for(String keyword : keywords){
+    if(str == keyword){
+      return true;
+    }
+  }
+
+  return false;
 }

@@ -48,6 +48,16 @@ enum NewTokenType : u16{
   NewTokenType_KEYWORD_CONFIG,
   NewTokenType_KEYWORD_STATE,
   NewTokenType_KEYWORD_MEM,
+
+  // We do not really care which keyword it is. We just want to make
+  // sure that the generated C code and Verilog code is syntatically
+  // correct since the user might use a C/Verilog keyword in place of
+  // a name and cause problems later on (Ex: 'const' is a valid name
+  // but its a keyword in C and calling an unit 'const' is valid for
+  // Versat but causes problems when generating the C structs and so
+  // on).
+  NewTokenType_C_KEYWORD,
+  NewTokenType_VERILOG_KEYWORD
 };
 
 #define NewTokenType_CHARACTER_START (NewTokenType_OPEN_PARENTHESIS)
@@ -156,6 +166,8 @@ TokenizeResult ParseComments(const char* start,const char* end);
 TokenizeResult ParseSymbols(const char* start,const char* end);
 TokenizeResult ParseNumber(const char* start,const char* end);
 TokenizeResult ParseIdentifier(const char* start,const char* end);
-
 TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,NewTokenType result);
+
+bool Parse_IsCKeyword(String content);
+bool Parse_IsVerilogKeyword(String content);
 

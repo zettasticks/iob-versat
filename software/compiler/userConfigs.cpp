@@ -676,8 +676,17 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         AddressAccess* access = CompileAddressGen({},variableNames,loops,expr,content);
         AddressGenInst supported = ent->instance->declaration->supportedAddressGen;
 
-        // NOTE: Memories and Generator do not follow the addr[expr]. They just have <instance> = <expr>.
-        if(simple->rhsType == ConfigRHSType_SYMBOLIC_EXPR){
+        // TODO: This logic is stupid. Rework into something better when we finalize the addressGen change.
+        if(supported.type == AddressGenType_GEN){
+          ConfigStuff* newAssign = list->PushElem();
+
+          newAssign->type = ConfigStuffType_ADDRESS_GEN;
+          newAssign->access.access = access;
+          newAssign->access.inst = supported;
+
+          newAssign->lhs = PushString(out,name);
+        } else if(simple->rhsType == ConfigRHSType_SYMBOLIC_EXPR){
+          // NOTE: Memories and Generator do not follow the addr[expr]. They just have <instance> = <expr>.
           ConfigStuff* newAssign = list->PushElem();
 
           newAssign->type = ConfigStuffType_ADDRESS_GEN;

@@ -2907,7 +2907,6 @@ void Output_Header(FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> stru
 
   // NOTE: This function also fills the instance info member of the acceleratorInfo. This function only fills the first partition, but I think that it is fine because that is the only one we use. We generate the same structs either way.
   StructInfo* structInfo = GenerateConfigStruct(iter,temp);
-  DEBUG_BREAK();
   Array<TypeStructInfo> structs = {};
   // If we only contain static configs, this will appear empty.
   if(!Empty(structInfo->memberList)){
@@ -3244,8 +3243,6 @@ Problem: If we want the address gen to take into account the limitations of spac
     for(MergePartition part : topLevelDecl->info.infos){
       String mergeName = part.name;
 
-      DEBUG_BREAK();
-
       for(ConfigFunction* func : part.userFunctions){
         bool isState = (func->type == ConfigFunctionType_STATE);
 
@@ -3340,6 +3337,8 @@ Problem: If we want the address gen to take into account the limitations of spac
               
               FULL_SWITCH(inst.type){
               case AddressGenType_GEN: {
+                String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(assign.lhs));
+                EmitGenStatements(c,access,lhs);
               } break;
               case AddressGenType_MEM: {
                 String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(assign.lhs));

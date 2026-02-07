@@ -1444,3 +1444,34 @@ void EmitMemStatements(CEmitter* m,AccessAndType access,String varName){
   Array<Pair<String,String>> params = InstantiateMem(initial,access.port,access.dir == Direction_INPUT,access.inst.loopsSupported,temp);
   EmitStoreAddressGenIntoConfig(m,params);
 }
+
+void EmitGenStatements(CEmitter* m,AccessAndType access,String varName){
+  TEMP_REGION(temp,nullptr);
+
+  AddressAccess* initial = access.access;
+  
+  auto EmitStoreAddressGenIntoConfig = [varName](CEmitter* emitter,Array<Pair<String,String>> params) -> void{
+    TEMP_REGION(temp,emitter->arena);
+          
+    for(int i = 0; i < params.size; i++){
+      String str = params[i].first;
+      
+      String t = PushString(temp,"%.*s.%.*s",UN(varName),UN(str));
+      String v = params[i].second;
+
+      emitter->Assignment(t,v);
+    }
+  };
+
+  String addressGenName = initial->name;
+  Array<String> inputVars = initial->inputVariableNames;
+
+
+  String addressStr = PushRepr(initial->external,temp);
+
+  m->Comment("[DEBUG] Address");
+  m->Comment(addressStr);
+
+  Array<Pair<String,String>> params = InstantiateGen(initial,access.inst.loopsSupported,temp);
+  EmitStoreAddressGenIntoConfig(m,params);
+}

@@ -397,8 +397,6 @@ SpecExpression* ParseSpecExpression(Tokenizer* tok,Arena* out){
   
   Parser* parser = StartParsing(res,TokenizeFunction,temp);
 
-  //DEBUG_BREAK();
-
   SpecExpression* test = ParseSpecExpression2(parser,temp);
   
   SpecExpression* expr = ParseOperationType<SpecExpression>(tok,{{"+","-"},{"&","|","^"},{">><",">>","><<","<<"}},ParseTerm,out);
@@ -884,8 +882,6 @@ Opt<ModuleDef> ParseModuleDef(Tokenizer* tok,Arena* out){
   }
 
   auto configFunctions = PushArenaList<ConfigFunctionDef>(temp);
-
-  DEBUG_BREAK_IF(def.name == "EXAMPLE_Variety1");
 
   if(tok->IfNextToken("##")){
     while(!tok->Done()){
@@ -3014,6 +3010,8 @@ Array<ConstructDef> ParseVersatSpecification2(String content,Arena* out){
       
       NewTokenType type = NewTokenType_INVALID;
 
+      // TODO: We really need a fast way of checking this using size + character by character branching path.
+      //       However this is something that we want to push to the meta function generation. We do not want to actually write this and potentially get it wrong.
       if(id == "module")     type = NewTokenType_KEYWORD_MODULE;
       if(id == "merge")      type = NewTokenType_KEYWORD_MERGE;
       if(id == "addressGen") type = NewTokenType_KEYWORD_ADDRESSGEN;
@@ -3024,6 +3022,13 @@ Array<ConstructDef> ParseVersatSpecification2(String content,Arena* out){
       if(id == "config")     type = NewTokenType_KEYWORD_CONFIG;
       if(id == "state")      type = NewTokenType_KEYWORD_STATE;
       if(id == "mem")        type = NewTokenType_KEYWORD_MEM;
+
+      if(type == NewTokenType_INVALID && Parse_IsCKeyword(id)){
+        res.token.type = NewTokenType_C_KEYWORD;
+      }
+      if(type == NewTokenType_INVALID && Parse_IsVerilogKeyword(id)){
+        res.token.type = NewTokenType_VERILOG_KEYWORD;
+      }
 
       if(type != NewTokenType_INVALID){
         res.token.type = type;

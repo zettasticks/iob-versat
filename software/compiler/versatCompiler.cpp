@@ -905,9 +905,11 @@ int main(int argc,char* argv[]){
 }
 
 #if 0
-Remember: The reason we ended up in the sidequest of putting memories working is because we wanted to remove the ADDRESSGEN stuff and in order to do this while the tests are running we would have to implement a proper memory configuration.
-
-So basically, I need to implement the memory configuration thing. Then I need to remove the free address gen that exist throught the code. Then I can fix the parsing stuff and only then can I replace the old parser with the new parser code.
+LEFT HERE - We are in the process of removing the old addressGen stuff before finishing the parser revamp.
+Need to remove the stuff from the versat spec.
+Probably gonna need to move logic since we now generate the stuff directly instead of creating functions for each entity.
+--  Things like the profile and stuff will have to move since we do not generate the functions individually anymore.
+---- One thing that we can do is allow the spec to have a 'profile' keyword that automatically activates profile collection on the specific function.
 
 There appears to be a bug in the merge of versat_ai where one of the VReads does not have the proper delay set.
 Do not know why this happens. The original module contains the proper delays but the merged one does not.
@@ -998,6 +1000,14 @@ Parameters handling:
 -- Params are obtained by calling the GetParametersOfUnit function.
 --- This function either returns the default value or the value of the parameter of the unit (instance node).
 --- We probably want to start putting this stuff in the acceleratorInfo struct. 
+
+*/
+
+/*
+  Proper merge user configs:
+
+  Right now we assume that we can just use the same name for the user configs after performing merge but things change if we ever end up merging the same module. In this case, the things become more complicated.
+-- We can always force the user in this cases to define some user configs on the merge level that "resolve" the naming conflict.
 
 */
 
