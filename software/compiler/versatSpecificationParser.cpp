@@ -2576,7 +2576,7 @@ VarGroup ParseVarGroup2(Parser* parser,Arena* out){
       } else if(sepOrEnd.type == '}'){
         break;
       } else {
-        parser->ReportUnexpectedToken(sepOrEnd);
+        parser->ReportUnexpectedToken(sepOrEnd,{TOK_TYPE(','),TOK_TYPE('}')});
       }
     }
 
@@ -2737,7 +2737,7 @@ ConnectionDef ParseConnection2(Parser* parser,Arena* out){
     //def.transforms = CheckAndParseConnectionTransforms(tok,out);
     type = ConnectionType_CONNECTION;
   } else {
-    parser->ReportUnexpectedToken(parser->NextToken());
+    parser->ReportUnexpectedToken(parser->NextToken(),{TOK_TYPE('='),NewTokenType_ARROW});
   }
 
   ConnectionDef def = {};
@@ -3039,7 +3039,7 @@ Array<ConstructDef> ParseVersatSpecification2(String content,Arena* out){
   };
 
   FREE_ARENA(parseArena);
-  Parser* parser = StartParsing(content,TokenizeFunction,parseArena);
+  Parser* parser = StartParsing(content,TokenizeFunction,parseArena,ParsingOptions_DEFAULT | ParsingOptions_ERROR_ON_C_VERILOG_KEYWORDS);
 
   ArenaList<ConstructDef>* typeList = PushArenaList<ConstructDef>(temp);
 
@@ -3056,7 +3056,7 @@ Array<ConstructDef> ParseVersatSpecification2(String content,Arena* out){
     } else if(tok.type == NewTokenType_KEYWORD_ADDRESSGEN){
       parser->Synch({NewTokenType_KEYWORD_MODULE,NewTokenType_KEYWORD_MERGE});
     } else {
-      parser->ReportUnexpectedToken(tok);
+      parser->ReportUnexpectedToken(tok,{NewTokenType_KEYWORD_MODULE,NewTokenType_KEYWORD_MERGE});
       parser->Synch({NewTokenType_KEYWORD_MODULE,NewTokenType_KEYWORD_MERGE,NewTokenType_KEYWORD_ADDRESSGEN});
     }
 

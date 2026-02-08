@@ -463,6 +463,12 @@ Array<Pair<String,String>> InstantiateRead(AddressAccess* access,int highestExte
   } else {
     Assert(IsZero(access->internal->freeTerm)); // NOTE: I do not think it is possible for both external and internal to have free terms.
   }
+
+  // ======================================
+  // NOTE: VERY IMPORTANT: If a field is not set, then set it to
+  //       zero. Do not leave it hanging otherwise future
+  //       configuration calls do not change it and the unit gets
+  //       misconfigured.
   
   // NOTE: We push the start term to the ext pointer in order to save memory inside the unit. This is being done in a  kinda hacky way, but nothing major.
   String ext_addr = extVarName;
@@ -475,7 +481,9 @@ Array<Pair<String,String>> InstantiateRead(AddressAccess* access,int highestExte
   // TODO: No need for a list, we already know all the memory that we are gonna need
   ArenaList<Pair<String,String>>* list = PushArenaList<Pair<String,String>>(temp);
 
-  if(!Empty(compiled.dutyDivExpression)){
+  if(Empty(compiled.dutyDivExpression)){
+    *list->PushElem() = {"extra_delay","0"};
+  } else {
     *list->PushElem() = {"extra_delay",PushString(out,"(%.*s) - 1",UN(compiled.dutyDivExpression))};
   }
   

@@ -108,7 +108,7 @@ void Parser::EnsureTokens(int amount){
       this->ptr += bytesParsed;
       continue;
     }
-
+    
     this->storedTokens[this->amountStored++] = token;
     this->ptr += bytesParsed;
 
@@ -126,8 +126,29 @@ void Parser::ReportError(String error){
   *errors->PushElem() = PushString(arena,error);
 }
 
-void Parser::ReportUnexpectedToken(NewToken token){
-  // TODO:
+void Parser::ReportUnexpectedToken(NewToken token,BracketList<NewTokenType> expectedList){
+  TEMP_REGION(temp,nullptr);
+
+  String tokenRepr = PushRepr(temp,token);
+
+  auto builder = StartString(temp);
+  builder->PushString("Unexpected token: %.*s\n",UN(tokenRepr));
+  builder->PushString("Expected one of the following:\n");
+  
+  // TODO: Move tokenType to meta and proper data modelling of the token type properties.
+  for(NewTokenType type : expectedList){
+    if(IsCharSingleToken((char) type)){
+      builder->PushString("  '%c'\n",(char) type);
+    } else {
+      builder->PushString("  'Number: %d'\n",type);
+    }
+  }
+
+  if(!errors){
+    errors = PushArenaList<String>(this->arena);
+  }
+
+  *errors->PushElem() = EndString(this->arena,builder);
 }
 
 NewToken Parser::NextToken(){
@@ -167,7 +188,13 @@ bool Parser::IfNextToken(char singleChar){
 NewToken Parser::ExpectNext(NewTokenType type){
   NewToken tok = NextToken();
 
-  if(tok.type != type){
+  if(type == NewTokenType_IDENTIFIER && (options & ParsingOptions_ERROR_ON_C_VERILOG_KEYWORDS)){
+    if(tok.type == NewTokenType_C_KEYWORD){
+      ReportError("Expected identifier but instead got a C reserved keyword.\n We cannot have C keywords since we will have to generate C code and the generated code will be malformed");
+    } else if(tok.type == NewTokenType_VERILOG_KEYWORD){
+      ReportError("Expected identifier but instead got a Verilog reserved keyword.\n We cannot have Verilog keywords since we will have to generate Verilog code and the generated code will be malformed");
+    }
+  } else if(tok.type != type){
     TEMP_REGION(temp,nullptr);
     
     String repr = PushRepr(temp,tok);

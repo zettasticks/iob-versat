@@ -1032,6 +1032,8 @@ registering the module.
 // ============================================================================
 // Bugs
 
+BUG: There was a bug in versat_ai that forced me to put a ResetAccelerator call inside the BatchNormalization layer. The problem only appear if we called Conv before Batch. Otherwise everything was fine. Did not test with the other operations. What I suppose is hapenning is that the Conv is loading some configuration that makes units produce some data that Batch should not depend on but it actually does. Maybe garbage data from merged units is influencing the accel somewhat. Regardless, I did not have the tools needed to debug such a problem at that point and opted to use the quick and dirty way of fixing stuff.
+
 BUG: Need more tests for modules that contain units but are not connected to anything. Also test merge for these cases as well.
 
 BUG: Debug folder gets created inside the iob-soc-versat repo when running ./test.py tests. Something about the python3 script -> makefile is causing the path to not be the same as if just calling makefile directly.

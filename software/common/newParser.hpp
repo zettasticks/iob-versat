@@ -53,9 +53,8 @@ enum NewTokenType : u16{
   // sure that the generated C code and Verilog code is syntatically
   // correct since the user might use a C/Verilog keyword in place of
   // a name and cause problems later on (Ex: 'const' is a valid name
-  // but its a keyword in C and calling an unit 'const' is valid for
-  // Versat but causes problems when generating the C structs and so
-  // on).
+  // from the POV of Versat but its a keyword in C which causes
+  // problems when generating the C structs and so on).
   NewTokenType_C_KEYWORD,
   NewTokenType_VERILOG_KEYWORD
 };
@@ -111,8 +110,15 @@ enum ParsingOptions{
   ParsingOptions_SKIP_WHITESPACE = (1 << 0),
   ParsingOptions_SKIP_COMMENTS   = (1 << 1),
 
-  ParsingOptions_SKIP_DEFAULT = (ParsingOptions_SKIP_WHITESPACE | ParsingOptions_SKIP_COMMENTS)
+  ParsingOptions_ERROR_ON_C_VERILOG_KEYWORDS = (1 << 2),
+
+  ParsingOptions_DEFAULT = (ParsingOptions_SKIP_WHITESPACE | ParsingOptions_SKIP_COMMENTS)
 };
+
+inline ParsingOptions operator|(ParsingOptions lhs,ParsingOptions rhs){
+  ParsingOptions res = (ParsingOptions) ((int) lhs | (int) rhs);
+  return res;
+}
 
 struct Parser{
   const char* start;
@@ -136,7 +142,7 @@ struct Parser{
   void EnsureTokens(int amount);
   void ReportError(String error);
 
-  void ReportUnexpectedToken(NewToken token);
+  void ReportUnexpectedToken(NewToken token,BracketList<NewTokenType> expectedList);
 
   NewToken NextToken();
   NewToken PeekToken(int lookahead = 0);
@@ -155,7 +161,7 @@ struct Parser{
   bool Done();
 };
 
-Parser* StartParsing(String content,TokenizeFunction tokenizer,Arena* freeArena,ParsingOptions = ParsingOptions_SKIP_DEFAULT);
+Parser* StartParsing(String content,TokenizeFunction tokenizer,Arena* freeArena,ParsingOptions = ParsingOptions_DEFAULT);
 
 // ============================================================================
 // Tokenizer function helpers
