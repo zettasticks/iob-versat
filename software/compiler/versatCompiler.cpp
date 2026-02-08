@@ -462,17 +462,6 @@ int main(int argc,char* argv[]){
     String content = PushFile(temp,StaticFormat("%.*s",UN(specFilepath)));
     
     Array<ConstructDef> types = ParseVersatSpecification(content,temp);
-
-    auto GetConstructOrFail = [&types](String name) -> ConstructDef{
-      for(ConstructDef def : types){
-        if(CompareString(def.base.name,name)){
-          return def;
-        }
-      }
-
-      Assert(false);
-      return {};
-    };
     
     auto moduleLike = PushArenaList<ConstructDef>(temp);
     for(ConstructDef def : types){
@@ -481,14 +470,6 @@ int main(int argc,char* argv[]){
       }
     }
     auto modules = PushArrayFromList(temp,moduleLike);
-
-    auto addressGenList = PushArenaList<ConstructDef>(temp);
-    for(ConstructDef def : types){
-      if(def.type == ConstructType_ADDRESSGEN){
-        *addressGenList->PushElem() = def;
-      }
-    }
-    auto addressGen = PushArrayFromList(temp,addressGenList);
     
     int size = modules.size;
     
@@ -561,78 +542,6 @@ int main(int argc,char* argv[]){
 
     if(anyError){
       return -1;
-    }
-
-    // After getting all the types that we need to process, we first collect and compile all the address gens that are gonna be needed.
-    auto addressGenTokensUsed = PushArenaList<Token>(temp);
-    
-    for(auto p : typeToWork){
-      Work work = *p.second;
-
-      if(IsModuleLike(work.definition)){
-        Array<Token> tokens = AddressGenUsed(work.definition,types,temp);
-
-        for(Token t : tokens){
-          *addressGenTokensUsed->PushElem() = t;
-        }
-      }
-    }
-
-    Array<Token> allAddressGenUsed = PushArrayFromList(temp,addressGenTokensUsed);
-
-    for(Token t : allAddressGenUsed){
-      bool found = false;
-      for(ConstructDef def : addressGen){
-        if(CompareString(def.base.name,t)){
-          found = true;
-          break;
-        }
-      }
-
-      if(!found){
-        ReportError(content,t,"Did not find address gen definition");
-        anyError = true;
-      }
-    }
-    
-    if(anyError){
-      return -1;
-    }
-
-    // NOTE: From this point on, no missing address gen or missing module problem should exist. Everything has been validity in regards to missing definitions and everything passed. (There can still exist problems inherit to the construct itself).
-    
-    TrieSet<String>* allAddressGens = PushTrieSet<String>(temp);
-    for(Token t : allAddressGenUsed){
-      allAddressGens->Insert(t);
-    }
-
-    for(String name : allAddressGens){
-      ConstructDef def = GetConstructOrFail(name);
-
-      AddressGenDef a = def.addressGen;
-      
-      SymbolicExpression* expr = ParseSymbolicExpression(a.symbolicTokens,perm);
-
-      auto list = PushArenaList<Token>(temp);
-      for(AddressGenForDef loop : a.loops){
-        *list->PushElem() = loop.loopVariable;
-      }
-      auto allVariables = PushArrayFromList(temp,list);
-
-      // TODO: BAD
-      for(Token tok : a.symbolicTokens){
-        if(IsIdentifier(tok) && !Contains(a.inputs,tok) && !Contains(allVariables,tok)){
-          printf("On address gen: %.*s:%d\n",UN(a.name),a.name.loc.start.line);
-          printf("\t[Error] Symbol '%.*s' inside address expression does not exist (check if name is correct, symbols inside expressions can only be inputs or loop variables)\n",UN(tok));
-          anyError = true;
-        }
-      }
-
-      AddressAccess* access = CompileAddressGen(a.name,a.inputs,a.loops,expr,content);
-      
-      if(!access){
-        anyError = true;
-      }
     }
 
     // TODO: We could push more, we can technically parse the modules even if we have address gen errors.

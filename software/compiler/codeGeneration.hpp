@@ -59,8 +59,6 @@ struct SameMuxEntities{
 HASH(SameMuxEntities, x.configPos);
 EQUALITY(SameMuxEntities, lhs.configPos == rhs.configPos);
 
-struct AddressGenDef;
-
 struct StructInfo;
 
 struct StructElement{

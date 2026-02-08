@@ -75,6 +75,11 @@ enum InstanceDeclarationType{
   InstanceDeclarationType_SHARE_CONFIG
 };
 
+inline InstanceDeclarationType operator|(InstanceDeclarationType lhs,InstanceDeclarationType rhs){
+  InstanceDeclarationType res = (InstanceDeclarationType) ((int) lhs | (int) rhs);
+  return res;
+}
+
 // TODO: It's kinda bad to group stuff this way. Just because the spec parser groups everything, does not mean that we need to preserve the grouping. We could just parse once and create N different instance declarations for each instance (basically flattening the declarations) instead of preserving this grouping and probably simplifying stuff a bit.
 //       The problem is that we would have to put some sharing logic inside the parser. Idk. Push through and see later if any change is needed.
 struct InstanceDeclaration{
@@ -142,21 +147,12 @@ struct MergeDef : public DefBase{
 
 struct AddressGenForDef;
 
-struct AddressGenDef : public DefBase{
-  AddressGenType type;
-
-  Array<Token> inputs;
-  Array<AddressGenForDef> loops;
-  Array<Token> symbolicTokens;
-};
-
 struct ConstructDef{
   ConstructType type;
   union {
     DefBase base;
     ModuleDef module;
     MergeDef merge;
-    AddressGenDef addressGen;
   };
 };
 
@@ -172,14 +168,11 @@ void ReportError2(String content,Token faultyToken,Token goodToken,String faulty
 
 bool IsModuleLike(ConstructDef def);
 Array<Token> TypesUsed(ConstructDef def,Arena* out);
-Array<Token> AddressGenUsed(ConstructDef def,Array<ConstructDef> allConstructs,Arena* out);
 
 Array<ConstructDef> ParseVersatSpecification(String content,Arena* out);
 
 // TODO: Move this function to a better place, no reason to be inside spec parser
 FUDeclaration* InstantiateSpecifications(String content,ConstructDef def);
-
-Opt<AddressGenDef> ParseAddressGen(Tokenizer* tok,Arena* out);
 
 
 // nocheckin Move to a better place after we probably remove the userConfigs.hpp file.

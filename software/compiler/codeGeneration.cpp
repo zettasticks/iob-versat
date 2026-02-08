@@ -139,10 +139,6 @@ Array<Array<InstanceInfo*>> VUnitInfoPerMerge(AccelInfo info,Arena* out){
         continue;
       }
         
-      if(info->addressGenUsed.size < 1){
-        continue;
-      }
-        
       *list->PushElem() = info;
     }
 
@@ -3089,7 +3085,7 @@ void Output_Header(FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> stru
         if(func->type != ConfigFunctionType_CONFIG){
           continue;
         }
-        if(func->doesNotSupportsSizeCalc){
+        if(!func->supportsSizeCalc){
           continue;
         }
 
@@ -3373,88 +3369,6 @@ Problem: If we want the address gen to take into account the limitations of spac
 
   Array<String> names = Extract(info.infos,temp,&MergePartition::name);
   Array<Array<MuxInfo>> muxInfo = CalculateMuxInformation(&iter,temp);
-
-  // Combines address gen with the struct names that use them. Mostly done this way because we generate C code which does not support method overloading meaning that we have to do it manually.
-  TrieSet<Pair<String,AccessAndType>>* structNameAndAddressGen = PushTrieSet<Pair<String,AccessAndType>>(temp);
-  TrieSet<AccessAndType>* addressGenUsed = PushTrieSet<AccessAndType>(temp);
-  TrieSet<Pair<String,AddressGenInst>>* structsUsed = PushTrieSet<Pair<String,AddressGenInst>>(temp);
-  TrieSet<AddressAccess*>* addressAccessUsed = PushTrieSet<AddressAccess*>(temp);
-  
-  AccelInfoIterator top = StartIteration(&info);
-  for(int i = 0; i < top.MergeSize(); i++){
-    AccelInfoIterator iter = top;
-    iter.SetMergeIndex(i);
-      
-    for(;iter.IsValid(); iter = iter.Step()){
-      InstanceInfo* unit = iter.CurrentUnit();
-
-      for(String addressGenName : unit->addressGenUsed){
-        AddressAccess* access = GetAddressGenOrFail(addressGenName);
-
-        Assert(unit->structInfo); // If using address gen, need to have a valid struct info otherwise cannot proceed
-        Assert(!Empty(unit->structInfo->name));
-        Assert(!Empty(unit->structInfo->originalName));
-        
-        String typeName = unit->structInfo->name;
-
-        // TODO: We need to do this check beforehand. Backend code should assume that everything is working correctly and that the data is all good.
-        //       Basically move this check to the module instantiation?
-        if((int) unit->supportedAddressGen.type == 0){
-          printf("[USER_ERROR] Unit '%.*s' does not support address gen '%.*s'\n",UN(unit->typeName),UN(addressGenName));
-          exit(-1);
-        }
-
-        AddressGenInst inst = unit->supportedAddressGen;
-        structNameAndAddressGen->Insert({typeName,{access,inst}});
-        addressGenUsed->Insert({access,inst});
-        structsUsed->Insert({typeName,inst});
-        addressAccessUsed->Insert(access);
-      }
-    }
-  }
-    
-  // By getting the info directly from the structs, we make sure that we are always generating the functions needed for each possible structure that gets created/changed due to partial share or merge.
-  // Address gen is therefore capable of handling all the struct modifing features as long as they are properly implemented inside structInfo.
-
-  GrowableArray<String> builder = StartArray<String>(temp2);
-    
-  for(AddressAccess* access : addressAccessUsed){
-    String data = GenerateAddressPrintFunction(access,temp);
-    *builder.PushElem() = data;
-  }
-
-  for(AccessAndType p : addressGenUsed){
-    String data = GenerateAddressGenCompilationFunction(p,temp);
-    *builder.PushElem() = data;
-  }
-
-  for(Pair<String,AddressGenInst> p : structsUsed){
-    String structName = p.first;
-    AddressGenInst inst = p.second;
-
-    String content = GenerateAddressLoadingFunction(structName,inst,temp);
-    *builder.PushElem() = content;
-  }
-
-  for(Pair<String,AccessAndType> p : structNameAndAddressGen){
-    String structName = p.first;
-    AddressAccess* initial = p.second.access;
-    AddressGenInst inst = p.second.inst;
-
-    String content = GenerateAddressCompileAndLoadFunction(structName,initial,inst,temp);
-    *builder.PushElem() = content;
-  }
-
-  Array<String> content = EndArray(builder);
-
-  auto b = StartString(temp);
-
-  for(String s : content){
-    b->PushString(s);
-    b->PushString("\n");
-  }
-
-  TE_SetString("allAddrGen",EndString(temp,b));
     
   FILE* f = OpenFileAndCreateDirectories(PushString(temp,"%.*s/versat_accel.h",UN(softwarePath)),"w",FilePurpose_SOFTWARE);
   DEFER_CLOSE_FILE(f);

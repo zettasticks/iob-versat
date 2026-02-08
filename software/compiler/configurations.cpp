@@ -367,7 +367,6 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     elem->connectionType = inst->type;
     elem->partitionIndex = 0;
     elem->individualWiresShared = inst->isSpecificConfigShared;
-    elem->addressGenUsed = inst->addressGenUsed;
     elem->numberDelays = inst->declaration->NumberDelays();
     elem->memMapBits = inst->declaration->info.memMapBits;
 

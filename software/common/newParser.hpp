@@ -40,8 +40,6 @@ enum NewTokenType : u16{
   // Keywords
   NewTokenType_KEYWORD_MODULE,
   NewTokenType_KEYWORD_MERGE,
-  NewTokenType_KEYWORD_ADDRESSGEN,
-  NewTokenType_KEYWORD_USING,
   NewTokenType_KEYWORD_SHARE,
   NewTokenType_KEYWORD_STATIC,
   NewTokenType_KEYWORD_DEBUG,

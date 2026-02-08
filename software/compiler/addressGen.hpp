@@ -9,7 +9,6 @@
 struct SymbolicExpression;
 struct LoopLinearSum;
 struct LoopLinearSumTerm;
-struct AddressGenDef;
 struct CEmitter;
 
 // TODO: We currently do not support loops that start at non zero values. The fix is simple, we can always shift loops from N..M to 0..(M-N) by adding more logic to the expression. Kinda not doing this for now since still have not found an example where this is needed.
@@ -117,26 +116,14 @@ void   Print(AddressAccess* access);
 // ======================================
 // Compilation 
 
-AddressAccess* CompileAddressGen(Token name,Array<Token> inputs,Array<AddressGenForDef> loops,SymbolicExpression* addr,String content);
-
-// ======================================
-// Global getter for compiled address gens
-
-AddressAccess* GetAddressGenOrFail(String name);
+// TODO: We probably want to take in an Env* so that we can check stuff and we probably want to move this to the spec parser. No reason for other code to have token and to depend on parser stuff.
+AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef> loops,SymbolicExpression* addr,String content);
 
 // ======================================
 // Conversion
 
 AddressAccess* ConvertAccessTo1External(AddressAccess* access,Arena* out);
 AddressAccess* ConvertAccessTo2External(AddressAccess* access,int biggestLoopIndex,Arena* out);
-
-// ======================================
-// Codegen
-
-String GenerateAddressGenCompilationFunction(AccessAndType access,Arena* out);
-String GenerateAddressLoadingFunction(String structName,AddressGenInst type,Arena* out);
-String GenerateAddressCompileAndLoadFunction(String structName,AddressAccess* access,AddressGenInst type,Arena* out);
-String GenerateAddressPrintFunction(AddressAccess* initial,Arena* out);
 
 // ======================================
 // Code emission

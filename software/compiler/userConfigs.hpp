@@ -173,7 +173,7 @@ struct ConfigFunction{
   Array<String> newStructs;
   String structToReturnName;
 
-  bool doesNotSupportsSizeCalc;
+  bool supportsSizeCalc;
 
   // TODO: This is only worth it if we can generate extra stuff that might help figure out the problems. Otherwise just use gdb.
   // NOTE: Some stuff that we might want is to profile (gather statistics data) and stuff like that that we can then report at the end of a run.

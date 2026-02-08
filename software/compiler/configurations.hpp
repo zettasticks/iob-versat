@@ -118,7 +118,6 @@ struct InstanceInfo{
 
   Array<SimplePortConnection> inputs; 
   Array<SimplePortConnection> outputs; 
-  Array<String> addressGenUsed;
   AddressGenInst supportedAddressGen;
 
   SpecialUnitType specialType;

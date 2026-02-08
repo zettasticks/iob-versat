@@ -52,8 +52,6 @@ String PushRepr(Arena* out,NewToken token){
 
   SIMPLE(NewTokenType_KEYWORD_MODULE,"Keyword","module");
   SIMPLE(NewTokenType_KEYWORD_MERGE,"Keyword","merge");
-  SIMPLE(NewTokenType_KEYWORD_ADDRESSGEN,"Keyword","addressgen");
-  SIMPLE(NewTokenType_KEYWORD_USING,"Keyword","using");
   SIMPLE(NewTokenType_KEYWORD_SHARE,"Keyword","share");
   SIMPLE(NewTokenType_KEYWORD_STATIC,"Keyword","static");
   SIMPLE(NewTokenType_KEYWORD_DEBUG,"Keyword","debug");

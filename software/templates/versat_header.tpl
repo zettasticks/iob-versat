@@ -194,8 +194,6 @@ extern volatile AcceleratorStatic* accelStatic;
 static bool forceDoubleLoop = false;
 static bool forceSingleLoop = false;
 
-@{allAddrGen}
-
 // ============================================================================
 // User configuration functions, user defined inside the specification file
 

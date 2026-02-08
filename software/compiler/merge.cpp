@@ -2237,7 +2237,6 @@ FUDeclaration* Merge(Array<FUDeclaration*> types,
 
         if(test){
           // TODO: This stuff is so complicated already. We need a good day of cleaning up all the merge stuff. Very hard to make any progress the way we are doing right now. This is almost collapsing as it stands and I find it hard that this is working at all.
-          instance->addressGenUsed = test->addressGenUsed;
           instance->debug = test->debug;
         }
       }
@@ -2965,7 +2964,6 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
         
         // TODO: We are inserting the units on both the merged and the recon graphs but we are not adding them to the mappings. This works because the units that are inserted will never appear in the future of this "delay fixing algorithm". But nevertheless this is poor code and will bite us in the future. Eventually fix this.
 
-        FUInstance* mergedInstance;
         // Add to merged graph
         {
           PortInstance n0 = mergedEdge.out;
@@ -2973,7 +2971,6 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
 
           FUInstance* buffer = CreateFUInstance(mergedGraph,BasicDeclaration::buffer,uniqueName);
           SetStatic(buffer);
-          mergedInstance = buffer;
           
           InsertUnit(mergedGraph,n0,n1,MakePortOut(buffer,0),MakePortIn(buffer,0));
         }
@@ -3065,7 +3062,6 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
         
         info->baseNodeDelay = reconDelay[i].nodeDelay->GetOrFail(reconInst).value;
         info->localOrder = reconToOrder[i]->GetOrFail(reconInst);
-        info->addressGenUsed = reconInst->addressGenUsed;
       } else {
         // TODO: In theory we would like for this to work but some code relies on the inst always existing.
         //info->inst = nullptr;

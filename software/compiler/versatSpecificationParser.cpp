@@ -377,8 +377,6 @@ SpecExpression* ParseSpecExpression(Tokenizer* tok,Arena* out){
 
       if(id == "module")     type = NewTokenType_KEYWORD_MODULE;
       if(id == "merge")      type = NewTokenType_KEYWORD_MERGE;
-      if(id == "addressGen") type = NewTokenType_KEYWORD_ADDRESSGEN;
-      if(id == "using")      type = NewTokenType_KEYWORD_USING;
       if(id == "share")      type = NewTokenType_KEYWORD_SHARE;
       if(id == "static")     type = NewTokenType_KEYWORD_STATIC;
       if(id == "debug")      type = NewTokenType_KEYWORD_DEBUG;
@@ -738,24 +736,6 @@ Opt<InstanceDeclaration> ParseInstanceDeclaration(Tokenizer* tok,Arena* out){
     
       EXPECT(tok,"}");
       return res;
-    } else if(CompareString(potentialModifier,"using")){
-      tok->AdvancePeek();
-
-      EXPECT(tok,"(");
-
-      auto array = StartArray<Token>(out);
-      while(!tok->Done()){
-        Token name = tok->NextToken();
-        CHECK_IDENTIFIER(name);
-
-        *array.PushElem() = name;
-        
-        if(tok->IfNextToken(")")){
-          break;
-        }
-        EXPECT(tok,",");
-      }
-      res.addressGenUsed = EndArray(array);
     } else {
       break;
     }
@@ -1493,22 +1473,10 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
       } else {
         anyError = true;
       }
-    } else if(CompareString(peek,"addressGen")){
-      Opt<AddressGenDef> addressDef = ParseAddressGen(tok,out);
-      
-      if(addressDef.has_value()){
-        ConstructDef def = {};
-        def.type = ConstructType_ADDRESSGEN;
-        def.addressGen = addressDef.value();
-
-        *typeList->PushElem() = def;
-      } else {
-        anyError = true;
-      }
     } else {
       ReportError(tok,peek,"Unexpected token in global scope");
       tok->AdvancePeek();
-      Synchronize(tok,{"module","merge","addressGen"});
+      Synchronize(tok,{"module","merge"});
     }
   }
 
@@ -1527,8 +1495,6 @@ bool IsModuleLike(ConstructDef def){
   case ConstructType_ITERATIVE:
     return true;
     break;
-  case ConstructType_ADDRESSGEN:
-    return false;
     break;
 } END_SWITCH();
 
@@ -1555,55 +1521,9 @@ Array<Token> TypesUsed(ConstructDef def,Arena* out){
   case ConstructType_ITERATIVE:{
     NOT_IMPLEMENTED("yet");
   };
-  case ConstructType_ADDRESSGEN:{
-
-  } break;
 } END_SWITCH();
 
   return {};
-}
-
-Array<Token> AddressGenUsed(ConstructDef def,Array<ConstructDef> allConstructs,Arena* out){
-  TEMP_REGION(temp,out);
-
-  auto list = PushArenaList<Token>(temp);
-
-  FULL_SWITCH(def.type){
-  case ConstructType_MODULE: {
-    ModuleDef mod = def.module;
-
-    for(InstanceDeclaration decl : mod.declarations){
-      for(Token tok : decl.addressGenUsed){
-        *list->PushElem() = tok;
-      }
-    }
-  } break;
-  case ConstructType_MERGE: {
-    MergeDef merge = def.merge;
-
-    for(TypeAndInstance tp : merge.declarations){
-      for(ConstructDef defs : allConstructs){
-        if(CompareString(defs.base.name,tp.typeName)){
-          Array<Token> used = AddressGenUsed(defs,allConstructs,temp);
-
-          for(Token t : used){
-            *list->PushElem() = t;
-          }
-        }
-      }
-    }
-  } break;
-  case ConstructType_ITERATIVE: {
-    NOT_IMPLEMENTED("yet");
-  } break;
-  case ConstructType_ADDRESSGEN: {
-    // This function returns address gens that module like constructs used. It is not supposed to be called with an actual AddressGen construct
-    Assert(false);
-  } break;
-    
-} END_SWITCH();
-
-  return PushArrayFromList(out,list);
 }
 
 // TODO: Move this function to a better place, no reason to be inside the spec parser.
@@ -1618,109 +1538,10 @@ FUDeclaration* InstantiateSpecifications(String content,ConstructDef def){
   case ConstructType_ITERATIVE:{
     NOT_IMPLEMENTED("yet");
   }; 
-  case ConstructType_ADDRESSGEN:{
-    Assert(false);
-  } break;
   default: Assert(false);
   } END_SWITCH();
 
   return nullptr;
-}
-
-Opt<AddressGenDef> ParseAddressGen(Tokenizer* tok,Arena* out){
-  TEMP_REGION(temp,out);
-
-  EXPECT(tok,"addressGen");
-  
-  Token name = tok->NextToken();
-  CHECK_IDENTIFIER(name);
-
-  Array<Token> inputsArr = {};
-  if(tok->IfNextToken("(")){
-    if(tok->IfNextToken(")")){
-      // Nothing
-    } else {
-      ArenaList<Token>* inputs = PushArenaList<Token>(temp);
-
-      while(!tok->Done()){
-        Token name = tok->NextToken();
-        CHECK_IDENTIFIER(name);
-        *inputs->PushElem() = name;
-      
-        if(tok->IfNextToken(",")){
-          continue;
-        } else {
-          break;
-        }
-      }
-
-      inputsArr = PushArrayFromList(out,inputs);
-      EXPECT(tok,")");
-    }
-  }
-
-  EXPECT(tok,"{");
-
-  ArenaList<AddressGenForDef>* loops = PushArenaList<AddressGenForDef>(temp);
-  Array<Token> symbolicTokens = {};
-  while(!tok->Done()){
-    Token construct = tok->PeekToken();
-    
-    if(CompareString(construct,"}")){
-      break;
-    }
-    
-    if(CompareString(construct,"for")){
-      tok->AdvancePeek();
-      
-      Token loopVariable = tok->NextToken();
-      CHECK_IDENTIFIER(loopVariable);
-      
-      Array<Token> startSym = TokenizeSymbolicExpression(tok,out);
-      if(Empty(startSym)){
-        return {};
-      }
-      
-      EXPECT(tok,"..");
-
-      Array<Token> endSym = TokenizeSymbolicExpression(tok,out);
-      if(Empty(endSym)){
-        return {};
-      }
-
-      EXPECT(tok,":");
-      
-      *loops->PushElem() = (AddressGenForDef){.loopVariable = loopVariable,.startSym = startSym,.endSym = endSym};
-    } else if(CompareString(construct,"addr")){
-      tok->AdvancePeek();
-
-      EXPECT(tok,"=");
-      
-      symbolicTokens = TokenizeSymbolicExpression(tok,out);
-      
-      if(symbolicTokens.size == 0){
-        return {};
-      }
-
-      EXPECT(tok,";");
-      break;
-    }
-  }
-
-  EXPECT(tok,"}");
-
-  // TODO: We actually want to return something here. An "Empty" address gen, which basically does nothing but still lets the program run the normal flow. It just does nothing in the sense that we do not actually generate anything for such address gen.
-  if(Empty(symbolicTokens)){
-    return {};
-  }
-  
-  AddressGenDef def = {};
-  def.name = name;
-  def.inputs = inputsArr;
-  def.loops = PushArrayFromList(out,loops);
-  def.symbolicTokens = symbolicTokens;
-  
-  return def;
 }
 
 // ======================================
@@ -2015,12 +1836,12 @@ void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
       String actualName = GetActualArrayName(var.name,i,temp);
       FUInstance* inst = CreateFUInstanceWithParameters(circuit,type,actualName,decl);
       table->Insert(inst->name,inst);
-      inst->addressGenUsed = CopyArray<String,Token>(decl.addressGenUsed,globalPermanent);
+      //inst->addressGenUsed = CopyArray<String,Token>(decl.addressGenUsed,globalPermanent);
     }
   } else {
     FUInstance* inst = CreateFUInstanceWithParameters(circuit,type,var.name,decl);
     table->Insert(inst->name,inst);
-    inst->addressGenUsed = CopyArray<String,Token>(decl.addressGenUsed,globalPermanent);
+    //inst->addressGenUsed = CopyArray<String,Token>(decl.addressGenUsed,globalPermanent);
 
     ent->type = EntityType_FU;
     ent->instance = inst;
@@ -2426,6 +2247,8 @@ InstanceDeclaration ParseInstanceDeclaration2(Parser* parser,Arena* out){
   InstanceDeclaration res = {};
 
   InstanceDeclarationType modifier = InstanceDeclarationType_NONE;
+
+  // TODO: Is it correct if we see a bunch of repeated modifiers? Think 'static static static'.
   while(1){
     NewToken potentialModifier = parser->PeekToken();
 
@@ -2486,30 +2309,11 @@ InstanceDeclaration ParseInstanceDeclaration2(Parser* parser,Arena* out){
     
       parser->ExpectNext('}');
       return res;
-    } else if(potentialModifier.type == NewTokenType_KEYWORD_USING){
-      parser->NextToken();
-
-      parser->ExpectNext('(');
-
-      auto array = StartArray<Token>(out);
-      while(!parser->Done()){
-        Token name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
-
-        *array.PushElem() = name;
-        
-        if(parser->IfNextToken(')')){
-          break;
-        }
-        parser->ExpectNext(',');
-      }
-      res.addressGenUsed = EndArray(array);
     } else {
       break;
     }
 
-    if(modifier != InstanceDeclarationType_NONE){
-      return {};
-    }
+    modifier = modifier | parsedModifier;
   }
 
   res.typeName = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
@@ -2645,7 +2449,7 @@ SpecExpression* ParseSpecExpression2(Parser* parser,Arena* out,int bindingPower)
     res = PushStruct<SpecExpression>(out);
 
     res->type = SpecExpression::LITERAL;
-    res->val = atom.number;
+    res->val = number.number;
   } else {
     Var var = ParseVar2(parser);
     
@@ -2766,9 +2570,11 @@ ModuleDef ParseModuleDef2(Parser* parser,Arena* out){
   Token name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
   Array<VarDeclaration> vars = ParseModuleInputDeclaration2(parser,out);
 
-  Token outputs = {};
+  //Token outputs = {};
   if(parser->IfNextToken(NewTokenType_ARROW)){
-    NewToken outputs = parser->ExpectNext(NewTokenType_NUMBER);
+    // TODO: Right now we do not care about output info being given by the user.
+    //       We probably should. We still parse it, we just ignore it for now.
+    /* outputs = */ parser->ExpectNext(NewTokenType_NUMBER);
   }
   
   ArenaList<InstanceDeclaration>* decls = PushArenaList<InstanceDeclaration>(temp);
@@ -3014,8 +2820,6 @@ Array<ConstructDef> ParseVersatSpecification2(String content,Arena* out){
       //       However this is something that we want to push to the meta function generation. We do not want to actually write this and potentially get it wrong.
       if(id == "module")     type = NewTokenType_KEYWORD_MODULE;
       if(id == "merge")      type = NewTokenType_KEYWORD_MERGE;
-      if(id == "addressGen") type = NewTokenType_KEYWORD_ADDRESSGEN;
-      if(id == "using")      type = NewTokenType_KEYWORD_USING;
       if(id == "share")      type = NewTokenType_KEYWORD_SHARE;
       if(id == "static")     type = NewTokenType_KEYWORD_STATIC;
       if(id == "debug")      type = NewTokenType_KEYWORD_DEBUG;
@@ -3053,11 +2857,9 @@ Array<ConstructDef> ParseVersatSpecification2(String content,Arena* out){
     } else if(tok.type == NewTokenType_KEYWORD_MERGE){
       def.type = ConstructType_MERGE;
       def.merge = ParseMerge2(parser,out);
-    } else if(tok.type == NewTokenType_KEYWORD_ADDRESSGEN){
-      parser->Synch({NewTokenType_KEYWORD_MODULE,NewTokenType_KEYWORD_MERGE});
     } else {
       parser->ReportUnexpectedToken(tok,{NewTokenType_KEYWORD_MODULE,NewTokenType_KEYWORD_MERGE});
-      parser->Synch({NewTokenType_KEYWORD_MODULE,NewTokenType_KEYWORD_MERGE,NewTokenType_KEYWORD_ADDRESSGEN});
+      parser->Synch({NewTokenType_KEYWORD_MODULE,NewTokenType_KEYWORD_MERGE});
     }
 
     *typeList->PushElem() = def;
@@ -3070,67 +2872,5 @@ Array<ConstructDef> ParseVersatSpecification2(String content,Arena* out){
   }
 
   return PushArrayFromList(out,typeList);
- 
-#if 0  
-
-  Tokenizer tokenizer = Tokenizer(content,".%=#[](){}+:;,*~-",{"##","->=","->",">><","><<",">>","<<","..","^="});
-  Tokenizer* tok = &tokenizer;
-
-  ArenaList<ConstructDef>* typeList = PushArenaList<ConstructDef>(temp);
-  
-  bool anyError = false;
-  while(!tok->Done()){
-    Token peek = tok->PeekToken();
-
-    if(CompareString(peek,"module")){
-      Opt<ModuleDef> moduleDef = ParseModuleDef(tok,out);
-
-      if(moduleDef.has_value()){
-        ConstructDef def = {};
-        def.type = ConstructType_MODULE;
-        def.module = moduleDef.value();
-
-        *typeList->PushElem() = def;
-      } else {
-        anyError = true;
-      }
-    } else if(CompareString(peek,"merge")){
-      Opt<MergeDef> mergeDef = ParseMerge(tok,out);
-      
-      if(mergeDef.has_value()){
-        ConstructDef def = {};
-        def.type = ConstructType_MERGE;
-        def.merge = mergeDef.value();
-
-        *typeList->PushElem() = def;
-      } else {
-        anyError = true;
-      }
-    } else if(CompareString(peek,"addressGen")){
-      Opt<AddressGenDef> addressDef = ParseAddressGen(tok,out);
-      
-      if(addressDef.has_value()){
-        ConstructDef def = {};
-        def.type = ConstructType_ADDRESSGEN;
-        def.addressGen = addressDef.value();
-
-        *typeList->PushElem() = def;
-      } else {
-        anyError = true;
-      }
-    } else {
-      ReportError(tok,peek,"Unexpected token in global scope");
-      tok->AdvancePeek();
-      Synchronize(tok,{"module","merge","addressGen"});
-    }
-  }
-
-  if(anyError){
-    // NOTE: Error messages have already been printed at this point. Just terminate the program 
-    exit(-1);
-  }
-
-  return PushArrayFromList(out,typeList);
-#endif
 }
 

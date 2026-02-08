@@ -3,7 +3,6 @@
 #include "utilsCore.hpp"
 #include "memory.hpp"
 
-struct AddressGenDef;
 struct FUDeclaration;
 struct SymbolicExpression;
 struct VerilogPortSpec;

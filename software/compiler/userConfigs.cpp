@@ -615,14 +615,14 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     }
   }
 
-  bool canCalculateSize = true;
+  bool supportsSizeCalc = true;
   for(ConfigVarDeclaration var : variables){
     if(variablesUsedOnLoopExpressions->Exists(var.name)){
       if(var.type != ConfigVarType_FIXED && var.type != ConfigVarType_DYN){
-        canCalculateSize = false;
+        supportsSizeCalc = false;
 
         // TODO: Better error calculation.
-        printf("[WARNING] UserConfig function \"%.*s\" does not support runtime size calculations because var \"%.*s\" which is part of loop logic is not defined as FIXED or DYN\n",UN(def->name),UN(var.name));
+        printf("[WARNING] UserConfig function \"%.*s\" does not support runtime size calculations because var \"%.*s\" which is part of loop logic is not defined as Fixed or Dyn\n",UN(def->name),UN(var.name));
       }
     }
   }
@@ -673,7 +673,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           expr = simple->rhsId->parent->expr;
         }
 
-        AddressAccess* access = CompileAddressGen({},variableNames,loops,expr,content);
+        AddressAccess* access = CompileAddressGen(variableNames,loops,expr,content);
         AddressGenInst supported = ent->instance->declaration->supportedAddressGen;
 
         // TODO: This logic is stupid. Rework into something better when we finalize the addressGen change.
@@ -877,8 +877,6 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
             stmt->lhs->parent = nullptr;
           }
           
-          Entity* ent = env->GetEntity(stmt->lhs,temp);
-          
           ConfigStuff* assign = list->PushElem();
           assign->type = ConfigStuffType_MEMORY_TRANSFER;
           assign->transfer.dir = TransferDirection_READ;
@@ -955,6 +953,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   func.newStructs = PushArrayFromList(out,newStructs);
   func.structToReturnName = structToReturnName;
   func.debug = def->debug;
+  func.supportsSizeCalc = supportsSizeCalc;
 
   ConfigFunction* res = nameToFunction->Insert(func.fullName,func);
   
