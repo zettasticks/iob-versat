@@ -5,6 +5,7 @@
 #include "embeddedData.hpp"
 
 struct ConfigFunctionDef;
+struct SpecExpression;
 
 typedef TrieMap<String,FUInstance*> InstanceTable;
 
@@ -22,10 +23,19 @@ struct ConnectionExtra{
   Range<int> delay;
 };
 
+struct ConnectionExtra2{
+  Range<SpecExpression*> port;
+  Range<SpecExpression*> delay;
+};
+
 struct Var{
   Token name;
   ConnectionExtra extra;
+
   Range<int> index;
+
+  ConnectionExtra2 trueExtra;
+  Range<SpecExpression*> trueIndex;
   bool isArrayAccess;
 };
 
@@ -37,7 +47,11 @@ struct VarGroup{
 enum SpecType{
   SpecType_OPERATION,
   SpecType_VAR,
-  SpecType_LITERAL
+  SpecType_NAME,
+  SpecType_LITERAL,
+  SpecType_SINGLE_ACCESS,
+  SpecType_ARRAY_ACCESS,
+  SpecType_FUNCTION_CALL
 };
 
 struct SpecExpression{
@@ -46,11 +60,16 @@ struct SpecExpression{
     const char* op;
     Var var;
     int val;
+    Token name;
   };
   Token text;
   
-  enum {OPERATION,VAR,LITERAL} type;
+  // NOTE: If array access, expressions is an array of the expressions in order and var contains the array name.
+  enum {OPERATION,VAR,NAME,LITERAL,SINGLE_ACCESS,ARRAY_ACCESS,FUNCTION_CALL} type;
 };
+
+//nocheckin
+Array<Token> AccumTokens(SpecExpression* top,Arena* out);
 
 struct VarDeclaration{
   Token name;
@@ -80,8 +99,6 @@ inline InstanceDeclarationType operator|(InstanceDeclarationType lhs,InstanceDec
   return res;
 }
 
-// TODO: It's kinda bad to group stuff this way. Just because the spec parser groups everything, does not mean that we need to preserve the grouping. We could just parse once and create N different instance declarations for each instance (basically flattening the declarations) instead of preserving this grouping and probably simplifying stuff a bit.
-//       The problem is that we would have to put some sharing logic inside the parser. Idk. Push through and see later if any change is needed.
 struct InstanceDeclaration{
   InstanceDeclarationType modifier;
   Token typeName;
@@ -99,13 +116,11 @@ struct InstanceDeclaration{
   int shareIndex;
 };
 
-#if 1
 enum ConnectionType{
   ConnectionType_NONE,
   ConnectionType_EQUALITY,
   ConnectionType_CONNECTION
 };
-#endif
 
 struct ConnectionDef{
   ConnectionType type;
@@ -193,29 +208,13 @@ struct ConfigIdentifier{
   union{
     Token name;
     SymbolicExpression* expr; // TODO: Do not forget, we want this to be a SpecExpression, not a symbolic expression yet. We want to remove all the SymbolicExpressions from the parsing code.
+    SpecExpression* trueExpr;
   };
 
-#if 0
-  Token name;
-  Token wireOrPort;
-  SymbolicExpression* expr;
-#endif
 };
 
 inline ConfigIdentifier* GetBase(ConfigIdentifier* top){
   return top;
-#if 0
-  if(top == nullptr){
-    return nullptr;
-  }
-
-  ConfigIdentifier* ptr = top;
-
-  while(ptr->type != ConfigAccessType_BASE){
-    ptr = ptr->child;
-  }
-  return ptr;
-#endif
 }
 
 inline ConfigIdentifier* GetBeforeBase(ConfigIdentifier* top){
@@ -223,23 +222,6 @@ inline ConfigIdentifier* GetBeforeBase(ConfigIdentifier* top){
     return top->parent;
   }
   return nullptr;
-  
-#if 0
-  if(top == nullptr){
-    return nullptr;
-  }
-
-  ConfigIdentifier* ptr = top;
-
-  if(ptr->type == ConfigAccessType_BASE){
-    return nullptr;
-  }
-
-  while(ptr->child->type != ConfigAccessType_BASE){
-    ptr = ptr->child;
-  }
-  return ptr;
-#endif
 }
 
 // ======================================
@@ -336,7 +318,9 @@ struct Env{
 
   Entity* PushNewEntity(Token name);
   Entity* GetEntity(Token name);
+
   Entity* GetEntity(ConfigIdentifier* id,Arena* out);
+  Entity* GetEntity(SpecExpression* id,Arena* out);
 
   void AddInput(VarDeclaration decl);
   void AddInstance(InstanceDeclaration decl,VarDeclaration var);
@@ -362,3 +346,23 @@ struct FUInstanceIterator{
 
 FUInstanceIterator StartIteration(Env* env,Entity* ent);
 
+// TODO
+// nocheckin
+SymbolicExpression* SymbolicFromSpecExpression(SpecExpression* spec,Arena* out);
+
+
+
+#if 0
+// nocheckin
+// TODO: We are actually dealing with 2 types of expressions. 
+//       Connection expressions can have a '{' and '}' after a variable.
+//       UserConfig expressions cannot (otherwise cannot differentiate on expr like 'for 0..1 {' )
+
+
+LEFT HERE - Since we are simplifying this part of the codebase, might
+as well go all out and finish the job. Parser stuff needs to be
+simplified. 
+- Afterwards a small cleanup of anything that is left, any unused function, maybe 
+improve the error messages and start making better error message generation support.
+- Finally, move on to versat-ai and figure out why the convolution is giving out that bug.
+#endif

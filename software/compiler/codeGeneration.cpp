@@ -3355,7 +3355,7 @@ Problem: If we want the address gen to take into account the limitations of spac
           }
           }
         } break;
-        }
+      }
 
         c->EndBlock();
       }

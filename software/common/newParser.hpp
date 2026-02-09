@@ -32,6 +32,7 @@ enum NewTokenType : u16{
   NewTokenType_ARROW,          // ->
   NewTokenType_SHIFT_RIGHT,    // >>
   NewTokenType_SHIFT_LEFT,     // <<
+  NewTokenType_XOR_EQUAL,      // ^=
   
   // Triple digit symbols
   NewTokenType_ROTATE_RIGHT,   // >><
@@ -46,14 +47,18 @@ enum NewTokenType : u16{
   NewTokenType_KEYWORD_CONFIG,
   NewTokenType_KEYWORD_STATE,
   NewTokenType_KEYWORD_MEM,
+  NewTokenType_KEYWORD_FOR,
 
   // We do not really care which keyword it is. We just want to make
-  // sure that the generated C code and Verilog code is syntatically
-  // correct since the user might use a C/Verilog keyword in place of
+  // sure that the generated C code is syntatically
+  // correct since the user might use a C keyword in place of
   // a name and cause problems later on (Ex: 'const' is a valid name
   // from the POV of Versat but its a keyword in C which causes
   // problems when generating the C structs and so on).
   NewTokenType_C_KEYWORD,
+
+  // We solve this by adding a number at the end of every instance
+  // so for now this is mostly unused
   NewTokenType_VERILOG_KEYWORD
 };
 
@@ -108,7 +113,10 @@ enum ParsingOptions{
   ParsingOptions_SKIP_WHITESPACE = (1 << 0),
   ParsingOptions_SKIP_COMMENTS   = (1 << 1),
 
-  ParsingOptions_ERROR_ON_C_VERILOG_KEYWORDS = (1 << 2),
+  ParsingOptions_ERROR_ON_C_KEYWORDS = (1 << 2),
+  ParsingOptions_ERROR_ON_VERILOG_KEYWORDS = (1 << 3),
+
+  ParsingOptions_ERROR_ON_C_VERILOG_KEYWORDS = (ParsingOptions_ERROR_ON_C_KEYWORDS | ParsingOptions_ERROR_ON_VERILOG_KEYWORDS),
 
   ParsingOptions_DEFAULT = (ParsingOptions_SKIP_WHITESPACE | ParsingOptions_SKIP_COMMENTS)
 };
@@ -147,6 +155,9 @@ struct Parser{
 
   bool IfNextToken(NewTokenType type);
   bool IfNextToken(char singleChar);
+
+  bool IfPeekToken(NewTokenType type);
+  bool IfPeekToken(char singleChar);
   
   NewToken ExpectNext(NewTokenType type);
   NewToken ExpectNext(char singleChar);

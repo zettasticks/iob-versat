@@ -10,6 +10,7 @@ struct SymbolicExpression;
 struct LoopLinearSum;
 struct LoopLinearSumTerm;
 struct CEmitter;
+struct SpecExpression;
 
 // TODO: We currently do not support loops that start at non zero values. The fix is simple, we can always shift loops from N..M to 0..(M-N) by adding more logic to the expression. Kinda not doing this for now since still have not found an example where this is needed.
 
@@ -21,6 +22,12 @@ struct AddressGenForDef{
   Token loopVariable;
   Array<Token> startSym;
   Array<Token> endSym;
+};
+
+struct AddressGenForDef2{
+  Token loopVariable;
+  SpecExpression* startSym;
+  SpecExpression* endSym;
 };
 
 struct AddressAccess{
@@ -118,6 +125,7 @@ void   Print(AddressAccess* access);
 
 // TODO: We probably want to take in an Env* so that we can check stuff and we probably want to move this to the spec parser. No reason for other code to have token and to depend on parser stuff.
 AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef> loops,SymbolicExpression* addr,String content);
+AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> loops,SymbolicExpression* addr,String content);
 
 // ======================================
 // Conversion

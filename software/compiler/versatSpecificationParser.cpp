@@ -15,6 +15,57 @@
 
 #include "newParser.hpp"
 
+// ======================================
+// Constants
+
+static SpecExpression SPEC_LITERAL_0 = {.val = 0,.type = SpecExpression::LITERAL};
+
+// nocheckin
+// TODO: Need to take an Env to properly check stuff.
+SymbolicExpression* SymbolicFromSpecExpression(SpecExpression* spec,Arena* out){
+  TEMP_REGION(temp,out);  
+
+  auto Recurse = [temp](auto Recurse,SpecExpression* top) -> SymbolicExpression*{
+    SymbolicExpression* res = nullptr;
+
+    switch(top->type){
+    case SpecExpression::OPERATION:{
+      SymbolicExpression* left  = Recurse(Recurse,top->expressions[0]);
+      SymbolicExpression* right = Recurse(Recurse,top->expressions[1]);
+
+      if(top->op[0] == '+'){
+        res = SymbolicAdd(left,right,temp);
+      }
+      if(top->op[0] == '-'){
+        res = SymbolicSub(left,right,temp);
+      }
+      if(top->op[0] == '*'){
+        res = SymbolicMult(left,right,temp);
+      }
+      if(top->op[0] == '/'){
+        res = SymbolicDiv(left,right,temp);
+      }
+    } break;
+    case SpecExpression::NAME:
+    case SpecExpression::VAR:{
+      res = PushVariable(temp,top->name);
+    } break;
+    case SpecExpression::LITERAL:{
+      res = PushLiteral(temp,top->val);
+    } break;
+    case SpecExpression::SINGLE_ACCESS:
+    case SpecExpression::ARRAY_ACCESS:
+    case SpecExpression::FUNCTION_CALL: Assert(false);
+    }
+
+    return res;
+  };
+
+  SymbolicExpression* res = Recurse(Recurse,spec);
+
+  return Normalize(res,out);
+}
+
 // TODO: Rework expression parsing to support error reporting similar to module diff.
 //       A simple form of synchronization after detecting an error would vastly improve error reporting
 //       Change iterative and merge to follow module def.
@@ -430,6 +481,15 @@ PortExpression InstantiateSpecExpression(SpecExpression* root,Accelerator* circu
 
   switch(root->type){
     // Just to remove warnings. TODO: Change expression so that multiple locations have their own expression struct, instead of reusing the same one.
+  case SpecType_SINGLE_ACCESS:{
+    Assert(false);
+  } break;
+  case SpecType_ARRAY_ACCESS:{
+    Assert(false);
+  } break;
+  case SpecType_FUNCTION_CALL:{
+    Assert(false);
+  } break;
   case SpecType_LITERAL:{
     int number = root->val;
 
@@ -448,6 +508,9 @@ PortExpression InstantiateSpecExpression(SpecExpression* root,Accelerator* circu
       res.inst = *found;
     }
   }break;
+  case SpecType_NAME:{
+    Assert(false);
+  } break;
   case SpecType_VAR:{
     Var var = root->var;  
     String name = var.name;
@@ -1439,6 +1502,8 @@ void Synchronize(Tokenizer* tok,BracketList<String> syncPoints){
 Array<ConstructDef> ParseVersatSpecification2(String content,Arena* out);
 
 Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
+  return ParseVersatSpecification2(content,out);
+  
   TEMP_REGION(temp,out);
   Tokenizer tokenizer = Tokenizer(content,".%=#[](){}+:;,*~-",{"##","->=","->",">><","><<",">>","<<","..","^="});
   Tokenizer* tok = &tokenizer;
@@ -1790,6 +1855,109 @@ Entity* Env::GetEntity(ConfigIdentifier* id,Arena* out){
   return ent;
 }
 
+Entity* Env::GetEntity(SpecExpression* id,Arena* out){
+  TEMP_REGION(temp,out);
+
+  SpecExpression* ptr = id;
+
+  Entity* ent = nullptr;
+
+  if(id->type == SpecExpression::NAME){
+    ent = GetEntity(id->name);
+  }
+  if(id->type == SpecExpression::ARRAY_ACCESS){
+    NOT_IMPLEMENTED();
+  }
+  if(id->type == SpecExpression::SINGLE_ACCESS){
+    ent = GetEntity(id->name);
+    
+    SpecExpression* accessExpr = id->expressions[0];
+    Assert(accessExpr->type == SpecExpression::NAME);
+    
+    Token access = accessExpr->name;
+
+    Direction dir = Direction_NONE;
+    int port = 0;
+    if(access == "out0"){
+      dir = Direction_OUTPUT;
+    }
+    if(access == "out1"){
+      dir = Direction_OUTPUT;
+      port = 1;
+    }
+    if(access == "in0"){
+      dir = Direction_INPUT;
+    }
+    if(access == "in1"){
+      dir = Direction_INPUT;
+      port = 1;
+    }
+
+    Entity* nextEnt = nullptr;
+    if(dir != Direction_NONE){
+      Entity* virtualWire = PushStruct<Entity>(out);
+      virtualWire->type = EntityType_MEM_PORT;
+      virtualWire->dir = dir;
+      virtualWire->port = port;
+      virtualWire->parent = ent;
+            
+      nextEnt = virtualWire;
+    } 
+          
+    FUDeclaration* decl = ent->instance->declaration;
+            
+    // TODO: We need to check if we have the same name for stuff. If
+    //       wire has the same name as a userConfig function then we have a problem and this
+    //       code will not act correctly. Furthermore, this check needs to be done elsewhere.
+    //       By the time we reach this point we are probably too far. Otherwise we need to 
+    for(Wire& w : decl->configs){
+      if(w.name == access){
+        Entity* wire = PushStruct<Entity>(out);
+        wire->wire = &w;
+        wire->type = EntityType_CONFIG_WIRE;
+              
+        if(nextEnt) ReportError({},"Name collision");
+        nextEnt = wire;
+        break;
+      }
+    }
+
+    for(Wire& w : decl->states){
+      if(w.name == access){
+        Entity* wire = PushStruct<Entity>(out);
+        wire->wire = &w;
+        wire->type = EntityType_STATE_WIRE;
+              
+        if(nextEnt) ReportError({},"Name collision");
+        nextEnt = wire;
+        break;
+      }
+    }
+ 
+    for(MergePartition part : decl->info.infos){
+      for(ConfigFunction* func : part.userFunctions){
+        if(func->individualName == access){
+          Entity* userFunc = PushStruct<Entity>(out);
+
+          userFunc->func = func;
+          userFunc->type = EntityType_CONFIG_FUNCTION;
+          
+          if(nextEnt) ReportError({},"Name collision");
+          nextEnt = userFunc;
+        }
+      }
+    }
+    
+    if(nextEnt){
+      nextEnt->parent = ent;
+      ent = nextEnt;
+    }
+  }
+
+  return ent;
+}
+
+
 void Env::AddInput(VarDeclaration var){
   TEMP_REGION(temp,nullptr);
 
@@ -2119,16 +2287,6 @@ PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
   return res;
 }
 
-#if 0
-LEFT HERE - Since we are simplifying this part of the codebase, might
-as well go all out and finish the job. Parser stuff needs to be
-simplified. 
-- Afterwards a small cleanup of anything that is left, any unused function, maybe 
-improve the error messages and start making better error message generation support.
-- Finally, move on to versat-ai and figure out why the convolution is giving out that bug.
-#endif
-
-
 // nochecking
 // TODO: Just to remove the syntax errors from the compiler
 Token C(NewToken t){
@@ -2138,59 +2296,59 @@ Token C(NewToken t){
   return res;
 }
 
-Range<int> ParseRange2(Parser* parser){
-  Range<int> res = {};
+Range<SpecExpression*> ParseRange2(Parser* parser,Arena* out){
+  Range<SpecExpression*> res = {};
 
-  int n1 = parser->ExpectNext(NewTokenType_NUMBER).number;
+  SpecExpression* n1 = ParseSpecExpression2(parser,out);
 
   res.start = n1;
   res.end = n1;
 
   if(parser->IfNextToken(NewTokenType_DOUBLE_DOT)){
-    res.end = parser->ExpectNext(NewTokenType_NUMBER).number;
+    res.end = ParseSpecExpression2(parser,out);
   }
   
   return res;
 }
 
-Var ParseVar2(Parser* parser){
+Var ParseVar2(Parser* parser,Arena* out){
   Var var = {};
 
   Token name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
 
   if(parser->IfNextToken('[')){
-    Range<int> range = ParseRange2(parser);
+    Range<SpecExpression*> range = ParseRange2(parser,out);
 
     var.isArrayAccess = true;
-    var.index = range;
+    var.trueIndex = range;
 
     parser->ExpectNext(']');
   }
   
-  int delayStart = 0;
-  int delayEnd = 0;
+  SpecExpression* delayStart = &SPEC_LITERAL_0;
+  SpecExpression* delayEnd = &SPEC_LITERAL_0;
   if(parser->IfNextToken('{')){
-    Range<int> range = ParseRange2(parser);
+    Range<SpecExpression*> range = ParseRange2(parser,out);
     delayStart = range.start;
     delayEnd = range.end;
 
     parser->ExpectNext('}');
   }
 
-  int portStart = 0;
-  int portEnd = 0;
+  SpecExpression* portStart = &SPEC_LITERAL_0;
+  SpecExpression* portEnd = &SPEC_LITERAL_0;
   if(parser->IfNextToken(':')){
-    Range<int> range = ParseRange2(parser);
+    Range<SpecExpression*> range = ParseRange2(parser,out);
 
     portStart = range.start;
     portEnd = range.end;
   }
 
   var.name = name;
-  var.extra.delay.start = delayStart;
-  var.extra.delay.end = delayEnd;
-  var.extra.port.start = portStart;
-  var.extra.port.end = portEnd;
+  var.trueExtra.delay.start = delayStart;
+  var.trueExtra.delay.end = delayEnd;
+  var.trueExtra.port.start = portStart;
+  var.trueExtra.port.end = portEnd;
 
   return var;
 }
@@ -2295,9 +2453,9 @@ InstanceDeclaration ParseInstanceDeclaration2(Parser* parser,Arena* out){
       auto array = StartArray<VarDeclaration>(out);
     
       while(!parser->Done()){
-        Token peek = C(parser->PeekToken());
+        NewToken peek = parser->PeekToken();
 
-        if(CompareString(peek,"}")){
+        if(peek.type == '}'){
           break;
         }
 
@@ -2318,22 +2476,18 @@ InstanceDeclaration ParseInstanceDeclaration2(Parser* parser,Arena* out){
 
   res.typeName = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
 
-  Token possibleParameters = C(parser->PeekToken());
+  NewToken possibleParameters = parser->PeekToken();
   auto list = PushArenaList<Pair<String,SpecExpression*>>(temp);
-  if(CompareString(possibleParameters,"#")){
+  if(possibleParameters.type == '#'){
     parser->NextToken();
     parser->ExpectNext('(');
 
     while(!parser->Done()){
       parser->ExpectNext('.');
-      Token parameterName = C(parser->NextToken());
+      Token parameterName = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
 
       parser->ExpectNext('(');
 
-#if 0
-      // TODO: We need to actually parse as a SpecExpression and only then do we convert it to a symbolic expression later.
-      SymbolicExpression* expr = ParseSymbolicExpression(parse,out);
-#endif
       SpecExpression* expr = ParseSpecExpression2(parser,out);
 
       parser->ExpectNext(')');
@@ -2370,7 +2524,7 @@ VarGroup ParseVarGroup2(Parser* parser,Arena* out){
     auto vars = PushArenaList<Var>(temp);
 
     while(!parser->Done()){
-      Var var = ParseVar2(parser);
+      Var var = ParseVar2(parser,out);
 
       *vars->PushElem() = var;
 
@@ -2388,7 +2542,7 @@ VarGroup ParseVarGroup2(Parser* parser,Arena* out){
     res.vars = PushArrayFromList(out,vars);
     return res;
   } else {
-    Var var = ParseVar2(parser);
+    Var var = ParseVar2(parser,out);
 
     VarGroup res = {};
     res.vars = PushArray<Var>(out,1);
@@ -2397,7 +2551,181 @@ VarGroup ParseVarGroup2(Parser* parser,Arena* out){
   }
 }
 
-//SpecExpression* ParseSpecExpression2(Parser* parser,Arena* out,int bindingPower = 99);
+// nocheckin 
+// TODO: We do actually want to separate the parsing from a connection expression and the expressions used by the address gen stuff.
+//       The problem that we had before is that we parsed symbolic directly instead of parsing into an ExpressionStruct and then we tried to check the semantic.
+//       Basically, in the past, instead of doing Text -> Tokens -> Symbolic we where doing Text -> Symbolic which is the problem.
+SpecExpression* ParseLoopExpression2(Parser* parser,Arena* out,int bindingPower = 99);
+
+SpecExpression* ParseLoopExpression2(Parser* parser,Arena* out,int bindingPower){
+  SpecExpression* topUnary = nullptr;
+  SpecExpression* innerMostUnary = nullptr;
+
+  SpecExpression* res = nullptr;
+  
+  // Parse unary
+  while(!parser->Done()){
+    SpecExpression* parsed = nullptr;
+    if(!parsed &&  parser->IfNextToken('-')){
+      parsed = PushStruct<SpecExpression>(out);
+      parsed->op = "-";
+    }
+
+    if(parsed){
+      parsed->type = SpecExpression::OPERATION;
+    }
+
+    if(parsed && !topUnary){
+      topUnary = parsed;
+      innerMostUnary = parsed;
+      continue;
+    }
+
+    if(parsed){
+      innerMostUnary->expressions = PushArray<SpecExpression*>(out,1);
+      innerMostUnary->expressions[0] = parsed;
+      innerMostUnary = parsed;
+      continue;
+    }
+
+    break;
+  }
+
+  // Parse atom
+  NewToken atom = parser->PeekToken();
+  if(atom.type == '('){
+    parser->ExpectNext('(');
+
+    res = ParseSpecExpression2(parser,out);
+
+    parser->ExpectNext(')');
+  } else if(atom.type == NewTokenType_NUMBER){
+    NewToken number = parser->ExpectNext(NewTokenType_NUMBER);
+    res = PushStruct<SpecExpression>(out);
+
+    res->type = SpecExpression::LITERAL;
+    res->val = number.number;
+  } else if(atom.type == NewTokenType_IDENTIFIER){
+    TEMP_REGION(temp,out);
+
+    Token name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+    
+    res = PushStruct<SpecExpression>(out);
+    res->name = name;
+    res->type = SpecExpression::NAME;
+
+    if(parser->IfPeekToken('[')){
+      auto accesses = PushArenaList<SpecExpression*>(temp);       
+      
+      while(parser->IfNextToken('[')){
+        SpecExpression* insideArray = ParseSpecExpression2(parser,out);
+
+        *accesses->PushElem() = insideArray;
+
+        parser->ExpectNext(']');
+      }
+
+      res->expressions = PushArrayFromList(out,accesses);
+      res->type = SpecExpression::ARRAY_ACCESS;
+    }
+
+    // TODO: This is mostly for state right side.
+    //       We might eventually just separate this into different parsing functions.
+    if(parser->IfNextToken('.')){
+      NewToken singleAccessName = parser->ExpectNext(NewTokenType_IDENTIFIER);
+      
+      SpecExpression* singleAccess = PushStruct<SpecExpression>(out);
+      singleAccess->type = SpecExpression::NAME;
+      singleAccess->name = C(singleAccessName);
+      
+      res->expressions = PushArray<SpecExpression*>(out,1);
+      res->expressions[0] = singleAccess;
+      res->type = SpecExpression::SINGLE_ACCESS;
+    }
+
+    if(parser->IfNextToken('(')){
+      auto args = PushArenaList<SpecExpression*>(temp);       
+      
+      while(!parser->Done()){
+        SpecExpression* arg = ParseSpecExpression2(parser,out);
+
+        *args->PushElem() = arg;
+        
+        if(parser->IfNextToken(',')){
+          continue;
+        }
+        
+        break;
+      }
+
+      parser->ExpectNext(')');
+      
+      res->expressions = PushArrayFromList(out,args);
+      res->type = SpecExpression::FUNCTION_CALL;
+    }
+  } else {
+    // TODO: Better error reporting
+    parser->ReportUnexpectedToken(atom,{});
+  }
+
+  if(topUnary){
+    innerMostUnary->expressions = PushArray<SpecExpression*>(out,1);
+    innerMostUnary->expressions[0] = res;
+
+    res = topUnary;
+  }
+
+  struct OpInfo{
+    NewTokenType type;
+    int bindingPower;
+    const char* op;
+  };
+
+  // TODO: This should be outside the function itself.
+  TEMP_REGION(temp,out);
+  auto infos = PushArray<OpInfo>(temp,4);
+  infos[0] = {TOK_TYPE('/'),0,"&"};
+  infos[1] = {TOK_TYPE('*'),0,"|"};
+
+  infos[2] = {TOK_TYPE('+'),1,"+"};
+  infos[3] = {TOK_TYPE('-'),1,"-"};
+  
+  // Parse binary ops.
+  while(!parser->Done()){
+    NewToken peek = parser->PeekToken();
+
+    bool continueOuter = false;
+    for(OpInfo info : infos){
+      if(peek.type == info.type){
+        if(info.bindingPower < bindingPower){
+          parser->NextToken();
+
+          SpecExpression* right = ParseSpecExpression2(parser,out,info.bindingPower);
+      
+          SpecExpression* op = PushStruct<SpecExpression>(out);
+
+          op->op = info.op;
+          op->expressions = PushArray<SpecExpression*>(out,2);
+          op->expressions[0] = res;
+          op->expressions[1] = right;
+
+          res = op;
+          continueOuter = true;
+          break;
+        }
+      }
+    }
+
+    if(continueOuter){
+      continue;
+    }
+
+    break;
+  }
+  
+  return res;
+}
+
 SpecExpression* ParseSpecExpression2(Parser* parser,Arena* out,int bindingPower){
   SpecExpression* topUnary = nullptr;
   SpecExpression* innerMostUnary = nullptr;
@@ -2450,12 +2778,67 @@ SpecExpression* ParseSpecExpression2(Parser* parser,Arena* out,int bindingPower)
 
     res->type = SpecExpression::LITERAL;
     res->val = number.number;
-  } else {
-    Var var = ParseVar2(parser);
+  } else if(atom.type == NewTokenType_IDENTIFIER){
+    TEMP_REGION(temp,out);
+
+    Var var = ParseVar2(parser,out);
     
     res = PushStruct<SpecExpression>(out);
     res->var = var;
     res->type = SpecExpression::VAR;
+
+    if(parser->IfPeekToken('[')){
+      auto accesses = PushArenaList<SpecExpression*>(temp);       
+      
+      while(parser->IfNextToken('[')){
+        SpecExpression* insideArray = ParseSpecExpression2(parser,out);
+
+        *accesses->PushElem() = insideArray;
+
+        parser->ExpectNext(']');
+      }
+
+      res->expressions = PushArrayFromList(out,accesses);
+      res->type = SpecExpression::ARRAY_ACCESS;
+    }
+
+    // TODO: This is mostly for state right side.
+    //       We might eventually just separate this into different parsing functions.
+    if(parser->IfNextToken('.')){
+      NewToken singleAccessName = parser->ExpectNext(NewTokenType_IDENTIFIER);
+      
+      SpecExpression* singleAccess = PushStruct<SpecExpression>(out);
+      singleAccess->type = SpecExpression::NAME;
+      singleAccess->name = C(singleAccessName);
+      
+      res->expressions = PushArray<SpecExpression*>(out,1);
+      res->expressions[0] = singleAccess;
+      res->type = SpecExpression::SINGLE_ACCESS;
+    }
+
+    if(parser->IfNextToken('(')){
+      auto args = PushArenaList<SpecExpression*>(temp);       
+      
+      while(!parser->Done()){
+        SpecExpression* arg = ParseSpecExpression2(parser,out);
+
+        *args->PushElem() = arg;
+        
+        if(parser->IfNextToken(',')){
+          continue;
+        }
+        
+        break;
+      }
+
+      parser->ExpectNext(')');
+      
+      res->expressions = PushArrayFromList(out,args);
+      res->type = SpecExpression::FUNCTION_CALL;
+    }
+  } else {
+    // TODO: Better error reporting
+    parser->ReportUnexpectedToken(atom,{});
   }
 
   if(topUnary){
@@ -2473,18 +2856,22 @@ SpecExpression* ParseSpecExpression2(Parser* parser,Arena* out,int bindingPower)
 
   // TODO: This should be outside the function itself.
   TEMP_REGION(temp,out);
-  auto infos = PushArray<OpInfo>(temp,9);
-  infos[0] = {NewTokenType_ROTATE_LEFT,0,"><<"};
-  infos[1] = {NewTokenType_ROTATE_RIGHT,0,">><"};
-  infos[2] = {NewTokenType_SHIFT_LEFT,0,"<<"};
-  infos[3] = {NewTokenType_SHIFT_RIGHT,0,">>"};
+  auto infos = PushArray<OpInfo>(temp,11);
+  // TODO: Need to check binding strength
+  infos[0] = {TOK_TYPE('&'),0,"&"};
+  infos[1] = {TOK_TYPE('|'),0,"|"};
+  infos[2] = {TOK_TYPE('^'),0,"^"};
 
-  infos[4] = {TOK_TYPE('&'),1,"&"};
-  infos[5] = {TOK_TYPE('|'),1,"|"};
-  infos[6] = {TOK_TYPE('^'),1,"^"};
+  infos[3] = {NewTokenType_ROTATE_LEFT,1,"><<"};
+  infos[4] = {NewTokenType_ROTATE_RIGHT,1,">><"};
+  infos[5] = {NewTokenType_SHIFT_LEFT,1,"<<"};
+  infos[6] = {NewTokenType_SHIFT_RIGHT,1,">>"};
 
   infos[7] = {TOK_TYPE('+'),2,"+"};
   infos[8] = {TOK_TYPE('-'),2,"-"};
+
+  infos[9]  = {TOK_TYPE('*'),3,"*"};
+  infos[10] = {TOK_TYPE('/'),3,"/"};
   
   // Parse binary ops.
   while(!parser->Done()){
@@ -2523,42 +2910,42 @@ SpecExpression* ParseSpecExpression2(Parser* parser,Arena* out,int bindingPower)
 }
 
 ConnectionDef ParseConnection2(Parser* parser,Arena* out){
-  VarGroup optOutPortion = ParseVarGroup2(parser,out);
+  VarGroup outPortion = ParseVarGroup2(parser,out);
 
   ConnectionType type = ConnectionType_NONE;
-
-  //Token type = tok->NextToken();
   
   if(parser->IfNextToken('=')){
     type = ConnectionType_EQUALITY;
-/*
-  // TODO: Need to implement '^=' parsing 
-  } else if(parser->IfNextToken()){
-    // TODO: Only added this to make it easier to port a piece of C code.
-    //       Do not know if needed or worth it to add.
-*/
+  } else if(parser->IfNextToken(NewTokenType_XOR_EQUAL)){
+    // TODO: We parse it but we do not use it. We probably wanna remove the testcase that uses this.
+    type = ConnectionType_EQUALITY;
   } else if(parser->IfNextToken(NewTokenType_ARROW)){
-    //def.transforms = CheckAndParseConnectionTransforms(tok,out);
     type = ConnectionType_CONNECTION;
   } else {
     parser->ReportUnexpectedToken(parser->NextToken(),{TOK_TYPE('='),NewTokenType_ARROW});
   }
 
   ConnectionDef def = {};
+  SpecExpression* expr = nullptr;
+  VarGroup inPortion = {};
 
   if(type == ConnectionType_EQUALITY){
-    def.expression = ParseSpecExpression2(parser,out);
-  } else if(def.type == ConnectionType_CONNECTION){
-    VarGroup optInPortion = ParseVarGroup2(parser,out);
-    def.input = optInPortion;
+    expr = ParseSpecExpression2(parser,out);
+  } else if(type == ConnectionType_CONNECTION){
+    inPortion = ParseVarGroup2(parser,out);
   }
 
   parser->ExpectNext(';');
   
-  def.output = optOutPortion;
+  def.expression = expr;
+  def.output = outPortion;
+  def.input = inPortion;
 
   return def;
 }
+
+// TODO: nocheckin - remove forward decl
+ConfigFunctionDef* ParseConfigFunction2(Parser* parser,Arena* out);
 
 // Any returned String points to tokenizer content.
 // As long as tokenizer is valid, strings returned by this function are also valid.
@@ -2588,7 +2975,7 @@ ModuleDef ParseModuleDef2(Parser* parser,Arena* out){
       continue;
     }
 
-    if(peek.type == '#'){
+    if(peek.type == '#' || peek.type == NewTokenType_DOUBLE_HASHTAG || peek.type == '}'){
       break;
     }
     
@@ -2597,36 +2984,33 @@ ModuleDef ParseModuleDef2(Parser* parser,Arena* out){
   }
   Array<InstanceDeclaration> declarations = PushArrayFromList(out,decls);
 
-  parser->ExpectNext('#');
-  
   ArenaList<ConnectionDef>* cons = PushArenaList<ConnectionDef>(temp);
-  while(!parser->Done()){
-    NewToken peek = parser->PeekToken();
+  if(parser->IfNextToken('#')){
+    while(!parser->Done()){
+      NewToken peek = parser->PeekToken();
 
-    if(peek.type == ';'){
-      parser->NextToken();
-      continue;
-    }
+      if(peek.type == ';'){
+        parser->NextToken();
+        continue;
+      }
 
-    if(peek.type == '}'){
-      break;
-    }
-    if(peek.type == NewTokenType_DOUBLE_HASHTAG){
-      break;
-    }
+      if(peek.type == '}' || peek.type == NewTokenType_DOUBLE_HASHTAG){
+        break;
+      }
 
-    ConnectionDef con = ParseConnection2(parser,out);
+      ConnectionDef con = ParseConnection2(parser,out);
  
-    *cons->PushElem() = con;
+      *cons->PushElem() = con;
+    }
   }
 
   auto configFunctions = PushArenaList<ConfigFunctionDef>(temp);
 
-#if 0
+#if 1
   if(parser->IfNextToken(NewTokenType_DOUBLE_HASHTAG)){
     while(!parser->Done()){
-      if(IsNextTokenConfigFunctionStart(tok)){
-        ConfigFunctionDef* func = ParseConfigFunction(tok,out);
+      if(IsNextTokenConfigFunctionStart(parser)){
+        ConfigFunctionDef* func = ParseConfigFunction2(parser,out);
 
         if(func){
           *configFunctions->PushElem() = *func;
@@ -2668,12 +3052,12 @@ TypeAndInstance ParseTypeAndInstance2(Parser* parser){
   return res;
 }
 
-HierarchicalName ParseHierarchicalName2(Parser* parser){
+HierarchicalName ParseHierarchicalName2(Parser* parser,Arena* out){
   NewToken topInstance = parser->ExpectNext(NewTokenType_IDENTIFIER);
 
   parser->ExpectNext('.');
 
-  Var var = ParseVar2(parser);
+  Var var = ParseVar2(parser,out);
 
   HierarchicalName res = {};
   res.instanceName = C(topInstance);
@@ -2740,9 +3124,9 @@ MergeDef ParseMerge2(Parser* parser,Arena* out){
         break;
       }
 
-      HierarchicalName leftSide = ParseHierarchicalName2(parser);
+      HierarchicalName leftSide = ParseHierarchicalName2(parser,out);
       parser->ExpectNext('-');
-      HierarchicalName rightSide = ParseHierarchicalName2(parser);
+      HierarchicalName rightSide = ParseHierarchicalName2(parser,out);
       parser->ExpectNext(';');
 
       *specList->PushElem() = {leftSide,rightSide};
@@ -2754,6 +3138,7 @@ MergeDef ParseMerge2(Parser* parser,Arena* out){
   
   auto specificsArr = StartArray<SpecificMergeNode>(out);
   for(SpecNode node : specNodes){
+    // TODO: We do not do this in here. Parser only parses, semantic checks are performed later.
     int firstIndex = -1;
     int secondIndex = -1;
     for(int i = 0; i < declarations.size; i++){
@@ -2805,6 +3190,7 @@ Array<ConstructDef> ParseVersatSpecification2(String content,Arena* out){
     res |= ParseMultiSymbol(start,end,"->",NewTokenType_ARROW);
     res |= ParseMultiSymbol(start,end,">>",NewTokenType_SHIFT_RIGHT);
     res |= ParseMultiSymbol(start,end,"<<",NewTokenType_SHIFT_LEFT);
+    res |= ParseMultiSymbol(start,end,"^=",NewTokenType_XOR_EQUAL);
 
     res |= ParseSymbols(start,end);
     res |= ParseNumber(start,end);
@@ -2826,13 +3212,16 @@ Array<ConstructDef> ParseVersatSpecification2(String content,Arena* out){
       if(id == "config")     type = NewTokenType_KEYWORD_CONFIG;
       if(id == "state")      type = NewTokenType_KEYWORD_STATE;
       if(id == "mem")        type = NewTokenType_KEYWORD_MEM;
+      if(id == "for")        type = NewTokenType_KEYWORD_FOR;
 
+#if 0
       if(type == NewTokenType_INVALID && Parse_IsCKeyword(id)){
         res.token.type = NewTokenType_C_KEYWORD;
       }
       if(type == NewTokenType_INVALID && Parse_IsVerilogKeyword(id)){
         res.token.type = NewTokenType_VERILOG_KEYWORD;
       }
+#endif
 
       if(type != NewTokenType_INVALID){
         res.token.type = type;
@@ -2843,12 +3232,12 @@ Array<ConstructDef> ParseVersatSpecification2(String content,Arena* out){
   };
 
   FREE_ARENA(parseArena);
-  Parser* parser = StartParsing(content,TokenizeFunction,parseArena,ParsingOptions_DEFAULT | ParsingOptions_ERROR_ON_C_VERILOG_KEYWORDS);
+  Parser* parser = StartParsing(content,TokenizeFunction,parseArena,ParsingOptions_DEFAULT);
 
   ArenaList<ConstructDef>* typeList = PushArenaList<ConstructDef>(temp);
 
   while(!parser->Done()){
-    NewToken tok = parser->NextToken();
+    NewToken tok = parser->PeekToken();
 
     ConstructDef def = {};
     if(tok.type == NewTokenType_KEYWORD_MODULE){
@@ -2863,14 +3252,238 @@ Array<ConstructDef> ParseVersatSpecification2(String content,Arena* out){
     }
 
     *typeList->PushElem() = def;
-
-#if 0
-    String repr = PushRepr(temp,tok);
-    printf("%.*s\n",UN(repr));
-    break;
-#endif
   }
 
-  return PushArrayFromList(out,typeList);
+  if(parser->errors){
+    for(String str : parser->errors){
+      printf("%.*s\n",UN(str));
+    }
+    exit(-1);
+  }
+
+  Array<ConstructDef> defs = PushArrayFromList(out,typeList);
+
+  return defs;
 }
 
+static ConfigIdentifier* ParseConfigIdentifier2(Parser* parser,Arena* out){
+  NewToken id = parser->ExpectNext(NewTokenType_IDENTIFIER);
+  
+  ConfigIdentifier* base = PushStruct<ConfigIdentifier>(out);
+  base->type = ConfigAccessType_BASE;
+  base->name = C(id);
+
+  ConfigIdentifier* ptr = base;
+
+  while(!parser->Done()){
+    ConfigIdentifier* parsed = nullptr;
+
+    if(!parsed && parser->IfNextToken('.')){
+      Token access = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+
+      parsed = PushStruct<ConfigIdentifier>(out);
+      parsed->type = ConfigAccessType_ACCESS;
+      parsed->name = access;
+    }
+
+    if(!parsed && parser->IfNextToken('[')){
+      SpecExpression* expr = ParseSpecExpression2(parser,out);
+
+      parser->ExpectNext(']');
+
+      parsed = PushStruct<ConfigIdentifier>(out);
+      parsed->type = ConfigAccessType_ARRAY;
+      parsed->trueExpr = expr;
+    }
+
+    if(parsed){
+      ptr->parent = parsed;
+      ptr = parsed;
+    }
+
+    break;
+  }
+
+  return base;
+}
+
+// MARK
+static ConfigStatement* ParseConfigStatement2(Parser* parser,Arena* out){
+  TEMP_REGION(temp,out);
+  
+  ConfigStatement* stmt = PushStruct<ConfigStatement>(out);
+
+  if(parser->IfNextToken(NewTokenType_KEYWORD_FOR)){
+    NewToken loopVariable = parser->ExpectNext(NewTokenType_IDENTIFIER);
+ 
+    SpecExpression* start = ParseLoopExpression2(parser,out);
+    parser->ExpectNext(NewTokenType_DOUBLE_DOT);
+    SpecExpression* end = ParseLoopExpression2(parser,out);
+
+    parser->ExpectNext('{');
+
+    auto list = PushArenaList<ConfigStatement*>(temp);
+    while(!parser->Done()){
+      ConfigStatement* child = ParseConfigStatement2(parser,out);
+      *list->PushElem() = child;
+
+      if(parser->IfPeekToken('}')){
+        break;
+      }
+    }
+
+    parser->ExpectNext('}');
+    
+    stmt->def2.loopVariable = C(loopVariable);
+    stmt->def2.startSym = start;
+    stmt->def2.endSym = end;
+    stmt->childs = PushArrayFromList(out,list);
+    stmt->type = ConfigStatementType_FOR_LOOP;
+  } else if(parser->IfPeekToken(NewTokenType_IDENTIFIER)) {
+    stmt->lhs = ParseConfigIdentifier2(parser,out);
+    parser->ExpectNext('=');
+    stmt->trueRhs = ParseLoopExpression2(parser,out);
+    parser->ExpectNext(';');
+    stmt->type = ConfigStatementType_STATEMENT;
+  } else {
+    parser->ReportUnexpectedToken(parser->NextToken(),{});
+  }
+
+  return stmt;
+}
+
+static ConfigVarDeclaration ParseConfigVarDeclaration2(Parser* parser){
+  ConfigVarDeclaration res = {};
+
+  res.name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+
+  if(parser->IfNextToken('[')){
+    NewToken number = parser->ExpectNext(NewTokenType_NUMBER);
+    int arraySize = number.number;
+
+    parser->ExpectNext(']');
+
+    res.arraySize = arraySize;
+    res.isArray = true;
+  }
+
+  Token type = {};
+  if(parser->IfNextToken(':')){
+    type = C(parser->NextToken());
+  }
+
+  res.type = type;
+  
+  return res;
+}
+
+static Array<ConfigVarDeclaration> ParseConfigFunctionArguments2(Parser* parser,Arena* out){
+  auto array = StartArray<ConfigVarDeclaration>(out);
+
+  parser->ExpectNext('(');
+  
+  while(!parser->Done()){
+    if(parser->IfPeekToken(')')){
+      break;
+    }
+
+    ConfigVarDeclaration var = ParseConfigVarDeclaration2(parser);
+
+    *array.PushElem() = var;
+    
+    if(parser->IfNextToken(',')){
+      continue;
+    } else {
+      break;
+    }
+  }
+
+  parser->ExpectNext(')');
+
+  return EndArray(array);
+}
+
+ConfigFunctionDef* ParseConfigFunction2(Parser* parser,Arena* out){
+  TEMP_REGION(temp,out);
+
+  UserConfigType type = UserConfigType_NONE;
+  if(parser->IfNextToken(NewTokenType_KEYWORD_CONFIG)){
+    type = UserConfigType_CONFIG;
+  } else if(parser->IfNextToken(NewTokenType_KEYWORD_MEM)){
+    type = UserConfigType_MEM;
+  } else if(parser->IfNextToken(NewTokenType_KEYWORD_STATE)){
+    type = UserConfigType_STATE;
+  }
+
+  if(type == UserConfigType_NONE){
+    return nullptr;
+  }
+
+  bool debug = parser->IfNextToken(NewTokenType_KEYWORD_DEBUG);
+    
+  Token configName = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+
+  Array<ConfigVarDeclaration> functionVars = {};
+  if(type == UserConfigType_MEM || type == UserConfigType_CONFIG){
+    functionVars = ParseConfigFunctionArguments2(parser,out);
+  }
+
+  parser->ExpectNext('{');
+
+  auto stmts = PushArenaList<ConfigStatement*>(temp);
+  while(!parser->Done()){
+    NewToken peek = parser->PeekToken();
+
+    if(peek.type == '}'){
+      break;
+    }
+        
+    ConfigStatement* config = ParseConfigStatement2(parser,out);
+    *stmts->PushElem() = config;
+  }
+
+  parser->ExpectNext('}');
+
+  ConfigFunctionDef* res = PushStruct<ConfigFunctionDef>(out);
+  res->type = type;
+  res->name = configName;
+  res->variables = functionVars;
+  res->statements = PushArrayFromList(out,stmts);
+  res->debug = debug;
+
+  return res;
+}
+
+Array<Token> AccumTokens(SpecExpression* top,Arena* out){
+  TEMP_REGION(temp,out);
+
+  auto AccumTokens = [](auto AccumTokens,SpecExpression* top,ArenaList<Token>* list) -> void {
+    switch(top->type){
+    case SpecExpression::LITERAL: break;
+    case SpecExpression::NAME: {
+      *list->PushElem() = top->name;
+    } break;
+    case SpecExpression::VAR: {
+      *list->PushElem() = top->var.name;
+    } break;
+    case SpecExpression::OPERATION: {
+    } break;
+    case SpecExpression::SINGLE_ACCESS: {
+      *list->PushElem() = top->name;
+    } break;
+    case SpecExpression::ARRAY_ACCESS: {
+      *list->PushElem() = top->name;
+    } break;
+    case SpecExpression::FUNCTION_CALL: {
+      *list->PushElem() = top->name;
+    } break;
+    }
+    for(SpecExpression* child : top->expressions){
+      AccumTokens(AccumTokens,child,list);
+    }
+  };
+
+  auto list = PushArenaList<Token>(temp);
+  AccumTokens(AccumTokens,top,list);
+  return PushArrayFromList(out,list);
+}

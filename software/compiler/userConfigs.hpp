@@ -9,6 +9,7 @@
 struct FUDeclaration;
 struct SymbolicExpression;
 struct AddressAccess;
+struct Parser;
 
 // Move user configuration functions here.
 
@@ -33,9 +34,10 @@ struct ConfigExpression{
 
 // TODO: While this exists, we do not want to have different flow if possible. I think that it should be possible to describe the data in such a way that we do not have to make this distinction.
 enum UserConfigType{
-  UserConfigurationType_CONFIG,
-  UserConfigurationType_MEM,
-  UserConfigurationType_STATE
+  UserConfigType_NONE,
+  UserConfigType_CONFIG,
+  UserConfigType_MEM,
+  UserConfigType_STATE
 };
 
 enum ConfigRHSType{
@@ -62,12 +64,17 @@ struct ConfigStatement{
   Array<Token> rhs;
 
   // TODO: Union
+#if 0
   ConfigRHSType rhsType;
   SymbolicExpression* expr;
   ConfigIdentifier* rhsId;
   FunctionInvocation* func;
+#endif
 
-  AddressGenForDef def;
+  SpecExpression* trueRhs;
+
+  //AddressGenForDef def;
+  AddressGenForDef2 def2;
   Array<ConfigStatement*> childs; // Only for loops contains these right now.
 };
 
@@ -82,7 +89,9 @@ struct ConfigVarDeclaration{
   Token name;
 
   // TODO: Not implemented, just parsed currently.
-  ConfigVarType type;
+  
+  //ConfigVarType type;
+  Token type;
   int arraySize;
   bool isArray;
 };
@@ -97,6 +106,7 @@ struct ConfigFunctionDef{
 };
 
 ConfigFunctionDef* ParseConfigFunction(Tokenizer* tok,Arena* out);
+bool IsNextTokenConfigFunctionStart(Parser* parser);
 bool IsNextTokenConfigFunctionStart(Tokenizer* tok);
 
 // ============================================================================

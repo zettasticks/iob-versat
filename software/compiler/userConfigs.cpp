@@ -3,6 +3,7 @@
 #include "accelerator.hpp"
 #include "globals.hpp"
 #include "memory.hpp"
+#include "newParser.hpp"
 #include "symbolic.hpp"
 #include "declaration.hpp"
 #include "utilsCore.hpp"
@@ -69,7 +70,6 @@ static bool _ExpectError(Tokenizer* tok,String expected){
     return {}; \
   }
 
-// TODO: We probably want to change this to carry an array of tokens instead of just having 2 (name and wire) and furthermore we could create proper functions that given an accelerator or something similar would "bind" the access array into a proper entity. Make this more generic. Have a HierAccess that we can then query to see if we are accessing an node, or a wire or anything in between.
 static ConfigIdentifier* ParseConfigIdentifier(Tokenizer* tok,Arena* out){
   Token id = tok->PeekToken();
   CHECK_IDENTIFIER(id);
@@ -142,7 +142,7 @@ static Opt<ConfigStatement*> ParseConfigStatement(Tokenizer* tok,Arena* out){
 
     EXPECT(tok,"{");
       
-    stmt->def = (AddressGenForDef){.loopVariable = loopVariable,.startSym = startSym,.endSym = endSym};
+    //stmt->def = (AddressGenForDef){.loopVariable = loopVariable,.startSym = startSym,.endSym = endSym};
     
     auto list = PushArenaList<ConfigStatement*>(temp);
     while(!tok->Done()){
@@ -168,7 +168,7 @@ static Opt<ConfigStatement*> ParseConfigStatement(Tokenizer* tok,Arena* out){
 
     stmt->lhs = lhs;
 
-#if 1
+#if 0
     if(IsIdentifier(tok->PeekToken(0)) && tok->PeekToken(1) == "."){
       // Parse identifier only. Cannot be symbolic expression.
       ConfigIdentifier* rhs = ParseConfigIdentifier(tok,out);
@@ -274,20 +274,9 @@ static Opt<ConfigVarDeclaration> ParseConfigVarDeclaration(Tokenizer* tok){
     res.isArray = true;
   }
 
-  ConfigVarType type = ConfigVarType_SIMPLE;
+  Token type = {};
   if(tok->IfNextToken(":")){
-    Token possibleType = tok->NextToken();
-
-    if(CompareString(possibleType,"Address")){
-      type = ConfigVarType_ADDRESS;
-    } else if(CompareString(possibleType,"Fixed")){
-      type = ConfigVarType_FIXED;
-    } else if(CompareString(possibleType,"Dyn")){
-      type = ConfigVarType_DYN;
-    } else {
-      printf("Error, unknown variable type\n");
-      return {};
-    }
+    type = tok->NextToken();
   }
 
   res.type = type;
@@ -324,134 +313,73 @@ static Opt<Array<ConfigVarDeclaration>> ParseConfigFunctionArguments(Tokenizer* 
 
 ConfigFunctionDef* ParseConfigFunction(Tokenizer* tok,Arena* out){
   TEMP_REGION(temp,out);
-  
-  ConfigFunctionDef* res = nullptr;
 
-  bool debug = false;
+  UserConfigType type = UserConfigType_NONE;
   if(tok->IfNextToken("config")){
-    debug |= tok->IfNextToken("debug");
-
-    Token configName = tok->NextToken();
-    CHECK_IDENTIFIER(configName);
-
-    Opt<Array<ConfigVarDeclaration>> vars = ParseConfigFunctionArguments(tok,out);
-    PROPAGATE(vars);
-
-    EXPECT(tok,"{");
-
-    auto configs = PushArenaList<ConfigStatement*>(temp);
-    while(!tok->Done()){
-      Token peek = tok->PeekToken();
-
-      if(CompareString(peek,";")){
-        tok->AdvancePeek();
-        continue;
-      }
-      if(CompareString(peek,"}")){
-        break;
-      }
-        
-      Opt<ConfigStatement*> config = ParseConfigStatement(tok,out);
-      PROPAGATE(config);
-
-      *configs->PushElem() = config.value();
-    }
-
-    EXPECT(tok,"}");
-
-    res = PushStruct<ConfigFunctionDef>(out);
-    res->type = UserConfigurationType_CONFIG;
-    res->name = configName;
-    res->variables = vars.value();
-    res->statements = PushArrayFromList(out,configs);
-    res->debug = debug;
-
-    return res;
+    type = UserConfigType_CONFIG;
+  } else if(tok->IfNextToken("mem")){
+    type = UserConfigType_MEM;
+  } else if(tok->IfNextToken("state")){
+    type = UserConfigType_STATE;
   }
-  
-  // TODO: Merge logic with config because there is overlap.
-  if(tok->IfNextToken("state")){
-    debug |= tok->IfNextToken("debug");
 
-    Token stateName = tok->NextToken();
-    CHECK_IDENTIFIER(stateName);
+  if(type == UserConfigType_NONE){
+    return nullptr;
+  }
+
+  bool debug = tok->IfNextToken("debug");
     
-    EXPECT(tok,"{");
+  Token configName = tok->NextToken();
+  CHECK_IDENTIFIER(configName);
 
-    auto states = PushArenaList<ConfigStatement*>(temp);
-
-    while(!tok->Done()){
-      Token peek = tok->PeekToken();
-
-      if(CompareString(peek,";")){
-        tok->AdvancePeek();
-        continue;
-      }
-      if(CompareString(peek,"}")){
-        break;
-      }
-        
-      Opt<ConfigStatement*> config = ParseConfigStatement(tok,out);
-      PROPAGATE(config);
-
-      *states->PushElem() = config.value();
-    }
-
-    EXPECT(tok,"}");
-
-    res = PushStruct<ConfigFunctionDef>(out);
-    res->type = UserConfigurationType_STATE;
-    res->name = stateName;
-    res->variables = {};
-    res->statements = PushArrayFromList(out,states);
-    res->debug = debug;
-
-    return res;
+  Opt<Array<ConfigVarDeclaration>> functionVars = {};
+  if(type == UserConfigType_MEM || type == UserConfigType_CONFIG){
+    functionVars = ParseConfigFunctionArguments(tok,out);
+    PROPAGATE(functionVars);
   }
 
-  if(tok->IfNextToken("mem")){
-    debug |= tok->IfNextToken("debug");
+  EXPECT(tok,"{");
 
-    Token memName = tok->NextToken();
-    CHECK_IDENTIFIER(memName);
+  auto stmts = PushArenaList<ConfigStatement*>(temp);
+  while(!tok->Done()){
+    Token peek = tok->PeekToken();
 
-    Opt<Array<ConfigVarDeclaration>> vars = ParseConfigFunctionArguments(tok,out);
-    PROPAGATE(vars);
-
-    EXPECT(tok,"{");
-
-    auto configs = PushArenaList<ConfigStatement*>(temp);
-    while(!tok->Done()){
-      Token peek = tok->PeekToken();
-
-      if(CompareString(peek,";")){
-        tok->AdvancePeek();
-        continue;
-      }
-      if(CompareString(peek,"}")){
-        break;
-      }
-        
-      Opt<ConfigStatement*> config = ParseConfigStatement(tok,out);
-      PROPAGATE(config);
-
-      *configs->PushElem() = config.value();
+    if(CompareString(peek,";")){
+      tok->AdvancePeek();
+      continue;
     }
+    if(CompareString(peek,"}")){
+      break;
+    }
+        
+    Opt<ConfigStatement*> config = ParseConfigStatement(tok,out);
+    PROPAGATE(config);
 
-    EXPECT(tok,"}");
-
-    res = PushStruct<ConfigFunctionDef>(out);
-    res->type = UserConfigurationType_MEM;
-    res->name = memName;
-    res->variables = vars.value();
-    res->statements = PushArrayFromList(out,configs);
-    res->debug = debug;
-
-    return res;
+    *stmts->PushElem() = config.value();
   }
 
-  NOT_POSSIBLE();
-  return nullptr;
+  EXPECT(tok,"}");
+
+  ConfigFunctionDef* res = PushStruct<ConfigFunctionDef>(out);
+  res->type = type;
+  res->name = configName;
+  if(functionVars.has_value()){
+    res->variables = functionVars.value();
+  }
+  res->statements = PushArrayFromList(out,stmts);
+  res->debug = debug;
+
+  return res;
+}
+
+bool IsNextTokenConfigFunctionStart(Parser* parser){
+  bool res = false;
+
+  res |= parser->IfPeekToken(NewTokenType_KEYWORD_CONFIG);
+  res |= parser->IfPeekToken(NewTokenType_KEYWORD_STATE);
+  res |= parser->IfPeekToken(NewTokenType_KEYWORD_MEM);
+  
+  return res;
 }
 
 bool IsNextTokenConfigFunctionStart(Tokenizer* tok){
@@ -534,6 +462,52 @@ static String GlobalConfigFunctionName(String functionName,FUDeclaration* decl,A
   return name;
 }
 
+struct ParseResult{
+  bool isArray;
+  bool isFunctionInvoc;
+  bool isWire;
+  bool isExpr;
+  
+  SymbolicExpression* expr;
+  Array<SpecExpression*> args;
+  Token entityName;
+  Token wireName; 
+  Token functionName;
+};
+
+ParseResult ParseRHS(Env* env,SpecExpression* top,Arena* out){
+/*
+  RHS can be:
+
+  wire           'name.wire'
+  addrExpr       'addr[expr]'
+  functionInvoc  'name(args)'
+  expression     'expr'
+*/
+
+  // TODO: We still need to access env to check if this makes sense or not.
+  //       nocheckin
+
+  ParseResult res = {};
+  if(top->type == SpecExpression::ARRAY_ACCESS){
+    res.isArray = true;
+    res.expr = SymbolicFromSpecExpression(top->expressions[0],out);
+  } else if(top->type == SpecExpression::SINGLE_ACCESS){
+    res.isWire = true;
+    res.entityName = top->name;
+    res.wireName = top->expressions[0]->name;
+  } else if(top->type == SpecExpression::FUNCTION_CALL){
+    res.isFunctionInvoc = true;
+    res.args = top->expressions;
+    res.functionName = top->name;
+  } else {    
+    res.isExpr = true;
+    res.expr = SymbolicFromSpecExpression(top,out);
+  }
+
+  return res;
+}
+
 ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDeclaration* declaration,String content,Arena* out){
   TEMP_REGION(temp,out);
 
@@ -592,7 +566,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   Array<Array<ConfigStatement*>> individualStatements = PushArrayFromList(temp,stmtList);
 
   // TODO: Kinda stupid calculating things this way but the rest of the code needs to collapse into a simpler form for the more robust approach first.
-  auto variablesUsedOnLoopExpressions = PushTrieSet<Token>(temp);
+  auto variablesUsedOnLoopExpressions = PushTrieSet<String>(temp);
 
   for(Array<ConfigStatement*> arr : individualStatements){
     for(ConfigStatement* conf : arr){
@@ -600,23 +574,54 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         continue;
       }
 
-      AddressGenForDef def = conf->def;
+      AddressGenForDef2 def = conf->def2;
 
-      for(Token tok : def.startSym){
-        if(IsIdentifier(tok)){
-          variablesUsedOnLoopExpressions->Insert(tok); 
+      {
+        auto tokens = AccumTokens(def.startSym,temp);
+
+        for(Token tok : tokens){
+          if(IsIdentifier(tok)){
+            variablesUsedOnLoopExpressions->Insert(tok); 
+          }
         }
       }
-      for(Token tok : def.endSym){
-        if(IsIdentifier(tok)){
-          variablesUsedOnLoopExpressions->Insert(tok); 
+        
+      {
+        auto tokens = AccumTokens(def.endSym,temp);
+
+        for(Token tok : tokens){
+          if(IsIdentifier(tok)){
+            variablesUsedOnLoopExpressions->Insert(tok); 
+          }
         }
       }
     }
   }
 
+  Array<ConfigVariable> varInfo = PushArray<ConfigVariable>(out,def->variables.size);
+  for(int i = 0; i < variables.size; i++){
+    ConfigVarDeclaration decl = variables[i];
+    Token typeTok = decl.type;
+
+    ConfigVarType type = ConfigVarType_SIMPLE;
+    if(CompareString(typeTok,"Address")){
+      type = ConfigVarType_ADDRESS;
+    } else if(CompareString(typeTok,"Fixed")){
+      type = ConfigVarType_FIXED;
+    } else if(CompareString(typeTok,"Dyn")){
+      type = ConfigVarType_DYN;
+    } else {
+      // TODO: Proper error report, can only be one of three
+      env->ReportError(typeTok,"Not a valid variable type");
+    }
+    
+    varInfo[i].type = type;
+    varInfo[i].name = PushString(out,decl.name);
+    varInfo[i].usedOnLoopExpressions = variablesUsedOnLoopExpressions->Exists(decl.name);
+  }
+
   bool supportsSizeCalc = true;
-  for(ConfigVarDeclaration var : variables){
+  for(ConfigVariable var : varInfo){
     if(variablesUsedOnLoopExpressions->Exists(var.name)){
       if(var.type != ConfigVarType_FIXED && var.type != ConfigVarType_DYN){
         supportsSizeCalc = false;
@@ -627,7 +632,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     }
   }
 
-  if(def->type == UserConfigurationType_CONFIG){
+  if(def->type == UserConfigType_CONFIG){
     type = ConfigFunctionType_CONFIG;
 
     for(Array<ConfigStatement*> stmts : individualStatements){
@@ -638,26 +643,20 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       Token name = {};
       Assert(simple->type == ConfigStatementType_STATEMENT);
       name = GetBase(simple->lhs)->name;
-
-#if 0
-      ConfigIdentifier id = stmt->lhs;
-      Token name = id.name;
-      Token wireName = id.wireOrPort;
-#endif
       
       FULL_SWITCH(stmt->type){
       // NOTE: This will always produce an address gen
       case ConfigStatementType_FOR_LOOP:{
-        auto forLoops = PushArenaList<AddressGenForDef>(temp);
+        auto forLoops = PushArenaList<AddressGenForDef2>(temp);
 
         for(int i = 0; i < stmts.size - 1; i++){
-          *forLoops->PushElem() = stmts[i]->def;
+          *forLoops->PushElem() = stmts[i]->def2;
         }
 
-        Array<AddressGenForDef> loops = PushArrayFromList(temp,forLoops);
+        Array<AddressGenForDef2> loops = PushArrayFromList(temp,forLoops);
 
         Entity* ent = env->GetEntity(simple->lhs,temp);
-
+        
         String name = GetBase(simple->lhs)->name;
 
         Entity* portEnt = nullptr;
@@ -666,14 +665,29 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           ent = ent->parent;
         }
         
-        SymbolicExpression* expr = simple->expr;
+        bool isArray = simple->trueRhs->type == SpecExpression::ARRAY_ACCESS;
+
+        SymbolicExpression* expr = nullptr;
+        
+        if(isArray){
+          expr = SymbolicFromSpecExpression(simple->trueRhs->expressions[0],temp);
+        }
+#if 0
+        //SymbolicExpression* expr = simple->expr;
         if(simple->rhsType == ConfigRHSType_IDENTIFIER){
           // Expressions of the form addr[expr].
           // TODO: HACKY
           expr = simple->rhsId->parent->expr;
         }
+#endif
 
-        AddressAccess* access = CompileAddressGen(variableNames,loops,expr,content);
+        ParseResult parsedRhs = ParseRHS(env,simple->trueRhs,temp);
+
+        AddressAccess* access = nullptr;
+
+        if(parsedRhs.isExpr || parsedRhs.isArray){
+          CompileAddressGen(variableNames,loops,parsedRhs.expr,content);
+        }
         AddressGenInst supported = ent->instance->declaration->supportedAddressGen;
 
         // TODO: This logic is stupid. Rework into something better when we finalize the addressGen change.
@@ -685,7 +699,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           newAssign->access.inst = supported;
 
           newAssign->lhs = PushString(out,name);
-        } else if(simple->rhsType == ConfigRHSType_SYMBOLIC_EXPR){
+        } else if(parsedRhs.isExpr || parsedRhs.isArray){
           // NOTE: Memories and Generator do not follow the addr[expr]. They just have <instance> = <expr>.
           ConfigStuff* newAssign = list->PushElem();
 
@@ -702,16 +716,21 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           newAssign->type = ConfigStuffType_ADDRESS_GEN;
           newAssign->access.access = access;
           newAssign->access.inst = supported;
-          newAssign->accessVariableName = PushString(out,GetBase(simple->rhsId)->name);
+          newAssign->accessVariableName = PushString(out,parsedRhs.entityName);
           newAssign->lhs = PushString(out,name);
         }
       } break;
       case ConfigStatementType_STATEMENT:{
-        FULL_SWITCH(stmt->rhsType){
-        case ConfigRHSType_FUNCTION_CALL:{
-          FunctionInvocation* functionInvoc = stmt->func;
+        ParseResult parsedRhs = ParseRHS(env,stmt->trueRhs,temp);
 
-          ConfigFunction* function = nameToFunction->Get(functionInvoc->functionName);
+        if(parsedRhs.isFunctionInvoc){
+          Token functionName = parsedRhs.functionName;
+          
+          Array<SpecExpression*> args = parsedRhs.args;
+
+          //FunctionInvocation* functionInvoc = stmt->func;
+
+          ConfigFunction* function = nameToFunction->Get(functionName);
           if(!function){
             // TODO: Error
             printf("Error 2, function does not exist, make sure the name is correct\n");
@@ -719,18 +738,20 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
             return nullptr;
           }
 
-          if(functionInvoc->arguments.size != function->variables.size){
+          if(args.size != function->variables.size){
             printf("Error 2.1, number of arguments does not match\n");
             exit(-1);
             return nullptr;
           }
       
           // Invocation var to function argument
-          Hashmap<String,SymbolicExpression*>* argToVar = PushHashmap<String,SymbolicExpression*>(temp,functionInvoc->arguments.size);
-          for(int i = 0; i <  functionInvoc->arguments.size; i++){
+          Hashmap<String,SymbolicExpression*>* argToVar = PushHashmap<String,SymbolicExpression*>(temp,args.size);
+          for(int i = 0; i <  args.size; i++){
             ConfigVariable arg = function->variables[i];
 
-            SymbolicExpression* var = PushVariable(temp,functionInvoc->arguments[i]);
+            //SymbolicExpression* var = PushVariable(temp,functionInvoc->arguments[i]);
+            
+            SymbolicExpression* var = SymbolicFromSpecExpression(args[i],temp);
             argToVar->Insert(arg.name,var);
           }
 
@@ -748,8 +769,8 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
             newAssign->assign.lhs = lhs;
             newAssign->assign.rhs = newExpr;
           }
-        } break;
-        case ConfigRHSType_SYMBOLIC_EXPR:{
+        }
+        if(parsedRhs.isExpr){
           String name = GetBase(simple->lhs)->name;
           
           ConfigIdentifier* before = GetBeforeBase(simple->lhs);
@@ -758,21 +779,16 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           ConfigStuff* assign = list->PushElem();
           assign->type = ConfigStuffType_ASSIGNMENT;
           assign->assign.lhs = PushString(out,"%.*s.%.*s",UN(name),UN(wireName));
-          assign->assign.rhs = SymbolicDeepCopy(stmt->expr,out);
-        } break;
-        case ConfigRHSType_IDENTIFIER: {
-          // TODO: Proper error reporting
-          Assert(false);
-        } break;
-      }
-      } break;
+          assign->assign.rhs = SymbolicDeepCopy(parsedRhs.expr,out);
+        }
       }
     }
-  }
+    }
+  }    
 
   auto newStructs = PushArenaList<String>(temp);
 
-  if(def->type == UserConfigurationType_STATE){
+  if(def->type == UserConfigType_STATE){
     type = ConfigFunctionType_STATE;
 
     CEmitter* c = StartCCode(temp);
@@ -810,144 +826,45 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         wireName = before->name;
       }
 
-      FULL_SWITCH(stmt->rhsType){
-      case ConfigRHSType_FUNCTION_CALL:{
-        // TODO: Proper error reporting
-        Assert(false);
-      } break;
-      case ConfigRHSType_SYMBOLIC_EXPR:{
-        // TODO: Proper error reporting
-        Assert(false);
-      } break;
-      case ConfigRHSType_IDENTIFIER:{
-        Entity* ent = env->GetEntity(stmt->rhsId,temp);
-        
-        if(ent->type == EntityType_CONFIG_FUNCTION){
-          ConfigFunction* func = ent->func;
+      ConfigIdentifier id = {};
 
-          String rhsName = GetBase(stmt->rhsId)->name; // TODO: Used to be 'info->name' but we eliminated info so do not know what is actually missing.
+      if(stmt->trueRhs->type == SpecExpression::SINGLE_ACCESS){
+        id.name = stmt->trueRhs->name;
+      }
 
-          for(ConfigStuff stmt : func->stuff){
-            ConfigStuff* assign = list->PushElem();
-            assign->type = ConfigStuffType_ASSIGNMENT;
-            assign->assign.lhs = name;
-            assign->assign.rhsId = PushString(out,"%.*s.%.*s",UN(rhsName),UN(stmt.assign.rhsId));
-          }
-        } else if(ent->type == EntityType_STATE_WIRE){
-          ConfigStuff* assign = list->PushElem();
+      Entity* ent = env->GetEntity(stmt->trueRhs,temp);
+
+      ParseResult parsedRhs = ParseRHS(env,stmt->trueRhs,temp);
+
+      if(parsedRhs.isWire){
+        ConfigStuff* assign = list->PushElem();
           
-          assign->type = ConfigStuffType_ASSIGNMENT;
-          assign->assign.lhs = name;
-          assign->assign.rhsId = PushString(out,"%.*s.%.*s",UN(GetBase(stmt->rhsId)->name),UN(GetBeforeBase(stmt->rhsId)->name));
-        } else {
-          // TODO: Proper error reporting.
-          printf("The entity is not a function or a state wire\n");
-          exit(-1);
-        }
-      } break;
+        String wireName = parsedRhs.wireName;
+        String varName = parsedRhs.entityName;
+
+        assign->type = ConfigStuffType_ASSIGNMENT;
+        assign->assign.lhs = name;
+        assign->assign.rhsId = PushString(out,"%.*s.%.*s",UN(wireName),UN(varName));
       }
     }
   }
   
-  if(def->type == UserConfigurationType_MEM){
+  if(def->type == UserConfigType_MEM){
     type = ConfigFunctionType_MEM;
 
     for(Array<ConfigStatement*> stmts : individualStatements){
       ConfigStatement* stmt = stmts[0];
       ConfigStatement* simple = stmts[stmts.size - 1];
 
-      FULL_SWITCH(stmt->type){
-      case ConfigStatementType_STATEMENT:{
-        FULL_SWITCH(stmt->rhsType){
-        case ConfigRHSType_FUNCTION_CALL:{
-          // TODO: Proper error reporting
-          Assert(false);
-        } break;
-        case ConfigRHSType_SYMBOLIC_EXPR:{
-          // TODO: Proper error reporting
-          Assert(false);
-        } break;
-        case ConfigRHSType_IDENTIFIER:{
-          // Only tackling simple forms, for now.
-          //Assert(stmt->lhs.expr);
-          //Assert(stmt->rhsId.expr);
-
-          // TODO: HACKY REMOVE PARENT because we do not actually want to follow the array in this case.
-          if(stmt->lhs->parent){
-            stmt->lhs->parent = nullptr;
-          }
-          
-          ConfigStuff* assign = list->PushElem();
-          assign->type = ConfigStuffType_MEMORY_TRANSFER;
-          assign->transfer.dir = TransferDirection_READ;
-          assign->transfer.identity = "TOP_m_addr";
-          assign->transfer.sizeExpr = "1";
-          assign->transfer.variable = PushString(out,GetBase(stmt->rhsId)->name);
-        } break;
-      }
-      } break;
-      case ConfigStatementType_FOR_LOOP:{
-        auto forLoops = PushArenaList<AddressGenForDef>(temp);
-
-        for(int i = 0; i < stmts.size - 1; i++){
-          *forLoops->PushElem() = stmts[i]->def;
-        }
-        
-        Array<AddressGenForDef> loops = PushArrayFromList(temp,forLoops);
-
-        ReportErrorIf(loops.size != 1,"Cannot handle more than 1 loop inside a mem configuration");
-
-        Assert(simple->type == ConfigStatementType_STATEMENT);
-        Assert(simple->rhsType == ConfigRHSType_IDENTIFIER);
-        
-        SymbolicExpression* end = ParseSymbolicExpression(loops[0].endSym,out);
-        
-        ConfigIdentifier* stmt = simple->lhs;
-
-        // TODO: HACKY REMOVE PARENT because we do not actually want to follow the array in this case.
-        if(stmt->parent){
-          stmt->parent = nullptr;
-        }
-
-        Entity* ent = env->GetEntity(simple->lhs,temp);
-
-        // TODO: This is currently hardcoded for some examples while we are trying to figure out how to proceed.
-        if(ent && ent->type == EntityType_NODE){
-          // Need to build an address gen in here or something that we can then use to extract the info that we need.
-          ConfigStuff* assign = list->PushElem();
-          assign->type = ConfigStuffType_MEMORY_TRANSFER;
-          assign->transfer.dir = TransferDirection_READ;
-          assign->transfer.identity = "TOP_m_addr";
-          assign->transfer.sizeExpr = PushRepr(out,end);
-          assign->transfer.variable = "addr";//PushString(out,simple->rhsId.name);
-        } else {
-          ConfigStuff* assign = list->PushElem();
-          assign->type = ConfigStuffType_MEMORY_TRANSFER;
-          assign->transfer.dir = TransferDirection_WRITE;
-          assign->transfer.identity = "TOP_m_addr";
-          assign->transfer.sizeExpr = PushRepr(out,end);
-          assign->transfer.variable = "addr";//PushString(out,simple->rhsId.name);
-        }
-      } break;
+      ParseResult parsedRhs = ParseRHS(env,stmt->trueRhs,temp);
     }
-    }
-  }
-
-  auto varStuff = PushArenaList<ConfigVariable>(out);
-  
-  for(ConfigVarDeclaration decl : variables){
-    ConfigVariable* var = varStuff->PushElem();
-    
-    var->type = decl.type;
-    var->name = PushString(out,decl.name);
-    var->usedOnLoopExpressions = variablesUsedOnLoopExpressions->Exists(decl.name);
   }
 
   ConfigFunction func = {};
   func.type = type;
   func.decl = declaration;
   func.stuff = PushArrayFromList(out,list);
-  func.variables = PushArrayFromList(out,varStuff);
+  func.variables = varInfo;
   func.individualName = PushString(out,def->name);
   func.fullName = GlobalConfigFunctionName(func.individualName,declaration,out);
   func.newStructs = PushArrayFromList(out,newStructs);

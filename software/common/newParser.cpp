@@ -20,26 +20,35 @@ static bool IsCharSingleToken(char ch){
   return res;
 }
 
-String PushRepr(Arena* out,NewToken token){
+String PushRepr(Arena* out,NewTokenType type){
   String res = {};
+  if(IsCharSingleToken((char) type)){
+    res = PushString(out,"'%c'",(char) type);
+  }
+  if(type == NewTokenType_WHITESPACE){
+    res = "Whitespace";
+  }
+  if(type == NewTokenType_COMMENT){
+    res = "Comment";
+  }
+  if(type == NewTokenType_EOF){
+    res = "EOF";
+  }
+  if(type == NewTokenType_C_KEYWORD){
+    res = "C Reserved Keyword";
+  }
+  if(type == NewTokenType_IDENTIFIER){
+    res = "Identifier";
+  }
+  if(type == NewTokenType_NUMBER){
+    res = "Number";
+  }
 
-  if(IsCharSingleToken((char) token.type)){
-    res = PushString(out,"[SingleChar] '%c'",token.type);
-  }
-  if(token.type == NewTokenType_IDENTIFIER){
-    res = PushString(out,"[Identifier] '%.*s'",UN(token.identifier));
-  }
-  if(token.type == NewTokenType_WHITESPACE){
-    res = "[Whitespace]";
-  }
-  if(token.type == NewTokenType_COMMENT){
-    res = "[Comment]";
-  }
-  if(token.type == NewTokenType_NUMBER){
-    res = PushString(out,"[Number] '%ld'",token.number);
+  if(type >= NewTokenType_KEYWORD_START && type < NewTokenType_KEYWORD_END){
+    return "Keyword";
   }
 
-#define SIMPLE(TYPE,TYPENAME,RET) if(token.type == TYPE) res = PushString(out,"[%s] '%s'",TYPENAME,RET)
+#define SIMPLE(TYPE,TYPENAME,RET) if(type == TYPE) res = PushString(out,"[%s] '%s'",TYPENAME,RET)
 
   SIMPLE(NewTokenType_DOUBLE_DOT,"DoubleChar","..");
   SIMPLE(NewTokenType_DOUBLE_HASHTAG,"DoubleChar","##");
@@ -58,8 +67,39 @@ String PushRepr(Arena* out,NewToken token){
   SIMPLE(NewTokenType_KEYWORD_CONFIG,"Keyword","config");
   SIMPLE(NewTokenType_KEYWORD_STATE,"Keyword","state");
   SIMPLE(NewTokenType_KEYWORD_MEM,"Keyword","mem");
+  SIMPLE(NewTokenType_KEYWORD_FOR,"Keyword","for");
 
 #undef SIMPLE 
+
+  return res;
+}
+
+String PushRepr(Arena* out,NewToken token){
+  String res = {};
+
+  if(token.type == NewTokenType_IDENTIFIER){
+    res = PushString(out,"[Identifier] '%.*s'",UN(token.identifier));
+  }
+  if(token.type == NewTokenType_NUMBER){
+    res = PushString(out,"[Number] '%ld'",token.number);
+  }
+
+  if(Empty(res)){
+    res = PushRepr(out,token.type);
+  }
+
+#define SIMPLE(TYPE,TYPENAME,RET) if(token.type == TYPE) res = PushString(out,"[%s] '%s'",TYPENAME,RET)
+  SIMPLE(NewTokenType_KEYWORD_MODULE,"Keyword","module");
+  SIMPLE(NewTokenType_KEYWORD_MERGE,"Keyword","merge");
+  SIMPLE(NewTokenType_KEYWORD_SHARE,"Keyword","share");
+  SIMPLE(NewTokenType_KEYWORD_STATIC,"Keyword","static");
+  SIMPLE(NewTokenType_KEYWORD_DEBUG,"Keyword","debug");
+  SIMPLE(NewTokenType_KEYWORD_CONFIG,"Keyword","config");
+  SIMPLE(NewTokenType_KEYWORD_STATE,"Keyword","state");
+  SIMPLE(NewTokenType_KEYWORD_MEM,"Keyword","mem");
+  SIMPLE(NewTokenType_KEYWORD_FOR,"Keyword","for");
+#undef SIMPLE 
+
 
   Assert(!Empty(res) && "Missing representation for token type");
 
@@ -120,6 +160,8 @@ void Parser::ReportError(String error){
   if(!errors){
     errors = PushArenaList<String>(this->arena);
   }
+
+  DEBUG_BREAK();
   
   *errors->PushElem() = PushString(arena,error);
 }
@@ -135,11 +177,8 @@ void Parser::ReportUnexpectedToken(NewToken token,BracketList<NewTokenType> expe
   
   // TODO: Move tokenType to meta and proper data modelling of the token type properties.
   for(NewTokenType type : expectedList){
-    if(IsCharSingleToken((char) type)){
-      builder->PushString("  '%c'\n",(char) type);
-    } else {
-      builder->PushString("  'Number: %d'\n",type);
-    }
+    String repr = PushRepr(temp,type);
+    builder->PushString("  '%.*s'\n",UN(repr));
   }
 
   if(!errors){
@@ -183,20 +222,36 @@ bool Parser::IfNextToken(char singleChar){
   return IfNextToken(TOK_TYPE(singleChar));
 }
 
+bool Parser::IfPeekToken(NewTokenType type){
+  NewToken tok = PeekToken();
+  if(tok.type == type){
+    return true;
+  }
+
+  return false;
+}
+
+bool Parser::IfPeekToken(char singleChar){
+  Assert(IsCharSingleToken(singleChar));
+
+  return IfPeekToken(TOK_TYPE(singleChar));
+}
+
 NewToken Parser::ExpectNext(NewTokenType type){
   NewToken tok = NextToken();
 
   if(type == NewTokenType_IDENTIFIER && (options & ParsingOptions_ERROR_ON_C_VERILOG_KEYWORDS)){
-    if(tok.type == NewTokenType_C_KEYWORD){
+    if(tok.type == NewTokenType_C_KEYWORD && options & ParsingOptions_ERROR_ON_C_KEYWORDS){
       ReportError("Expected identifier but instead got a C reserved keyword.\n We cannot have C keywords since we will have to generate C code and the generated code will be malformed");
-    } else if(tok.type == NewTokenType_VERILOG_KEYWORD){
+    } else if(tok.type == NewTokenType_VERILOG_KEYWORD && options & ParsingOptions_ERROR_ON_VERILOG_KEYWORDS){
       ReportError("Expected identifier but instead got a Verilog reserved keyword.\n We cannot have Verilog keywords since we will have to generate Verilog code and the generated code will be malformed");
     }
   } else if(tok.type != type){
     TEMP_REGION(temp,nullptr);
-    
+
+    String typeRepr = PushRepr(temp,type);
     String repr = PushRepr(temp,tok);
-    String error = PushString(temp,"Unexpected token. Expected type: %d , Got: %.*s",(int) type,UN(repr));
+    String error = PushString(temp,"Unexpected token. Expected type: %.*s , Got: %.*s",UN(typeRepr),UN(repr));
     ReportError(error);
   }
 

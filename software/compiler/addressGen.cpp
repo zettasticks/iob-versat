@@ -535,6 +535,7 @@ static Array<Pair<String,String>> InstantiateMem(AddressAccess* access,int port,
   return PushArrayFromList(out,list);
 }
 
+//nocheckin
 AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef> loops,SymbolicExpression* addr,String content){
   Arena* out = globalPermanent;
   
@@ -655,6 +656,136 @@ AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef> loo
   
   return result;
 };
+
+//nocheckin
+AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> loops,SymbolicExpression* addr,String content){
+  Arena* out = globalPermanent;
+  
+  TEMP_REGION(temp,out);
+
+  // TODO: Issue a warning if a variable is declared but not used.
+  // TODO: Better error reporting by allowing code to call the ReportError from the spec parser 
+  bool anyError = false;
+  for(AddressGenForDef2 loop : loops){
+    Opt<Token> sameNameAsInput = Find(inputs,loop.loopVariable);
+
+    if(sameNameAsInput.has_value()){
+      ReportError2(content,loop.loopVariable,sameNameAsInput.value(),"Loop variable","Overshadows input variable");
+      anyError = true;
+    }
+
+    {
+      auto tokens = AccumTokens(loop.startSym,temp);
+      for(Token tok : tokens){
+        if(IsIdentifier(tok) && !Contains(inputs,tok)){
+          printf("\t[Error] Loop expression variable '%.*s' does not appear inside input list (did you forget to declare it as input?)\n",UN(tok));
+          anyError = true;
+        }
+      }
+    }
+
+    {
+      auto tokens = AccumTokens(loop.endSym,temp);
+      for(Token tok : tokens){
+        if(IsIdentifier(tok) && !Contains(inputs,tok)){
+          printf("\t[Error] Loop expression variable '%.*s' does not appear inside input list (did you forget to declare it as input?)\n",UN(tok));
+          anyError = true;
+        }
+      }
+    }
+  }
+  
+  if(anyError){
+    return nullptr;
+  }
+  
+  auto loopVarBuilder = StartArray<String>(temp);
+  for(int i = 0; i < loops.size; i++){
+    AddressGenForDef2 loop = loops[i];
+
+    *loopVarBuilder.PushElem() = PushString(temp,loop.loopVariable);
+  }
+  Array<String> loopVars = EndArray(loopVarBuilder);
+      
+  // Builds expression for the internal address which is basically just a multiplication of all the loops sizes
+  SymbolicExpression* loopExpression = PushLiteral(temp,1);
+  for(AddressGenForDef2 loop : loops){
+    // TODO: Handle parsing errors
+    // TODO: Performance, we are parsing this twice, there is another below. Maybe we can join the loops into a single one
+
+    SymbolicExpression* start = SymbolicFromSpecExpression(loop.startSym,temp);
+    SymbolicExpression* end = SymbolicFromSpecExpression(loop.endSym,temp);
+
+    SymbolicExpression* diff = SymbolicSub(end,start,temp);
+
+    loopExpression = SymbolicMult(loopExpression,diff,temp);
+  }
+  SymbolicExpression* finalExpression = Normalize(loopExpression,temp);
+
+  // Building expression for the external address
+  // TODO: Handle parsing errors
+  SymbolicExpression* symbolicExpr = addr;
+  //SymbolicExpression* symbolicExpr = ParseSymbolicExpression(symbolicTokens,globalPermanent);
+  Assert(symbolicExpr);
+  SymbolicExpression* normalized = Normalize(symbolicExpr,temp);
+
+  SymbolicExpression* fullExpr = normalized;
+  SymbolicExpression* dutyDiv = nullptr;
+  if(normalized->type == SymbolicExpressionType_DIV){
+      fullExpr = normalized->top;
+      dutyDiv = normalized->bottom;
+  }
+  
+  // NOTE: If this hits, we probaby need to improve the normalization of divs. It should always be possible to normalize a symbolic expression into a (A/B) format, I think.
+  Assert(fullExpr->type != SymbolicExpressionType_DIV);
+  
+  for(String str : loopVars){
+    fullExpr = Group(fullExpr,str,temp);
+  }
+        
+  LoopLinearSum* expr = PushLoopLinearSumEmpty(temp);
+  for(int i = 0; i < loopVars.size; i++){
+    String var = loopVars[i];
+
+    // TODO: This function is kinda too heavy for what is being implemented.
+    Opt<SymbolicExpression*> termOpt = GetMultExpressionAssociatedTo(fullExpr,var,temp); 
+
+    SymbolicExpression* term = termOpt.value_or(nullptr);
+    if(!term){
+      term = PushLiteral(temp,0);
+    }
+
+    AddressGenForDef2 loop = loops[i];
+    
+    // TODO: Performance, we are parsing the start and end stuff twice. This is the second, the first is above.
+    SymbolicExpression* start = SymbolicFromSpecExpression(loop.startSym,temp);
+    SymbolicExpression* end = SymbolicFromSpecExpression(loop.endSym,temp);
+    
+    LoopLinearSum* sum = PushLoopLinearSumSimpleVar(loop.loopVariable,term,start,end,temp);
+    expr = AddLoopLinearSum(sum,expr,temp);
+  }
+  
+  // Extracts the constant term
+  SymbolicExpression* toCalcConst = fullExpr;
+
+  // TODO: Currently we are not dealing with loops that do not start at zero
+  SymbolicExpression* zero = PushLiteral(temp,0);
+  for(String str : loopVars){
+    toCalcConst = SymbolicReplace(toCalcConst,str,zero,temp);
+  }
+  toCalcConst = Normalize(toCalcConst,temp);
+
+  LoopLinearSum* freeTerm = PushLoopLinearSumFreeTerm(toCalcConst,temp);
+      
+  AddressAccess* result = PushStruct<AddressAccess>(out);
+  result->inputVariableNames = CopyArray<String>(inputs,out);
+  result->internal = PushLoopLinearSumSimpleVar("x",PushLiteral(temp,1),PushLiteral(temp,0),finalExpression,out);
+  result->external = AddLoopLinearSum(expr,freeTerm,out);
+  result->dutyDivExpr = SymbolicDeepCopy(dutyDiv,out);
+  
+  return result;
+};
+
 
 static void EmitDebugAddressGenInfo(AddressAccess* access,CEmitter* c){
   TEMP_REGION(temp,c->arena);
