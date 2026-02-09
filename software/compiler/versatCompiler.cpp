@@ -838,6 +838,8 @@ Im thinking:
 TODO:
 NOTE:
 
+- Need to add a proper test to API_Mem.
+
 Parameters are still mildly broken. The AccelInfo is not properly taking parameters into account, meaning that the accelInfo of modules is misleading. The only reason that stuff works fine right is because we are instantiating parameters when computing the configs and state wires of the modules. The actual data inside the AccelInfo is still "bad" and not properly responding to the parameters that we are putting.
 
 In fact, maybe the problem is that the FUDeclaration for modules is not using data from AccelInfo directly and instead it is doing computations over other data. This is "bad". We want AccelInfo to be the sole source of truth for all the Accelerator related data. If AccelInfo is properly calculated, then the rest of the code should work fine since all the data that is needed is already provided.

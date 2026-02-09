@@ -45,6 +45,8 @@ SymbolicExpression* SymbolicFromSpecExpression(SpecExpression* spec,Arena* out){
       if(top->op[0] == '/'){
         res = SymbolicDiv(left,right,temp);
       }
+
+      Assert(res);
     } break;
     case SpecExpression::NAME:
     case SpecExpression::VAR:{
@@ -1743,17 +1745,12 @@ Entity* Env::GetEntity(ConfigIdentifier* id,Arena* out){
           ReportError({},"Cannot access array since entity is not an array");
         }
 
-        NOT_IMPLEMENTED();
+        // NOTE: At this point there are two things to do.
+        //       Either we check if the expression is a constant and at that point we try to return the actual FU variable.
+        //       Or, if the expression is not a constant we just return that the entity is a FU_ARRAY.
+        // TODO: Right now we are just assuming that it is a FU_ARRAY since we are just trying to implement the memory user config stuff
 
-#if 0
-        // TODO: We need to be able to calculate the index at this point.
-        //       This also means that the symbolic expression must be a constant, right? Or at least something that we can calculate directly.
-        //       If we are inside a for loop and we are using a loop variable than the problem becomes more complicated, but currently we are trying to simplify this part of the code meaning that we will tackle this in the future if needed.
-        if(ent->type == EntityType_FU_ARRAY){
-          String name = GetActualArrayName(ent->arrayBaseName,index.low,temp);
-        }
-#endif
-        
+        nextEnt = ent;
       } break;
       case ConfigAccessType_ACCESS:{
         Token access = ptr->name;
@@ -2113,6 +2110,19 @@ void Env::AddEquality(ConnectionDef decl){
   ent->instance = inst;
 
   table->Insert(inst->name,inst);
+}
+
+void Env::AddVariable(Token name){
+  Entity* ent = GetEntity(name);
+
+  if(ent){
+    ReportError(name,"This name is already being used");
+  }
+
+  Entity* entity = PushNewEntity(name);
+
+  entity->type = EntityType_VARIABLE_INPUT;
+  entity->varName = name;
 }
 
 FUInstanceIterator FUInstanceIterator::Next(){
@@ -2684,8 +2694,8 @@ SpecExpression* ParseLoopExpression2(Parser* parser,Arena* out,int bindingPower)
   // TODO: This should be outside the function itself.
   TEMP_REGION(temp,out);
   auto infos = PushArray<OpInfo>(temp,4);
-  infos[0] = {TOK_TYPE('/'),0,"&"};
-  infos[1] = {TOK_TYPE('*'),0,"|"};
+  infos[0] = {TOK_TYPE('/'),0,"/"};
+  infos[1] = {TOK_TYPE('*'),0,"*"};
 
   infos[2] = {TOK_TYPE('+'),1,"+"};
   infos[3] = {TOK_TYPE('-'),1,"-"};

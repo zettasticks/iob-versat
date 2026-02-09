@@ -6,6 +6,7 @@
 #include "newParser.hpp"
 #include "symbolic.hpp"
 #include "declaration.hpp"
+#include "utils.hpp"
 #include "utilsCore.hpp"
 
 #include "CEmitter.hpp"
@@ -492,6 +493,7 @@ ParseResult ParseRHS(Env* env,SpecExpression* top,Arena* out){
   if(top->type == SpecExpression::ARRAY_ACCESS){
     res.isArray = true;
     res.expr = SymbolicFromSpecExpression(top->expressions[0],out);
+    res.entityName = top->name;
   } else if(top->type == SpecExpression::SINGLE_ACCESS){
     res.isWire = true;
     res.entityName = top->name;
@@ -519,6 +521,12 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   Array<ConfigVarDeclaration> variables = def->variables;
   Array<Token> variableNames = Extract(variables,temp,&ConfigVarDeclaration::name);
 
+  env->PushScope();
+
+  for(Token name : variableNames){
+    env->AddVariable(name);
+  }
+  
   // TODO: This flow is not good. With a bit more work we probably can join state and config into the same flow or at least avoid duplicating work. For now we are mostly prototyping so gonna keep pushing what we have.
 
   // Break apart every for loop + statement into individual statements.
@@ -672,23 +680,17 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         if(isArray){
           expr = SymbolicFromSpecExpression(simple->trueRhs->expressions[0],temp);
         }
-#if 0
-        //SymbolicExpression* expr = simple->expr;
-        if(simple->rhsType == ConfigRHSType_IDENTIFIER){
-          // Expressions of the form addr[expr].
-          // TODO: HACKY
-          expr = simple->rhsId->parent->expr;
-        }
-#endif
 
         ParseResult parsedRhs = ParseRHS(env,simple->trueRhs,temp);
 
         AddressAccess* access = nullptr;
 
         if(parsedRhs.isExpr || parsedRhs.isArray){
-          CompileAddressGen(variableNames,loops,parsedRhs.expr,content);
+          access = CompileAddressGen(variableNames,loops,parsedRhs.expr,content);
         }
         AddressGenInst supported = ent->instance->declaration->supportedAddressGen;
+
+        DEBUG_BREAK();
 
         // TODO: This logic is stupid. Rework into something better when we finalize the addressGen change.
         if(supported.type == AddressGenType_GEN){
@@ -706,9 +708,13 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           newAssign->type = ConfigStuffType_ADDRESS_GEN;
           newAssign->access.access = access;
           newAssign->access.inst = supported;
-          newAssign->access.dir = portEnt->dir;
-          newAssign->access.port = portEnt->port;
 
+          if(portEnt){
+            newAssign->access.dir = portEnt->dir;
+            newAssign->access.port = portEnt->port;
+          }
+
+          newAssign->accessVariableName = PushString(out,parsedRhs.entityName);
           newAssign->lhs = PushString(out,name);
         } else {
           ConfigStuff* newAssign = list->PushElem();
@@ -844,7 +850,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
         assign->type = ConfigStuffType_ASSIGNMENT;
         assign->assign.lhs = name;
-        assign->assign.rhsId = PushString(out,"%.*s.%.*s",UN(wireName),UN(varName));
+        assign->assign.rhsId = PushString(out,"%.*s.%.*s",UN(varName),UN(wireName));
       }
     }
   }
@@ -856,7 +862,138 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       ConfigStatement* stmt = stmts[0];
       ConfigStatement* simple = stmts[stmts.size - 1];
 
-      ParseResult parsedRhs = ParseRHS(env,stmt->trueRhs,temp);
+      bool singleStatement = (individualStatements.size == 1);
+
+      Assert(singleStatement || (stmt->type == ConfigStatementType_FOR_LOOP 
+                              && simple->type == ConfigStatementType_STATEMENT));
+
+      ParseResult parsedRhs = ParseRHS(env,simple->trueRhs,temp);
+
+      Assert(parsedRhs.isArray);
+
+      Entity* left = env->GetEntity(simple->lhs,temp);
+      Entity* right = env->GetEntity(parsedRhs.entityName);
+
+      Entity* unit = nullptr;
+      Entity* addrVar = nullptr;
+
+      TransferDirection dir = TransferDirection_NONE;
+      if(left->type == EntityType_FU){
+        Assert(right->type == EntityType_VARIABLE_INPUT);
+        dir = TransferDirection_READ;
+
+        unit = left;
+        addrVar = right;
+      } else {
+        Assert(left->type == EntityType_VARIABLE_INPUT);
+        dir = TransferDirection_WRITE;
+
+        unit = right;
+        addrVar = left;
+      }
+
+      String sizeExpr = "1";
+      if(!singleStatement){
+        SymbolicExpression* start = SymbolicFromSpecExpression(stmt->def2.startSym,temp);
+        SymbolicExpression* end = SymbolicFromSpecExpression(stmt->def2.endSym,temp);
+
+        SymbolicExpression* diff = SymbolicSub(end,start,temp);
+        sizeExpr = PushRepr(out,diff);
+      }
+
+#if 1
+      ConfigStuff* assign = list->PushElem();
+      assign->type = ConfigStuffType_MEMORY_TRANSFER;
+      assign->transfer.dir = dir;
+      assign->transfer.entityName = PushString(out,unit->instance->name);
+      assign->transfer.sizeExpr = sizeExpr;
+      assign->transfer.variable = PushString(out,addrVar->varName);
+#endif
+
+      // Left and right side must both be arrays.
+#if 0
+      FULL_SWITCH(stmt->type){
+      case ConfigStatementType_STATEMENT:{
+        FULL_SWITCH(stmt->rhsType){
+        case ConfigRHSType_FUNCTION_CALL:{
+          // TODO: Proper error reporting
+          Assert(false);
+        } break;
+        case ConfigRHSType_SYMBOLIC_EXPR:{
+          // TODO: Proper error reporting
+          Assert(false);
+        } break;
+        case ConfigRHSType_IDENTIFIER:{
+          // Only tackling simple forms, for now.
+          Assert(stmt->lhs.expr);
+          Assert(stmt->rhsId.expr);
+        
+          // Check that left entity supports memory access
+          Array<String> accessExpr = PushArray<String>(temp,1);
+          accessExpr[0] = stmt->lhs.name;
+
+          Opt<Entity> entityOpt = GetEntityFromHierAccessWithEnvironment(&declaration->info,env,accessExpr);
+
+          if(!entityOpt){
+            // TODO: Proper error reporting.
+            printf("Error, entity does not exist\n");
+            exit(-1);
+          }
+          Entity entity = entityOpt.value();
+          Assert(entity.type == EntityType_NODE);
+          Assert(entity.info->memMapBits.has_value());
+          
+          ConfigStuff* assign = list->PushElem();
+          assign->type = ConfigStuffType_MEMORY_TRANSFER;
+          assign->transfer.dir = TransferDirection_READ;
+          assign->transfer.identity = "TOP_m_addr";
+          assign->transfer.sizeExpr = "1";
+          assign->transfer.variable = PushString(out,simple->rhsId.name);
+        } break;
+      }
+      } break;
+      case ConfigStatementType_FOR_LOOP:{
+        auto forLoops = PushArenaList<AddressGenForDef>(temp);
+
+        for(int i = 0; i < stmts.size - 1; i++){
+          *forLoops->PushElem() = stmts[i]->def;
+        }
+        
+        Array<AddressGenForDef> loops = PushArrayFromList(temp,forLoops);
+
+        ReportErrorIf(loops.size != 1,"Cannot handle more than 1 loop inside a mem configuration");
+
+        Assert(simple->type == ConfigStatementType_STATEMENT);
+        Assert(simple->rhsType == ConfigRHSType_IDENTIFIER);
+        
+        SymbolicExpression* end = ParseSymbolicExpression(loops[0].endSym,out);
+        
+        String name = simple->lhs.name;
+
+        Array<String> accessExpr = PushArray<String>(temp,1);
+        accessExpr[0] = simple->lhs.name;
+        Opt<Entity> entityOpt = GetEntityFromHierAccess(&declaration->info,accessExpr);
+
+        // TODO: This is currently hardcoded for some examples while we are trying to figure out how to proceed.
+        if(entityOpt.has_value() && entityOpt.value().type == EntityType_NODE){
+          // Need to build an address gen in here or something that we can then use to extract the info that we need.
+          ConfigStuff* assign = list->PushElem();
+          assign->type = ConfigStuffType_MEMORY_TRANSFER;
+          assign->transfer.dir = TransferDirection_READ;
+          assign->transfer.identity = "TOP_m_addr";
+          assign->transfer.sizeExpr = PushRepr(out,end);
+          assign->transfer.variable = "addr";//PushString(out,simple->rhsId.name);
+        } else {
+          ConfigStuff* assign = list->PushElem();
+          assign->type = ConfigStuffType_MEMORY_TRANSFER;
+          assign->transfer.dir = TransferDirection_WRITE;
+          assign->transfer.identity = "TOP_m_addr";
+          assign->transfer.sizeExpr = PushRepr(out,end);
+          assign->transfer.variable = "addr";//PushString(out,simple->rhsId.name);
+        }
+      } break;
+    }      
+#endif
     }
   }
 
@@ -873,6 +1010,8 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   func.supportsSizeCalc = supportsSizeCalc;
 
   ConfigFunction* res = nameToFunction->Insert(func.fullName,func);
+
+  env->PopScope();
   
   return res;  
 }

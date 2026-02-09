@@ -3292,12 +3292,13 @@ Problem: If we want the address gen to take into account the limitations of spac
             FunctionMemoryTransfer transf = assign.transfer;
 
             FULL_SWITCH(transf.dir){
+            case TransferDirection_NONE: Assert(false); break;
             case TransferDirection_READ: {
-              String expr = PushString(temp,"VersatMemoryCopy(%.*s,%.*s,%.*s * sizeof(int));",UN(transf.identity),UN(transf.variable),UN(transf.sizeExpr));
+              String expr = PushString(temp,"VersatMemoryCopy(%.*s,%.*s,(%.*s) * sizeof(int));",UN(transf.entityName),UN(transf.variable),UN(transf.sizeExpr));
               c->RawLine(expr);
             } break;
             case TransferDirection_WRITE: {
-              String expr = PushString(temp,"VersatMemoryCopy(%.*s,%.*s,%.*s * sizeof(int));",UN(transf.variable),UN(transf.identity),UN(transf.sizeExpr));
+              String expr = PushString(temp,"VersatMemoryCopy(%.*s,%.*s,(%.*s) * sizeof(int));",UN(transf.variable),UN(transf.entityName),UN(transf.sizeExpr));
               c->RawLine(expr);
             } break;
             }

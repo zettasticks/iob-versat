@@ -328,6 +328,8 @@ struct Env{
   void AddConnection(ConnectionDef def);
   void AddEquality(ConnectionDef def);
 
+  void AddVariable(Token name);
+
   PortExpression InstantiateSpecExpression(SpecExpression* root);
 };
 
@@ -350,7 +352,12 @@ FUInstanceIterator StartIteration(Env* env,Entity* ent);
 // nocheckin
 SymbolicExpression* SymbolicFromSpecExpression(SpecExpression* spec,Arena* out);
 
-
+#if 0
+LEFT HERE - We are still removing old parser stuff and making the needed changes.
+            UserConfig is still broken and most tests are not working right now because of it.
+            A lot of stuff is kinda deorganized. Function declarations and structs that need to be moved.
+            Old structs and functions that might need to be removed and so on.
+#endif
 
 #if 0
 // nocheckin

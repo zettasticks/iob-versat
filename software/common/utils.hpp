@@ -10,8 +10,11 @@
 //       Misc Enums that we probably want to stuff into a Defs.hpp file
 enum Direction{
   Direction_NONE,
-  Direction_OUTPUT,
-  Direction_INPUT
+  Direction_OUTPUT = 1,
+  Direction_INPUT = 2,
+
+  Direction_WRITE = 1,
+  Direction_READ = 2
 };
 
 FILE* OpenFileAndCreateDirectories(String path,const char* format,FilePurpose purpose);

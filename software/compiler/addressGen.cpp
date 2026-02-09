@@ -786,7 +786,6 @@ AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> lo
   return result;
 };
 
-
 static void EmitDebugAddressGenInfo(AddressAccess* access,CEmitter* c){
   TEMP_REGION(temp,c->arena);
 

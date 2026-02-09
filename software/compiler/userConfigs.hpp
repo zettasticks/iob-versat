@@ -120,8 +120,9 @@ enum ConfigFunctionType{
 };
 
 enum TransferDirection{
-  TransferDirection_READ,
-  TransferDirection_WRITE
+  TransferDirection_NONE = 0,
+  TransferDirection_READ = 1,
+  TransferDirection_WRITE = 2
 };
 
 struct FunctionMemoryTransfer{
@@ -129,7 +130,7 @@ struct FunctionMemoryTransfer{
 
   String sizeExpr;
   String variable;
-  String identity;
+  String entityName;
 };
 
 enum ConfigStuffType{
