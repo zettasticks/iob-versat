@@ -105,7 +105,6 @@ struct ConfigFunctionDef{
   bool debug;
 };
 
-ConfigFunctionDef* ParseConfigFunction(Tokenizer* tok,Arena* out);
 bool IsNextTokenConfigFunctionStart(Parser* parser);
 bool IsNextTokenConfigFunctionStart(Tokenizer* tok);
 

@@ -3072,7 +3072,12 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
   
   for(int i = 0; i < size; i++){
     decl->info.infos[i].baseType = types[i];
-    
+
+    // TODO: We are assuming that we do not have any name collision.
+    //       We are also doing this by default. We could also augment the spec file syntax to support this stuff being defined by the user.
+    //       Meaning that the user is capable of giving different to the functions or just using the default name.
+    //       We technically need to support this if we end up merging two types that contain the same module which contains a userFunction. We cannot use the same name to represent two different modules even though at that point we are probably doing something really complicated and we probably need to see first what this would look like before 
+
     auto list = PushArenaList<ConfigFunction*>(temp);
     for(ConfigFunction* func : types[i]->info.infos[0].userFunctions){
       *list->PushElem() = func;

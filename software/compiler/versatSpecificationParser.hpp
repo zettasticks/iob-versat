@@ -17,25 +17,17 @@ enum PortRangeType{
   PortRangeType_ERROR
 };
 
-// TODO: Remove Connection extra. Store every range inside Var.
 struct ConnectionExtra{
-  Range<int> port;
-  Range<int> delay;
-};
-
-struct ConnectionExtra2{
   Range<SpecExpression*> port;
   Range<SpecExpression*> delay;
 };
 
 struct Var{
   Token name;
+
   ConnectionExtra extra;
+  Range<SpecExpression*> index;
 
-  Range<int> index;
-
-  ConnectionExtra2 trueExtra;
-  Range<SpecExpression*> trueIndex;
   bool isArrayAccess;
 };
 
@@ -65,7 +57,7 @@ struct SpecExpression{
   Token text;
   
   // NOTE: If array access, expressions is an array of the expressions in order and var contains the array name.
-  enum {OPERATION,VAR,NAME,LITERAL,SINGLE_ACCESS,ARRAY_ACCESS,FUNCTION_CALL} type;
+  SpecType type;
 };
 
 //nocheckin
@@ -77,36 +69,25 @@ struct VarDeclaration{
   bool isArray;
 };
 
-struct GroupIterator{
-  VarGroup group;
-  int groupIndex;
-  int varIndex; // Either port, delay or array unit.
-};
-
 struct PortExpression{
   FUInstance* inst;
   ConnectionExtra extra;
 };
 
 enum InstanceDeclarationType{
-  InstanceDeclarationType_NONE,
-  InstanceDeclarationType_STATIC,
-  InstanceDeclarationType_SHARE_CONFIG
+  InstanceDeclarationType_NONE = 0,
+  InstanceDeclarationType_STATIC = 1,
+  InstanceDeclarationType_SHARE_CONFIG = 2
 };
-
-inline InstanceDeclarationType operator|(InstanceDeclarationType lhs,InstanceDeclarationType rhs){
-  InstanceDeclarationType res = (InstanceDeclarationType) ((int) lhs | (int) rhs);
-  return res;
-}
 
 struct InstanceDeclaration{
   InstanceDeclarationType modifier;
   Token typeName;
   Array<VarDeclaration> declarations; // share(config) groups can have multiple different declarations. TODO: It is kinda weird that inside the syntax, the share allows groups of instances to be declared while this does not happen elsewhere. Not enought to warrant a look for now, but keep in mind for later.
-  Array<Pair<String,SymbolicExpression*>> parameters;
 
   // NOTE: We could create a different expression type 
-  Array<Pair<String,SpecExpression*>> parameters2;
+  Array<Pair<String,SpecExpression*>> parameters;
+
   Array<Token> addressGenUsed; // NOTE: We do not check if address gen exists at parse time, we check it later.
   Array<Token> shareNames;
   bool negateShareNames;
@@ -124,17 +105,12 @@ enum ConnectionType{
 
 struct ConnectionDef{
   ConnectionType type;
-
-  Range<Cursor> loc;
-
   VarGroup output;
-
   Array<Token> transforms;
-  
-  union{
-    VarGroup input;
-    SpecExpression* expression;
-  };
+
+  // TODO: Union.
+  VarGroup input;
+  SpecExpression* expression;
 };
 
 struct TypeAndInstance{
@@ -207,7 +183,6 @@ struct ConfigIdentifier{
   ConfigIdentifier* parent;
   union{
     Token name;
-    SymbolicExpression* expr; // TODO: Do not forget, we want this to be a SpecExpression, not a symbolic expression yet. We want to remove all the SymbolicExpressions from the parsing code.
     SpecExpression* trueExpr;
   };
 
@@ -312,7 +287,11 @@ struct Env{
   void PopScope();
 
   FUInstance* CreateInstance(FUDeclaration* type,String name);
-  
+
+  // TODO: The arrayIndexIfArray does not tell us if we are trying to access an array or not.
+  //       We probably need to encode such info so that we can properly error report
+  FUInstance* GetFUInstance(Token name,int arrayIndexIfArray);
+
   FUInstance* GetFUInstance(Var var);
   FUInstance* GetOutputInstance();
 
@@ -321,6 +300,8 @@ struct Env{
 
   Entity* GetEntity(ConfigIdentifier* id,Arena* out);
   Entity* GetEntity(SpecExpression* id,Arena* out);
+
+  int CalculateConstantExpression(SpecExpression* top);
 
   void AddInput(VarDeclaration decl);
   void AddInstance(InstanceDeclaration decl,VarDeclaration var);
@@ -344,6 +325,13 @@ struct FUInstanceIterator{
   FUInstanceIterator Next();
   bool IsValid();
   FUInstance* Current();
+};
+
+struct GroupIterator{
+  Env* env;
+  VarGroup group;
+  int groupIndex;
+  int varIndex; // Either port, delay or array unit.
 };
 
 FUInstanceIterator StartIteration(Env* env,Entity* ent);

@@ -182,6 +182,8 @@ struct MergePartition{
   AcceleratorMapping* baseTypeFlattenToMergedBaseCircuit;
   Set<PortInstance>*  mergeMultiplexers;
   
+  // TODO: Weird that this is inside MergePartition but at the same time we need to know which merge partition this function belongs to in order to generate the 
+  //       The weirdness is mostly the fact that userFunctions are mostly "Global" in the sense that they cannot repeat but at the same time we need the MergePartition info which means that we might just take this out and have to store the merge partition info in some other way.
   Array<ConfigFunction*> userFunctions;
 
   Accelerator* recon;
@@ -286,6 +288,10 @@ Array<int> ExtractOutputLatencies(AccelInfoIterator top,Arena* out);
 // TODO: This should be built on top of AccelInfo (taking an iterator), instead of just taking the array of instance infos.
 Array<String> ExtractStates(Array<InstanceInfo> info,Arena* out);
 Array<Pair<String,int>> ExtractMem(Array<InstanceInfo> info,Arena* out);
+
+// TODO: Do we add this to AccelInfo?
+//       How much do we calculate at the time vs how much we just put inside accelInfo?
+String GetEntityMemName(InstanceInfo* info,Arena* out);
 
 String ReprStaticConfig(StaticId id,Wire* wire,Arena* out);
 

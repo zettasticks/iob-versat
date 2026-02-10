@@ -219,6 +219,11 @@ Array<String> ExtractStates(Array<InstanceInfo> info,Arena* out){
   return res;
 }
 
+String GetEntityMemName(InstanceInfo* info,Arena* out){
+  String name = PushString(out,"%.*s_addr",UN(info->fullName)); 
+  return name;
+}
+
 Array<Pair<String,int>> ExtractMem(Array<InstanceInfo> info,Arena* out){
   int count = 0;
   for(InstanceInfo& in : info){
@@ -231,7 +236,7 @@ Array<Pair<String,int>> ExtractMem(Array<InstanceInfo> info,Arena* out){
   int index = 0;
   for(InstanceInfo& in : info){
     if(!in.isComposite && in.memMapped.has_value()){
-      String name = PushString(out,"%.*s_addr",UN(in.fullName)); 
+      String name = GetEntityMemName(&in,out); 
       res[index++] = {name,(int) in.memMapped.value()};
     }
   }
@@ -286,24 +291,44 @@ int PartitionSize(Array<Partition> parts){
   return size;
 }
 
-bool IncrementSinglePartition(Partition* part){
-  if(part->value + 1 < part->max){
-    part->value += 1;
-    return true;
-  } else {
-    part->value = 0;
-    return false;
-  }
+// ======================================
+// Partition Info iteration
+
+struct PartitionInfoIterator{
+  Array<Partition> partitions;
+  bool isValid;
+
+  bool IsValid();
+  void Next();
+  Array<MergePartition*> GetInfos(Arena* out);
+};
+
+PartitionInfoIterator* StartPartitionIteration(Accelerator* accel,Arena* out){
+  PartitionInfoIterator* res = PushStruct<PartitionInfoIterator>(out);
+  res->partitions = GenerateInitialPartitions(accel,out);
+  res->isValid = true;
+
+  return res;
 }
 
-void IncrementPartitions(Array<Partition> partitions,int amount){
-  for(int i = 0; i < amount; i++){
-    for(Partition& part : partitions){
-      if(IncrementSinglePartition(&part)){
-        break;
-      }
-    }
+bool PartitionInfoIterator::IsValid(){
+  return isValid;
+}
+
+void PartitionInfoIterator::Next(){
+  isValid = ::Next(partitions);
+}
+
+Array<MergePartition*> PartitionInfoIterator::GetInfos(Arena* out){
+  Array<MergePartition*> res = PushArray<MergePartition*>(out,partitions.size);
+
+  for(int i = 0; i <  partitions.size; i++){
+    Partition part = partitions[i];
+
+    res[i] = &part.decl->info.infos[part.value];
   }
+
+  return res;
 }
 
 String GetName(Array<Partition> partitions,Arena* out){
@@ -1253,6 +1278,37 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
   }
 
   FillAccelInfoFromCalculatedInstanceInfo(&result,accel);
+
+  // User configs are declaration level.
+  if(size > 1){
+    PartitionInfoIterator* iter = StartPartitionIteration(accel,temp);
+
+    for(int i = 0; i < size; i++,iter->Next()){
+      auto list = PushArenaList<ConfigFunction*>(temp);
+    
+      Array<MergePartition*> parts = iter->GetInfos(temp);
+
+      for(MergePartition* part : parts){
+        for(ConfigFunction* func : part->userFunctions){
+          *list->PushElem() = func;
+        }
+      }
+
+      result.infos[i].userFunctions = PushArrayFromList(out,list);
+    }
+  } else {
+    auto list = PushArenaList<ConfigFunction*>(temp);
+
+    for(FUInstance* inst : accel->allocated){
+      for(MergePartition part : inst->declaration->info.infos){
+        for(ConfigFunction* func : part.userFunctions){
+          *list->PushElem() = func;
+        }
+      }
+    }
+    
+    result.infos[0].userFunctions = PushArrayFromList(out,list);
+  }
 
   return result;
 }

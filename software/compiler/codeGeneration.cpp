@@ -3059,6 +3059,7 @@ void Output_Header(FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> stru
 
   Array<String> allStates = ExtractStates(info.infos[0].info,temp2);
   Array<Pair<String,int>> allMem = ExtractMem(info.infos[0].info,temp2);
+//  DEBUG_BREAK();
 
   {
     FREE_ARENA(emitterArena);
@@ -3110,8 +3111,6 @@ Problem: If we want the address gen to take into account the limitations of spac
          If we add the freedom for Versat hardware to be parameterizable then the software must get the parameters from somewhere, otherwise there is no point in making the hardware changeable.
          
          It might be possible that we are too tied in the generation of software and hardware to allow user to change Verilog parameters without having the user pass through Versat.
-
-
 */
       
         String fullFunctionName = PushString(temp,"%.*s_Size",UN(func->fullName));
@@ -3236,7 +3235,8 @@ Problem: If we want the address gen to take into account the limitations of spac
       }
     }
 
-    for(MergePartition part : topLevelDecl->info.infos){
+  // MARK nocheckin
+    for(MergePartition part : info.infos){
       String mergeName = part.name;
 
       for(ConfigFunction* func : part.userFunctions){
@@ -3291,14 +3291,24 @@ Problem: If we want the address gen to take into account the limitations of spac
             
             FunctionMemoryTransfer transf = assign.transfer;
 
+            String varName = transf.variable;
+            String sizeExpr = transf.sizeExpr;
+
+            String entityMemName = {};
+            for(InstanceInfo& info : part.info){
+              if(info.baseName == transf.entityName){
+                entityMemName = GetEntityMemName(&info,temp);
+              }
+            }
+            
             FULL_SWITCH(transf.dir){
             case TransferDirection_NONE: Assert(false); break;
             case TransferDirection_READ: {
-              String expr = PushString(temp,"VersatMemoryCopy(%.*s,%.*s,(%.*s) * sizeof(int));",UN(transf.entityName),UN(transf.variable),UN(transf.sizeExpr));
+              String expr = PushString(temp,"VersatMemoryCopy(%.*s,%.*s,(%.*s) * sizeof(int));",UN(entityMemName),UN(varName),UN(sizeExpr));
               c->RawLine(expr);
             } break;
             case TransferDirection_WRITE: {
-              String expr = PushString(temp,"VersatMemoryCopy(%.*s,%.*s,(%.*s) * sizeof(int));",UN(transf.variable),UN(transf.entityName),UN(transf.sizeExpr));
+              String expr = PushString(temp,"VersatMemoryCopy(%.*s,%.*s,(%.*s) * sizeof(int));",UN(varName),UN(entityMemName),UN(sizeExpr));
               c->RawLine(expr);
             } break;
             }
@@ -3360,7 +3370,7 @@ Problem: If we want the address gen to take into account the limitations of spac
 
         c->EndBlock();
       }
-    }
+    } //
 
     String content = PushASTRepr(c,temp);
     TE_SetString("userConfigFunctions",content);
