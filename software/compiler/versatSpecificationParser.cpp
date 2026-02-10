@@ -701,8 +701,6 @@ int Env::CalculateConstantExpression(SpecExpression* top){
 Entity* Env::GetEntity(SpecExpression* id,Arena* out){
   TEMP_REGION(temp,out);
 
-  SpecExpression* ptr = id;
-
   Entity* ent = nullptr;
 
   if(id->type == SpecType_NAME){

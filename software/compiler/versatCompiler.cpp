@@ -342,7 +342,7 @@ int main(int argc,char* argv[]){
   
   // We need to do this after parsing the modules because the majority of these special types come from verilog files
   // NOTE: This should never fail since the verilog files are embedded into the exe. A fail in here means that we failed to embed the necessary files at build time
-  BasicDeclaration::buffer = GetTypeByNameOrFail("Buffer");
+  BasicDeclaration::variableBuffer = GetTypeByNameOrFail("Buffer");
   BasicDeclaration::fixedBuffer = GetTypeByNameOrFail("FixedBuffer");
   BasicDeclaration::pipelineRegister = GetTypeByNameOrFail("PipelineRegister");
   BasicDeclaration::multiplexer = GetTypeByNameOrFail("Mux2");

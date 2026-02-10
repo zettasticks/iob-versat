@@ -7,7 +7,7 @@
 Pool<FUDeclaration> globalDeclarations;
 
 namespace BasicDeclaration{
-  FUDeclaration* buffer;
+  FUDeclaration* variableBuffer;
   FUDeclaration* fixedBuffer;
   FUDeclaration* input;
   FUDeclaration* output;

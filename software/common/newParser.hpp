@@ -49,6 +49,20 @@ enum NewTokenType : u16{
   NewTokenType_KEYWORD_MEM,
   NewTokenType_KEYWORD_FOR,
 
+  // TODO: While this is something that is kinda cool to have, it
+  //       might also be fundamentally wrong.  Because of arrays and
+  //       stuff like that, it is possible to have certain units have
+  //       the name of keywords and still cause no problems.  A
+  //       const[N] array will create units whose name is const_0,
+  //       const_1 and so on, which do not cause problems from c or
+  //       verilog POV.  We probably want to move this check to
+  //       someplace else instead of pushing this responsibility to
+  //       the parser itself. Just because we parse a c keyword does
+  //       not mean that we produce a C keyword.
+  // NOTE: We probably just want to check if any FU instance has a C
+  //       keyword name just before we finish registering the module.
+  //       It seems to be the better place to put this check.
+
   // We do not really care which keyword it is. We just want to make
   // sure that the generated C code is syntatically
   // correct since the user might use a C keyword in place of

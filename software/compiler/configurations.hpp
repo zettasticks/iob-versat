@@ -96,6 +96,8 @@ struct InstanceInfo{
   int baseNodeDelay;
   int numberDelays;
 
+  int variableBufferDelay;
+
   bool isComposite;
   bool isMerge;
 
@@ -211,6 +213,9 @@ struct AccelInfo{
   int numberConnections;
   int nDones;
 
+  Array<Wire> configWires;
+  Array<Wire> stateWires;
+
   String staticExpr;
   String delayStart;
   
@@ -264,8 +269,7 @@ struct Partition{
   FUDeclaration* decl;
 };
 
-AccelInfoIterator StartIteration(AccelInfo* info);
-AccelInfoIterator StartIterationFromEnding(AccelInfo* info);
+AccelInfoIterator StartIteration(AccelInfo* info,int mergeIndex = 0);
 
 void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel);
 

@@ -155,7 +155,7 @@ struct FUDeclaration{
 
 // Simple operations should also be stored here.
 namespace BasicDeclaration{
-  extern FUDeclaration* buffer;
+  extern FUDeclaration* variableBuffer;
   extern FUDeclaration* fixedBuffer;
   extern FUDeclaration* input;
   extern FUDeclaration* output;

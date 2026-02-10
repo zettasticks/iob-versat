@@ -322,6 +322,8 @@ void FillDeclarationWithAcceleratorValues(FUDeclaration* decl,Accelerator* accel
     }
   }
     
+  // nocheckin : TODO: We have AccelInfo calculate this stuff meaning that we can just 
+  //                   get the data directly from there and remove this part. I think.
   decl->configs = PushArray<Wire>(out,val.configs);
   decl->states = PushArray<Wire>(out,val.states);
 

@@ -170,8 +170,7 @@ int AccelInfoIterator::CurrentLevelSize(){
 Array<InstanceInfo*> GetAllSameLevelUnits(AccelInfo* info,int level,int mergeIndex,Arena* out){
   auto builder = StartArray<InstanceInfo*>(out);
 
-  AccelInfoIterator iter = StartIteration(info);
-  iter.SetMergeIndex(mergeIndex);
+  AccelInfoIterator iter = StartIteration(info,mergeIndex);
 
   for(; iter.IsValid(); iter = iter.Step()){
     InstanceInfo* unit = iter.CurrentUnit();
@@ -185,16 +184,10 @@ Array<InstanceInfo*> GetAllSameLevelUnits(AccelInfo* info,int level,int mergeInd
   return res;
 }
 
-AccelInfoIterator StartIteration(AccelInfo* info){
+AccelInfoIterator StartIteration(AccelInfo* info,int mergeIndex){
   AccelInfoIterator iter = {};
   iter.info = info;
-  return iter;
-}
-
-AccelInfoIterator StartIterationFromEnding(AccelInfo* info){
-  AccelInfoIterator iter = {};
-  iter.info = info;
-  iter.index = iter.GetCurrentMerge().size - 1;
+  iter.SetMergeIndex(mergeIndex);
   return iter;
 }
 
@@ -418,7 +411,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     if(inst->declaration == BasicDeclaration::fixedBuffer){
       elem->specialType = SpecialUnitType_FIXED_BUFFER;
     }
-    if(inst->declaration == BasicDeclaration::buffer){
+    if(inst->declaration == BasicDeclaration::variableBuffer){
       elem->specialType = SpecialUnitType_VARIABLE_BUFFER;
     }
     if(inst->declaration->isOperation){
@@ -715,8 +708,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
       
       int parentGlobalPos = parent->globalConfigPos.value();
 
-      AccelInfoIterator configIter = StartIteration(&parent->decl->info);
-      configIter.SetMergeIndex(parent->partitionIndex);
+      AccelInfoIterator configIter = StartIteration(&parent->decl->info,parent->partitionIndex);
 
       for(AccelInfoIterator it = iter.StepInsideOnly(); it.IsValid(); it = it.Next(),configIter = configIter.Next()){
         InstanceInfo* unit = it.CurrentUnit();
@@ -746,8 +738,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
 
     InstanceInfo* parent = iter.GetParentUnit();
     if(parent){
-      AccelInfoIterator stateIter = StartIteration(&parent->decl->info);
-      stateIter.SetMergeIndex(parent->partitionIndex);
+      AccelInfoIterator stateIter = StartIteration(&parent->decl->info,parent->partitionIndex);
       
       int index = 0;
       for(AccelInfoIterator it = iter; it.IsValid(); it = it.Next(),stateIter = stateIter.Next()){
@@ -795,8 +786,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
     
     InstanceInfo* parent = iter.GetParentUnit();
     if(parent){
-      AccelInfoIterator parentIter = StartIteration(&parent->decl->info);
-      parentIter.SetMergeIndex(parent->partitionIndex);
+      AccelInfoIterator parentIter = StartIteration(&parent->decl->info,parent->partitionIndex);
 
       for(AccelInfoIterator it = iter; it.IsValid(); it = it.Next(),parentIter = parentIter.Next()){
         InstanceInfo* unit = it.CurrentUnit();
@@ -899,8 +889,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
 
     InstanceInfo* parent = iter.GetParentUnit();
     if(parent){
-      AccelInfoIterator delayIter = StartIteration(&parent->decl->info);
-      delayIter.SetMergeIndex(parent->partitionIndex);
+      AccelInfoIterator delayIter = StartIteration(&parent->decl->info,parent->partitionIndex);
       
       int index = 0;
       for(AccelInfoIterator it = iter; it.IsValid(); it = it.Next(),delayIter = delayIter.Next()){
@@ -946,13 +935,14 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
     InstanceInfo* parent = iter.GetParentUnit();
     if(parent){
       // TODO: Delays are weird.
-      AccelInfoIterator delayIter = StartIteration(&parent->decl->info);
-      delayIter.SetMergeIndex(parent->partitionIndex);
+      AccelInfoIterator delayIter = StartIteration(&parent->decl->info,parent->partitionIndex);
       
       int index = 0;
       for(AccelInfoIterator it = iter; it.IsValid(); it = it.Next(),delayIter = delayIter.Next()){
         InstanceInfo* unit = it.CurrentUnit();
         InstanceInfo* delayUnit = delayIter.CurrentUnit();
+
+        unit->variableBufferDelay = delayUnit->variableBufferDelay;
 
         int delayPos = startIndex + delayUnit->baseNodeDelay;
         unit->baseNodeDelay = delayPos;
@@ -1132,16 +1122,14 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
   
   FUInstance* outputInstance = GetOutputInstance(&accel->allocated);
   if(outputInstance){
-    EdgeIterator iter = IterateEdges(accel);
-    while(iter.HasNext()){
-      Edge edgeInst = iter.Next();
-      Edge* edge = &edgeInst;
+    for(EdgeIterator iter = IterateEdges(accel); iter.IsValid(); iter.Next()){
+      Edge edge = iter.Value();
 
-      if(edge->units[0].inst == outputInstance){
-        info->outputs = std::max(info->outputs - 1,edge->units[0].port) + 1;
+      if(edge.units[0].inst == outputInstance){
+        info->outputs = std::max(info->outputs - 1,edge.units[0].port) + 1;
       }
-      if(edge->units[1].inst == outputInstance){
-        info->outputs = std::max(info->outputs - 1,edge->units[1].port) + 1;
+      if(edge.units[1].inst == outputInstance){
+        info->outputs = std::max(info->outputs - 1,edge.units[1].port) + 1;
       }
     }
   }
@@ -1269,7 +1257,6 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
       result.infos[i].name = GetName(partitions,out);
     }
   } else {
-    iter.SetMergeIndex(0);
     result.infos[0].info = GenerateInitialInstanceInfo(accel,out,{},calculateOrder);
     FillInstanceInfo(iter,out);
 
@@ -1308,6 +1295,58 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
     }
     
     result.infos[0].userFunctions = PushArrayFromList(out,list);
+  }
+
+  result.configWires = PushArray<Wire>(out,result.configs);
+  result.stateWires = PushArray<Wire>(out,result.states);
+
+  int configIndex = 0;
+  for(AccelInfoIterator iter = StartIteration(&result); iter.IsValid(); iter = iter.Step()){
+    InstanceInfo* unit = iter.CurrentUnit();
+
+    Hashmap<String,SymbolicExpression*>* params = PushHashmap<String,SymbolicExpression*>(temp,unit->params.size);
+
+    for(ParamAndValue p : unit->params){
+      params->Insert(p.paramName,p.val);
+    }
+    
+    if(unit->isGloballyStatic){
+      continue;
+    }
+
+    for(int i = 0; i < unit->individualWiresGlobalConfigPos.size; i++){
+      int globalPos = unit->individualWiresGlobalConfigPos[i];
+
+      if(globalPos < 0){
+        continue;
+      }
+      
+      if(!Empty(result.configWires[globalPos].name)){
+        continue;
+      }
+
+      Wire wire = unit->configs[i];
+      result.configWires[configIndex] = wire;
+
+      // TODO: We need to do this for state as well. And we probably want to make this more explicit.
+      result.configWires[configIndex].sizeExpr = ReplaceVariables(wire.sizeExpr,params,out);
+      result.configWires[configIndex++].name = PushString(out,"%.*s_%.*s",UN(unit->name),UN(wire.name));
+    }
+  }
+  
+  // TODO: This could be done based on the config offsets.
+  //       Otherwise we are still basing code around static and shared logic when calculating offsets already does that for us.
+  int stateIndex = 0;
+  for(FUInstance* ptr : accel->allocated){
+    FUInstance* inst = ptr;
+    FUDeclaration* d = inst->declaration;
+
+    for(Wire& wire : d->states){
+      result.stateWires[stateIndex] = wire;
+
+      result.stateWires[stateIndex].name = PushString(out,"%.*s_%.2d",UN(wire.name),stateIndex);
+      stateIndex += 1;
+    }
   }
 
   return result;

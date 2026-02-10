@@ -309,8 +309,10 @@ struct EdgeIterator{
   PoolIterator<FUInstance> end;
   ConnectionNode* currentPort;
   
-  bool HasNext();
-  Edge Next();
+  bool IsValid();
+  void Next();
+  Edge Value();
+  //Edge Value();
 };
 
 struct CalculatedOffsets{
@@ -459,11 +461,3 @@ FUInstance* MappingMapNode(AcceleratorMapping* mapping,FUInstance* inst);
 Set<PortInstance>* MappingMapInput(AcceleratorMapping* map,Set<PortInstance>* set,Arena* out);
 
 void PrintSubMappingInfo(SubMap* info);
-
-struct FlattenWithMergeResult{
-  Accelerator* accel;
-  AcceleratorMapping* reconToFlattenInst;
-};
-
-bool CanBeFlattened(Accelerator* accel);
-FlattenWithMergeResult FlattenWithMerge(Accelerator* accel,int reconIndex);

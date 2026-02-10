@@ -2867,6 +2867,8 @@ assign data_wstrb = csr_wstrb;
 }
 
 // TODO: Remove topLevelDecl after changing userConfig to work with Merge
+// TODO: Why are we calculating struct info and also taking in a structuredConfigs variable? Either one or the other.
+// TODO: Why are we taking in allStaticsVerilatorSide? Move this data to InstanceInfo. 
 void Output_Header(FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> structuredConfigs,AccelInfo info,Accelerator* accel,String softwarePath,Array<Wire> allStaticsVerilatorSide,VersatComputedValues val,String typeName){
   TEMP_REGION(temp,nullptr);
   TEMP_REGION(temp2,temp);
@@ -2944,17 +2946,6 @@ void Output_Header(FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> stru
 
     structs = GenerateStructs(allStructs,"Config",true,temp);
   }
-  
-  // Accelerator header
-  auto arr = StartArray<int>(temp);
-  for(InstanceInfo& t : info.infos[0].info){
-    if(!t.isComposite){
-      for(int d : t.extraDelay){
-        *arr.PushElem() = d;
-      }
-    }
-  }
-  Array<int> delays = EndArray(arr);
 
   // TODO: We eventually only want to put this as true if we output at least one address gen.
   TE_SetBool("simulateLoops",true);
@@ -3041,32 +3032,15 @@ void Output_Header(FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> stru
   }
   TE_SetNumber("amountMerged",allDelays.size);
 
-  auto diffArray = StartArray<DifferenceArray>(temp2);
-  for(int oldIndex = 0; oldIndex < allDelays.size; oldIndex++){
-    for(int newIndex = 0; newIndex < allDelays.size; newIndex++){
-      if(oldIndex == newIndex){
-        continue;
-      }
-        
-      Array<Difference> difference = CalculateSmallestDifference(allDelays[oldIndex],allDelays[newIndex],temp);
-
-      DifferenceArray* diff = diffArray.PushElem();
-      diff->oldIndex = oldIndex;
-      diff->newIndex = newIndex;
-      diff->differences = difference;
-    }
-  }
-
   Array<String> allStates = ExtractStates(info.infos[0].info,temp2);
   Array<Pair<String,int>> allMem = ExtractMem(info.infos[0].info,temp2);
-//  DEBUG_BREAK();
 
   {
     FREE_ARENA(emitterArena);
     CEmitter* c = StartCCode(emitterArena);
 
     bool isMerge = false;
-    if(topLevelDecl->info.infos.size > 1){
+    if(info.infos.size > 1){
       isMerge = true;
     }
 
@@ -3081,7 +3055,7 @@ void Output_Header(FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> stru
       NOT_POSSIBLE();
     };
 
-    for(MergePartition part : topLevelDecl->info.infos){
+    for(MergePartition part : info.infos){
       for(ConfigFunction* func : part.userFunctions){
         if(func->type != ConfigFunctionType_CONFIG){
           continue;
@@ -3574,6 +3548,17 @@ Problem: If we want the address gen to take into account the limitations of spac
     TE_SetString("addrBlock",content);
   }
 
+  // Accelerator header
+  auto arr = StartArray<int>(temp);
+  for(InstanceInfo& t : info.infos[0].info){
+    if(!t.isComposite){
+      for(int d : t.extraDelay){
+        *arr.PushElem() = d;
+      }
+    }
+  }
+  Array<int> delays = EndArray(arr);
+
   {
     CEmitter* c = StartCCode(temp);
 
@@ -3600,6 +3585,45 @@ Problem: If we want the address gen to take into account the limitations of spac
 
   {
     CEmitter* c = StartCCode(temp);
+
+    bool hasVariableDelay = false;
+
+    for(int i = 0; i <  info.infos.size; i++){
+      for(AccelInfoIterator iter = StartIteration(&info,i); iter.IsValid(); iter = iter.Step()){
+        InstanceInfo* info = iter.CurrentUnit();
+
+        if(HasVariableDelay(info)){
+          hasVariableDelay = true;
+        }
+      }
+    }
+
+    if(hasVariableDelay){
+      DEBUG_BREAK();
+      for(int i = 0; i <  info.infos.size; i++){
+        c->ArrayDeclareBlock("unsigned int",SF("bufferValues_%d",i),true);
+
+        for(AccelInfoIterator iter = StartIteration(&info,i); iter.IsValid(); iter = iter.Step()){
+          InstanceInfo* info = iter.CurrentUnit();
+
+          if(!HasVariableDelay(info)){
+            continue;
+          }
+
+          c->Elem(PushString(temp,"0x%x",info->variableBufferDelay));
+        }
+
+        c->EndBlock();
+      }
+
+      c->ArrayDeclareBlock("unsigned int*","bufferValues",true);
+
+      for(int i = 0; i < info.infos.size; i++){
+        c->Elem(SF("bufferValues_%d",i));
+      }
+        
+      c->EndBlock();
+    }
 
     if(names.size > 1){
       for(int i = 0; i <  allDelays.size; i++){
@@ -3646,6 +3670,23 @@ Problem: If we want the address gen to take into account the limitations of spac
         c->EndBlock();
         
         c->RawLine("VersatLoadDelay(delayBuffers[asInt]);");
+
+        if(hasVariableDelay){
+          int index = 0;
+          for(AccelInfoIterator iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
+            InstanceInfo* info = iter.CurrentUnit();
+
+            if(!HasVariableDelay(info)){
+              continue;
+            }
+            
+            // nocheckin
+            // 'TEST' and 'amount' are hacks that only work on versat_ai.
+            // TODO: We need to remove the allStaticsVerilatorSide.
+            String name = PushString(temp,"accelStatic->TEST_%.*s_amount",UN(info->name));
+            c->Assignment(name,SF("bufferValues[asInt][%d]",index++));
+          }
+        }
       
         c->EndBlock();
       }

@@ -361,14 +361,6 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           ent = ent->parent;
         }
         
-        bool isArray = simple->trueRhs->type == SpecType_ARRAY_ACCESS;
-
-        SymbolicExpression* expr = nullptr;
-        
-        if(isArray){
-          expr = SymbolicFromSpecExpression(simple->trueRhs->expressions[0],temp);
-        }
-
         ParseResult parsedRhs = ParseRHS(env,simple->trueRhs,temp);
 
         AddressAccess* access = nullptr;
