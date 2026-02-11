@@ -3682,7 +3682,7 @@ Problem: If we want the address gen to take into account the limitations of spac
             
             // nocheckin
             // 'Test' and 'amount' are hacks that only work on versat_ai.
-            // TODO: We need to remove the allStaticsVerilatorSide.
+            // TODO: We need to remove the allStaticsVerilatorSide and implement this properly be accessing AccelInfo
             String name = PushString(temp,"accelStatic->Test_%.*s_amount",UN(info->name));
             c->Assignment(name,SF("bufferValues[asInt][%d]",index++));
           }
