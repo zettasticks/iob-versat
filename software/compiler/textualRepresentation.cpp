@@ -3,12 +3,6 @@
 #include "merge.hpp"
 #include "declaration.hpp"
 
-String UniqueRepr(FUInstance* inst,Arena* out){
-  FUDeclaration* decl = inst->declaration;
-  String str = PushString(out,"%.*s_%.*s_%d",UN(decl->name),UN(inst->name),inst->id);
-  return str;
-}
-
 String Repr(FUInstance* inst,GraphDotFormat format,Arena* out){
   TEMP_REGION(temp,out);
   auto builder = StartString(temp);

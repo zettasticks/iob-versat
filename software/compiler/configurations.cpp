@@ -426,7 +426,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
 
     int index = 0;
     for(Pair<String,SymbolicExpression**> p : paramsMap){
-      params[index++] = (ParamAndValue) {.paramName = p.first,.val = *p.second};
+      params[index++] = (ParamAndValue) {.name = p.first,.val = *p.second};
     }
     elem->params = params;
 
@@ -495,6 +495,19 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     }
 
     {
+      info->inputsDirectly = PushArray<SimplePortInstance>(out,inst->inputs.size);
+      
+      for(int i = 0; i < inst->inputs.size; i++){
+        if(inst->inputs[i].inst){
+          info->inputsDirectly[i].inst = instanceToIndex->GetOrFail(inst->inputs[i].inst);
+          info->inputsDirectly[i].port = inst->inputs[i].port;
+        } else {
+          info->inputsDirectly[i].inst = - 1;
+        }
+      }
+    }
+
+    {
       ArenaList<SimplePortConnection>* list = PushList<SimplePortConnection>(temp);
       FOREACH_LIST(ConnectionNode*,ptr,inst->allOutputs){
         FUInstance* other = ptr->instConnectedTo.inst;
@@ -507,8 +520,11 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
         portInst->otherPort = otherPort;
         portInst->port = ptr->port;
       }
+
       info->outputs = PushArray(out,list);
     }
+    
+    info->outputIsConnected = CopyArray(inst->outputs,out);
   }
 
   if(calculateOrder){
@@ -1044,6 +1060,20 @@ void FillStaticInfo(AccelInfo* info){
       }
     }
   }
+
+  TrieSet<Wire>* uniqueWires = PushTrieSet<Wire>(temp);
+  
+  for(auto iter = StartIteration(info); iter.IsValid(); iter = iter.Step()){
+    InstanceInfo* info = iter.CurrentUnit();
+    if(info->isStatic){
+      for(Wire w : info->configs){
+        w.name = GetStaticWireFullName(info,w,globalPermanent);
+        uniqueWires->Insert(w);
+      }
+    }
+  }
+
+  info->allStaticWires = PushArray(globalPermanent,uniqueWires);
 }
 
 void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel){
@@ -1308,7 +1338,7 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
     Hashmap<String,SymbolicExpression*>* params = PushHashmap<String,SymbolicExpression*>(temp,unit->params.size);
 
     for(ParamAndValue p : unit->params){
-      params->Insert(p.paramName,p.val);
+      params->Insert(p.name,p.val);
     }
     
     if(unit->isGloballyStatic){
@@ -1350,12 +1380,20 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
     }
   }
 
+  for(int i = 0; i < result.infos.size; i++){
+    int id = 0;
+    for(AccelInfoIterator iter = StartIteration(&result,i); iter.IsValid(); iter = iter.Step()){
+      InstanceInfo* unit = iter.CurrentUnit();
+      unit->id = id++;
+    }
+  }
+
   return result;
 }
 
 SymbolicExpression* GetParameterValue(InstanceInfo* info,String name){
   for(ParamAndValue val : info->params){
-    if(val.paramName == name){
+    if(val.name == name){
       return val.val;
     }
   }

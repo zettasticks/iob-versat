@@ -46,9 +46,18 @@ struct Wire{
   String name;
   int bitSize; // TODO: This needs to be removed. We need to base all the logic on sizeExpr in order to properly handle parameters. Furthermore, if we eventually need to collapse parameters into concrete values, SymbolicExpressions can also do that. 
   VersatStage stage;
-  bool isStatic; // TODO: Not really used much, especially because we did not implement static wires at unit level yet.
+
   SymbolicExpression* sizeExpr;
 };
+
+inline u64 Hash(Wire w){
+  u64 res = Hash(w.name);
+  return res;
+}
+inline bool operator==(Wire lhs,Wire rhs){
+  bool res = (lhs.name == rhs.name);
+  return res;
+}
 
 struct WireExpression{
   String name;

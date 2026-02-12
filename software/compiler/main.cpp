@@ -276,11 +276,6 @@ int main(int argc,char* argv[]){
   InitializeSimpleDeclarations();
   InitializeUserConfigs();
   InitParser(perm);
-
-#if 0
-  TestSymbolic();
-  return 0;
-#endif
   
   argp argp = { options, parse_opt, "SpecFile\n-T UnitName", "Dataflow to accelerator compiler. Check tutorial in https://github.com/IObundle/iob-versat to learn how to write a specification file"};
 
@@ -614,8 +609,9 @@ int main(int argc,char* argv[]){
   }
 
   Accelerator* accel = nullptr;
-  FUInstance* TOP = nullptr;
+  //FUInstance* TOP = nullptr;
 
+  // NOTE: Was used to help with linting, since we want to produce an accelerator that utilizes everything.
   if(CompareString(topLevelTypeStr,"VERSAT_RESERVED_ALL_UNITS")){
     accel = CreateAccelerator("allVersatUnits",AcceleratorPurpose_MODULE);
     
@@ -651,12 +647,15 @@ int main(int argc,char* argv[]){
     type->singleInterfaces |= SingleInterfaces_SIGNAL_LOOP;
 
     accel = CreateAccelerator(topLevelTypeStr,AcceleratorPurpose_MODULE);
-    TOP = CreateFUInstance(accel,type,"TOP");
+    CreateFUInstance(accel,type,"TOP");
   } else {
-    // TODO: I think that the rest of the code is good enough that we do not need to do this extra step.
+    // nocheckin: We might want to remove this. Check what happens if we do.
+#if 0
+    accel = type->fixedDelayCircuit;
+#else
     accel = CreateAccelerator(topLevelTypeStr,AcceleratorPurpose_MODULE);
 
-    TOP = CreateFUInstance(accel,type,"TOP");
+    FUInstance* TOP = CreateFUInstance(accel,type,"TOP");
 
     for(int i = 0; i < type->NumberInputs(); i++){
       String name = PushString(perm,"input%d",i);
@@ -669,39 +668,12 @@ int main(int argc,char* argv[]){
         ConnectUnits(TOP,i,output,i);
       }
     }
+#endif
   }
+
 
   AccelInfo info = CalculateAcceleratorInfo(accel,true,temp,true);
   FillStaticInfo(&info);
-  
-#if 0
-  // NOTE: At the end of this section, the parameters are "globally instantiated"
-  int maxLevel = 0;
-  for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
-    maxLevel = MAX(maxLevel,iter.CurrentUnit()->level);
-  }
-  for(int level = maxLevel; level >= 0; level--){
-    for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
-      InstanceInfo* current = iter.CurrentUnit();
-      InstanceInfo* parent = iter.GetParentUnit();
-      
-      if(!parent){
-        continue;
-      }
-
-      Hashmap<String,SymbolicExpression*>* values = PushHashmap<String,SymbolicExpression*>(temp,parent->params.size);
-      for(ParamAndValue par : parent->params){
-        values->Insert(par.paramName,par.val);
-      }
-
-      for(int i = 0; i <  current->params.size; i++){
-        ParamAndValue& val = current->params[i];
-        
-        val.val = ReplaceVariables(val.val,values,perm);
-      }
-    }
-  }
-#endif
   
   VersatComputedValues val = ComputeVersatValues(accel,&info,temp);
   Array<ExternalMemoryInterface> external = val.externalMemoryInterfaces;
@@ -713,7 +685,7 @@ int main(int argc,char* argv[]){
 
   // NOTE: This data is printed so it can be captured by the IOB python setup.
   // TODO: Probably want a more robust way of doing this. Eventually want to printout some stats so we can
-  //       actually visualize what we are producing.
+  //       actually visualize what we are producing in terms of resources/performance.
   printf("Some stats\n");
   printf("CONFIG_BITS: %d\n",val.configurationBits);
   printf("STATE_BITS: %d\n",val.stateBits);
@@ -754,29 +726,16 @@ int main(int argc,char* argv[]){
     }
   }
   
+  // TODO: We do not want to output all the files. Only the ones that are needed.
+  //       Potentially also control this with a CLI option just in case we want to change later.
+  // NOTE: This would speed up testing because we would only test things that actually changed.
+  //       Otherwise any hardware change will cause a full test reset.
   for(FUDeclaration* decl : globalDeclarations){
     BLOCK_REGION(temp);
 
     if(decl->type == FUDeclarationType_COMPOSITE ||
        decl->type == FUDeclarationType_ITERATIVE ||
        decl->type == FUDeclarationType_MERGED){
-
-      // TODO: Disabled since it was putting content on the wrong folder
-#if 0
-      if(globalOptions.debug && decl->fixedDelayCircuit){
-        GraphPrintingContent content = GenerateDefaultPrintingContent(decl->fixedDelayCircuit,temp);
-        String repr = GenerateDotGraph(content,temp);
-        String debugPath = PushDebugPath(temp,decl->name,"NormalGraph.dot");
-
-        FILE* file = OpenFileAndCreateDirectories(debugPath,"w",FilePurpose_DEBUG_INFO);
-        DEFER_CLOSE_FILE(file);
-        if(!file){
-          printf("Error opening file for debug outputting: %.*s\n",UN(debugPath));
-        } else {
-          fwrite(repr.data,sizeof(char),repr.size,file);
-        }
-      }
-#endif
 
       String path = PushString(temp,"%.*s/%.*s.v",UN(globalOptions.hardwareOutputFilepath),UN(decl->name));
       
@@ -811,6 +770,19 @@ int main(int argc,char* argv[]){
   return 0;
 }
 
+/*
+
+GRAPH WEIRDNESS.
+
+I think I found the problem that we keep getting with the graphs that make them more difficult to use than normal.
+It is the same problem that we are having with the parser.
+
+We should have a GraphBuilder Environment (or maybe using the spec environment) so that everytime we end up in an Assert situation we just Report error.
+
+Now if I remember, the major problem that we actually have is than in situations like Merge and so on we are building a graph and also need to access it in order to compute stuff related to delays and such (which can cause more units to be added like buffers and so on).
+
+*/
+
 #if 0
 LEFT HERE - 
 
@@ -821,13 +793,16 @@ Why does versat.hpp exist? What is the difference between configurations.hpp, ac
 How does stuff depend on each other? 
 
 What I need to do is:
--- Cleanup this file. Rename it to main.cpp, always like when the main fuction is on a main file.
 -- Cleanup the main trio of configurations/accelerator/declarations.hpp. If there is a proper reason to separate stuff than do it otherwise just join into two files or even one. 
 -- Potentially create a defs file where a bunch of only structures and enums reside. Things like Direction, Wire and the likes are kinda "universal" and no point spending a lot of time on this. If used by everything might as well put into a everything def.
 -- General cleanup, function moving, function grouping, some comments explaining stuff and so on.
 -- We potentially want to reduce as much dependency on std as possible. Compile times are low so no need to go crazy but the thing that is buggying me is the fact that we have std stuff scathered around and kinda losing track on this.
 
--- Need to make the worflow to add a new member to instance info really simple. Members on instance info are either: given directly from data stored on FUInstance. Given directly from data that comes from Merge. Fetched from submodule. Calculated from other instance info data. Need to make these 4 ways of adding an InstanceInfo very simple to see so that we can make this simpler in the future.
+-- Need to make the worflow to add a new member to instance info really simple. Members on instance info are either: given directly from data stored on FUInstance. Given directly from data that comes from Merge. Fetched from submodule. Calculated from other instance info data. We also have to handle the fact that some of the data is global while another data is local. Need to make these 4 ways of adding an InstanceInfo very simple to see so that we can make this simpler in the future.
+
+-- Potentially remove the Pool from Accelerator. Make the accelerator a proper layer and everything is just stored on that side.
+
+-- Potentially simplify Symbolic expresssion by allocating stuff on that side using an hashed based approach.
 
 After this "organizational" cleanup, finish cleaning up the code, mainly the parser part. I want to remove the old parser completely. The new parser is the way to go.
 

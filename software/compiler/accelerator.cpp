@@ -799,38 +799,11 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
 
   Pool<FUInstance> instances = graph->allocated;
   Hashmap<StaticId,StaticData>* staticUnits = CollectStaticUnits(info,out);
-  int index = 0;
-  Array<Wire> allStaticsVerilatorSide = PushArray<Wire>(out,999); // TODO: Correct size
-  for(Pair<StaticId,StaticData*> p : staticUnits){
-    for(Wire& config : p.second->configs){
-      allStaticsVerilatorSide[index] = config;
-      allStaticsVerilatorSide[index].name = ReprStaticConfig(p.first,&config,out);
-      index += 1;
-    }
-  }
-  allStaticsVerilatorSide.size = index;
+
   Array<WireInformation> wireInfo = CalculateWireInformation(instances,staticUnits,res.versatConfigs,out);
 
-  for(int merge = 0; merge < info->infos.size; merge++){
-    for(AccelInfoIterator iter = StartIteration(info,merge); iter.IsValid(); iter = iter.Step()){
-      InstanceInfo* info = iter.CurrentUnit();
-      if(info->isStatic){
-        StaticId id = {};
-        id.name = info->name;
-        id.parent = GetTypeByName(info->parentTypeName);
-
-        StaticData data = {};
-        data.decl = GetTypeByName(info->typeName);
-        data.configs = info->configs;
-      }
-    }
-  }
-
-  res.allStaticsVerilatorSide = allStaticsVerilatorSide;
   res.staticUnits = staticUnits;
-  res.wireInfo = wireInfo;
-
-  DEBUG_BREAK();
+  res.allWiresInfo = wireInfo;
   
   return res;
 }
@@ -975,7 +948,7 @@ bool EdgeEqualNoDelay(const Edge& e0,const Edge& e1){
 Opt<Edge> FindEdge(FUInstance* out,int outIndex,FUInstance* in,int inIndex,int delay){
   FUDeclaration* inDecl = in->declaration;
   FUDeclaration* outDecl = out->declaration;
-
+  
   Assert(out->accel == in->accel);
   Assert(inIndex < inDecl->NumberInputs());
   Assert(outIndex < outDecl->NumberOutputs());

@@ -90,7 +90,6 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
 
     configs[i].name = info->configs[i].name;
     configs[i].bitSize = size;
-    configs[i].isStatic = false;
     configs[i].stage = info->configs[i].stage;
 
     configs[i].sizeExpr = SymbolicExpressionFromVerilog(wire.bitSize,out);
@@ -103,7 +102,6 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
 
     states[i].name = info->states[i].name;
     states[i].bitSize = size;
-    states[i].isStatic = false;
     states[i].stage = info->states[i].stage;
 
     states[i].sizeExpr = SymbolicExpressionFromVerilog(wire.bitSize,out);
@@ -257,6 +255,14 @@ void FillDeclarationWithAcceleratorValues(FUDeclaration* decl,Accelerator* accel
   
   AccelInfo val = CalculateAcceleratorInfo(accel,true,out,calculateOrder);
   decl->info = val;
+
+  for(int i = 0; i < val.infos.size; i++){
+    for(auto iter = StartIteration(&val,i); iter.IsValid(); iter = iter.Next()){
+      InstanceInfo* info = iter.CurrentUnit();
+
+      info->parentTypeName = decl->name;
+    }
+  }
  
   // All the single interfaces are simple of propagating. We can just do an OR of everything.
   for(FUInstance* ptr : accel->allocated){
@@ -334,7 +340,7 @@ void FillDeclarationWithAcceleratorValues(FUDeclaration* decl,Accelerator* accel
     Hashmap<String,SymbolicExpression*>* params = PushHashmap<String,SymbolicExpression*>(temp,unit->params.size);
 
     for(ParamAndValue p : unit->params){
-      params->Insert(p.paramName,p.val);
+      params->Insert(p.name,p.val);
     }
     
     if(unit->isGloballyStatic){
@@ -516,19 +522,6 @@ FUDeclaration* RegisterSubUnit(Accelerator* circuit,SubUnitOptions options){
 
   // Nothing can depend on data from the instances or the declaration otherwise how can we instantiate anything? We need to change the data in order to "instantiate" something.
 
-#if 0
-  // MARK
-  // TODO: We eventually want to simplify this portion. Param instantiation should be a "global" operation, not just stuffing the logic into multiple places.
-  for(AccelInfoIterator iter = StartIteration(&res->info); iter.IsValid(); iter = iter.Step()){
-    InstanceInfo* info = iter.CurrentUnit();
-
-    if(info->parent == nullptr){
-      info->parent = res;
-    }
-  }
-
-  res->staticUnits = CollectStaticUnits(&res->info,globalPermanent);
-#else
   res->staticUnits = PushHashmap<StaticId,StaticData>(permanent,1000); // TODO: Set correct number of elements
 
   // We have to instantiate the static units because the parameters of the static wires depend on the parameters of the instance themselves.
@@ -567,7 +560,6 @@ FUDeclaration* RegisterSubUnit(Accelerator* circuit,SubUnitOptions options){
       res->staticUnits->InsertIfNotExist(id,data);
     }
   }
-#endif
 
   if(res->baseCircuit)
     DebugRegionOutputDotGraph(res->baseCircuit,"BaseCircuit");

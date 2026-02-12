@@ -245,8 +245,9 @@ struct VersatComputedValues{
 
   Array<ExternalMemoryInterface> externalMemoryInterfaces;
   Hashmap<StaticId,StaticData>* staticUnits;
-  Array<WireInformation> wireInfo;
-  Array<Wire> allStaticsVerilatorSide;
+
+  // All configuration (including static and delays) wires
+  Array<WireInformation> allWiresInfo;
 
   // How many configs and state positions are reversed for Versat registers
   // TODO: We probably can remove this and use the size of registers to get this value.

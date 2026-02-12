@@ -25,6 +25,12 @@ enum GraphDotFormat : int{
   GraphDotFormat_LATENCY = 0x40 // Outputs latency information for edges and port instances which know their latency information
 };
 
+// NOTE: A kinda hacky way of having to avoid doing expensive functions on graphs if they are not gonna be needed. (No point doing a flatten operation if we do not have a merge operation that makes use of it). We probably wanna replace this approach with something better, though. Very hacky currently.
+enum SubUnitOptions{
+  SubUnitOptions_BAREBONES,
+  SubUnitOptions_FULL
+};
+
 // Global parameters are verilog parameters that Versat assumes that exist and that it uses through the entire accelerator.
 // Units are not required to implement them but if they do, their values comes from Versat and user cannot change them.
 bool IsGlobalParameter(String name);
@@ -42,12 +48,6 @@ Array<WireInformation> CalculateWireInformation(Pool<FUInstance> instances,Hashm
 
 void FillDeclarationWithAcceleratorValues(FUDeclaration* decl,Accelerator* accel,Arena* out,bool calculateOrder = true);
 void FillDeclarationWithDelayType(FUDeclaration* decl);
-
-// NOTE: A kinda hacky way of having to avoid doing expensive functions on graphs if they are not gonna be needed. (No point doing a flatten operation if we do not have a merge operation that makes use of it). We probably wanna replace this approach with something better, though. Very hacky currently.
-enum SubUnitOptions{
-  SubUnitOptions_BAREBONES,
-  SubUnitOptions_FULL
-};
 
 // Declaration functions
 FUDeclaration* RegisterIterativeUnit(Accelerator* accel,FUInstance* inst,int latency,String name);

@@ -392,32 +392,21 @@ String EmitInternalMemoryWires(Array<ExternalMemoryInterface> external,Arena* ou
   return content;
 }
 
-static String OutputName(Pool<FUInstance>& instances,PortInstance node,Arena* out){
-  FUInstance* inst = node.inst;
-  FUDeclaration* decl = inst->declaration;
+static String GetOutputName(InstanceInfo* other,int port,Arena* out){
+  if(other->specialType == SpecialUnitType_INPUT){
+    return PushString(out,"in%d",other->special);
+  }
+  if(other->decl->IsCombinatorialOperation()){
+    return PushString(out,"comb_%.*s_%d",UN(other->name),other->id);
+  }
+  if(other->decl->IsSequentialOperation()){
+    return PushString(out,"seq_%.*s_%d",UN(other->name),other->id);
+  }
 
-  int id = 0;
-  for(FUInstance* ptr : instances){
-    if(ptr == inst){
-      break;
-    }
-    id++;
-  }
-    
-  if(decl == BasicDeclaration::input){
-    return PushString(out,"in%d",inst->portIndex);
-  }
-  if(decl->IsCombinatorialOperation()){
-    return PushString(out,"comb_%.*s_%d",UN(inst->name),inst->id);
-  }
-  if(decl->IsSequentialOperation()){
-    return PushString(out,"seq_%.*s_%d",UN(inst->name),inst->id);
-  }
-    
-  return PushString(out,"output_%d_%d",id,node.port);
-};
+  return PushString(out,"output_%d_%d",other->id,port);
+}
 
-void EmitCombOperations(VEmitter* m,Pool<FUInstance> instances){
+void EmitCombOperations(AccelInfo info,VEmitter* m){
   TEMP_REGION(temp,m->arena);
 
   auto Format = [](String format,Array<String> args,Arena* out){
@@ -455,31 +444,39 @@ void EmitCombOperations(VEmitter* m,Pool<FUInstance> instances){
   };
   
   int combOps = 0;
-  for(FUInstance* node : instances){
-    if(node->declaration->IsCombinatorialOperation()){
+  for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Next()){
+    InstanceInfo* info = iter.CurrentUnit();
+
+    if(info->decl->IsCombinatorialOperation()){
       combOps += 1;
     }
   }
   
   if(combOps){
-    for(FUInstance* node : instances){
-      if(node->declaration->IsCombinatorialOperation()){
-        m->Reg(SF("comb_%.*s_%d",UN(node->name),node->id),SYM_dataW);
+    for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Next()){
+      InstanceInfo* info = iter.CurrentUnit();
+
+      if(info->decl->IsCombinatorialOperation()){
+        m->Reg(SF("comb_%.*s_%d",UN(info->name),info->id),SYM_dataW);
       }
     }
 
     m->CombBlock();
     {
-      for(FUInstance* node : instances){
-        if(node->declaration->IsCombinatorialOperation()){
-          int size = node->declaration->NumberInputs();
-          String identifier = PushString(temp,"comb_%.*s_%d",UN(node->name),node->id);
+      for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Next()){
+        InstanceInfo* info = iter.CurrentUnit();
+        if(info->decl->IsCombinatorialOperation()){
+          int size = info->decl->NumberInputs();
+          String identifier = PushString(temp,"comb_%.*s_%d",UN(info->name),info->id);
             
           Array<String> args = PushArray<String>(temp,size);
           for(int i = 0; i < size; i++){
-            args[i] = OutputName(instances,node->inputs[i],temp);
+            if(info->inputsDirectly[i].inst != -1){
+              InstanceInfo* other = iter.GetUnit(info->inputsDirectly[i].inst);
+              args[i] = GetOutputName(other,info->inputsDirectly[i].port,temp);
+            }
           }
-          String expr = Format(node->declaration->operation,args,temp);
+          String expr = Format(info->decl->operation,args,temp);
           m->Set(identifier,expr);
         }
       }
@@ -489,7 +486,7 @@ void EmitCombOperations(VEmitter* m,Pool<FUInstance> instances){
 }
 
 // TODO: We want to merge this with the TopLevelInstanciateUnits. 
-void EmitInstanciateUnits(VEmitter* m,Pool<FUInstance> instances,FUDeclaration* module,Array<Array<int>> wireIndexByInstanceGood,Array<Wire> configs){
+void EmitInstanciateUnits(AccelInfo info,VEmitter* m,FUDeclaration* module,Array<Array<int>> wireIndexByInstanceGood,Array<Wire> configs){
   TEMP_REGION(temp,m->arena);
   
   int delaySeen = 0;
@@ -498,51 +495,49 @@ void EmitInstanciateUnits(VEmitter* m,Pool<FUInstance> instances,FUDeclaration* 
   int ioSeen = 0;
   int memoryMappedSeen = 0;
   int externalSeen = 0;
-    
-  for(int instIndex = 0; instIndex < instances.Size(); instIndex++){
-    FUInstance* inst = instances.Get(instIndex);
-    FUDeclaration* decl = inst->declaration;
+
+  for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Next()){
+    InstanceInfo* info = iter.CurrentUnit();
+    int instIndex = iter.GetIndex();
+
+    FUDeclaration* decl = info->decl;
     if(decl == BasicDeclaration::input || decl == BasicDeclaration::output || decl->IsCombinatorialOperation()){
       continue;
     }
 
-    m->StartInstance(decl->name,SF("%.*s_%d",UN(inst->name),instIndex));
+    m->StartInstance(decl->name,SF("%.*s_%d",UN(info->name),instIndex));
 
-    Hashmap<String,SymbolicExpression*>* params = GetParametersOfUnit(inst,temp);
-    for(Pair<String,SymbolicExpression**> p : params){
-      if(p.second){
-        m->InstanceParam(p.first,*p.second);
+    for(ParamAndValue p : info->params){
+      if(p.val){
+        m->InstanceParam(p.name,p.val);
       }
     }
-    if(decl->info.memMapBits.has_value()){
-      SymbolicExpression* expr = PushLiteral(temp,decl->info.memMapBits.value());
-      params->Insert("ADDR_W",expr);
-    }
     
-    for(int i = 0; i < inst->outputs.size; i++){
-      if(inst->outputs[i]){
-        m->PortConnectIndexed("out%d",i,SF("output_%d_%d",instIndex,i));
+    for(int i = 0; i < info->outputIsConnected.size; i++){
+      if(info->outputIsConnected[i]){
+        m->PortConnectIndexed("out%d",i,SF("output_%d_%d",info->id,i));
       } else {
         m->PortConnectIndexed("out%d",i,"");
       }
     }
 
-    for(int i = 0; i < inst->inputs.size; i++){
-      if(inst->inputs[i].inst){
-        PortInstance other = GetAssociatedOutputPortInstance(inst,i);
-        m->PortConnectIndexed("in%d",i,OutputName(instances,other,temp));
+    for(int i = 0; i < info->inputsDirectly.size; i++){
+      if(info->inputsDirectly[i].inst != -1){
+        InstanceInfo* other = iter.GetUnit(info->inputsDirectly[i].inst);
+        m->PortConnectIndexed("in%d",i,GetOutputName(other,info->inputsDirectly[i].port,temp));
       } else {
         m->PortConnectIndexed("in%d",i,"0");
       }
     }
 
     // Configs and dealing with static configs if the unit is static
-    if(inst->isStatic){
+    if(info->isStatic){
       for(Wire w : decl->configs){
-        m->PortConnect(w.name,PushString(temp,"%.*s_%.*s_%.*s",UN(module->name),UN(inst->name),UN(w.name)));
+        String repr = GetStaticWireFullName(info,w,temp);
+        m->PortConnect(w.name,repr);
       }
     } else {
-      Array<int> ind = wireIndexByInstanceGood[instIndex];
+      Array<int> ind = info->individualWiresGlobalConfigPos;
       for(int i = 0; i < ind.size; i++){
         m->PortConnect(PushString(temp,"%.*s",UN(decl->configs[i].name)),configs[ind[i]].name);
       }
@@ -647,7 +642,7 @@ void EmitInstanciateUnits(VEmitter* m,Pool<FUInstance> instances,FUDeclaration* 
 }
 
 // TODO: We want to merge this function with EmitInstanceateUnits. They are basically the same code but need to handle the top level different in regards to the way wires are connection in relation to configs, states and stuff like that.
-void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val,Pool<FUInstance> instances,FUDeclaration* module){
+void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
   TEMP_REGION(temp,m->arena);
 
   AccelInfo* accelInfo = val.info;
@@ -689,10 +684,10 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val,Pool<FUIn
       }
     }
 
-    for(int i = 0; i < inst->inputs.size; i++){
-      if(inst->inputs[i].inst){
-        PortInstance other = GetAssociatedOutputPortInstance(inst,i);
-        m->PortConnectIndexed("in%d",i,OutputName(instances,other,temp));
+    for(int i = 0; i < info->inputsDirectly.size; i++){
+      if(info->inputsDirectly[i].inst != -1){
+        InstanceInfo* other = iter.GetUnit(info->inputsDirectly[i].inst);
+        m->PortConnectIndexed("in%d",i,GetOutputName(other,info->inputsDirectly[i].port,temp));
       } else {
         m->PortConnectIndexed("in%d",i,"0");
       }
@@ -814,26 +809,26 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val,Pool<FUIn
   }
 }
 
-void EmitConnectOutputsToOut(VEmitter* v,Pool<FUInstance> instances){
+void EmitConnectOutputsToOut(AccelInfo info,VEmitter* v){
   TEMP_REGION(temp,v->arena);
 
-  FUInstance* outNode = nullptr;
-  for(FUInstance* node : instances){
-    if(node->declaration == BasicDeclaration::output){
-      outNode = node;
+  InstanceInfo* outInfo = nullptr;
+  auto iter = StartIteration(&info);
+  for(; iter.IsValid(); iter = iter.Next()){
+    InstanceInfo* info = iter.CurrentUnit();
+    if(info->specialType == SpecialUnitType_OUTPUT){
+      outInfo = info;
+      break;
     }
   }
 
-  if(outNode){
-    for(int i = 0; i < outNode->inputs.size; i++){
-      if(!outNode->inputs[i].inst){
-        continue;
+  if(outInfo){
+    for(int i = 0; i < outInfo->inputsDirectly.size; i++){
+      if(outInfo->inputsDirectly[i].inst != -1){
+        InstanceInfo* other = iter.GetUnit(outInfo->inputsDirectly[i].inst);
+      
+        v->Assign(PushString(temp,"out%d",i),GetOutputName(other,outInfo->inputsDirectly[i].port,temp));
       }
-      
-      PortInstance other = GetAssociatedOutputPortInstance(outNode,i);
-      
-      // TODO: Test this section very throughly
-      v->Assign(PushString(temp,"out%d",i),OutputName(instances,other,temp));
     }
   }
 }
@@ -962,10 +957,7 @@ VerilogModuleInterface* GenerateModuleInterface(FUDeclaration* decl,Arena* out){
 void OutputCircuitSource(FUDeclaration* module,FILE* file){
   TEMP_REGION(temp,nullptr);
   
-  Accelerator* accel = module->fixedDelayCircuit;
   AccelInfo info = module->info;
-
-  Pool<FUInstance> instances = accel->allocated;
   
   Array<InstanceInfo*> allSameLevel = GetAllSameLevelUnits(&info,0,0,temp);
   auto builder = StartArray<Array<int>>(temp);
@@ -973,6 +965,7 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
     *builder.PushElem() = p->individualWiresGlobalConfigPos;
   }
   Array<Array<int>> wireIndexByInstanceGood = EndArray(builder);
+
   Array<Wire> configs = module->configs;
   
   VEmitter* m = StartVCode(temp);
@@ -1073,30 +1066,6 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
       m->InputIndexed("ext_2p_data_in_%d",i,sym_ext.tp.dataSizeIn);
       m->OutputIndexed("ext_2p_data_out_%d",i,sym_ext.tp.dataSizeOut);
     }
-
-#if 0
-    ExternalMemoryInterface ext  =  module->externalMemory[i];
-    if(ext.type == ExternalMemoryType::ExternalMemoryType_DP){
-      m->OutputIndexed("ext_dp_addr_%d_port_0",i,ext.dp[0].bitSize);
-      m->OutputIndexed("ext_dp_out_%d_port_0",i,ext.dp[0].dataSizeOut);
-      m->InputIndexed("ext_dp_in_%d_port_0",i,ext.dp[0].dataSizeIn);
-      m->OutputIndexed("ext_dp_enable_%d_port_0",i);
-      m->OutputIndexed("ext_dp_write_%d_port_0",i);
-
-      m->OutputIndexed("ext_dp_addr_%d_port_1",i,ext.dp[1].bitSize);
-      m->OutputIndexed("ext_dp_out_%d_port_1",i,ext.dp[1].dataSizeOut);
-      m->InputIndexed("ext_dp_in_%d_port_1",i,ext.dp[1].dataSizeIn);
-      m->OutputIndexed("ext_dp_enable_%d_port_1",i);
-      m->OutputIndexed("ext_dp_write_%d_port_1",i);
-    } else {
-      m->OutputIndexed("ext_2p_addr_out_%d",i,ext.tp.bitSizeOut);
-      m->OutputIndexed("ext_2p_addr_in_%d",i,ext.tp.bitSizeIn);
-      m->OutputIndexed("ext_2p_write_%d",i);
-      m->OutputIndexed("ext_2p_read_%d",i);
-      m->InputIndexed("ext_2p_data_in_%d",i,ext.tp.dataSizeIn);
-      m->OutputIndexed("ext_2p_data_out_%d",i,ext.tp.dataSizeOut);
-    }
-#endif
   }
 
   if(module->info.memMapBits){
@@ -1152,23 +1121,24 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
   }
 
   if(info.numberConnections){
-    for(int i = 0; i < instances.Size(); i++){
-      FUInstance* node = instances.Get(i);
-      for(int k = 0; k < node->outputs.size; k++){
-        bool out = node->outputs[k];
+    for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Next()){
+      InstanceInfo* info = iter.CurrentUnit();
+
+      for(int k = 0; k < info->outputIsConnected.size; k++){
+        bool out = info->outputIsConnected[k];
         if(out){
-          m->Wire(SF("output_%d_%d",i,k),"DATA_W");
+          m->Wire(SF("output_%d_%d",info->id,k),"DATA_W");
         }
       }
     }
   }
   
-  EmitCombOperations(m,instances);
+  EmitCombOperations(info,m);
 
   m->Blank();
-  EmitInstanciateUnits(m,instances,module,wireIndexByInstanceGood,configs);
+  EmitInstanciateUnits(info,m,module,wireIndexByInstanceGood,configs);
 
-  EmitConnectOutputsToOut(m,instances);
+  EmitConnectOutputsToOut(info,m);
 
   m->EndModule();
   
@@ -1183,7 +1153,7 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
 String EmitConfiguration(VersatComputedValues val,Arena* out){
   TEMP_REGION(temp,out);
   
-  Array<WireInformation> wireInfo = val.wireInfo;
+  Array<WireInformation> wireInfo = val.allWiresInfo;
 
   VEmitter* m = StartVCode(temp);
 
@@ -2245,20 +2215,19 @@ static void Output_Makefile(VersatComputedValues val,String typeName,String soft
   }
 }
 
-void Output_VersatInstance(Accelerator* accel,Array<Wire> allStaticsVerilatorSide,AccelInfo info,FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> structuredConfigs,String hardwarePath,VersatComputedValues val,Array<ExternalMemoryInterface> external,Array<WireInformation> wireInfo){
+void Output_VersatInstance(String typeName,AccelInfo info,FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> structuredConfigs,String hardwarePath,VersatComputedValues val){
   TEMP_REGION(temp,nullptr);
   // Top accelerator
   FILE* s = OpenFileAndCreateDirectories(PushString(temp,"%.*s/versat_instance.v",UN(hardwarePath)),"w",FilePurpose_VERILOG_CODE);
   DEFER_CLOSE_FILE(s);
 
+  Array<ExternalMemoryInterface> external = val.externalMemoryInterfaces;
+  Array<WireInformation> wireInfo = val.allWiresInfo; 
+
   auto AddrIf = [&val](VEmitter* m,VersatRegister r){
     int index = GetIndex(val,r);
     m->If(SF("csr_addr >= %d && csr_addr < %d",index,index+4));
   };
-
-  // TODO: REMOVE THIS. WE CANNOT DEPEND ON THE ACCELERATOR ON THE CODE GENERATION PART. NEVER.
-  // nocheckin
-  Pool<FUInstance> instances = accel->allocated;
   
   if(!s){
     printf("Error creating file, check if filepath is correct: %.*s\n",UN(hardwarePath));
@@ -2279,7 +2248,7 @@ void Output_VersatInstance(Accelerator* accel,Array<Wire> allStaticsVerilatorSid
 
   {
     VEmitter* m = StartVCode(temp);
-    EmitConnectOutputsToOut(m,instances);
+    EmitConnectOutputsToOut(info,m);
     auto b = StartString(temp);
     Repr(EndVCode(m),b);
     String content = EndString(temp,b);
@@ -2289,7 +2258,7 @@ void Output_VersatInstance(Accelerator* accel,Array<Wire> allStaticsVerilatorSid
 
   {
     VEmitter* m = StartVCode(temp);
-    EmitTopLevelInstanciateUnits(m,val,instances,topLevelDecl);
+    EmitTopLevelInstanciateUnits(m,val);
     auto b = StartString(temp);
     Repr(EndVCode(m),b);
     String content = EndString(temp,b);
@@ -2717,12 +2686,13 @@ assign data_wstrb = csr_wstrb;
     VEmitter* m = StartVCode(temp);
 
     if(info.numberConnections){
-      for(int i = 0; i < instances.Size(); i++){
-        FUInstance* node = instances.Get(i);
-        for(int k = 0; k < node->outputs.size; k++){
-          bool out = node->outputs[k];
+      for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Next()){
+        InstanceInfo* info = iter.CurrentUnit();
+
+        for(int k = 0; k < info->outputIsConnected.size; k++){
+          bool out = info->outputIsConnected[k];
           if(out){
-            m->Wire(SF("output_%d_%d",i,k),"DATA_W");
+            m->Wire(SF("output_%d_%d",info->id,k),"DATA_W");
           }
         }
       }
@@ -2822,7 +2792,7 @@ assign data_wstrb = csr_wstrb;
   {
     VEmitter* m = StartVCode(temp);
 
-    EmitCombOperations(m,instances);
+    EmitCombOperations(info,m);
       
     auto b = StartString(temp);
     Repr(EndVCode(m),b);
@@ -2831,7 +2801,7 @@ assign data_wstrb = csr_wstrb;
     TE_SetString("combOperations",content);
   }
 
-  TE_SetString("typeName",accel->name);
+  TE_SetString("typeName",typeName);
   TE_SetNumber("nConfigs",val.nConfigs);
   TE_SetBool("useDMA",globalOptions.useDMA);
   TE_SetNumber("databusDataSize",globalOptions.databusDataSize);
@@ -2841,12 +2811,12 @@ assign data_wstrb = csr_wstrb;
 
 // TODO: Remove topLevelDecl after changing userConfig to work with Merge
 // TODO: Why are we calculating struct info and also taking in a structuredConfigs variable? Either one or the other.
-// TODO: Why are we taking in allStaticsVerilatorSide? Move this data to InstanceInfo. 
-void Output_Header(FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> structuredConfigs,AccelInfo info,Accelerator* accel,String softwarePath,Array<Wire> allStaticsVerilatorSide,VersatComputedValues val,String typeName){
+void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info,String softwarePath,VersatComputedValues val,String typeName){
   TEMP_REGION(temp,nullptr);
   TEMP_REGION(temp2,temp);
 
   AccelInfoIterator iter = StartIteration(&info);
+  Array<Wire> allStaticsVerilatorSide = info.allStaticWires;
 
   StructInfo* stateStructInfo = GenerateStateStruct(iter,temp);
   Array<TypeStructInfo> stateStructs = {};
@@ -3684,7 +3654,7 @@ Problem: If we want the address gen to take into account the limitations of spac
   TE_ProcessTemplate(f,META_HeaderTemplate_Content);
 }
 
-void Output_VerilatorWrapper(String typeName,Array<Wire> allStaticsVerilatorSide,AccelInfo info,FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> structuredConfigs,String softwarePath,VersatComputedValues versatVal){
+void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> structuredConfigs,String softwarePath,VersatComputedValues versatVal){
   TEMP_REGION(temp,nullptr);
 
   struct WireExtra{
@@ -3702,39 +3672,13 @@ void Output_VerilatorWrapper(String typeName,Array<Wire> allStaticsVerilatorSide
     }
   }
 
-#if 0
-  TrieSet<Wire>* uniqueWires = PushTrieSet<Wire>(temp);
-  
-  for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
-    InstanceInfo* info = iter.CurrentUnit();
-    if(info->isStatic){
-      for(Wire w : info->configs){
-        w.name = GetStaticWireFullName(info,w,temp);
-        uniqueWires->Insert(w);
-      }
-    }
-  }
-#endif
-
-#if 0
-  for(Wire w : uniqueWires){
+  for(Wire w : info.allStaticWires){
     WireExtra* ptr = build->PushElem();
     ptr->w = w;
     ptr->source = "statics->";
   }
-#endif
-
-#if 1
-  for(Wire& staticWire : allStaticsVerilatorSide){
-    WireExtra* ptr = build->PushElem();
-    ptr->w = staticWire;
-    ptr->source = "statics->";
-  }
-#endif
 
   Array<WireExtra> allConfigsVerilatorSide = PushArray(temp,build);
-
-  DEBUG_BREAK();
 
   auto builder = StartArray<ExternalMemoryInterface>(temp);
   for(AccelInfoIterator iter = StartIteration(&info); iter.IsValid(); iter = iter.Next()){
@@ -4138,7 +4082,7 @@ if(SimulateDatabus){
   AcceleratorStatic* statics = (AcceleratorStatic*) &staticBuffer;
                      )FOO");
 
-      for(auto wire : allConfigsVerilatorSide){
+      for(WireExtra wire : allConfigsVerilatorSide){
         // TODO: Need to fix this. Broken after the change to the parameters
 #if 0
         if(wire.bitSize != 64){
@@ -4682,11 +4626,7 @@ void Output_PCEmulDefs(AccelInfo info,String softwarePath){
 }
 
 void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topDecl,String hardwarePath,String softwarePath,VersatComputedValues val){
-  Array<ExternalMemoryInterface> external = val.externalMemoryInterfaces;
   AccelInfo info = *val.info;
-
-  Array<Wire> allStaticsVerilatorSide = val.allStaticsVerilatorSide;
-  Array<WireInformation> wireInfo = val.wireInfo; 
 
   TEMP_REGION(temp,nullptr);
   TEMP_REGION(temp2,temp);
@@ -4745,6 +4685,8 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topDecl,String hardwa
     }
   }
   
+  Array<ExternalMemoryInterface> external = val.externalMemoryInterfaces;
+
   // All memory external instantiation and port mapping
   {
     String path = PushString(temp,"%.*s/versat_external_memory_inst.vh",UN(hardwarePath));
@@ -4807,13 +4749,12 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topDecl,String hardwa
 
   Array<TypeStructInfoElement> structuredConfigs = ExtractStructuredConfigs(info.infos[0].info,temp);
 
-  Output_VersatInstance(accel,allStaticsVerilatorSide,info,topDecl,structuredConfigs,hardwarePath,val,external,wireInfo);
-  
   // MARK - We do not want to pass topDecl to outputHeader, we only do it because we are still trying to check how the userConfig functions would work and are mostly ignoring Merge stuff currently.
   String typeName = accel->name;
   
-  Output_Header(topDecl,structuredConfigs,info,accel,softwarePath,allStaticsVerilatorSide,val,typeName);
-  Output_VerilatorWrapper(typeName,allStaticsVerilatorSide,info,topDecl,structuredConfigs,softwarePath,val);
+  Output_VersatInstance(typeName,info,topDecl,structuredConfigs,hardwarePath,val);
+  Output_Header(structuredConfigs,info,softwarePath,val,typeName);
+  Output_VerilatorWrapper(typeName,info,topDecl,structuredConfigs,softwarePath,val);
   Output_Makefile(val,typeName,softwarePath);
   Output_PCEmulDefs(info,softwarePath);
   Output_IobVersatFirmware(softwarePath,val);

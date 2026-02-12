@@ -28,7 +28,7 @@ struct StructInfo;
 // Until I find a better way of debugging (visualizing) SoA, this will stay like this for a while.
 
 struct ParamAndValue{
-  String paramName;
+  String name;
   SymbolicExpression* val;
 };
 
@@ -119,7 +119,11 @@ struct InstanceInfo{
   int partitionIndex; // TODO: What does this do? Probably a remnant from the old implementation.
 
   Array<SimplePortConnection> inputs; 
-  Array<SimplePortConnection> outputs; 
+  Array<SimplePortConnection> outputs;
+
+  Array<SimplePortInstance> inputsDirectly;
+  Array<bool> outputIsConnected;
+
   AddressGenInst supportedAddressGen;
 
   SpecialUnitType specialType;
@@ -215,6 +219,8 @@ struct AccelInfo{
 
   Array<Wire> configWires;
   Array<Wire> stateWires;
+
+  Array<Wire> allStaticWires;
 
   String staticExpr; // nocheckin: Check this 
   String delayStart; // nocheckin: Check this. Why string? Why not an actual expression
