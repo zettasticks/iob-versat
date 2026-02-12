@@ -1,6 +1,10 @@
 #pragma once
 
-#include "merge.hpp"
+#include "versat.hpp"
+
+struct MergeEdge;
+struct Edge;
+struct MappingNode;
 
 // TODO: Maybe it would be best if all these functions received function pointers and forward declared everything. Otherwise any small change requires a full recompilation
 

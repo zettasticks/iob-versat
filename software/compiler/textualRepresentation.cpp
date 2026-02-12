@@ -1,5 +1,6 @@
 #include "textualRepresentation.hpp"
 
+#include "merge.hpp"
 #include "declaration.hpp"
 
 String UniqueRepr(FUInstance* inst,Arena* out){

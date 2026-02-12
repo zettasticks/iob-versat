@@ -1,6 +1,6 @@
 #pragma once
 
-// Utilities that do not depend on anything else from versat (like memory.hpp, it's fine to depend on standard library)
+// Utilities that do not depend on anything else from versat (like memory.hpp, it's fine to depend on standard library stuff if needed)
 
 #include <cstdlib>
 #include <cstdio>

@@ -1,10 +1,7 @@
 #pragma once
 
-#include "VerilogEmitter.hpp"
 #include "utils.hpp"
-#include "memory.hpp"
 #include "verilogParsing.hpp"
-//#include "versat.hpp"
 
 struct FUInstance;
 struct FUDeclaration;
@@ -13,6 +10,7 @@ struct Edge;
 struct AccelInfo;
 struct ConfigFunction;
 struct InstanceInfo;
+struct SymbolicExpression;
 
 typedef Hashmap<FUInstance*,FUInstance*> InstanceMap;
 typedef Hashmap<Edge,Edge> EdgeMap;

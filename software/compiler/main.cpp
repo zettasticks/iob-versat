@@ -812,23 +812,26 @@ int main(int argc,char* argv[]){
 }
 
 #if 0
-LEFT HERE - We are in the process of removing the old addressGen stuff before finishing the parser revamp.
-Need to remove the stuff from the versat spec.
-Probably gonna need to move logic since we now generate the stuff directly instead of creating functions for each entity.
---  Things like the profile and stuff will have to move since we do not generate the functions individually anymore.
----- One thing that we can do is allow the spec to have a 'profile' keyword that automatically activates profile collection on the specific function.
+LEFT HERE - 
 
-There appears to be a bug in the merge of versat_ai where one of the VReads does not have the proper delay set.
-Do not know why this happens. The original module contains the proper delays but the merged one does not.
-Furthermore the debug info generated on the merged module seems buggy and incomplete.
-We cannot check what is really happening because no info about it.
+Was in the process of cleaning up header stuff and the likes. Realize that this is kinda more demanding than simply going one by one removing a header, compilation seeing if we broke stuff and then putting it back if so.
 
-We also have the parser thing to properly finish. 
+I think what I really need to do is to take a look at the way things are organized and do a proper cleanup.
+Why does versat.hpp exist? What is the difference between configurations.hpp, accelerator.hpp, declarations.hpp, versat.hpp? Why are they different files? 
+How does stuff depend on each other? 
 
-Im thinking:
+What I need to do is:
+-- Cleanup this file. Rename it to main.cpp, always like when the main fuction is on a main file.
+-- Cleanup the main trio of configurations/accelerator/declarations.hpp. If there is a proper reason to separate stuff than do it otherwise just join into two files or even one. 
+-- Potentially create a defs file where a bunch of only structures and enums reside. Things like Direction, Wire and the likes are kinda "universal" and no point spending a lot of time on this. If used by everything might as well put into a everything def.
+-- General cleanup, function moving, function grouping, some comments explaining stuff and so on.
+-- We potentially want to reduce as much dependency on std as possible. Compile times are low so no need to go crazy but the thing that is buggying me is the fact that we have std stuff scathered around and kinda losing track on this.
 
-- Today: Finish the parser thing.
-- Tomorrow: Take a look at the merge stuff. We might need to start simplifying merge stuff as well. The primary goal is to solve the versat_ai bug but we also want to start simplifying things if possible, add proper debug facilities and cleanup bunch of old code.
+-- Need to make the worflow to add a new member to instance info really simple. Members on instance info are either: given directly from data stored on FUInstance. Given directly from data that comes from Merge. Fetched from submodule. Calculated from other instance info data. Need to make these 4 ways of adding an InstanceInfo very simple to see so that we can make this simpler in the future.
+
+After this "organizational" cleanup, finish cleaning up the code, mainly the parser part. I want to remove the old parser completely. The new parser is the way to go.
+
+This should be enough for a good workday.
 #endif
 
 /*
