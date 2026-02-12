@@ -56,8 +56,6 @@ struct SameMuxEntities{
   int configPos;
   InstanceInfo* info;
 };
-HASH(SameMuxEntities, x.configPos);
-EQUALITY(SameMuxEntities, lhs.configPos == rhs.configPos);
 
 struct StructInfo;
 
@@ -74,6 +72,29 @@ struct StructElement{
   bool doesNotBelong; // Leads to padding being added. From merge 
 };
 
+inline u64 Hash(StructInfo* info);
+inline bool operator==(StructInfo& l,StructInfo& r);
+
+inline u64 Hash(StructElement x){
+  u64 res = Hash(x.name) + 
+            x.size + 
+            x.localPos + 
+            (x.isMergeMultiplexer ? 1 : 0) + 
+            Hash(x.childStruct);
+  
+  return res;
+}
+
+inline bool operator==(StructElement lhs,StructElement rhs){
+  bool res = *lhs.childStruct == *rhs.childStruct &&
+             lhs.name == rhs.name &&
+             lhs.size == rhs.size &&
+             lhs.localPos == rhs.localPos &&
+             lhs.isMergeMultiplexer == rhs.isMergeMultiplexer;
+
+  return res;
+}
+
 struct StructInfo{
   String name;
   String originalName; // NOTE: kinda wathever, mainly used to generate generic address gens.
@@ -83,34 +104,21 @@ struct StructInfo{
   ArenaDoubleList<StructElement>* memberList;
 };
 
-size_t HashStructInfo(StructInfo* info);
-static bool operator==(StructInfo& l,StructInfo& r);
+inline u64 Hash(StructInfo s){
+  u64 res = 0;
+  for(DoubleLink<StructElement>* ptr = s.memberList ? s.memberList->head : nullptr; ptr; ptr = ptr->next){
+    res += Hash(ptr->elem);
+  }
+  res += Hash(s.name);
+  return res;
+}
 
-HASH(StructElement,
-     std::hash<String>()(x.name) + 
-     x.size + 
-     x.localPos + 
-     (x.isMergeMultiplexer ? 1 : 0) + 
-     x.childStruct != nullptr ? HashStructInfo(x.childStruct) : 0)
-EQUALITY(StructElement,
-  *lhs.childStruct == *rhs.childStruct &&
-   lhs.name == rhs.name &&
-   lhs.size == rhs.size &&
-   lhs.localPos == rhs.localPos &&
-   lhs.isMergeMultiplexer == rhs.isMergeMultiplexer);
+inline u64 Hash(StructInfo* info){
+  if(!info) { return 0;};
+  return Hash(*info);
+}
 
-template<> struct std::hash<StructInfo>{
-   std::size_t operator()(StructInfo const& s) const noexcept{
-     std::size_t res = 0;
-     for(DoubleLink<StructElement>* ptr = s.memberList ? s.memberList->head : nullptr; ptr; ptr = ptr->next){
-       res += std::hash<StructElement>()(ptr->elem);
-     }
-     res += std::hash<String>()(s.name);
-     return res;
-   }
-};
-
-static bool operator==(StructInfo& l,StructInfo& r){
+inline bool operator==(StructInfo& l,StructInfo& r){
   if(!(l.name == r.name)){
     return false;
   }

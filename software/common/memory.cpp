@@ -56,11 +56,11 @@ static void InitMemoryDebug(){
   debugArenaStack = PushArray<ArenaInfo>(&debugMemoryArena,100);
   debugArenaIndex = 0;
 
-  debugInfo = PushArenaList<FunctionAllocationInfo>(&debugMemoryArena);
+  debugInfo = PushList<FunctionAllocationInfo>(&debugMemoryArena);
 }
 
 void ReportArenaUsage(){
-  Array<FunctionAllocationInfo> asArray = PushArrayFromList(&debugMemoryArena,debugInfo);
+  Array<FunctionAllocationInfo> asArray = PushArray(&debugMemoryArena,debugInfo);
 
   auto CompareFunction = [](const void* f1,const void* f2) -> int{
     FunctionAllocationInfo* v1 = (FunctionAllocationInfo*) f1;

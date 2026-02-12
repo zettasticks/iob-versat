@@ -552,7 +552,7 @@ Array<FUDeclaration*> MemSubTypes(AccelInfo* info,Arena* out){
     }
   }
   
-  Array<FUDeclaration*> subTypes = PushArrayFromSet(out,maps);
+  Array<FUDeclaration*> subTypes = PushArray(out,maps);
   return subTypes;
 }
 
@@ -735,7 +735,7 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
   res.configurationBitsExpr = Normalize(total,out);
 
   // Versat specific registers are treated as a special maping (all 0's) of 1 configuration and 1 state register
-  auto registerList = PushArenaList<VersatRegister>(temp);
+  auto registerList = PushList<VersatRegister>(temp);
 
   auto AddRegister = [&res,&registerList](VersatRegister reg){
     res.versatConfigs += 1;
@@ -767,7 +767,7 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
 
   res.nConfigs += res.versatConfigs;
   res.nStates += res.versatStates;
-  res.registers = PushArrayFromList(out,registerList);
+  res.registers = PushArray(out,registerList);
   
   int nConfigurations = res.nConfigs + res.nStatics + res.nDelays;
   res.configurationBits = configBits + staticBits + delayBits;
@@ -811,9 +811,26 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
   allStaticsVerilatorSide.size = index;
   Array<WireInformation> wireInfo = CalculateWireInformation(instances,staticUnits,res.versatConfigs,out);
 
+  for(int merge = 0; merge < info->infos.size; merge++){
+    for(AccelInfoIterator iter = StartIteration(info,merge); iter.IsValid(); iter = iter.Step()){
+      InstanceInfo* info = iter.CurrentUnit();
+      if(info->isStatic){
+        StaticId id = {};
+        id.name = info->name;
+        id.parent = GetTypeByName(info->parentTypeName);
+
+        StaticData data = {};
+        data.decl = GetTypeByName(info->typeName);
+        data.configs = info->configs;
+      }
+    }
+  }
+
   res.allStaticsVerilatorSide = allStaticsVerilatorSide;
   res.staticUnits = staticUnits;
   res.wireInfo = wireInfo;
+
+  DEBUG_BREAK();
   
   return res;
 }

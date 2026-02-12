@@ -69,21 +69,6 @@ struct AddressGenInst{
   int loopsSupported;
 };
 
-template<> struct std::hash<AddressGenInst>{
-   std::size_t operator()(AddressGenInst const& s) const noexcept{
-     std::size_t res = (int)(s.type) * (int) s.loopsSupported;
-     return res;
-   }
-};
-
-static bool operator==(const AddressGenInst& l,const AddressGenInst& r){
-  if(l.type == r.type && l.loopsSupported == r.loopsSupported){
-    return true;
-  }
-  
-  return false;
-}
-
 struct AccessAndType{
   AddressAccess* access;
   AddressGenInst inst;
@@ -92,21 +77,6 @@ struct AccessAndType{
   int port;
   Direction dir;
 };
-
-template<> struct std::hash<AccessAndType>{
-   std::size_t operator()(AccessAndType const& s) const noexcept{
-     std::size_t res = std::hash<void*>()(s.access) * std::hash<AddressGenInst>()(s.inst);
-     return res;
-   }
-};
-
-static bool operator==(const AccessAndType& l,const AccessAndType& r){
-  if(l.access == r.access && l.inst == r.inst){
-    return true;
-  }
-  
-  return false;
-}
 
 // ======================================
 // Misc (Probably gonna move these around eventually)

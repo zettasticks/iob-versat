@@ -6,9 +6,8 @@
 #include <string.h>
 #include <stdint.h>
 
-// Mostly for std::move and std::hash
-#include <utility>
-#include <string>
+#include <initializer_list>
+#include <errno.h>
 
 #include "assert.h"
 #include "debug.hpp"
@@ -253,6 +252,18 @@ typedef intptr_t iptr;
 typedef uintptr_t uptr;
 typedef unsigned int uint;
 
+inline u64 Hash(void* ptr){
+  return (u64) ptr;
+}
+
+inline u64 Hash(int in){
+  return (u64) in;
+}
+
+inline u64 Hash(bool b){
+  return (b ? 1 : 0);
+}
+
 // Nullopt similar to the one in std but we skip having to include a heavy templated file for this.
 struct nullopt_t {
     constexpr explicit nullopt_t(int) {}
@@ -288,7 +299,7 @@ public:
   // Match the std interface to make it easier to replace if needed
   bool has_value(){return hasVal;};
   T& value() & {assert(hasVal);return val;};
-  T&& value() && {assert(hasVal);return std::move(val);};
+  T&& value() && {assert(hasVal);return static_cast<T&&>(val);};
   T value_or(T other){return hasVal ? val : other;};
 }; 
 
@@ -319,7 +330,7 @@ public:
   // Match the std interface to make it easier to replace if needed
   bool has_value(){return (val != nullptr);};
   T*& value() & {assert(val);return val;};
-  T*&& value() && {assert(val);return std::move(val);};
+  T*&& value() && {assert(val);return static_cast<T&&>(val);};
   T* value_or(T* other){return this->has_value() ? val : other;};
 };
 
@@ -435,21 +446,18 @@ struct String{
 
 String Offset(String base,int amount);
 
-template<> class std::hash<String>{
-public:
-   std::size_t operator()(String const& s) const noexcept{
-   std::size_t res = 0;
+inline u64 Hash(String str){
+  u64 res = 0;
 
-   std::size_t prime = 5;
-   for(int i = 0; i < s.size; i++){
-      res += (std::size_t) s[i] * prime;
-      res <<= 4;
-      prime += 6; // Some not prime, but will find most of them
-   }
+  u64 prime = 5;
+  for(int i = 0; i < str.size; i++){
+    res += (std::size_t) str[i] * prime;
+    res <<= 4;
+    prime += 6; // Some not prime, but will find most of them
+  }
 
-   return res;
-   }
-};
+  return res;
+}
 
 inline bool operator==(String first,String second){
    if(first.size != second.size){
@@ -514,7 +522,14 @@ struct Pair{
       Second data;
       Second second;
    };
-} /* __attribute__((packed)) */; // TODO: Check if type info works correctly without this. It technically should after we added align info to the type system
+};
+
+template<typename First,typename Second>
+inline u64 Hash(Pair<First,Second> p){
+  u64 first = Hash(p.first);
+  u64 second = Hash(p.second);
+  return first + second;
+}
 
 template<typename F,typename S>
 static bool operator==(const Pair<F,S>& p1,const Pair<F,S>& p2){

@@ -301,6 +301,10 @@ String ReprStaticConfig(StaticId id,Wire* wire,Arena* out);
 
 SymbolicExpression* GetParameterValue(InstanceInfo* info,String name);
 
-bool HasVariableDelay(InstanceInfo* info);
 bool IsUnitCombinatorialOperation(InstanceInfo* info);
 
+// ======================================
+// Static naming conventions
+
+String GetStaticFullName(InstanceInfo* info,Arena* out);
+String GetStaticWireFullName(InstanceInfo* info,Wire wire,Arena* out);

@@ -831,7 +831,7 @@ void Hashmap<Key,Data>::Clear(){
 template<typename Key,typename Data>
 Data* Hashmap<Key,Data>::Insert(Key key,Data data){
   int mask = this->nodesAllocated - 1;
-  int index = std::hash<Key>()(key) & mask; // Size is power of 2
+  u64 index = Hash(key) & mask; // Size is power of 2
 
   Pair<Key,Data>* ptr = this->buckets[index];
 
@@ -914,7 +914,7 @@ Data* Hashmap<Key,Data>::Get(Key key){
   }
 
   int mask = this->nodesAllocated - 1;
-  int index = std::hash<Key>()(key) & mask; // Size is power of 2
+  u64 index = Hash(key) & mask; // Size is power of 2
   
   Pair<Key,Data>* ptr = this->buckets[index];
   for(; ptr;){
@@ -1004,7 +1004,7 @@ using ChildrenPtr = TrieMapNode<Key,Data>*[4];
   
 template<typename Key,typename Data>
 Data* TrieMap<Key,Data>::Insert(Key key,Data data){
-  int index = std::hash<Key>()(key);
+  u64 index = Hash(key);
 
   TrieMapNode<Key,Data>* (*current)[4] = &this->childs;
 
@@ -1041,7 +1041,7 @@ Data* TrieMap<Key,Data>::Insert(Key key,Data data){
 
 template<typename Key,typename Data>
 Data* TrieMap<Key,Data>::InsertIfNotExist(Key key,Data data){
-  int index = std::hash<Key>()(key);
+  u64 index = Hash(key);
 
   TrieMapNode<Key,Data>* (*current)[4] = &this->childs;
   for(; 1; index >>= 2){
@@ -1076,7 +1076,7 @@ Data* TrieMap<Key,Data>::InsertIfNotExist(Key key,Data data){
   
 template<typename Key,typename Data>
 Data* TrieMap<Key,Data>::Get(Key key){
-  int index = std::hash<Key>()(key);
+  u64 index = Hash(key);
 
   TrieMapNode<Key,Data>* (*current)[4] = &this->childs;
   for(; 1; index >>= 2){
@@ -1513,15 +1513,18 @@ T* Pool<T>::Alloc(){
 
     for(int i = 7; i >= 0; i--){
       if(!(val & (1 << i))){ // empty location
-            page.bitmap[index] |= (1 << i);
+        page.bitmap[index] |= (1 << i);
+        
+        page.header->allocatedUnits += 1;
 
-            page.header->allocatedUnits += 1;
+        fullIndex += index * 8 + (7 - i);
+        
+        T* inst = &view[index * 8 + (7 - i)];
+        memset(inst,0,sizeof(T));
+        
+        //T* inst = new (&view[index * 8 + (7 - i)]) T(); // Needed for anything stl based
 
-            fullIndex += index * 8 + (7 - i);
-
-            T* inst = new (&view[index * 8 + (7 - i)]) T(); // Needed for anything stl based
-
-            return inst;
+        return inst;
       }
     }
   }

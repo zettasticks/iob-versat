@@ -813,7 +813,7 @@ Hashmap<String,SymbolicExpression*>* GetParametersOfUnit(FUInstance* inst,Arena*
 Array<WireInformation> CalculateWireInformation(Pool<FUInstance> nodes,Hashmap<StaticId,StaticData>* staticUnits,int addrOffset,Arena* out){
   TEMP_REGION(temp,out);
   
-  auto list = PushArenaList<WireInformation>(temp);
+  auto list = PushList<WireInformation>(temp);
 
   SymbolicExpression* expr = PushLiteral(temp,0);
   
@@ -882,7 +882,7 @@ Array<WireInformation> CalculateWireInformation(Pool<FUInstance> nodes,Hashmap<S
     }
   }
   
-  return PushArrayFromList(out,list);
+  return PushArray(out,list);
 }
 
 bool CheckValidName(String name){

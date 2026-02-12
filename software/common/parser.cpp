@@ -873,7 +873,7 @@ Array<String> Split(String content,char sep,Arena* out){
   int index = 0;
   int size = content.size;
 
-  auto list = PushArenaList<String>(temp);
+  auto list = PushList<String>(temp);
   
   while(1){
     int start = index;
@@ -901,7 +901,7 @@ Array<String> Split(String content,char sep,Arena* out){
     index += 1;
   }
   
-  Array<String> res = PushArrayFromList(out,list);
+  Array<String> res = PushArray(out,list);
   return res;
 }
 

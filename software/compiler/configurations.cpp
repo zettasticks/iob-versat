@@ -237,6 +237,7 @@ Array<Pair<String,int>> ExtractMem(Array<InstanceInfo> info,Arena* out){
   return res;
 }
 
+// nocheck: Remove this, we already have a function that does this.
 String ReprStaticConfig(StaticId id,Wire* wire,Arena* out){
   String identifier = PushString(out,"%.*s_%.*s_%.*s",UN(id.parent->name),UN(id.name),UN(wire->name));
 
@@ -478,7 +479,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     FUInstance* inst = p.first;
 
     {
-      ArenaList<SimplePortConnection>* list = PushArenaList<SimplePortConnection>(temp);
+      ArenaList<SimplePortConnection>* list = PushList<SimplePortConnection>(temp);
       FOREACH_LIST(ConnectionNode*,ptr,inst->allInputs){
         FUInstance* out = ptr->instConnectedTo.inst;
         int outPort = ptr->instConnectedTo.port;
@@ -490,11 +491,11 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
         portInst->otherPort = outPort;
         portInst->port = ptr->port;
       }
-      info->inputs = PushArrayFromList(out,list);
+      info->inputs = PushArray(out,list);
     }
 
     {
-      ArenaList<SimplePortConnection>* list = PushArenaList<SimplePortConnection>(temp);
+      ArenaList<SimplePortConnection>* list = PushList<SimplePortConnection>(temp);
       FOREACH_LIST(ConnectionNode*,ptr,inst->allOutputs){
         FUInstance* other = ptr->instConnectedTo.inst;
         int otherPort = ptr->instConnectedTo.port;
@@ -506,7 +507,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
         portInst->otherPort = otherPort;
         portInst->port = ptr->port;
       }
-      info->outputs = PushArrayFromList(out,list);
+      info->outputs = PushArray(out,list);
     }
   }
 
@@ -1271,7 +1272,7 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
     PartitionInfoIterator* iter = StartPartitionIteration(accel,temp);
 
     for(int i = 0; i < size; i++,iter->Next()){
-      auto list = PushArenaList<ConfigFunction*>(temp);
+      auto list = PushList<ConfigFunction*>(temp);
     
       Array<MergePartition*> parts = iter->GetInfos(temp);
 
@@ -1281,10 +1282,10 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
         }
       }
 
-      result.infos[i].userFunctions = PushArrayFromList(out,list);
+      result.infos[i].userFunctions = PushArray(out,list);
     }
   } else {
-    auto list = PushArenaList<ConfigFunction*>(temp);
+    auto list = PushList<ConfigFunction*>(temp);
 
     for(FUInstance* inst : accel->allocated){
       for(MergePartition part : inst->declaration->info.infos){
@@ -1294,7 +1295,7 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
       }
     }
     
-    result.infos[0].userFunctions = PushArrayFromList(out,list);
+    result.infos[0].userFunctions = PushArray(out,list);
   }
 
   result.configWires = PushArray<Wire>(out,result.configs);
@@ -1362,16 +1363,6 @@ SymbolicExpression* GetParameterValue(InstanceInfo* info,String name){
   return nullptr;
 }
 
-bool HasVariableDelay(InstanceInfo* info){
-  // Do not know how many more units of this type we are going to add. This might not be finished altought one unit is enough to handle merge
-  // TODO: This should just be a property of InstanceInfo. 
-  if(info->specialType == SpecialUnitType_VARIABLE_BUFFER){
-    return true;
-  }
-
-  return false;
-}
-
 bool IsUnitCombinatorialOperation(InstanceInfo* info){
   for(int delay : info->outputLatencies){
     if(delay != 0){
@@ -1379,4 +1370,14 @@ bool IsUnitCombinatorialOperation(InstanceInfo* info){
     }
   }
   return info->specialType == SpecialUnitType_OPERATION;
+}
+
+String GetStaticFullName(InstanceInfo* info,Arena* out){
+  String fullName = PushString(out,"%.*s_%.*s",UN(info->parentTypeName),UN(info->name));
+  return fullName;
+}
+
+String GetStaticWireFullName(InstanceInfo* info,Wire wire,Arena* out){
+  String fullName = PushString(out,"%.*s_%.*s_%.*s",UN(info->parentTypeName),UN(info->name),UN(wire.name));
+  return fullName;
 }

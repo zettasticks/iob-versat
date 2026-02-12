@@ -169,7 +169,7 @@ SimpleCalculateDelayResult CalculateDelay(AccelInfoIterator top,Arena* out){
 
       // If the node is a buffer, delays are now variable.
       // We want to preserve this information as much as possible. Even if not needed because the merge is simple, we might be able to unlock some optimizations down the line
-      if(HasVariableDelay(info)){
+      if(info->specialType == SpecialUnitType_VARIABLE_BUFFER){
         edgesGlobalLatency[edgeIndex].isAny = true;
       }
       
@@ -447,7 +447,7 @@ CalculateDelayResult CalculateDelay(Accelerator* accel,Arena* out){
 Array<DelayToAdd> GenerateFixDelays(Accelerator* accel,EdgeDelay* edgeDelays,Arena* out){
   TEMP_REGION(temp,out);
 
-  ArenaList<DelayToAdd>* list = PushArenaList<DelayToAdd>(temp);
+  ArenaList<DelayToAdd>* list = PushList<DelayToAdd>(temp);
   
   int buffersInserted = 0;
   for(auto edgePair : edgeDelays){
@@ -469,5 +469,5 @@ Array<DelayToAdd> GenerateFixDelays(Accelerator* accel,EdgeDelay* edgeDelays,Are
     *list->PushElem() = var;
   }
 
-  return PushArrayFromList(out,list);
+  return PushArray(out,list);
 }

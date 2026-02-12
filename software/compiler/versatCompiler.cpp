@@ -285,10 +285,10 @@ int main(int argc,char* argv[]){
   argp argp = { options, parse_opt, "SpecFile\n-T UnitName", "Dataflow to accelerator compiler. Check tutorial in https://github.com/IObundle/iob-versat to learn how to write a specification file"};
 
   OptionsGather gather = {};
-  gather.verilogFiles = PushArenaList<String>(temp);
-  gather.extraSources = PushArenaList<String>(temp);
-  gather.includePaths = PushArenaList<String>(temp);
-  gather.unitFolderPaths = PushArenaList<String>(temp);
+  gather.verilogFiles = PushList<String>(temp);
+  gather.extraSources = PushList<String>(temp);
+  gather.includePaths = PushList<String>(temp);
+  gather.unitFolderPaths = PushList<String>(temp);
 
   globalOptions = DefaultOptions(perm);
   gather.options = &globalOptions;
@@ -298,10 +298,10 @@ int main(int argc,char* argv[]){
     return -1;
   }
   
-  globalOptions.verilogFiles = PushArrayFromList(perm,gather.verilogFiles);
-  globalOptions.extraSources = PushArrayFromList(perm,gather.extraSources);
-  globalOptions.includePaths = PushArrayFromList(perm,gather.includePaths);
-  globalOptions.unitFolderPaths = PushArrayFromList(perm,gather.unitFolderPaths);
+  globalOptions.verilogFiles = PushArray(perm,gather.verilogFiles);
+  globalOptions.extraSources = PushArray(perm,gather.extraSources);
+  globalOptions.includePaths = PushArray(perm,gather.includePaths);
+  globalOptions.unitFolderPaths = PushArray(perm,gather.unitFolderPaths);
   
   if(globalOptions.opMode == VersatOperationMode_GENERATE_TESTBENCH){
     globalOptions.topName = globalOptions.specificationFilepath;
@@ -382,7 +382,7 @@ int main(int argc,char* argv[]){
       }
     }
 
-    allVerilogFiles = PushArrayFromSet(perm,allVerilogFilesSet);
+    allVerilogFiles = PushArray(perm,allVerilogFilesSet);
   }
 
   if(error){
@@ -463,13 +463,13 @@ int main(int argc,char* argv[]){
     
     Array<ConstructDef> types = ParseVersatSpecification(content,temp);
     
-    auto moduleLike = PushArenaList<ConstructDef>(temp);
+    auto moduleLike = PushList<ConstructDef>(temp);
     for(ConstructDef def : types){
       if(IsModuleLike(def)){
         *moduleLike->PushElem() = def;
       }
     }
-    auto modules = PushArrayFromList(temp,moduleLike);
+    auto modules = PushArray(temp,moduleLike);
     
     int size = modules.size;
     
@@ -702,8 +702,6 @@ int main(int argc,char* argv[]){
     }
   }
 #endif
-  
-  //InstantiateParametersInPlace(&info);
   
   VersatComputedValues val = ComputeVersatValues(accel,&info,temp);
   Array<ExternalMemoryInterface> external = val.externalMemoryInterfaces;

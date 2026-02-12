@@ -128,7 +128,7 @@ Array<Array<InstanceInfo*>> VUnitInfoPerMerge(AccelInfo info,Arena* out){
     AccelInfoIterator it = iter;
     it.SetMergeIndex(i);
 
-    auto list = PushArenaList<InstanceInfo*>(temp);
+    auto list = PushList<InstanceInfo*>(temp);
     for(; it.IsValid(); it = it.Step()){
       InstanceInfo* info = it.CurrentUnit();
       if(info->doesNotBelong){
@@ -142,7 +142,7 @@ Array<Array<InstanceInfo*>> VUnitInfoPerMerge(AccelInfo info,Arena* out){
       *list->PushElem() = info;
     }
 
-    unitInfoPerMerge[i] = PushArrayFromList(temp,list);
+    unitInfoPerMerge[i] = PushArray(temp,list);
   }
 
   return unitInfoPerMerge;
@@ -1382,28 +1382,6 @@ String EmitConfiguration(VersatComputedValues val,Arena* out){
   return content;
 }
 
-Array<Difference> CalculateSmallestDifference(Array<int> oldValues,Array<int> newValues,Arena* out){
-  Assert(oldValues.size == newValues.size); // For now
-
-  int size = oldValues.size;
-
-  auto arr = StartArray<Difference>(out);
-  for(int i = 0; i < size; i++){
-    int oldVal = oldValues[i];
-    int newVal = newValues[i];
-
-    if(oldVal != newVal){
-      Difference* dif = arr.PushElem();
-
-      dif->index = i;
-      dif->newValue = newVal;
-    }
-  }
-
-  Array<Difference> result = EndArray(arr);
-  return result;
-}
-
 Array<FUDeclaration*> SortTypesByMemDependency(Array<FUDeclaration*> types,Arena* out){
   TEMP_REGION(temp,out);
 
@@ -1540,7 +1518,7 @@ Array<TypeStructInfoElement> ExtractStructuredConfigs(Array<InstanceInfo> info,A
       GetOrAllocateResult<ArenaList<String>*> res = map->GetOrAllocate(config);
 
       if(!res.alreadyExisted){
-        *res.data = PushArenaList<String>(temp);
+        *res.data = PushList<String>(temp);
       }
 
       ArenaList<String>* list = *res.data;
@@ -1563,7 +1541,7 @@ Array<TypeStructInfoElement> ExtractStructuredConfigs(Array<InstanceInfo> info,A
   }
   
   int configSize = maxConfig + 1;
-  ArenaList<TypeStructInfoElement>* elems = PushArenaList<TypeStructInfoElement>(temp);
+  ArenaList<TypeStructInfoElement>* elems = PushList<TypeStructInfoElement>(temp);
   for(int i = 0; i < configSize; i++){
     ArenaList<String>** optList = map->Get(i);
     if(!optList){
@@ -1586,7 +1564,7 @@ Array<TypeStructInfoElement> ExtractStructuredConfigs(Array<InstanceInfo> info,A
     elems->PushElem()->typeAndNames = arr;
   }
   
-  return PushArrayFromList(out,elems);
+  return PushArray(out,elems);
 }
 
 void OutputIterativeSource(FUDeclaration* decl,FILE* file){
@@ -1959,11 +1937,6 @@ StructInfo* GenerateConfigStruct(AccelInfoIterator iter,Arena* out){
   
   return result;
 }
-  
-size_t HashStructInfo(StructInfo* info){
-  if(!info) { return 0;};
-  return std::hash<StructInfo>()(*info);
-}
 
 Array<StructInfo*> ExtractStructs(StructInfo* structInfo,Arena* out){
   TEMP_REGION(temp,out);
@@ -1993,7 +1966,7 @@ Array<StructInfo*> ExtractStructs(StructInfo* structInfo,Arena* out){
 
   Recurse(Recurse,structInfo,info);
   
-  Array<StructInfo*> res = PushArrayFromTrieMapData(out,info);
+  Array<StructInfo*> res = PushArrayFromData(out,info);
 
   return res;
 }
@@ -2001,7 +1974,7 @@ Array<StructInfo*> ExtractStructs(StructInfo* structInfo,Arena* out){
 // typeString - Config or State
 Array<TypeStructInfo> GenerateStructs(Array<StructInfo*> info,String typeString,bool useIptr /* TODO: HACK */,Arena* out){
   TEMP_REGION(temp,out);
-  ArenaList<TypeStructInfo>* list = PushArenaList<TypeStructInfo>(temp);
+  ArenaList<TypeStructInfo>* list = PushList<TypeStructInfo>(temp);
 
   for(StructInfo* structInfo : info){
     TypeStructInfo* type = list->PushElem();
@@ -2109,7 +2082,7 @@ Array<TypeStructInfo> GenerateStructs(Array<StructInfo*> info,String typeString,
     }
   }
   
-  Array<TypeStructInfo> res = PushArrayFromList(out,list);
+  Array<TypeStructInfo> res = PushArray(out,list);
   return res;
 }
 
@@ -3090,7 +3063,7 @@ Problem: If we want the address gen to take into account the limitations of spac
         String fullFunctionName = PushString(temp,"%.*s_Size",UN(func->fullName));
         c->FunctionBlock("static inline int",fullFunctionName);
       
-        auto list = PushArenaList<String>(temp);
+        auto list = PushList<String>(temp);
         
         for(ConfigVariable var : func->variables){
           if(!var.usedOnLoopExpressions){
@@ -3105,7 +3078,7 @@ Problem: If we want the address gen to take into account the limitations of spac
           }
         }
 
-        auto bothList = PushArenaList<Pair<String,String>>(temp);
+        auto bothList = PushList<Pair<String,String>>(temp);
 
         for(ConfigStuff stuff : func->stuff){
           if(stuff.type == ConfigStuffType_ADDRESS_GEN){
@@ -3592,7 +3565,7 @@ Problem: If we want the address gen to take into account the limitations of spac
       for(AccelInfoIterator iter = StartIteration(&info,i); iter.IsValid(); iter = iter.Step()){
         InstanceInfo* info = iter.CurrentUnit();
 
-        if(HasVariableDelay(info)){
+        if(info->specialType == SpecialUnitType_VARIABLE_BUFFER){
           hasVariableDelay = true;
         }
       }
@@ -3606,7 +3579,7 @@ Problem: If we want the address gen to take into account the limitations of spac
         for(AccelInfoIterator iter = StartIteration(&info,i); iter.IsValid(); iter = iter.Step()){
           InstanceInfo* info = iter.CurrentUnit();
 
-          if(!HasVariableDelay(info)){
+          if(info->specialType != SpecialUnitType_VARIABLE_BUFFER){
             continue;
           }
 
@@ -3676,14 +3649,14 @@ Problem: If we want the address gen to take into account the limitations of spac
           for(AccelInfoIterator iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
             InstanceInfo* info = iter.CurrentUnit();
 
-            if(!HasVariableDelay(info)){
+            if(info->specialType != SpecialUnitType_VARIABLE_BUFFER){
               continue;
             }
-            
-            // nocheckin
-            // 'Test' and 'amount' are hacks that only work on versat_ai.
-            // TODO: We need to remove the allStaticsVerilatorSide and implement this properly be accessing AccelInfo
-            String name = PushString(temp,"accelStatic->Test_%.*s_amount",UN(info->name));
+
+            // Just to make sure. Variable buffers are Versat units so we can just assume that this holds.
+            Assert(info->configs.size == 1);
+
+            String name = GetStaticWireFullName(info,info->configs[0],temp);
             c->Assignment(name,SF("bufferValues[asInt][%d]",index++));
           }
         }
@@ -3714,26 +3687,57 @@ Problem: If we want the address gen to take into account the limitations of spac
 void Output_VerilatorWrapper(String typeName,Array<Wire> allStaticsVerilatorSide,AccelInfo info,FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> structuredConfigs,String softwarePath,VersatComputedValues versatVal){
   TEMP_REGION(temp,nullptr);
 
-  struct WireExtra : public Wire{
+  struct WireExtra{
+    Wire w;
     String source;
   };
 
-  auto arr = StartArray<WireExtra>(temp);
+  auto build = PushList<WireExtra>(temp);
   
   for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Next()){
     for(Wire config : iter.CurrentUnit()->configs){
-      WireExtra* ptr = arr.PushElem();
-      *((Wire*) ptr) = config;
+      WireExtra* ptr = build->PushElem();
+      ptr->w = config;
       ptr->source = "config->TOP_";
     }
   }
 
-  for(Wire& staticWire : allStaticsVerilatorSide){
-    WireExtra* ptr = arr.PushElem();
-    *((Wire*) ptr) = staticWire;
+  auto other = StartArray<WireExtra>(temp);
+  auto other2 = StartArray<WireExtra>(temp);
+
+#if 0
+  TrieSet<Wire>* uniqueWires = PushTrieSet<Wire>(temp);
+  
+  for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
+    InstanceInfo* info = iter.CurrentUnit();
+    if(info->isStatic){
+      for(Wire w : info->configs){
+        w.name = GetStaticWireFullName(info,w,temp);
+        uniqueWires->Insert(w);
+      }
+    }
+  }
+#endif
+
+#if 0
+  for(Wire w : uniqueWires){
+    WireExtra* ptr = build->PushElem();
+    ptr->w = w;
     ptr->source = "statics->";
   }
-  Array<WireExtra> allConfigsVerilatorSide = EndArray(arr);
+#endif
+
+#if 1
+  for(Wire& staticWire : allStaticsVerilatorSide){
+    WireExtra* ptr = build->PushElem();
+    ptr->w = staticWire;
+    ptr->source = "statics->";
+  }
+#endif
+
+  Array<WireExtra> allConfigsVerilatorSide = PushArray(temp,build);
+
+  DEBUG_BREAK();
 
   auto builder = StartArray<ExternalMemoryInterface>(temp);
   for(AccelInfoIterator iter = StartIteration(&info); iter.IsValid(); iter = iter.Next()){
@@ -4157,23 +4161,23 @@ if(SimulateDatabus){
         }
 #endif
 
-        if(wire.stage == VersatStage_READ){
-          c->Assignment(PushString(temp,"self->%.*s",UN(wire.name)),PushString(temp,"%.*s%.*s",UN(wire.source),UN(wire.name)));
+        if(wire.w.stage == VersatStage_READ){
+          c->Assignment(PushString(temp,"self->%.*s",UN(wire.w.name)),PushString(temp,"%.*s%.*s",UN(wire.source),UN(wire.w.name)));
         }
 
-        if(wire.stage == VersatStage_COMPUTE){
+        if(wire.w.stage == VersatStage_COMPUTE){
           String format = R"FOO(  self->@{0} = COMPUTED_@{0};
   COMPUTED_@{0} = @{1}@{0};)FOO";
-          String values[2] = {wire.name,wire.source};
+          String values[2] = {wire.w.name,wire.source};
             
           c->RawLine(TE_Substitute(format,values,temp));
         }
           
-        if(wire.stage == VersatStage_WRITE){
+        if(wire.w.stage == VersatStage_WRITE){
           String format = R"FOO(  self->@{0} = COMPUTED_@{0};
   COMPUTED_@{0} = WRITE_@{0};
   WRITE_@{0} = @{1}@{0};)FOO";
-          String values[2] = {wire.name,wire.source};
+          String values[2] = {wire.w.name,wire.source};
             
           c->RawLine(TE_Substitute(format,values,temp));
         }
@@ -4191,17 +4195,17 @@ if(SimulateDatabus){
   {
     CEmitter* c = StartCCode(temp);
     for(auto wire : allConfigsVerilatorSide){
-      if(wire.stage == VersatStage_COMPUTE){
+      if(wire.w.stage == VersatStage_COMPUTE){
         String format = "  COMPUTED_@{0} = 0;";
-        String values[2] = {wire.name,wire.source};
+        String values[2] = {wire.w.name,wire.source};
             
         c->RawLine(TE_Substitute(format,values,temp));
       }
 
-      if(wire.stage == VersatStage_WRITE){
+      if(wire.w.stage == VersatStage_WRITE){
         String format = R"FOO(  COMPUTED_@{0} = 0;
   WRITE_@{0} = 0;)FOO";
-        String values[2] = {wire.name,wire.source};
+        String values[2] = {wire.w.name,wire.source};
             
         c->RawLine(TE_Substitute(format,values,temp));
       }
@@ -4219,20 +4223,20 @@ if(SimulateDatabus){
   {
     CEmitter* c = StartCCode(temp);
     for(auto wire : allConfigsVerilatorSide){
-      if(wire.stage == VersatStage_COMPUTE){
+      if(wire.w.stage == VersatStage_COMPUTE){
         String format = "static iptr COMPUTED_@{0} = 0;";
-        String values[2] = {wire.name,wire.source};
+        String values[2] = {wire.w.name,wire.source};
             
         c->RawLine(TE_Substitute(format,values,temp));
       }
 
-        if(wire.stage == VersatStage_WRITE){
-          String format = R"FOO(static iptr COMPUTED_@{0} = 0;
+      if(wire.w.stage == VersatStage_WRITE){
+        String format = R"FOO(static iptr COMPUTED_@{0} = 0;
 static iptr WRITE_@{0} = 0;)FOO";
-          String values[2] = {wire.name,wire.source};
+        String values[2] = {wire.w.name,wire.source};
             
-          c->RawLine(TE_Substitute(format,values,temp));
-        }
+        c->RawLine(TE_Substitute(format,values,temp));
+      }
     }
     
     String content = PushASTRepr(c,temp);

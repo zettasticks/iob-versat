@@ -114,8 +114,16 @@ struct ExternalMemoryID{
   int interface;
   ExternalMemoryType type;
 };
-HASH(ExternalMemoryID, x.interface * 2 + (int) x.type);
-EQUALITY(ExternalMemoryID, (memcmp(&lhs,&rhs,sizeof(ExternalMemoryID)) == 0))
+
+inline u64 Hash(ExternalMemoryID id){
+  u64 res = id.interface * 2 + id.type;
+  return res;
+}
+
+inline bool operator==(ExternalMemoryID lhs,ExternalMemoryID rhs){
+  bool res = (memcmp(&lhs,&rhs,sizeof(ExternalMemoryID)) == 0);
+  return res;
+}
 
 struct ExternalInfoTwoPorts : public ExternalMemoryTwoPortsExpression{
   bool write;

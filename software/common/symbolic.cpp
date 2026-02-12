@@ -140,10 +140,10 @@ void CompileRepresentationRecursive(ArenaList<SymbolicReprAtom>* b,SymbolicExpre
 Array<SymbolicReprAtom> CompileRepresentation(SymbolicExpression* expr,Arena* out){
   TEMP_REGION(temp,out);
 
-  auto list = PushArenaList<SymbolicReprAtom>(temp);
+  auto list = PushList<SymbolicReprAtom>(temp);
   
   CompileRepresentationRecursive(list,expr,true,0);
-  return PushArrayFromList(out,list);
+  return PushArray(out,list);
 }
 
 static void BuildRepresentation(StringBuilder* builder,SymbolicExpression* expr,bool top,int parentBindingStrength){
@@ -582,7 +582,7 @@ static SymbolicExpression* ParseTerm(Tokenizer* tok,Arena* out){
 
         TEMP_REGION(temp,out);
         
-        auto argList = PushArenaList<SymbolicExpression*>(temp);
+        auto argList = PushList<SymbolicExpression*>(temp);
         while(!tok->Done()){
           SymbolicExpression* argument = ParseExpression(tok,out);
           *argList->PushElem() = argument;
@@ -598,7 +598,7 @@ static SymbolicExpression* ParseTerm(Tokenizer* tok,Arena* out){
         SymbolicExpression* func = PushStruct<SymbolicExpression>(out);
         func->type = SymbolicExpressionType_FUNC;
         func->name = PushString(out,token);
-        func->terms = PushArrayFromList(out,argList);
+        func->terms = PushArray(out,argList);
         func->negative = negative;
 
         return func;
@@ -649,7 +649,7 @@ static SymbolicExpression* ParseMul(Tokenizer* tok,Arena* out){
   TEMP_REGION(temp,out);
   SymbolicExpression* left = ParseDiv(tok,out);
   
-  ArenaList<SymbolicExpression*>* expressions = PushArenaList<SymbolicExpression*>(temp);
+  ArenaList<SymbolicExpression*>* expressions = PushList<SymbolicExpression*>(temp);
   *expressions->PushElem() = left;
 
   while(!tok->Done()){
@@ -676,7 +676,7 @@ static SymbolicExpression* ParseMul(Tokenizer* tok,Arena* out){
 
   SymbolicExpression* res = PushStruct<SymbolicExpression>(out);
   res->type = SymbolicExpressionType_MUL;
-  res->terms = PushArrayFromList(out,expressions);
+  res->terms = PushArray(out,expressions);
 
   return res;
 }
@@ -685,7 +685,7 @@ static SymbolicExpression* ParseSum(Tokenizer* tok,Arena* out){
   TEMP_REGION(temp,out);
   SymbolicExpression* left = ParseMul(tok,out);
 
-  ArenaList<SymbolicExpression*>* expressions = PushArenaList<SymbolicExpression*>(temp);
+  ArenaList<SymbolicExpression*>* expressions = PushList<SymbolicExpression*>(temp);
   *expressions->PushElem() = left;
 
   while(!tok->Done()){
@@ -717,7 +717,7 @@ static SymbolicExpression* ParseSum(Tokenizer* tok,Arena* out){
   
   SymbolicExpression* res = PushStruct<SymbolicExpression>(out);
   res->type = SymbolicExpressionType_SUM;
-  res->terms = PushArrayFromList(out,expressions);
+  res->terms = PushArray(out,expressions);
 
   return res;
 }
@@ -755,7 +755,7 @@ static SymbolicExpression* ParseTerm(Array<Token> tokens,int& index,Arena* out){
 
       TEMP_REGION(temp,out);
         
-      auto argList = PushArenaList<SymbolicExpression*>(temp);
+      auto argList = PushList<SymbolicExpression*>(temp);
       while(index < tokens.size){
         SymbolicExpression* argument = ParseExpression(tokens,index,out);
         *argList->PushElem() = argument;
@@ -773,7 +773,7 @@ static SymbolicExpression* ParseTerm(Array<Token> tokens,int& index,Arena* out){
       SymbolicExpression* func = PushStruct<SymbolicExpression>(out);
       func->type = SymbolicExpressionType_FUNC;
       func->name = PushString(out,token);
-      func->terms = PushArrayFromList(out,argList);
+      func->terms = PushArray(out,argList);
       func->negative = negative;
 
       return func;
@@ -823,7 +823,7 @@ static SymbolicExpression* ParseMul(Array<Token> tokens,int& index,Arena* out){
   TEMP_REGION(temp,out);
   SymbolicExpression* left = ParseDiv(tokens,index,out);
   
-  ArenaList<SymbolicExpression*>* expressions = PushArenaList<SymbolicExpression*>(temp);
+  ArenaList<SymbolicExpression*>* expressions = PushList<SymbolicExpression*>(temp);
   *expressions->PushElem() = left;
 
   while(index < tokens.size){
@@ -850,7 +850,7 @@ static SymbolicExpression* ParseMul(Array<Token> tokens,int& index,Arena* out){
 
   SymbolicExpression* res = PushStruct<SymbolicExpression>(out);
   res->type = SymbolicExpressionType_MUL;
-  res->terms = PushArrayFromList(out,expressions);
+  res->terms = PushArray(out,expressions);
 
   return res;
 }
@@ -859,7 +859,7 @@ static SymbolicExpression* ParseSum(Array<Token> tokens,int& index,Arena* out){
   TEMP_REGION(temp,out);
   SymbolicExpression* left = ParseMul(tokens,index,out);
 
-  ArenaList<SymbolicExpression*>* expressions = PushArenaList<SymbolicExpression*>(temp);
+  ArenaList<SymbolicExpression*>* expressions = PushList<SymbolicExpression*>(temp);
   *expressions->PushElem() = left;
 
   while(index < tokens.size){
@@ -891,7 +891,7 @@ static SymbolicExpression* ParseSum(Array<Token> tokens,int& index,Arena* out){
   
   SymbolicExpression* res = PushStruct<SymbolicExpression>(out);
   res->type = SymbolicExpressionType_SUM;
-  res->terms = PushArrayFromList(out,expressions);
+  res->terms = PushArray(out,expressions);
 
   return res;
 }
@@ -900,7 +900,7 @@ static SymbolicExpression* ParseSum(Array<Token> tokens,int& index,Arena* out){
 Array<Token> TokenizeSymbolicExpression(Tokenizer* tok,Arena* out){
   TEMP_REGION(temp,out);
 
-  auto tokens = PushArenaList<Token>(temp);
+  auto tokens = PushList<Token>(temp);
   
   tmpl = CreateTokenizerTemplate(temp,",+-*/();:[]",{".."});
   TOKENIZER_REGION(tok,tmpl);
@@ -927,7 +927,7 @@ Array<Token> TokenizeSymbolicExpression(Tokenizer* tok,Arena* out){
     }
   }
   
-  Array<Token> res = PushArrayFromList(out,tokens);
+  Array<Token> res = PushArray(out,tokens);
 
   return res;
 }
@@ -1061,12 +1061,12 @@ typedef SymbolicExpression* (*ApplyNonRecursiveFunction)(SymbolicExpression* exp
 
 Array<SymbolicExpression*> ApplyFunctionToArray(ApplyFunction Function,Array<SymbolicExpression*> arr,Arena* out){
   TEMP_REGION(temp,out);
-  ArenaList<SymbolicExpression*>* builder = PushArenaList<SymbolicExpression*>(temp);
+  ArenaList<SymbolicExpression*>* builder = PushList<SymbolicExpression*>(temp);
   for(SymbolicExpression* spec : arr){
     *builder->PushElem() = Function(spec,out);
   }
 
-  Array<SymbolicExpression*> result = PushArrayFromList(out,builder);
+  Array<SymbolicExpression*> result = PushArray(out,builder);
 
   return result;
 }
@@ -1081,13 +1081,13 @@ SymbolicExpression* ApplyNonRecursive(SymbolicExpression* expr,Arena* out,ApplyN
   case SymbolicExpressionType_FUNC: // fallthrough
   case SymbolicExpressionType_SUM: // fallthrough
   case SymbolicExpressionType_MUL: {
-    ArenaList<SymbolicExpression*>* list = PushArenaList<SymbolicExpression*>(temp);
+    ArenaList<SymbolicExpression*>* list = PushList<SymbolicExpression*>(temp);
     for(SymbolicExpression* s : expr->terms){
       *list->PushElem() = ApplyNonRecursive(s,out,Function);
     }
 
     SymbolicExpression* res = CopyExpression(expr,out);
-    res->terms = PushArrayFromList(out,list);
+    res->terms = PushArray(out,list);
 
     res = Function(res,out);
     
@@ -1116,13 +1116,13 @@ SymbolicExpression* ApplyGeneric(SymbolicExpression* expr,Arena* out,ApplyFuncti
   case SymbolicExpressionType_FUNC:
   case SymbolicExpressionType_SUM:
   case SymbolicExpressionType_MUL: {
-    ArenaList<SymbolicExpression*>* list = PushArenaList<SymbolicExpression*>(temp);
+    ArenaList<SymbolicExpression*>* list = PushList<SymbolicExpression*>(temp);
     for(SymbolicExpression* s : expr->terms){
       *list->PushElem() = Function(s,out);
     }
 
     SymbolicExpression* res = CopyExpression(expr,out);
-    res->terms = PushArrayFromList(out,list);
+    res->terms = PushArray(out,list);
 
     return res;
   } break;
@@ -1205,7 +1205,7 @@ SymbolicExpression* RemoveParenthesis(SymbolicExpression* expr,Arena* out){
     }
     
     if(expr->negative){
-      ArenaList<SymbolicExpression*>* list = PushArenaList<SymbolicExpression*>(temp);
+      ArenaList<SymbolicExpression*>* list = PushList<SymbolicExpression*>(temp);
       for(SymbolicExpression* child : expr->terms){
         SymbolicExpression* negated = SymbolicDeepCopy(child,out);
         negated->negative = !negated->negative;
@@ -1215,7 +1215,7 @@ SymbolicExpression* RemoveParenthesis(SymbolicExpression* expr,Arena* out){
 
       SymbolicExpression* res = CopyExpression(expr,out);
       res->negative = false;
-      res->terms = PushArrayFromList(out,list);
+      res->terms = PushArray(out,list);
       return res;
     }
 
@@ -1228,7 +1228,7 @@ SymbolicExpression* RemoveParenthesis(SymbolicExpression* expr,Arena* out){
     }
     
     Array<SymbolicExpression*> children = ApplyFunctionToArray(RemoveParenthesis,expr->terms,out);
-    ArenaList<SymbolicExpression*>* list = PushArenaList<SymbolicExpression*>(temp);
+    ArenaList<SymbolicExpression*>* list = PushList<SymbolicExpression*>(temp);
     
     for(SymbolicExpression* child : children){
       bool uplift = (child->type == expr->type);
@@ -1249,7 +1249,7 @@ SymbolicExpression* RemoveParenthesis(SymbolicExpression* expr,Arena* out){
     }
 
     SymbolicExpression* res = CopyExpression(expr,out);
-    res->terms = PushArrayFromList(out,list);
+    res->terms = PushArray(out,list);
     
     return res;
   } break;
@@ -1327,8 +1327,8 @@ SymbolicExpression* NormalizeLiterals(SymbolicExpression* expr,Arena* out){
   } break;
   case SymbolicExpressionType_SUM: // fallthrough
   case SymbolicExpressionType_MUL: {
-    ArenaList<SymbolicExpression*>* childs = PushArenaList<SymbolicExpression*>(temp);
-    ArenaList<SymbolicExpression*>* literals = PushArenaList<SymbolicExpression*>(temp);
+    ArenaList<SymbolicExpression*>* childs = PushList<SymbolicExpression*>(temp);
+    ArenaList<SymbolicExpression*>* literals = PushList<SymbolicExpression*>(temp);
     
     for(int i = 0; i < expr->terms.size; i++){
       SymbolicExpression* child = NormalizeLiterals(expr->terms[i],out);
@@ -1349,11 +1349,11 @@ SymbolicExpression* NormalizeLiterals(SymbolicExpression* expr,Arena* out){
       }
       
       SymbolicExpression* copy = CopyExpression(expr,out);
-      copy->terms = PushArrayFromList(out,childs);
+      copy->terms = PushArray(out,childs);
       return copy;
     }
     
-    Array<SymbolicExpression*> allLiterals = PushArrayFromList(temp,literals);
+    Array<SymbolicExpression*> allLiterals = PushArray(temp,literals);
     
     bool isMul = (expr->type == SymbolicExpressionType_MUL);
     
@@ -1391,7 +1391,7 @@ SymbolicExpression* NormalizeLiterals(SymbolicExpression* expr,Arena* out){
           *childs->PushElem() = finalLiteral;
         }
 
-        res->terms = PushArrayFromList(out,childs);
+        res->terms = PushArray(out,childs);
         SortTerms(res,out);
 
         // Kinda on an hack, no point returning a sum/mult of a single term
@@ -1414,7 +1414,7 @@ SymbolicExpression* NormalizeLiterals(SymbolicExpression* expr,Arena* out){
         *childs->PushElem() = finalLiteral;
       }
 
-      res->terms = PushArrayFromList(out,childs);
+      res->terms = PushArray(out,childs);
 
       // Kinda on an hack, no point returning a sum/mult of a single term
       // TODO: We can probably simplify the logic in here. Remember, if only 1 term then we want to return it, not make a sum/mult of 1 term.
@@ -1780,7 +1780,7 @@ SymbolicExpression* ApplySimilarTermsAddition(SymbolicExpression* expr,Arena* ou
     Array<bool> termUsed = PushArray<bool>(temp,terms.size);
     Memset(termUsed,false);
 
-    ArenaList<SymbolicExpression*>* finalExpressions = PushArenaList<SymbolicExpression*>(temp);
+    ArenaList<SymbolicExpression*>* finalExpressions = PushList<SymbolicExpression*>(temp);
     for(int i = 0; i < terms.size; i++){
       if(termUsed[i]){
         continue;
@@ -1831,7 +1831,7 @@ SymbolicExpression* ApplySimilarTermsAddition(SymbolicExpression* expr,Arena* ou
 
     SymbolicExpression* sum = PushStruct<SymbolicExpression>(out);
     sum->type = SymbolicExpressionType_SUM;
-    sum->terms = PushArrayFromList(out,finalExpressions);
+    sum->terms = PushArray(out,finalExpressions);
 
     Assert(sum->terms.size > 0);
     
@@ -1873,7 +1873,7 @@ SymbolicExpression* ApplyDistributivity(SymbolicExpression* expr,Arena* out){
       }
 
       if(!containsAddition){
-        ArenaList<SymbolicExpression*>* muls = PushArenaList<SymbolicExpression*>(temp);
+        ArenaList<SymbolicExpression*>* muls = PushList<SymbolicExpression*>(temp);
         for(SymbolicExpression* spec : expr->terms){
           *muls->PushElem() = ApplyDistributivity(spec,out);
         }
@@ -1884,7 +1884,7 @@ SymbolicExpression* ApplyDistributivity(SymbolicExpression* expr,Arena* out){
       }
       
       // A multiplication of sums becomes a sum of multiplications
-      ArenaList<SymbolicExpression*>* sums = PushArenaList<SymbolicExpression*>(temp);
+      ArenaList<SymbolicExpression*>* sums = PushList<SymbolicExpression*>(temp);
 
       // We only distribute one member and then let ApplyDistributivity on the result handle more distributions.
       // That is because if we ended doing everything here, we would enter the case where (x + y) * (a + b) would create 8 terms instead of the expected 4 terms. [Because we would generate x * (a + b), y * (a + b),a * (x + y) and b * (x + y) which eventually would give us 8 terms.]
@@ -1897,7 +1897,7 @@ SymbolicExpression* ApplyDistributivity(SymbolicExpression* expr,Arena* out){
           for(SymbolicExpression* subTerm : spec->terms){
             // For each member in the additions array
             
-            ArenaList<SymbolicExpression*>* mulTerms = PushArenaList<SymbolicExpression*>(temp);
+            ArenaList<SymbolicExpression*>* mulTerms = PushList<SymbolicExpression*>(temp);
             *mulTerms->PushElem() = SymbolicDeepCopy(subTerm,out);
             for(SymbolicExpression* other : expr->terms){
               if(spec == other){
@@ -1909,7 +1909,7 @@ SymbolicExpression* ApplyDistributivity(SymbolicExpression* expr,Arena* out){
 
             SymbolicExpression* res = PushStruct<SymbolicExpression>(out);
             res->type = SymbolicExpressionType_MUL;
-            res->terms = PushArrayFromList(out,mulTerms);
+            res->terms = PushArray(out,mulTerms);
             
             *sums->PushElem() = res;
           }
@@ -1920,7 +1920,7 @@ SymbolicExpression* ApplyDistributivity(SymbolicExpression* expr,Arena* out){
       SymbolicExpression* res = PushStruct<SymbolicExpression>(out);
       res->type = SymbolicExpressionType_SUM;
       res->negative = expr->negative;
-      res->terms = PushArrayFromList(out,sums);
+      res->terms = PushArray(out,sums);
 
       return res;
     } else {
@@ -2247,9 +2247,9 @@ Array<String> ExtractAllVariables(SymbolicExpression* top,Arena* out){
     }
   };
   
-  auto* accum = PushArenaList<String>(temp);
+  auto* accum = PushList<String>(temp);
   Recurse(Recurse,top,accum);
-  Array<String> res = PushArrayFromList(out,accum);
+  Array<String> res = PushArray(out,accum);
 
   return res;
 }
@@ -2447,7 +2447,7 @@ Array<String> GetAllSymbols(SymbolicExpression* expr,Arena* out){
     }
   }
   
-  return PushArrayFromSet(out,set);
+  return PushArray(out,set);
 }
 
 Opt<SymbolicExpression*> GetMultExpressionAssociatedTo(SymbolicExpression* expr,String variableName,Arena* out){

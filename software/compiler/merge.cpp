@@ -1207,7 +1207,7 @@ Array<Edge*> GetAllPaths(Accelerator* accel,PortInstance start,PortInstance end,
     return result;
   }
 
-  ArenaList<Edge*>* allPaths = PushArenaList<Edge*>(temp);
+  ArenaList<Edge*>* allPaths = PushList<Edge*>(temp);
   for(int outPort = 0; outPort < outInst.inst->inputs.size; outPort++){
     PortInstance outInputSide = MakePortIn(outInst.inst,outPort);
     
@@ -1233,7 +1233,7 @@ Array<Edge*> GetAllPaths(Accelerator* accel,PortInstance start,PortInstance end,
     }
   }
 
-  Array<Edge*> result = PushArrayFromList(out,allPaths);
+  Array<Edge*> result = PushArray(out,allPaths);
 
   for(int i = 0; i < result.size; i++){
     result[i] = ReverseList(result[i]);
@@ -1521,7 +1521,7 @@ Array<GraphAndMapping> GetAllBaseMergeTypes(FUDeclaration* decl,Arena* out){
     }
   }
 
-  Array<GraphAndMapping> result = PushArrayFromSet(out,seen);
+  Array<GraphAndMapping> result = PushArray(out,seen);
   
   // TODO: Problem was in here.
   //       The problem is that we are mapping to the base circuit, but we want to map to the flattened circuit?
@@ -3017,12 +3017,12 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
     //       Meaning that the user is capable of giving different to the functions or just using the default name.
     //       We technically need to support this if we end up merging two types that contain the same module which contains a userFunction. We cannot use the same name to represent two different modules even though at that point we are probably doing something really complicated and we probably need to see first what this would look like before 
 
-    auto list = PushArenaList<ConfigFunction*>(temp);
+    auto list = PushList<ConfigFunction*>(temp);
     for(ConfigFunction* func : types[i]->info.infos[0].userFunctions){
       *list->PushElem() = func;
     }
 
-    decl->info.infos[i].userFunctions = PushArrayFromList(globalPermanent,list);
+    decl->info.infos[i].userFunctions = PushArray(globalPermanent,list);
 
     AccelInfoIterator iter = StartIteration(&decl->info,i);
     

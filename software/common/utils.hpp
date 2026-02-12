@@ -21,8 +21,6 @@ FILE* OpenFileAndCreateDirectories(String path,const char* format,FilePurpose pu
 
 Array<String> Split(String content,char sep,Arena* out); // For now only split over one char. 
 
-String TrimLeftWhitespaces(String in);
-String TrimRightWhitespaces(String in);
 String TrimWhitespaces(String in);
 
 String GetCommonPath(String path1,String path2,Arena* out);
@@ -34,8 +32,6 @@ String PushEscapedString(Arena* out,String toEscape,char spaceSubstitute);
 void   PrintEscapedString(String toEscape,char spaceSubstitute);
 
 String GetAbsolutePath(String path,Arena* out);
-
-Array<int> GetNonZeroIndexes(Array<int> array,Arena* out);
 
 String ReprMemorySize(size_t val,Arena* out);
 
@@ -286,7 +282,7 @@ Array<T> CopyArray(Array<D> arr,Arena* out){
 }
 
 template<typename T>
-ArenaList<T>* PushArenaList(Arena* out){
+ArenaList<T>* PushList(Arena* out){
   ArenaList<T>* res = PushStruct<ArenaList<T>>(out);
   *res = {};
   res->arena = out;
@@ -453,7 +449,7 @@ bool OnlyOneElement(ArenaList<T>* list){
 }
   
 template<typename T>
-Array<T> PushArrayFromList(Arena* out,ArenaList<T>* list){
+Array<T> PushArray(Arena* out,ArenaList<T>* list){
   if(Empty(list)){
     return {};
   }
@@ -470,7 +466,7 @@ Array<T> PushArrayFromList(Arena* out,ArenaList<T>* list){
 }
 
 template<typename T,typename P>
-Array<Pair<T,P>> PushArrayFromList(Arena* out,ArenaList<Pair<T,P>>* list){
+Array<Pair<T,P>> PushArray(Arena* out,ArenaList<Pair<T,P>>* list){
   int size = Size(list);
   
   Array<Pair<T,P>> arr = PushArray<Pair<T,P>>(out,size);
@@ -484,7 +480,7 @@ Array<Pair<T,P>> PushArrayFromList(Arena* out,ArenaList<Pair<T,P>>* list){
 }
 
 template<typename T,typename P>
-Array<T> PushArrayFromHashmapKeys(Arena* out,Hashmap<T,P>* map){
+Array<T> PushArrayFromKeys(Arena* out,Hashmap<T,P>* map){
   int size = map->nodesUsed;
   
   Array<T> arr = PushArray<T>(out,size);
@@ -498,7 +494,7 @@ Array<T> PushArrayFromHashmapKeys(Arena* out,Hashmap<T,P>* map){
 }
 
 template<typename T,typename P>
-Array<P> PushArrayFromHashmapData(Arena* out,Hashmap<T,P>* map){
+Array<P> PushArrayFromData(Arena* out,Hashmap<T,P>* map){
   int size = map->nodesUsed;
   
   Array<P> arr = PushArray<P>(out,size);
@@ -512,7 +508,7 @@ Array<P> PushArrayFromHashmapData(Arena* out,Hashmap<T,P>* map){
 }
 
 template<typename T,typename P>
-Array<T> PushArrayFromTrieMapKeys(Arena* out,TrieMap<T,P>* map){
+Array<T> PushArrayFromKeys(Arena* out,TrieMap<T,P>* map){
   int size = map->nodesUsed;
   
   Array<T> arr = PushArray<T>(out,size);
@@ -526,7 +522,7 @@ Array<T> PushArrayFromTrieMapKeys(Arena* out,TrieMap<T,P>* map){
 }
 
 template<typename T,typename P>
-Array<P> PushArrayFromTrieMapData(Arena* out,TrieMap<T,P>* map){
+Array<P> PushArrayFromData(Arena* out,TrieMap<T,P>* map){
   int size = map->inserted;
   
   Array<P> arr = PushArray<P>(out,size);
@@ -540,7 +536,7 @@ Array<P> PushArrayFromTrieMapData(Arena* out,TrieMap<T,P>* map){
 }
 
 template<typename T>
-Array<T> PushArrayFromSet(Arena* out,Set<T>* set){
+Array<T> PushArray(Arena* out,Set<T>* set){
   auto arr = PushArray<T>(out,set->map->nodesUsed);
 
   int index = 0;
@@ -552,7 +548,7 @@ Array<T> PushArrayFromSet(Arena* out,Set<T>* set){
 }
 
 template<typename T>
-Array<T> PushArrayFromSet(Arena* out,TrieSet<T>* set){
+Array<T> PushArray(Arena* out,TrieSet<T>* set){
   auto arr = PushArray<T>(out,set->map->inserted);
 
   int index = 0;
@@ -564,7 +560,7 @@ Array<T> PushArrayFromSet(Arena* out,TrieSet<T>* set){
 }
 
 template<typename T>
-Set<T>* PushSetFromList(Arena* out,ArenaList<T>* list){
+Set<T>* PushSet(Arena* out,ArenaList<T>* list){
   int size = Size(list);
 
   Set<T>* set = PushSet<T>(out,size);
@@ -624,7 +620,7 @@ Array<T> Unique(Array<T> arr,Arena* out){
   for(T t : arr){
     set->Insert(t);
   }
-  return PushArrayFromSet(out,set);
+  return PushArray(out,set);
 }
 
 // Compares arrays directly, no "set" semantics or nothing. Mostly for simple tests where we need to check if different functions return the exact same values to confirm correctness.

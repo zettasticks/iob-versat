@@ -42,7 +42,6 @@ struct MappingNode{ // Mapping (edge to edge or node to node)
   enum {NODE,EDGE} type;
 };
 
-
 struct GraphAndMapping{
   FUDeclaration* decl;
   AcceleratorMapping* map;
@@ -50,36 +49,12 @@ struct GraphAndMapping{
   bool fromStruct;
 };
 
-template<> class std::hash<GraphAndMapping>{
-public:
-   std::size_t operator()(GraphAndMapping const& s) const noexcept{
-     std::size_t res = (std::size_t) s.decl;
-     return res;
-   }
-};
+inline u64 Hash(GraphAndMapping s){
+  return Hash(s.decl);
+}
 
 static bool operator==(const GraphAndMapping& g0,const GraphAndMapping& g1){
   return (g0.decl == g1.decl);
-}
-
-inline bool operator==(const MappingNode& node0,const MappingNode& node1){
-  if(node0.type != node1.type){
-    return false;
-  }
-
-  switch(node0.type){
-  case MappingNode::NODE:{
-    bool res = node0.nodes.instances[0] == node1.nodes.instances[0] &&
-               node0.nodes.instances[1] == node1.nodes.instances[1];
-    return res;
-  } break;
-  case MappingNode::EDGE:{
-    bool res = (node0.edges[0] == node1.edges[0] &&
-                node0.edges[1] == node1.edges[1]);
-
-    return res;
-  } break;
-  }
 }
 
 struct ConsolidationGraphOptions{

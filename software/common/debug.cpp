@@ -305,7 +305,7 @@ void PrintStacktrace(){
         str.size -= rootPath.size;
       }
     }
-    maxSize = std::max(maxSize,str.size);
+    maxSize = MAX(maxSize,str.size);
 
     //printf("%.*s\n",UN(str));
   }

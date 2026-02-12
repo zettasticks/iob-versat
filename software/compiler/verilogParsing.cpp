@@ -9,6 +9,8 @@
 
 #include "symbolic.hpp"
 
+#include <string>
+
 typedef Value (*MathFunction)(Value f,Value g);
 
 struct MathFunctionDescription{
@@ -176,6 +178,7 @@ void PreprocessVerilogFile_(String fileContent,TrieMap<String,MacroDefinition>* 
       tok->AssertNextToken("\"");
 
       // Open include file
+      // TODO: Clean this up with our code and remove std::string
       std::string filename(UN_REVERSE(fileName));
       FILE* file = nullptr;
       for(String str : includeFilepaths){
@@ -631,13 +634,13 @@ static Module ParseModule(Tokenizer* tok,Arena* out){
   tok->AssertNextToken("(");
   if(!tok->IfPeekToken(")")){
   
-    ArenaList<PortDeclaration>* portList = PushArenaList<PortDeclaration>(temp);
+    ArenaList<PortDeclaration>* portList = PushList<PortDeclaration>(temp);
     // Parse ports
     while(!tok->Done()){
       peek = tok->PeekToken();
 
       PortDeclaration port;
-      ArenaList<Pair<String,Value>>* attributeList = PushArenaList<Pair<String,Value>>(temp);
+      ArenaList<Pair<String,Value>>* attributeList = PushList<Pair<String,Value>>(temp);
     
       if(CompareString(peek,"(*")){
         tok->AdvancePeek();
@@ -713,7 +716,7 @@ static Module ParseModule(Tokenizer* tok,Arena* out){
 
       tok->AssertNextToken(",");
     }
-    module.ports = PushArrayFromList(out,portList);
+    module.ports = PushArray(out,portList);
   }
   
   // Any inside module parameters
@@ -744,7 +747,7 @@ Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths
   Tokenizer tokenizer = Tokenizer(fileContent,"\n:',()[]{}\"+-/*=",{"#(","+:","-:","(*","*)"});
   Tokenizer* tok = &tokenizer;
 
-  ArenaList<Module>* modules = PushArenaList<Module>(temp);
+  ArenaList<Module>* modules = PushList<Module>(temp);
 
   bool isSource = false;
   while(!tok->Done()){
@@ -778,7 +781,7 @@ Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths
     tok->AdvancePeek();
   }
 
-  return PushArrayFromList(out,modules);
+  return PushArray(out,modules);
 }
 
 SymbolicExpression* SymbolicExpressionFromVerilog(Expression* topExpr,Arena* out){
@@ -953,7 +956,7 @@ ModuleInfo ExtractModuleInfo(Module& module,Arena* out){
       port.AssertNextToken("delay");
       int delay = ParseInt(port.NextToken());
 
-      info.nDelays = std::max(info.nDelays,delay + 1);
+      info.nDelays = MAX(info.nDelays,delay + 1);
     } else if(  CheckFormat("databus_ready_%d",decl.name)
 				|| CheckFormat("databus_valid_%d",decl.name)
 				|| CheckFormat("databus_addr_%d",decl.name)

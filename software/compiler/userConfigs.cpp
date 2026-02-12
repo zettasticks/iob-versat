@@ -119,7 +119,7 @@ static FunctionInvocation* ParseFunctionInvocation(Array<Token> tokens,Arena* ou
 
   CHECK_OR_ERROR("(");
   
-  auto list = PushArenaList<Token>(temp);
+  auto list = PushList<Token>(temp);
   while(index < tokens.size){
     if(CompareString(tokens[index],",")){
       index++;
@@ -142,7 +142,7 @@ static FunctionInvocation* ParseFunctionInvocation(Array<Token> tokens,Arena* ou
 
   FunctionInvocation* res = PushStruct<FunctionInvocation>(out);
   res->functionName = functionName;
-  res->arguments = PushArrayFromList(out,list);
+  res->arguments = PushArray(out,list);
   return res;
 }
 
@@ -201,7 +201,7 @@ ParseResult ParseRHS(Env* env,SpecExpression* top,Arena* out){
 ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDeclaration* declaration,String content,Arena* out){
   TEMP_REGION(temp,out);
 
-  auto list = PushArenaList<ConfigStuff>(temp);
+  auto list = PushList<ConfigStuff>(temp);
   ConfigFunctionType type = {};
 
   // TODO: Where is the error checking being perform to check if a given composite module contains the actual function?
@@ -220,7 +220,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   // Break apart every for loop + statement into individual statements.
   // NOTE: Kinda slow but should not be a problem anytime soon.
   TrieMap<ConfigStatement*,ConfigStatement*>* nodeToParent = PushTrieMap<ConfigStatement*,ConfigStatement*>(temp);
-  auto simpleStmtList = PushArenaList<ConfigStatement*>(temp);
+  auto simpleStmtList = PushList<ConfigStatement*>(temp);
 
   auto Recurse = [nodeToParent,simpleStmtList](auto Recurse,ConfigStatement* top) -> void{
     if(top->type == ConfigStatementType_FOR_LOOP){
@@ -238,9 +238,9 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     Recurse(Recurse,top);
   }
 
-  auto stmtList = PushArenaList<Array<ConfigStatement*>>(temp);
+  auto stmtList = PushList<Array<ConfigStatement*>>(temp);
   for(ConfigStatement* stmt : simpleStmtList){
-    auto list = PushArenaList<ConfigStatement*>(temp);
+    auto list = PushList<ConfigStatement*>(temp);
     
     ConfigStatement* ptr = stmt;
     while(ptr){
@@ -252,14 +252,14 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       ptr = parent;
     }
 
-    Array<ConfigStatement*> asArray = PushArrayFromList(temp,list);
+    Array<ConfigStatement*> asArray = PushArray(temp,list);
     ReverseInPlace(asArray);
     *stmtList->PushElem() = asArray;
   }
 
   // From this point on use this. Every N sized array is composed of N-1 FOR_LOOP types and 1 STATEMENT type.
   // TODO: Remember, after pushing every statement into an individual loop, we need to do error checking and check if the variable still exists. We cannot do variable checking globally since some statements might not be inside one of the loops.
-  Array<Array<ConfigStatement*>> individualStatements = PushArrayFromList(temp,stmtList);
+  Array<Array<ConfigStatement*>> individualStatements = PushArray(temp,stmtList);
 
   // TODO: Kinda stupid calculating things this way but the rest of the code needs to collapse into a simpler form for the more robust approach first.
   auto variablesUsedOnLoopExpressions = PushTrieSet<String>(temp);
@@ -343,13 +343,13 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       FULL_SWITCH(stmt->type){
       // NOTE: This will always produce an address gen
       case ConfigStatementType_FOR_LOOP:{
-        auto forLoops = PushArenaList<AddressGenForDef2>(temp);
+        auto forLoops = PushList<AddressGenForDef2>(temp);
 
         for(int i = 0; i < stmts.size - 1; i++){
           *forLoops->PushElem() = stmts[i]->def2;
         }
 
-        Array<AddressGenForDef2> loops = PushArrayFromList(temp,forLoops);
+        Array<AddressGenForDef2> loops = PushArray(temp,forLoops);
 
         Entity* ent = env->GetEntity(simple->lhs,temp);
         
@@ -470,7 +470,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     }
   }    
 
-  auto newStructs = PushArenaList<String>(temp);
+  auto newStructs = PushList<String>(temp);
 
   if(def->type == UserConfigType_STATE){
     type = ConfigFunctionType_STATE;
@@ -600,11 +600,11 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   ConfigFunction func = {};
   func.type = type;
   func.decl = declaration;
-  func.stuff = PushArrayFromList(out,list);
+  func.stuff = PushArray(out,list);
   func.variables = varInfo;
   func.individualName = PushString(out,def->name);
   func.fullName = GlobalConfigFunctionName(func.individualName,declaration,out);
-  func.newStructs = PushArrayFromList(out,newStructs);
+  func.newStructs = PushArray(out,newStructs);
   func.structToReturnName = structToReturnName;
   func.debug = def->debug;
   func.supportsSizeCalc = supportsSizeCalc;

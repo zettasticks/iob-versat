@@ -48,16 +48,14 @@ inline bool operator!=(const PortInstance& p1,const PortInstance& p2){
   return res;
 }
 
-template<> class std::hash<PortInstance>{
-public:
-  std::size_t operator()(PortInstance const& s) const noexcept{
-    std::size_t res = std::hash<FUInstance*>()(s.inst);
-    res *= ((int) s.dir) + 1;
-    res += s.port;
+inline u64 Hash(PortInstance s){
+  // NOTE: Hashing the pointer, not actually hashing the contents of the FU
+  u64 res = Hash(s.inst);
+  res *= ((int) s.dir) + 1;
+  res += s.port;
     
-    return res;
-  }
-};
+  return res;
+}
 
 struct Edge{ // A edge in a graph
   union{
@@ -71,6 +69,13 @@ struct Edge{ // A edge in a graph
   int delay;
   Edge* next;
 };
+
+inline u64 Hash(Edge s){
+  u64 res = Hash(s.units[0]);
+  res += Hash(s.units[1]);
+  res += s.delay;
+  return  res;
+}
 
 static inline Edge MakeEdge(FUInstance* out,int outPort,FUInstance* in,int inPort,int delay = 0){
   Edge edge = {};
@@ -205,13 +210,14 @@ struct StaticId{
    String name;
 };
 
-template<> class std::hash<StaticId>{
-   public:
-   std::size_t operator()(StaticId const& s) const noexcept{
-      std::size_t res = std::hash<String>()(s.name) + (std::size_t) s.parent;
-      return (std::size_t) res;
-   }
-};
+inline u64 Hash(StaticId id){
+  u64 res = Hash(id.name) + Hash(id.parent);
+  return res;
+}
+inline bool operator==(const StaticId& id1,const StaticId& id2){
+   bool res = CompareString(id1.name,id2.name) && id1.parent == id2.parent;
+   return res;
+}
 
 struct StaticData{
   FUDeclaration* decl; // Declaration of unit that contains the origin of the given configs
@@ -312,7 +318,6 @@ struct EdgeIterator{
   bool IsValid();
   void Next();
   Edge Value();
-  //Edge Value();
 };
 
 struct CalculatedOffsets{
@@ -334,6 +339,14 @@ struct SubMappingInfo{
   int subPort;
 };
 
+inline u64 Hash(SubMappingInfo t){
+     u64 res = Hash(t.subDeclaration) +
+               Hash(t.higherName) +
+               Hash(t.isInput) +
+               Hash(t.subPort);
+
+     return res;
+}
 inline bool operator==(const SubMappingInfo& p1,const SubMappingInfo& p2){
   bool res = (p1.subDeclaration == p2.subDeclaration &&
               CompareString(p1.higherName,p2.higherName) &&
@@ -341,18 +354,6 @@ inline bool operator==(const SubMappingInfo& p1,const SubMappingInfo& p2){
               p1.isInput == p2.isInput);
   return res;
 }
-
-template<> class std::hash<SubMappingInfo>{
-public:
-   std::size_t operator()(const SubMappingInfo& t) const noexcept{
-     std::size_t res = std::hash<FUDeclaration*>()(t.subDeclaration) +
-                       std::hash<String>()(t.higherName) +
-                       std::hash<bool>()(t.isInput) +
-                       std::hash<int>()(t.subPort);
-
-     return res;
-   }
-};
 
 typedef TrieMap<SubMappingInfo,PortInstance> SubMap;
 

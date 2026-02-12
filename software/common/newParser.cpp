@@ -158,7 +158,7 @@ void Parser::EnsureTokens(int amount){
 
 void Parser::ReportError(String error){
   if(!errors){
-    errors = PushArenaList<String>(this->arena);
+    errors = PushList<String>(this->arena);
   }
 
   DEBUG_BREAK();
@@ -182,7 +182,7 @@ void Parser::ReportUnexpectedToken(NewToken token,BracketList<NewTokenType> expe
   }
 
   if(!errors){
-    errors = PushArenaList<String>(this->arena);
+    errors = PushList<String>(this->arena);
   }
 
   *errors->PushElem() = EndString(this->arena,builder);

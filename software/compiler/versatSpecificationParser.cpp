@@ -358,13 +358,13 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
   
   {
     TEMP_REGION(temp,nullptr);
-    auto list = PushArenaList<ConfigFunction*>(temp);
+    auto list = PushList<ConfigFunction*>(temp);
     for(auto funcDecl : def.configs){
       *list->PushElem() = InstantiateConfigFunction(env,&funcDecl,res,content,globalPermanent);
     };
     
     if(res->info.infos.size){
-      res->info.infos[0].userFunctions = PushArrayFromList(perm,list);
+      res->info.infos[0].userFunctions = PushArray(perm,list);
     }
   }
   
@@ -439,7 +439,7 @@ Env* StartEnvironment(Arena* freeUse,Arena* freeUse2){
   env->currentScope = -1;
   env->PushScope();
 
-  env->errors = PushArenaList<String>(freeUse2);
+  env->errors = PushList<String>(freeUse2);
   env->table = PushTrieMap<String,FUInstance*>(freeUse2);
 
   return env;
@@ -1250,7 +1250,7 @@ VarDeclaration ParseVarDeclaration(Parser* parser){
 Array<VarDeclaration> ParseModuleInputDeclaration(Parser* parser,Arena* out){
   TEMP_REGION(temp,out);
 
-  auto vars = PushArenaList<VarDeclaration>(temp);
+  auto vars = PushList<VarDeclaration>(temp);
 
   parser->ExpectNext('(');
 
@@ -1271,7 +1271,7 @@ Array<VarDeclaration> ParseModuleInputDeclaration(Parser* parser,Arena* out){
 
   parser->ExpectNext(')');
 
-  Array<VarDeclaration> res = PushArrayFromList(out,vars);
+  Array<VarDeclaration> res = PushArray(out,vars);
   return res;
 }
 
@@ -1356,7 +1356,7 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
   res.typeName = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
 
   NewToken possibleParameters = parser->PeekToken();
-  auto list = PushArenaList<Pair<String,SpecExpression*>>(temp);
+  auto list = PushList<Pair<String,SpecExpression*>>(temp);
   if(possibleParameters.type == '#'){
     parser->NextToken();
     parser->ExpectNext('(');
@@ -1382,7 +1382,7 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
     }
     parser->ExpectNext(')');
 
-    res.parameters = PushArrayFromList(out,list);
+    res.parameters = PushArray(out,list);
   }
 
   VarDeclaration varDecl = ParseVarDeclaration(parser);
@@ -1401,7 +1401,7 @@ VarGroup ParseVarGroup(Parser* parser,Arena* out){
   TEMP_REGION(temp,out);
   
   if(parser->IfNextToken('{')){
-    auto vars = PushArenaList<Var>(temp);
+    auto vars = PushList<Var>(temp);
 
     while(!parser->Done()){
       Var var = ParseVar(parser,out);
@@ -1419,7 +1419,7 @@ VarGroup ParseVarGroup(Parser* parser,Arena* out){
     }
 
     VarGroup res = {};
-    res.vars = PushArrayFromList(out,vars);
+    res.vars = PushArray(out,vars);
     return res;
   } else {
     Var var = ParseVar(parser,out);
@@ -1495,7 +1495,7 @@ SpecExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
     res->type = SpecType_NAME;
 
     if(parser->IfPeekToken('[')){
-      auto accesses = PushArenaList<SpecExpression*>(temp);       
+      auto accesses = PushList<SpecExpression*>(temp);       
       
       while(parser->IfNextToken('[')){
         SpecExpression* insideArray = ParseMathExpression(parser,out);
@@ -1505,7 +1505,7 @@ SpecExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
         parser->ExpectNext(']');
       }
 
-      res->expressions = PushArrayFromList(out,accesses);
+      res->expressions = PushArray(out,accesses);
       res->type = SpecType_ARRAY_ACCESS;
     }
 
@@ -1524,7 +1524,7 @@ SpecExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
     }
 
     if(parser->IfNextToken('(')){
-      auto args = PushArenaList<SpecExpression*>(temp);       
+      auto args = PushList<SpecExpression*>(temp);       
       
       while(!parser->Done()){
         SpecExpression* arg = ParseMathExpression(parser,out);
@@ -1540,7 +1540,7 @@ SpecExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
 
       parser->ExpectNext(')');
       
-      res->expressions = PushArrayFromList(out,args);
+      res->expressions = PushArray(out,args);
       res->type = SpecType_FUNCTION_CALL;
     }
   } else {
@@ -1670,7 +1670,7 @@ SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower){
     res->type = SpecType_VAR;
 
     if(parser->IfPeekToken('[')){
-      auto accesses = PushArenaList<SpecExpression*>(temp);       
+      auto accesses = PushList<SpecExpression*>(temp);       
       
       while(parser->IfNextToken('[')){
         SpecExpression* insideArray = ParseSpecExpression(parser,out);
@@ -1680,7 +1680,7 @@ SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower){
         parser->ExpectNext(']');
       }
 
-      res->expressions = PushArrayFromList(out,accesses);
+      res->expressions = PushArray(out,accesses);
       res->type = SpecType_ARRAY_ACCESS;
     }
 
@@ -1699,7 +1699,7 @@ SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower){
     }
 
     if(parser->IfNextToken('(')){
-      auto args = PushArenaList<SpecExpression*>(temp);       
+      auto args = PushList<SpecExpression*>(temp);       
       
       while(!parser->Done()){
         SpecExpression* arg = ParseSpecExpression(parser,out);
@@ -1715,7 +1715,7 @@ SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower){
 
       parser->ExpectNext(')');
       
-      res->expressions = PushArrayFromList(out,args);
+      res->expressions = PushArray(out,args);
       res->type = SpecType_FUNCTION_CALL;
     }
   } else {
@@ -1848,7 +1848,7 @@ ModuleDef ParseModuleDef(Parser* parser,Arena* out){
     /* outputs = */ parser->ExpectNext(NewTokenType_NUMBER);
   }
   
-  ArenaList<InstanceDeclaration>* decls = PushArenaList<InstanceDeclaration>(temp);
+  ArenaList<InstanceDeclaration>* decls = PushList<InstanceDeclaration>(temp);
   parser->ExpectNext('{');
   
   while(!parser->Done()){
@@ -1866,9 +1866,9 @@ ModuleDef ParseModuleDef(Parser* parser,Arena* out){
     InstanceDeclaration decl = ParseInstanceDeclaration(parser,out);
     *decls->PushElem() = decl;
   }
-  Array<InstanceDeclaration> declarations = PushArrayFromList(out,decls);
+  Array<InstanceDeclaration> declarations = PushArray(out,decls);
 
-  ArenaList<ConnectionDef>* cons = PushArenaList<ConnectionDef>(temp);
+  ArenaList<ConnectionDef>* cons = PushList<ConnectionDef>(temp);
   if(parser->IfNextToken('#')){
     while(!parser->Done()){
       NewToken peek = parser->PeekToken();
@@ -1888,7 +1888,7 @@ ModuleDef ParseModuleDef(Parser* parser,Arena* out){
     }
   }
 
-  auto configFunctions = PushArenaList<ConfigFunctionDef>(temp);
+  auto configFunctions = PushList<ConfigFunctionDef>(temp);
 
   // nocheckin
   if(parser->IfNextToken(NewTokenType_DOUBLE_HASHTAG)){
@@ -1915,8 +1915,8 @@ ModuleDef ParseModuleDef(Parser* parser,Arena* out){
   def.name = name;
   def.inputs = vars;
   def.declarations = declarations;
-  def.connections = PushArrayFromList(out,cons);
-  def.configs = PushArrayFromList(out,configFunctions);
+  def.connections = PushArray(out,cons);
+  def.configs = PushArray(out,configFunctions);
   
   return def;
 }
@@ -1957,7 +1957,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
 
   Array<Token> mergeModifiers = {};
   if(parser->IfNextToken('(')){
-    auto tokenList = PushArenaList<Token>(temp);
+    auto tokenList = PushList<Token>(temp);
     
     while(!parser->Done()){
       NewToken peek = parser->PeekToken();
@@ -1971,7 +1971,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
       parser->IfNextToken(',');
     }
 
-    mergeModifiers = PushArrayFromList(out,tokenList);
+    mergeModifiers = PushArray(out,tokenList);
     
     parser->ExpectNext(')');
   }
@@ -1980,7 +1980,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
   
   parser->ExpectNext('=');
 
-  ArenaList<TypeAndInstance>* declarationList = PushArenaList<TypeAndInstance>(temp);
+  ArenaList<TypeAndInstance>* declarationList = PushList<TypeAndInstance>(temp);
   while(!parser->Done()){
     TypeAndInstance typeInst = ParseTypeAndInstance(parser);
 
@@ -1997,11 +1997,11 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
       break;
     }
   }
-  Array<TypeAndInstance> declarations = PushArrayFromList(out,declarationList);
+  Array<TypeAndInstance> declarations = PushArray(out,declarationList);
 
   Array<SpecNode> specNodes = {};
   if(parser->IfNextToken('{')){
-    ArenaList<SpecNode>* specList = PushArenaList<SpecNode>(temp);
+    ArenaList<SpecNode>* specList = PushList<SpecNode>(temp);
     while(!parser->Done()){
       NewToken peek = parser->PeekToken();
       if(peek.type == '}'){
@@ -2015,7 +2015,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
 
       *specList->PushElem() = {leftSide,rightSide};
     }
-    specNodes = PushArrayFromList(out,specList);
+    specNodes = PushArray(out,specList);
 
     parser->ExpectNext('}');
   }
@@ -2118,7 +2118,7 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
   FREE_ARENA(parseArena);
   Parser* parser = StartParsing(content,TokenizeFunction,parseArena,ParsingOptions_DEFAULT);
 
-  ArenaList<ConstructDef>* typeList = PushArenaList<ConstructDef>(temp);
+  ArenaList<ConstructDef>* typeList = PushList<ConstructDef>(temp);
 
   while(!parser->Done()){
     NewToken tok = parser->PeekToken();
@@ -2145,7 +2145,7 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
     exit(-1);
   }
 
-  Array<ConstructDef> defs = PushArrayFromList(out,typeList);
+  Array<ConstructDef> defs = PushArray(out,typeList);
 
   return defs;
 }
@@ -2205,7 +2205,7 @@ static ConfigStatement* ParseConfigStatement(Parser* parser,Arena* out){
 
     parser->ExpectNext('{');
 
-    auto list = PushArenaList<ConfigStatement*>(temp);
+    auto list = PushList<ConfigStatement*>(temp);
     while(!parser->Done()){
       ConfigStatement* child = ParseConfigStatement(parser,out);
       *list->PushElem() = child;
@@ -2220,7 +2220,7 @@ static ConfigStatement* ParseConfigStatement(Parser* parser,Arena* out){
     stmt->def2.loopVariable = C(loopVariable);
     stmt->def2.startSym = start;
     stmt->def2.endSym = end;
-    stmt->childs = PushArrayFromList(out,list);
+    stmt->childs = PushArray(out,list);
     stmt->type = ConfigStatementType_FOR_LOOP;
   } else if(parser->IfPeekToken(NewTokenType_IDENTIFIER)) {
     stmt->lhs = ParseConfigIdentifier(parser,out);
@@ -2313,7 +2313,7 @@ ConfigFunctionDef* ParseConfigFunction(Parser* parser,Arena* out){
 
   parser->ExpectNext('{');
 
-  auto stmts = PushArenaList<ConfigStatement*>(temp);
+  auto stmts = PushList<ConfigStatement*>(temp);
   while(!parser->Done()){
     NewToken peek = parser->PeekToken();
 
@@ -2331,7 +2331,7 @@ ConfigFunctionDef* ParseConfigFunction(Parser* parser,Arena* out){
   res->type = type;
   res->name = configName;
   res->variables = functionVars;
-  res->statements = PushArrayFromList(out,stmts);
+  res->statements = PushArray(out,stmts);
   res->debug = debug;
 
   return res;
@@ -2366,7 +2366,7 @@ Array<Token> AccumTokens(SpecExpression* top,Arena* out){
     }
   };
 
-  auto list = PushArenaList<Token>(temp);
+  auto list = PushList<Token>(temp);
   AccumTokens(AccumTokens,top,list);
-  return PushArrayFromList(out,list);
+  return PushArray(out,list);
 }

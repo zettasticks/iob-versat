@@ -303,7 +303,7 @@ static Array<Pair<String,String>> InstantiateGen(AddressAccess* access,int maxLo
   Array<InternalMemoryAccess> compiled = CompileAccess(access->external,access->dutyDivExpr,temp).internalAccess;
   SymbolicExpression* freeTerm = access->external->freeTerm;
 
-  ArenaList<Pair<String,String>>* list = PushArenaList<Pair<String,String>>(temp);
+  ArenaList<Pair<String,String>>* list = PushList<Pair<String,String>>(temp);
   String start = PushRepr(temp,freeTerm);
 
   *list->PushElem() = {"start",start};
@@ -351,7 +351,7 @@ static Array<Pair<String,String>> InstantiateGen(AddressAccess* access,int maxLo
     exit(-1);
   }
   
-  return PushArrayFromList(out,list);
+  return PushArray(out,list);
 }
 
 Array<Pair<String,String>> InstantiateRead(AddressAccess* access,int highestExternalLoop,bool doubleLoop,int maxLoops,String extVarName,Arena* out){
@@ -385,7 +385,7 @@ Array<Pair<String,String>> InstantiateRead(AddressAccess* access,int highestExte
   }
   
   // TODO: No need for a list, we already know all the memory that we are gonna need
-  ArenaList<Pair<String,String>>* list = PushArenaList<Pair<String,String>>(temp);
+  ArenaList<Pair<String,String>>* list = PushList<Pair<String,String>>(temp);
 
   if(Empty(compiled.dutyDivExpression)){
     *list->PushElem() = {"extra_delay","0"};
@@ -448,7 +448,7 @@ Array<Pair<String,String>> InstantiateRead(AddressAccess* access,int highestExte
     exit(-1);
   }
   
-  return PushArrayFromList(out,list);
+  return PushArray(out,list);
 }
 
 static Array<Pair<String,String>> InstantiateMem(AddressAccess* access,int port,bool input,int maxLoops,Arena* out){
@@ -456,7 +456,7 @@ static Array<Pair<String,String>> InstantiateMem(AddressAccess* access,int port,
   Array<InternalMemoryAccess> compiled = CompileAccess(access->external,access->dutyDivExpr,temp).internalAccess;
   SymbolicExpression* freeTerm = access->external->freeTerm;
 
-  ArenaList<Pair<String,String>>* list = PushArenaList<Pair<String,String>>(temp);
+  ArenaList<Pair<String,String>>* list = PushList<Pair<String,String>>(temp);
   String start = PushRepr(temp,freeTerm);
 
   if(port == 0){
@@ -532,7 +532,7 @@ static Array<Pair<String,String>> InstantiateMem(AddressAccess* access,int port,
     exit(-1);
   }
   
-  return PushArrayFromList(out,list);
+  return PushArray(out,list);
 }
 
 //nocheckin

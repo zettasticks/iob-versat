@@ -74,16 +74,16 @@ GraphPrintingContent GeneratePrintingContent(Accelerator* accel,NodeContent node
 
   Array<Edge> edges = GetAllEdges(accel,temp);
 
-  ArenaList<GraphPrintingNodeInfo>* nodeInfo = PushArenaList<GraphPrintingNodeInfo>(temp);
+  ArenaList<GraphPrintingNodeInfo>* nodeInfo = PushList<GraphPrintingNodeInfo>(temp);
   for(FUInstance* inst : accel->allocated){
     GraphInfo content = nodeFunction(inst,out);
     String name = UniqueInstanceName(inst,out);
 
     *nodeInfo->PushElem() = {.name = name,.content = content.content,.color = content.color};
   }
-  Array<GraphPrintingNodeInfo> nodes = PushArrayFromList(out,nodeInfo);
+  Array<GraphPrintingNodeInfo> nodes = PushArray(out,nodeInfo);
 
-  ArenaList<GraphPrintingEdgeInfo>* edgeInfo = PushArenaList<GraphPrintingEdgeInfo>(temp);
+  ArenaList<GraphPrintingEdgeInfo>* edgeInfo = PushList<GraphPrintingEdgeInfo>(temp);
   for(Edge edge : edges){
     GraphInfo content = edgeFunction(&edge,out);
     String first = UniqueInstanceName(edge.out.inst,out);
@@ -96,7 +96,7 @@ GraphPrintingContent GeneratePrintingContent(Accelerator* accel,NodeContent node
       .secondNode = second
     };
   }
-  Array<GraphPrintingEdgeInfo> edgeResult = PushArrayFromList(out,edgeInfo);
+  Array<GraphPrintingEdgeInfo> edgeResult = PushArray(out,edgeInfo);
   
   GraphPrintingContent content = {};
   content.nodes = nodes;
