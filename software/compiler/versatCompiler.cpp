@@ -252,8 +252,6 @@ int main(int argc,char* argv[]){
   printf("Running in debug mode\n");
 #endif
   
-  InitDebug();
-  
   Arena globalPermanentInst = InitArena(Megabyte(128));
   globalPermanent = &globalPermanentInst;
   Arena tempInst = InitArena(Megabyte(128));
@@ -261,6 +259,8 @@ int main(int argc,char* argv[]){
 
   contextArenas[0] = &tempInst;
   contextArenas[1] = &temp2Inst;
+  
+  InitDebug(argv[0]);
 
   for(int i = 0; i < 8; i++){
     singleUseCasesArenas[i] = InitArena(Megabyte(1));

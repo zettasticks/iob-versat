@@ -500,7 +500,7 @@ ConsolidationResult GenerateConsolidationGraph(Accelerator* accel0,Accelerator* 
   }
 #endif
 
-  int upperBound = std::min(accel0Edges.size,accel1Edges.size);
+  int upperBound = MIN(accel0Edges.size,accel1Edges.size);
   Array<BitArray> neighbors = PushArray<BitArray>(out,graph.nodes.size);
   int times = 0;
   for(int i = 0; i < graph.nodes.size; i++){
@@ -1156,7 +1156,7 @@ MergeGraphResultExisting MergeGraphToExisting(Accelerator* existing,Accelerator*
 Array<int> GetPortConnections(FUInstance* node,Arena* out){
   int maxPorts = 0;
   FOREACH_LIST(ConnectionNode*,con,node->allInputs){
-    maxPorts = std::max(maxPorts,con->port);
+    maxPorts = MAX(maxPorts,con->port);
   }
 
   Array<int> res = PushArray<int>(out,maxPorts + 1);

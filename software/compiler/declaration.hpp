@@ -1,14 +1,12 @@
 #pragma once
 
-#include "configurations.hpp"
-#include "addressGen.hpp"
+#include "utils.hpp"
 #include "verilogParsing.hpp"
-#include "versatSpecificationParser.hpp"
+#include "configurations.hpp"
 
 struct FUInstance;
-struct FUDeclaration;
 struct Edge;
-struct InstanceInfo;
+struct SymbolicExpression;
 
 typedef Hashmap<FUInstance*,FUInstance*> InstanceMap;
 typedef Hashmap<Edge,Edge> EdgeMap;

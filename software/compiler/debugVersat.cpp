@@ -1,20 +1,6 @@
 #include "debugVersat.hpp"
-
-#include <cstdio>
-#include <cstdarg>
-#include <set>
-
-#include <algorithm>
-
 #include "declaration.hpp"
-#include "filesystem.hpp"
 #include "globals.hpp"
-#include "memory.hpp"
-#include "utilsCore.hpp"
-
-#include "textualRepresentation.hpp"
-#include "versat.hpp"
-#include "accelerator.hpp"
 
 // Make sure that it matches the value of the corresponding enum
 static String graphPrintingColorTable[] = {
@@ -34,14 +20,6 @@ Color DefaultNodeColor(FUInstance* inst){
   if(inst->declaration == BasicDeclaration::output){
     color = Color_BLACK;
   }
-  
-#if 0
-  if(inst->type == NodeType_SOURCE || inst->type == NodeType_SOURCE_AND_SINK){
-    color = Color_GREEN;
-  } else if(inst->type == NodeType_SINK){
-    color = Color_BLACK;
-  }
-#endif
   
   return color;
 }

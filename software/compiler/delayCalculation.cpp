@@ -195,7 +195,7 @@ SimpleCalculateDelayResult CalculateDelay(AccelInfoIterator top,Arena* out){
       }
 
       int edgeLatency = edgesGlobalLatency[edgeIndex].value;
-      maxInputEdgeLatency = std::max(maxInputEdgeLatency,edgeLatency);
+      maxInputEdgeLatency = MAX(maxInputEdgeLatency,edgeLatency);
       allAny &= edgesGlobalLatency[edgeIndex].isAny;
     }
     
@@ -230,7 +230,7 @@ SimpleCalculateDelayResult CalculateDelay(AccelInfoIterator top,Arena* out){
         continue;
       }
 
-      maxPortIndex = std::max(maxPortIndex,edge.inPort);
+      maxPortIndex = MAX(maxPortIndex,edge.inPort);
     }
 
     if(maxPortIndex == -1){
@@ -276,7 +276,7 @@ SimpleCalculateDelayResult CalculateDelay(AccelInfoIterator top,Arena* out){
       }
 
       int edgeDelay = edgesExtraDelay[edgeIndex].value;
-      minEdgeDelay = std::min(minEdgeDelay,edgeDelay);
+      minEdgeDelay = MIN(minEdgeDelay,edgeDelay);
     }
 
     // Is this even possible?
@@ -309,7 +309,7 @@ SimpleCalculateDelayResult CalculateDelay(AccelInfoIterator top,Arena* out){
       edgesExtraDelay[edgeIndex].value = nodeDelay - edgesExtraDelay[edgeIndex].value;
       
       int edgeDelay = edgesExtraDelay[edgeIndex].value;
-      minEdgeDelay = std::min(minEdgeDelay,edgeDelay);
+      minEdgeDelay = MIN(minEdgeDelay,edgeDelay);
     }
 
     if(minEdgeDelay == 9999){
@@ -353,7 +353,7 @@ SimpleCalculateDelayResult CalculateDelay(AccelInfoIterator top,Arena* out){
       }
 
       int edgeDelay = edgesExtraDelay[edgeIndex].value;
-      minEdgeDelay = std::min(minEdgeDelay,edgeDelay);
+      minEdgeDelay = MIN(minEdgeDelay,edgeDelay);
     }
 
     // Is this even possible?

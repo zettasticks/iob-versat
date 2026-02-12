@@ -836,7 +836,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
         Node* right = baseNodes[baseNodes.size - 1];
       
         Node* n = PushStruct<Node>(temp);
-        n->value = std::max(left->value,right->value) + 1;
+        n->value = MAX(left->value,right->value) + 1;
         n->left = left;
         n->right = right;
         baseNodes[baseNodes.size - 2] = n;
@@ -1127,10 +1127,10 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
       Edge edge = iter.Value();
 
       if(edge.units[0].inst == outputInstance){
-        info->outputs = std::max(info->outputs - 1,edge.units[0].port) + 1;
+        info->outputs = MAX(info->outputs - 1,edge.units[0].port) + 1;
       }
       if(edge.units[1].inst == outputInstance){
-        info->outputs = std::max(info->outputs - 1,edge.units[1].port) + 1;
+        info->outputs = MAX(info->outputs - 1,edge.units[1].port) + 1;
       }
     }
   }
@@ -1195,7 +1195,7 @@ Array<int> ExtractInputDelays(AccelInfoIterator top,Arena* out){
   for(AccelInfoIterator iter = top; iter.IsValid(); iter = iter.Next()){
     InstanceInfo* info = iter.CurrentUnit();
     if(info->specialType == SpecialUnitType_INPUT){
-      maxInputs = std::max(info->special,maxInputs);
+      maxInputs = MAX(info->special,maxInputs);
     }
   }
   if(maxInputs == -1){

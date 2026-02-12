@@ -905,20 +905,6 @@ Array<String> Split(String content,char sep,Arena* out){
   return res;
 }
 
-bool Contains(String str,String toCheck){
-  Tokenizer tok(str,"",{toCheck});
-
-  while(!tok.Done()){
-    Token token = tok.NextToken();
-
-    if(CompareString(token,toCheck)){
-      return true;
-    }
-  }
-
-  return false;
-}
-
 bool StartsWith(String toSearch,String starter){
   if(starter.size > toSearch.size){
     return false;

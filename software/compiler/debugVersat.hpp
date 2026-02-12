@@ -1,6 +1,6 @@
 #pragma once
 
-#include <functional>
+//#include <functional>
 #include <cstdio>
 
 #include "debug.hpp"
@@ -53,8 +53,8 @@ struct GraphInfo{
   Color color;
 };
 
-typedef std::function<GraphInfo(FUInstance*,Arena* out)> NodeContent;
-typedef std::function<GraphInfo(Edge*,Arena* out)> EdgeContent;
+typedef GraphInfo (*NodeContent)(FUInstance*,Arena* out);
+typedef GraphInfo (*EdgeContent)(Edge*,Arena* out);
 
 extern NodeContent defaultNodeContent;
 extern EdgeContent defaultEdgeContent;

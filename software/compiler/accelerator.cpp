@@ -208,13 +208,13 @@ Array<int> ExtractInputDelays(Accelerator* accel,CalculateDelayResult delays,int
   int maxInput = 0;
   for(FUInstance* ptr : accel->allocated){
     if(ptr->declaration == BasicDeclaration::input){
-      maxInput = std::max(maxInput,ptr->portIndex);
+      maxInput = MAX(maxInput,ptr->portIndex);
       inputNodes[ptr->portIndex] = ptr;
       seenOneInput = true;
     }
   }
   if(seenOneInput) maxInput += 1;
-  inputNodes.size = std::max(maxInput,mimimumAmount);
+  inputNodes.size = MAX(maxInput,mimimumAmount);
   
   Array<int> inputDelay = PushArray<int>(out,inputNodes.size);
 
@@ -244,7 +244,7 @@ Array<int> ExtractOutputLatencies(Accelerator* accel,CalculateDelayResult delays
 
   if(outputNode){
     FOREACH_LIST(ConnectionNode*,ptr,outputNode->allInputs){
-      maxOutput = std::max(maxOutput,ptr->port);
+      maxOutput = MAX(maxOutput,ptr->port);
     }
     maxOutput += 1;
   } else {
@@ -396,12 +396,12 @@ DAGOrderNodes CalculateDAGOrder(Accelerator* accel,Arena* out){
 
       int index = orderIndex->GetOrFail(other);
 
-      order = std::max(order,res.order[index]);
+      order = MAX(order,res.order[index]);
     }
 
     orderIndex->Insert(node,i); // Only insert after to detect any potential error.
     res.order[i] = order;
-    res.maxOrder = std::max(res.maxOrder,order);
+    res.maxOrder = MAX(res.maxOrder,order);
   }
 
   return res;
@@ -618,11 +618,11 @@ int ExternalMemoryByteSize(ExternalMemoryInterface* inter){
   switch(inter->type){
   case ExternalMemoryType::ExternalMemoryType_2P:{
     addressBitSize = inter->tp.bitSizeIn;
-    byteOffset = std::min(DataWidthToByteOffset(inter->tp.dataSizeIn),DataWidthToByteOffset(inter->tp.dataSizeOut));
+    byteOffset = MIN(DataWidthToByteOffset(inter->tp.dataSizeIn),DataWidthToByteOffset(inter->tp.dataSizeOut));
   }break;
   case ExternalMemoryType::ExternalMemoryType_DP:{
     addressBitSize = inter->dp[0].bitSize;
-    byteOffset = std::min(DataWidthToByteOffset(inter->dp[0].dataSizeIn),DataWidthToByteOffset(inter->dp[1].dataSizeIn));
+    byteOffset = MIN(DataWidthToByteOffset(inter->dp[0].dataSizeIn),DataWidthToByteOffset(inter->dp[1].dataSizeIn));
   }break;
   }
 
@@ -779,9 +779,9 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
   res.stateAddressBits = log2i(res.nStates);
 
   int memoryMappingAddressBits = res.memoryAddressBits;
-  int stateConfigurationAddressBits = std::max(res.configurationAddressBits,res.stateAddressBits);
+  int stateConfigurationAddressBits = MAX(res.configurationAddressBits,res.stateAddressBits);
 
-  res.memoryConfigDecisionBit = std::max(stateConfigurationAddressBits,memoryMappingAddressBits) + 2;
+  res.memoryConfigDecisionBit = MAX(stateConfigurationAddressBits,memoryMappingAddressBits) + 2;
   
   res.numberConnections = info->numberConnections;
 

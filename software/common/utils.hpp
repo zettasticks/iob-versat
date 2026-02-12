@@ -38,6 +38,17 @@ String ReprMemorySize(size_t val,Arena* out);
 
 String JoinStrings(Array<String> strings,String separator,Arena* out);
 
+static inline bool Contains(String bigger,String smaller){
+  TEMP_REGION(temp,nullptr);
+  
+  String withNull = PushString(temp,bigger);
+  
+  void* ptr = (void*) strstr(withNull.data,StaticFormat("%.*s",UN(smaller)));
+  bool res = (ptr != nullptr);
+  
+  return res;
+}
+
 template<typename Value,typename Error>
 struct Result{
   union{
@@ -192,6 +203,17 @@ T* ListRemoveAll(T* start,Func compareFunction){
    }
 
    return head;
+}
+
+template<typename T>
+Array<T> Reverse(Array<T> arr,Arena* out){
+  Array<T> res = PushArray<T>(out,arr.size);
+  
+  for(u32 i = 0; i < arr.size; i++){
+    res[arr.size - i - 1] = arr[i];
+  }
+
+  return res;
 }
 
 template<typename T>
