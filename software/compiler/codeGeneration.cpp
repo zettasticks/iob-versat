@@ -3702,9 +3702,6 @@ void Output_VerilatorWrapper(String typeName,Array<Wire> allStaticsVerilatorSide
     }
   }
 
-  auto other = StartArray<WireExtra>(temp);
-  auto other2 = StartArray<WireExtra>(temp);
-
 #if 0
   TrieSet<Wire>* uniqueWires = PushTrieSet<Wire>(temp);
   

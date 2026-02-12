@@ -1520,9 +1520,7 @@ T* Pool<T>::Alloc(){
         fullIndex += index * 8 + (7 - i);
         
         T* inst = &view[index * 8 + (7 - i)];
-        memset(inst,0,sizeof(T));
-        
-        //T* inst = new (&view[index * 8 + (7 - i)]) T(); // Needed for anything stl based
+        *inst = {};
 
         return inst;
       }

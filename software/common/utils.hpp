@@ -1,6 +1,7 @@
 #pragma once
 
-// Utilities that depend on memory or on other utilities
+// Utilities that depend on memory stuff
+// Dependency order is utilsCore <- memory <- utils
 
 #include "utilsCore.hpp"
 #include "filesystem.hpp"
