@@ -216,8 +216,8 @@ struct AccelInfo{
   Array<Wire> configWires;
   Array<Wire> stateWires;
 
-  String staticExpr;
-  String delayStart;
+  String staticExpr; // nocheckin: Check this 
+  String delayStart; // nocheckin: Check this. Why string? Why not an actual expression
   
   // TODO: Should be an SymbolicExpression. We probably want everything to be a symbolic expression at this point.
   Opt<int> memMapBits;

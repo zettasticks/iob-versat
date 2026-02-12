@@ -94,7 +94,6 @@ void   Print(AddressAccess* access);
 // Compilation 
 
 // TODO: We probably want to take in an Env* so that we can check stuff and we probably want to move this to the spec parser. No reason for other code to have token and to depend on parser stuff.
-AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef> loops,SymbolicExpression* addr,String content);
 AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> loops,SymbolicExpression* addr,String content);
 
 // ======================================

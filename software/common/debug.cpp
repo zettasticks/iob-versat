@@ -374,21 +374,12 @@ void InitDebug(const char* exeName){
 #else 
 #include "debug.hpp"
 
-#include <cstring>
-#include <cstdarg>
-#include <cstdlib>
-
 #include <sys/wait.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
 #include <execinfo.h>
-#include <dirent.h>
 #include <link.h>
 #include <fcntl.h>
-#include <errno.h>
 
 #include "utils.hpp"
-#include <immintrin.h> // rstsc
 
 // These defines are needed by bfd
 #define PACKAGE 1
@@ -629,10 +620,6 @@ static void InitSymtab(bfd *abfd,Arena* out){
     syms = (asymbol **) PushBytes(out,bytesRequired);
     symcount = bfd_canonicalize_dynamic_symtab (abfd, syms);
   }
-}
-
-static inline unsigned long long CurrentCycle(){
-  return __rdtsc();
 }
 
 void InitDebug(const char* exeName){

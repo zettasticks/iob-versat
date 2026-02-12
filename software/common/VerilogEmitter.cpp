@@ -1,6 +1,4 @@
 #include "VerilogEmitter.hpp"
-#include "symbolic.hpp"
-#include "utilsCore.hpp"
 
 // ============================================================================
 // Verilog module interface manipulation

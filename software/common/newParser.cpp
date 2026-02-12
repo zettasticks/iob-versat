@@ -1,5 +1,4 @@
 #include "newParser.hpp"
-#include "utils.hpp"
 
 static bool IsCharSingleToken(char ch){
   bool res = false;

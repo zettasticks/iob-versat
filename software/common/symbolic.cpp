@@ -896,49 +896,8 @@ static SymbolicExpression* ParseSum(Array<Token> tokens,int& index,Arena* out){
   return res;
 }
 
-
-Array<Token> TokenizeSymbolicExpression(Tokenizer* tok,Arena* out){
-  TEMP_REGION(temp,out);
-
-  auto tokens = PushList<Token>(temp);
-  
-  tmpl = CreateTokenizerTemplate(temp,",+-*/();:[]",{".."});
-  TOKENIZER_REGION(tok,tmpl);
-
-  while(!tok->Done()){
-    Token token = tok->PeekToken();
-    
-    bool save = false;
-    if(IsNum(token[0])){
-      save = true;
-    }
-    else if(IsIdentifier(token)){
-      save = true;
-    }
-    else if(token.size == 1 && Contains("+-*/()",token[0])){
-      save = true;
-    }
-
-    if(save){
-      *tokens->PushElem() = token;
-      tok->AdvancePeek();
-    } else {
-      break;
-    }
-  }
-  
-  Array<Token> res = PushArray(out,tokens);
-
-  return res;
-}
-
 SymbolicExpression* ParseExpression(Array<Token> tokens,int& index,Arena* out){
   return ParseSum(tokens,index,out);
-}
-
-SymbolicExpression* ParseSymbolicExpression(Array<Token> tokens,Arena* out){
-  int index = 0;
-  return ParseExpression(tokens,index,out);
 }
 
 SymbolicExpression* ParseSymbolicExpression(Tokenizer* tok,Arena* out){

@@ -2,6 +2,7 @@
 
 // Utilities that do not depend on anything else from versat (like memory.hpp, it's fine to depend on standard library)
 
+#include <cstdlib>
 #include <cstdio>
 #include <string.h>
 #include <stdint.h>
