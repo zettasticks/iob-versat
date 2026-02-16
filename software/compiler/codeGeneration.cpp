@@ -3542,7 +3542,6 @@ Problem: If we want the address gen to take into account the limitations of spac
     }
 
     if(hasVariableDelay){
-      DEBUG_BREAK();
       for(int i = 0; i <  info.infos.size; i++){
         c->ArrayDeclareBlock("unsigned int",SF("bufferValues_%d",i),true);
 
@@ -3588,19 +3587,19 @@ Problem: If we want the address gen to take into account the limitations of spac
         
       c->EndBlock();
 
+      c->Enum("MergeType");
+      for(int i = 0; i <  names.size; i++){
+        auto name  =  names[i];
+        c->EnumMember(SF("MergeType_%.*s",UN(name)),SF("%d",i));
+      }
+      c->EndEnum();
+
+      c->FunctionBlock("static inline void","ActivateMergedAccelerator");
+      c->Argument("MergeType","type");
+
+      c->Assignment("int asInt","(int) type");
+
       if(muxInfo.size > 0){
-        c->Enum("MergeType");
-        for(int i = 0; i <  names.size; i++){
-          auto name  =  names[i];
-          c->EnumMember(SF("MergeType_%.*s",UN(name)),SF("%d",i));
-        }
-        c->EndEnum();
-
-        c->FunctionBlock("static inline void","ActivateMergedAccelerator");
-        c->Argument("MergeType","type");
-
-        c->Assignment("int asInt","(int) type");
-
         c->SwitchBlock("type");
         for(int i = 0 ; i < names.size; i++){
           c->CaseBlock(SF("MergeType_%.*s",UN(names[i])));
@@ -3611,28 +3610,28 @@ Problem: If we want the address gen to take into account the limitations of spac
           c->EndBlock();
         }
         c->EndBlock();
-        
-        c->RawLine("VersatLoadDelay(delayBuffers[asInt]);");
-
-        if(hasVariableDelay){
-          int index = 0;
-          for(AccelInfoIterator iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
-            InstanceInfo* info = iter.CurrentUnit();
-
-            if(info->specialType != SpecialUnitType_VARIABLE_BUFFER){
-              continue;
-            }
-
-            // Just to make sure. Variable buffers are Versat units so we can just assume that this holds.
-            Assert(info->configs.size == 1);
-
-            String name = GetStaticWireFullName(info,info->configs[0],temp);
-            c->Assignment(name,SF("bufferValues[asInt][%d]",index++));
-          }
-        }
-      
-        c->EndBlock();
       }
+
+      c->RawLine("VersatLoadDelay(delayBuffers[asInt]);");
+
+      if(hasVariableDelay){
+        int index = 0;
+        for(AccelInfoIterator iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
+          InstanceInfo* info = iter.CurrentUnit();
+
+          if(info->specialType != SpecialUnitType_VARIABLE_BUFFER){
+            continue;
+          }
+
+          // Just to make sure. Variable buffers are Versat units so we can just assume that this holds.
+          Assert(info->configs.size == 1);
+
+          String name = GetStaticWireFullName(info,info->configs[0],temp);
+          c->Assignment(name,SF("bufferValues[asInt][%d]",index++));
+        }
+      }
+      
+      c->EndBlock();
     }
       
     String content = PushASTRepr(c,temp);

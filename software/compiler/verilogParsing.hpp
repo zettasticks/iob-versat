@@ -171,6 +171,11 @@ struct PortInfo{
   ExpressionRange range;
 };
 
+enum ModuleSource{
+  ModuleSource_DEFAULT_UNIT,
+  ModuleSource_USER_UNIT
+};
+
 struct ModuleInfo{
   String name;
   Array<ParameterExpression> defaultParameters;
@@ -189,6 +194,7 @@ struct ModuleInfo{
   bool doesIO;
   bool memoryMapped;
   bool isSource;
+  ModuleSource moduleSource;
 };
 
 SymbolicExpression* SymbolicExpressionFromVerilog(Expression* topExpr,Arena* out);

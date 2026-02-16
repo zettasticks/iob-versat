@@ -315,8 +315,10 @@ int main(int argc,char* argv[]){
     printf("\nNeed to specify top unit with -t\n");
     exit(-1);
   }
-  
-  // Register Versat common files. 
+
+  FREE_ARENA(moduleAccum);
+  TrieMap<String,ModuleInfo>* allModules = PushTrieMap<String,ModuleInfo>(moduleAccum);
+
   bool anyError = false;
   for(FileContent file : defaultVerilogUnits){
     String content = file.content;
@@ -326,28 +328,12 @@ int main(int argc,char* argv[]){
     
     for(Module& mod : modules){
       ModuleInfo info = ExtractModuleInfo(mod,perm);
-      Opt<FUDeclaration*> inst = RegisterModuleInfo(&info,perm);
-      anyError |= !inst.has_value();
+      info.moduleSource = ModuleSource_DEFAULT_UNIT;
+
+      allModules->Insert(info.name,info);
     }
   }
 
-  if(anyError){
-    return -1;
-  }
-  
-  // We need to do this after parsing the modules because the majority of these special types come from verilog files
-  // NOTE: This should never fail since the verilog files are embedded into the exe. A fail in here means that we failed to embed the necessary files at build time
-  BasicDeclaration::variableBuffer = GetTypeByNameOrFail("Buffer");
-  BasicDeclaration::fixedBuffer = GetTypeByNameOrFail("FixedBuffer");
-  BasicDeclaration::pipelineRegister = GetTypeByNameOrFail("PipelineRegister");
-  BasicDeclaration::multiplexer = GetTypeByNameOrFail("Mux2");
-  BasicDeclaration::combMultiplexer = GetTypeByNameOrFail("CombMux2");
-  BasicDeclaration::stridedMerge = GetTypeByNameOrFail("StridedMerge");
-  BasicDeclaration::timedMultiplexer = GetTypeByNameOrFail("TimedMux");
-  BasicDeclaration::input = GetTypeByNameOrFail("CircuitInput");
-  BasicDeclaration::output = GetTypeByNameOrFail("CircuitOutput");
-
-  // Collect all user verilog source files.
   bool error = false;
   Array<String> allVerilogFiles = {};
   region(temp){
@@ -379,17 +365,9 @@ int main(int argc,char* argv[]){
 
     allVerilogFiles = PushArray(perm,allVerilogFilesSet);
   }
-
-  if(error){
-    return -1;
-  }
-  
-  // NOTE: We process all the folders and just replace verilogFiles with all the filepaths in here.
   globalOptions.verilogFiles = allVerilogFiles;
-  
-  // Parse verilog files and register all the user supplied units.
-  error = false;
-  for(String filepath : globalOptions.verilogFiles){
+
+  for(String filepath : allVerilogFiles){
     String content = PushFile(temp,filepath);
     
     if(Empty(content)){
@@ -402,24 +380,37 @@ int main(int argc,char* argv[]){
     
     for(Module& mod : modules){
       ModuleInfo info = ExtractModuleInfo(mod,perm);
+      info.moduleSource = ModuleSource_USER_UNIT;
 
-      FUDeclaration* decl = GetTypeByName(info.name);
-      if(decl){
-        once(){
-          fprintf(stderr,"Error, naming conflict that must be resolved by user\n");
-        };
-        fprintf(stderr,"Module '%.*s' already exists\n",UN(info.name));
+      auto res = allModules->GetOrAllocate(info.name);
 
-        error = true;
-        continue;
+      if(!error && res.alreadyExisted){
+        printf("[WARNING] Unit %.*s is a default unit from Versat. Assuming that user wants to override it\n",UN(info.name));
+        printf("Otherwise rename the unit in file: %.*s\n",UN(filepath));
       }
-      
-      RegisterModuleInfo(&info,perm);
+
+      *res.data = info;
     }
   }
   if(error){
     return -1;
   }
+
+  for(Pair<String,ModuleInfo> p : allModules){
+    RegisterModuleInfo(&p.second,perm);
+  }
+  
+  // We need to do this after parsing the modules because the majority of these special types come from verilog files
+  // NOTE: This should never fail since the verilog files are embedded into the exe. A fail in here means that we failed to embed the necessary files at build time
+  BasicDeclaration::variableBuffer = GetTypeByNameOrFail("Buffer");
+  BasicDeclaration::fixedBuffer = GetTypeByNameOrFail("FixedBuffer");
+  BasicDeclaration::pipelineRegister = GetTypeByNameOrFail("PipelineRegister");
+  BasicDeclaration::multiplexer = GetTypeByNameOrFail("Mux2");
+  BasicDeclaration::combMultiplexer = GetTypeByNameOrFail("CombMux2");
+  BasicDeclaration::stridedMerge = GetTypeByNameOrFail("StridedMerge");
+  BasicDeclaration::timedMultiplexer = GetTypeByNameOrFail("TimedMux");
+  BasicDeclaration::input = GetTypeByNameOrFail("CircuitInput");
+  BasicDeclaration::output = GetTypeByNameOrFail("CircuitOutput");
 
   // TODO: The testbench logic is kinda addhoc right now. Need to join together the other logic and them create a proper switch between these two.
   if(globalOptions.opMode == VersatOperationMode_GENERATE_TESTBENCH){

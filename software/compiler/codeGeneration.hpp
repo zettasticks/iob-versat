@@ -6,6 +6,21 @@
 #include "accelerator.hpp"
 #include "declaration.hpp"
 
+/*
+  NOTE: Very important. We do not want to have conditions affect the generated code that interfaces with the user. 
+        We want to generate the same "stuff" regardless of what the value is.
+        Trying to be clever and avoiding generating stuff because the value is not "needed"
+        might cause problems because some symbol might be missing in the generated code 
+        which causes the compiler to give out errors and that is not good.
+        And forcing the user to disable certain sections or changing its code is not good.
+        There is no problem in generating functions that are empty, structs that you know will not be used
+        or enums that you know will not be needed. 
+        Anything that belongs to the user interface must be generated, even if empty.
+
+        For internal usage then it is different. At this point we do want to make sure that we only generate what
+        we actually use in order to avoid compiler warnings, improve compilation speed and such.
+*/
+
 struct Accelerator;
 struct InstanceInfo;
 struct FUDeclaration;

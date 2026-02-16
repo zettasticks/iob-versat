@@ -490,6 +490,8 @@ FUInstance* Env::GetFUInstance(Token name,int arrayIndexIfArray){
   } else {
     Entity* ent = GetEntity(name);
 
+    // TODO: Error reporting if entity does not exist.
+
     String asStr = name;
     if(ent->type == EntityType_FU_ARRAY){
       asStr = GetActualArrayName(asStr,arrayIndexIfArray,temp);
