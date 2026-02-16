@@ -3627,7 +3627,7 @@ Problem: If we want the address gen to take into account the limitations of spac
           Assert(info->configs.size == 1);
 
           String name = GetStaticWireFullName(info,info->configs[0],temp);
-          c->Assignment(name,SF("bufferValues[asInt][%d]",index++));
+          c->Assignment(PushString(temp,"ACCEL_%.*s",UN(name)),SF("bufferValues[asInt][%d]",index++));
         }
       }
       
