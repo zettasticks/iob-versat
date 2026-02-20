@@ -2880,39 +2880,6 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
         PortInstance n1 = mergedEdge.in;
         
         InsertNewUnit(merged,uniqueName,BasicDeclaration::variableBuffer,n0,n1,0,true);
-
-#if 0        
-        // TODO: We are inserting the units on both the merged and the recon graphs but we are not adding them to the mappings. This works because the units that are inserted will never appear in the future of this "delay fixing algorithm". But nevertheless this is poor code and will bite us in the future. Eventually fix this.
-
-        // Add to merged graph
-        {
-          PortInstance n0 = mergedEdge.out;
-          PortInstance n1 = mergedEdge.in;
-
-          FUInstance* buffer = CreateFUInstance(mergedGraph,BasicDeclaration::buffer,uniqueName);
-          SetStatic(buffer);
-          
-          InsertUnit(mergedGraph,n0,n1,MakePortOut(buffer,0),MakePortIn(buffer,0));
-        }
-        
-        // Add to recon
-        for(int i = 0; i < size; i++){
-          Opt<Edge> edge = MapMergedEdgeToRecon(merged,mergedEdge,i);
-
-          if(!edge.has_value()){
-            continue;
-          }
-
-          Edge reconEdge = edge.value();
-          Accelerator* recon = merged->recons[i];
-          FUInstance* buffer = CreateFUInstance(recon,BasicDeclaration::buffer,uniqueName);
-          SetStatic(buffer);
-          
-          // NOTE: We are inserting the unit, but where are we inserting the mapping on the recons?
-
-          InsertUnit(recon,reconEdge.units[0],reconEdge.units[1],MakePortOut(buffer,0),MakePortIn(buffer,0));
-        }
-#endif
       }
     }
 
@@ -3008,7 +2975,7 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
       }
     }
   }
-  
+
   for(int i = 0; i < size; i++){
     decl->info.infos[i].baseType = types[i];
 

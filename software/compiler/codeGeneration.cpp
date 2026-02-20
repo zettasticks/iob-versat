@@ -78,7 +78,7 @@ Array<Array<MuxInfo>> CalculateMuxInformation(AccelInfoIterator* iter,Arena* out
     auto builder = StartArray<MuxInfo>(out);
     for(; iter.IsValid(); iter = iter.Step()){
       InstanceInfo* info = iter.CurrentUnit();
-      if(info->isMergeMultiplexer){
+      if(info->isMergeMultiplexer && !info->doesNotBelong){
         int muxGroup = info->muxGroup;
         if(!alreadySet[muxGroup]){
           builder[muxGroup].configIndex = info->globalConfigPos.value();
