@@ -277,6 +277,8 @@ int main(int argc,char* argv[]){
   InitializeUserConfigs();
   InitParser(perm);
   
+  //TestSymbolic();
+
   argp argp = { options, parse_opt, "SpecFile\n-T UnitName", "Dataflow to accelerator compiler. Check tutorial in https://github.com/IObundle/iob-versat to learn how to write a specification file"};
 
   OptionsGather gather = {};
@@ -763,14 +765,8 @@ int main(int argc,char* argv[]){
 
 /*
 
-GRAPH WEIRDNESS.
-
-I think I found the problem that we keep getting with the graphs that make them more difficult to use than normal.
-It is the same problem that we are having with the parser.
-
-We should have a GraphBuilder Environment (or maybe using the spec environment) so that everytime we end up in an Assert situation we just Report error.
-
-Now if I remember, the major problem that we actually have is than in situations like Merge and so on we are building a graph and also need to access it in order to compute stuff related to delays and such (which can cause more units to be added like buffers and so on).
+We should move graph stuff to a separate file (or keep it in accelerator.hpp and make it the proper place for it).
+Remove the dynamic arena and just share memory between the nodes.
 
 */
 

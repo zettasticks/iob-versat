@@ -138,7 +138,6 @@ SymbolicExpression* SymbolicFunc(String functionName,Array<SymbolicExpression*> 
 // Parsing
 
 // nocheckin: Either remove it or move it to new parser.
-SymbolicExpression* ParseSymbolicExpression(Tokenizer* tok,Arena* out);
 SymbolicExpression* ParseSymbolicExpression(String content,Arena* out);
 
 // ======================================

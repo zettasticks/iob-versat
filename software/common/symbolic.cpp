@@ -5,6 +5,8 @@
 #include "utils.hpp"
 #include "utilsCore.hpp"
 
+#include "newParser.hpp"
+
 static TokenizerTemplate* tmpl;
 
 int TypeToBindingStrength(SymbolicExpression* expr){
@@ -370,8 +372,6 @@ int Evaluate(SymbolicExpression* expr,Hashmap<String,int>* values){
 #define EXPECT(TOKENIZER,STR) \
   TOKENIZER->AssertNextToken(STR)
 
-static SymbolicExpression* ParseExpression(Tokenizer* tok,Arena* out);
-
 SymbolicExpression* PushLiteral(Arena* out,int value,bool negate){
   SymbolicExpression* literal = PushStruct<SymbolicExpression>(out);
   literal->type = SymbolicExpressionType_LITERAL;
@@ -554,376 +554,142 @@ SymbolicExpression* SymbolicFunc(String functionName,Array<SymbolicExpression*> 
   
   return res;
 }
-  
-static SymbolicExpression* ParseTerm(Tokenizer* tok,Arena* out){
-  Token token = tok->NextToken();
-  
-  bool negative = false;
-  if(CompareString(token,"-")){
-    negative = true;
-    token = tok->NextToken();
-  }
 
-  if(CompareString(token,"(")){
-    SymbolicExpression* exprInside = ParseExpression(tok,out);
-
-    EXPECT(tok,")");
-
-    exprInside->negative = (exprInside->negative != negative);
-    return exprInside;
-  } else {
-    if(token.size > 0 && IsNum(token[0])){
-      return PushLiteral(out,ParseInt(token),negative);
-    } else {
-      Token peek = tok->PeekToken();
-      if(CompareString(peek,"(")){
-        // Function definition.
-        tok->AdvancePeek();
-
-        TEMP_REGION(temp,out);
-        
-        auto argList = PushList<SymbolicExpression*>(temp);
-        while(!tok->Done()){
-          SymbolicExpression* argument = ParseExpression(tok,out);
-          *argList->PushElem() = argument;
-          
-          if(tok->IfPeekToken(")")){
-            break;
-          }
-
-          tok->IfNextToken(",");
-        }
-        tok->AssertNextToken(")");
-
-        SymbolicExpression* func = PushStruct<SymbolicExpression>(out);
-        func->type = SymbolicExpressionType_FUNC;
-        func->name = PushString(out,token);
-        func->terms = PushArray(out,argList);
-        func->negative = negative;
-
-        return func;
-      } else {
-        SymbolicExpression* variable = PushStruct<SymbolicExpression>(out);
-        variable->type = SymbolicExpressionType_VARIABLE;
-        variable->variable = PushString(out,token);
-        variable->negative = negative;
-        return variable;
-      }
-    }
-  }
-
-  NOT_POSSIBLE();
-}
-
-static SymbolicExpression* ParseDiv(Tokenizer* tok,Arena* out){
-  SymbolicExpression* left = ParseTerm(tok,out);
-
-  SymbolicExpression* current = left;
-  while(!tok->Done()){
-    Token peek = tok->PeekToken();
-
-    char op = '\0';
-    if(CompareString(peek,"/")){
-      op = '/';
-    }
-
-    if(op == '\0'){
-      break;
-    }
-    
-    tok->AdvancePeek();
-      
-    SymbolicExpression* expr = PushStruct<SymbolicExpression>(out);
-
-    expr->type = SymbolicExpressionType_DIV;
-    expr->top = current;
-    expr->bottom = ParseTerm(tok,out);
-
-    current = expr;
-  }
-
-  return current;
-}
-
-static SymbolicExpression* ParseMul(Tokenizer* tok,Arena* out){
+SymbolicExpression* ParseSymbolicExpression(Parser* parser,Arena* out,int bindingPower = -1){
   TEMP_REGION(temp,out);
-  SymbolicExpression* left = ParseDiv(tok,out);
-  
-  ArenaList<SymbolicExpression*>* expressions = PushList<SymbolicExpression*>(temp);
-  *expressions->PushElem() = left;
 
-  while(!tok->Done()){
-    Token peek = tok->PeekToken();
-    
-    char op = '\0';
-    if(CompareString(peek,"*")){
-      op = '*';
-    }
-
-    if(op == '\0'){
-      break;
-    }
-    
-    tok->AdvancePeek();
-    
-    SymbolicExpression* expr = ParseDiv(tok,out);
-    *expressions->PushElem() = expr;
-  }
-
-  if(OnlyOneElement(expressions)){
-    return left;
-  }
-
-  SymbolicExpression* res = PushStruct<SymbolicExpression>(out);
-  res->type = SymbolicExpressionType_MUL;
-  res->terms = PushArray(out,expressions);
-
-  return res;
-}
-
-static SymbolicExpression* ParseSum(Tokenizer* tok,Arena* out){
-  TEMP_REGION(temp,out);
-  SymbolicExpression* left = ParseMul(tok,out);
-
-  ArenaList<SymbolicExpression*>* expressions = PushList<SymbolicExpression*>(temp);
-  *expressions->PushElem() = left;
-
-  while(!tok->Done()){
-    Token peek = tok->PeekToken();
-
-    bool negative = false;
-    char op = '\0';
-    if(CompareString(peek,"+")){
-      op = '+';
-    } else if(CompareString(peek,"-")){
-      negative = true;
-      op = '+';
-    }
-
-    if(op == '\0'){
-      break;
-    }
-    
-    tok->AdvancePeek();
-      
-    SymbolicExpression* expr = ParseMul(tok,out);
-    expr->negative = (expr->negative != negative);
-    *expressions->PushElem() = expr;
-  }
-
-  if(OnlyOneElement(expressions)){
-    return left;
-  }
-  
-  SymbolicExpression* res = PushStruct<SymbolicExpression>(out);
-  res->type = SymbolicExpressionType_SUM;
-  res->terms = PushArray(out,expressions);
-
-  return res;
-}
-  
-static SymbolicExpression* ParseExpression(Tokenizer* tok,Arena* out){
-  return ParseSum(tok,out);
-}
-
-SymbolicExpression* ParseExpression(Array<Token> tokens,int& index,Arena* out);
-
-static SymbolicExpression* ParseTerm(Array<Token> tokens,int& index,Arena* out){
-  Token token = tokens[index++];
-  
+  // Parse unary
   bool negative = false;
-  if(CompareString(token,"-")){
-    negative = true;
-    token = tokens[index++];
+  while(!parser->Done()){
+    if(parser->IfNextToken('-')){
+      negative = !negative;
+      continue;
+    }
+
+    break;
   }
 
-  if(CompareString(token,"(")){
-    SymbolicExpression* exprInside = ParseExpression(tokens,index,out);
-    
-    Assert(tokens[index++] == ")");
+  // Parse atom
+  SymbolicExpression* res = nullptr;
+  
+  NewToken atom = parser->PeekToken();
+  if(atom.type == '('){
+    parser->ExpectNext('(');
 
-    exprInside->negative = (exprInside->negative != negative);
-    return exprInside;
-  } else {
-    if(token.size > 0 && IsNum(token[0])){
-      return PushLiteral(out,ParseInt(token),negative);
-    } 
+    res = ParseSymbolicExpression(parser,out);
 
-    if(index < tokens.size && tokens[index] == "("){
-      // Function definition.
-      index += 1;
+    parser->ExpectNext(')');
+  } else if(atom.type == NewTokenType_NUMBER){
+    NewToken number = parser->ExpectNext(NewTokenType_NUMBER);
+    res = PushLiteral(out,number.number);
+  } else if(atom.type == NewTokenType_IDENTIFIER){
+    parser->NextToken();
 
-      TEMP_REGION(temp,out);
-        
+    if(parser->IfNextToken('(')){
       auto argList = PushList<SymbolicExpression*>(temp);
-      while(index < tokens.size){
-        SymbolicExpression* argument = ParseExpression(tokens,index,out);
+      while(!parser->Done()){
+        SymbolicExpression* argument = ParseSymbolicExpression(parser,out);
         *argList->PushElem() = argument;
           
-        if(tokens[index] == ")"){
+        if(parser->IfPeekToken(')')){
           break;
         }
 
-        if(tokens[index] == ","){
-          index += 1;
-        }
+        parser->IfNextToken(',');
       }
-      Assert(tokens[index++] == ")");
+      parser->ExpectNext(')');
 
       SymbolicExpression* func = PushStruct<SymbolicExpression>(out);
       func->type = SymbolicExpressionType_FUNC;
-      func->name = PushString(out,token);
+      func->name = PushString(out,atom.identifier);
       func->terms = PushArray(out,argList);
-      func->negative = negative;
 
-      return func;
-    } else {
-      SymbolicExpression* variable = PushStruct<SymbolicExpression>(out);
-      variable->type = SymbolicExpressionType_VARIABLE;
-      variable->variable = PushString(out,token);
-      variable->negative = negative;
-      return variable;
+      res = func;
+    } 
+
+    if(!res){
+      res = PushVariable(out,atom.identifier);
     }
+  } else {
+    // TODO: Better error reporting
+    parser->ReportUnexpectedToken(atom,{});
   }
 
-  return nullptr;
-}
+  res->negative = (res->negative != negative);
 
-static SymbolicExpression* ParseDiv(Array<Token> tokens,int& index,Arena* out){
-  SymbolicExpression* left = ParseTerm(tokens,index,out);
+  struct OpInfo{
+    NewTokenType type;
+    int bindingPower;
+  };
 
-  SymbolicExpression* current = left;
-  while(index < tokens.size){
-    Token peek = tokens[index];
+  // TODO: This should be outside the function itself. No point initializing every time.
+  auto infos = PushArray<OpInfo>(temp,4);
 
-    char op = '\0';
-    if(CompareString(peek,"/")){
-      op = '/';
-    }
-
-    if(op == '\0'){
-      break;
-    }
-    
-    index += 1;
-      
-    SymbolicExpression* expr = PushStruct<SymbolicExpression>(out);
-
-    expr->type = SymbolicExpressionType_DIV;
-    expr->top = current;
-    expr->bottom = ParseTerm(tokens,index,out);
-
-    current = expr;
-  }
-
-  return current;
-}
-
-static SymbolicExpression* ParseMul(Array<Token> tokens,int& index,Arena* out){
-  TEMP_REGION(temp,out);
-  SymbolicExpression* left = ParseDiv(tokens,index,out);
+  // TODO: Need to double check binding power and potentially
+  //       implement associativity (how is 'a / b / c / d' supposed to work?)
+  infos[0] = {TOK_TYPE('+'),0};
+  infos[1] = {TOK_TYPE('-'),0};
+  infos[2] = {TOK_TYPE('*'),1};
+  infos[3] = {TOK_TYPE('/'),2};
   
-  ArenaList<SymbolicExpression*>* expressions = PushList<SymbolicExpression*>(temp);
-  *expressions->PushElem() = left;
+  // Parse binary ops.
+  while(!parser->Done()){
+    NewToken peek = parser->PeekToken();
 
-  while(index < tokens.size){
-    Token peek = tokens[index];
-    
-    char op = '\0';
-    if(CompareString(peek,"*")){
-      op = '*';
+    bool continueOuter = false;
+    for(OpInfo info : infos){
+      if(peek.type == info.type){
+        if(info.bindingPower > bindingPower){
+          parser->NextToken();
+
+          SymbolicExpression* right = ParseSymbolicExpression(parser,out,info.bindingPower);
+
+          if(info.type == '+'){
+            res = SymbolicAdd(res,right,out);
+          } else if(info.type == '-'){
+            res = SymbolicSub(res,right,out);
+          } else if(info.type == '*'){
+            res = SymbolicMult(res,right,out);
+          } else if(info.type == '/'){
+            res = SymbolicDiv(res,right,out);
+          } else {
+            Assert(false);
+          }
+
+          continueOuter = true;
+          break;
+        }
+      }
     }
 
-    if(op == '\0'){
-      break;
+    if(continueOuter){
+      continue;
     }
-    
-    index += 1;
-    
-    SymbolicExpression* expr = ParseDiv(tokens,index,out);
-    *expressions->PushElem() = expr;
+
+    break;
   }
-
-  if(OnlyOneElement(expressions)){
-    return left;
-  }
-
-  SymbolicExpression* res = PushStruct<SymbolicExpression>(out);
-  res->type = SymbolicExpressionType_MUL;
-  res->terms = PushArray(out,expressions);
-
+ 
   return res;
 }
-
-static SymbolicExpression* ParseSum(Array<Token> tokens,int& index,Arena* out){
-  TEMP_REGION(temp,out);
-  SymbolicExpression* left = ParseMul(tokens,index,out);
-
-  ArenaList<SymbolicExpression*>* expressions = PushList<SymbolicExpression*>(temp);
-  *expressions->PushElem() = left;
-
-  while(index < tokens.size){
-    Token peek = tokens[index];
-
-    bool negative = false;
-    char op = '\0';
-    if(CompareString(peek,"+")){
-      op = '+';
-    } else if(CompareString(peek,"-")){
-      negative = true;
-      op = '+';
-    }
-
-    if(op == '\0'){
-      break;
-    }
-
-    index += 1;
-      
-    SymbolicExpression* expr = ParseMul(tokens,index,out);
-    expr->negative = (expr->negative != negative);
-    *expressions->PushElem() = expr;
-  }
-
-  if(OnlyOneElement(expressions)){
-    return left;
-  }
-  
-  SymbolicExpression* res = PushStruct<SymbolicExpression>(out);
-  res->type = SymbolicExpressionType_SUM;
-  res->terms = PushArray(out,expressions);
-
-  return res;
-}
-
-SymbolicExpression* ParseExpression(Array<Token> tokens,int& index,Arena* out){
-  return ParseSum(tokens,index,out);
-}
-
-SymbolicExpression* ParseSymbolicExpression(Tokenizer* tok,Arena* out){
-  // TODO: We need to find a way of solving the problem of creating a tokenizer template once and be done with it.
-  //       We probably want to move this somewhat to the META data, no point in doing this at runtime.
-  TEMP_REGION(temp,out);
-  tmpl = CreateTokenizerTemplate(temp,",+-*/();[]",{".."});
-  
-  TOKENIZER_REGION(tok,tmpl);
-
-  SymbolicExpression* expr = ParseExpression(tok,out);
-
-  return expr;
-}
-
-SymbolicExpression* ParseSymbolicExpressionTest(String content,Arena* out);
 
 SymbolicExpression* ParseSymbolicExpression(String content,Arena* out){
-  TEMP_REGION(temp,out);
-  
-  Tokenizer tok(content,"",{});
-  
-  // nocheckin
-  ParseSymbolicExpressionTest(content,temp);
+  FREE_ARENA(parseArena);
 
-  return ParseSymbolicExpression(&tok,out);
+  auto tokenizer = [](const char* start,const char* end) -> TokenizeResult {
+    TokenizeResult result = ParseWhitespace(start,end);
+    result |= ParseComments(start,end);
+    result |= ParseSymbols(start,end);
+    result |= ParseNumber(start,end);
+    result |= ParseIdentifier(start,end);
+    return result;
+  };
+  
+  Parser* parser = StartParsing(content,tokenizer,parseArena);
+  SymbolicExpression* expr = ParseSymbolicExpression(parser,out);
+
+  Assert(expr);
+
+  return expr;
 }
 
 Array<SymbolicExpression*> GetAllExpressions(SymbolicExpression* top,Arena* out){
@@ -2291,6 +2057,20 @@ SymbolicExpression* Normalize(SymbolicExpression* expr,Arena* out,bool debugPrin
     if(debugPrint) {Print(current); printf("\n");}
     if(debugPrintAST) PrintAST(current);
 
+    next = RemoveParenthesis(current,out);
+    CheckIfSymbolicExpressionsShareNodes(current,next);
+    current = next;
+    if(debugPrint) printf("Remove paran:\n");
+    if(debugPrint) {Print(current); printf("\n");}
+    if(debugPrintAST) PrintAST(current);
+
+    next = RemoveParenthesis(current,out);
+    CheckIfSymbolicExpressionsShareNodes(current,next);
+    current = next;
+    if(debugPrint) printf("Remove paran:\n");
+    if(debugPrint) {Print(current); printf("\n");}
+    if(debugPrintAST) PrintAST(current);
+
     next = ApplySimilarTermsAddition(current,out);
     CheckIfSymbolicExpressionsShareNodes(current,next);
     current = next;
@@ -2337,12 +2117,13 @@ void TestSymbolic(){
   TEMP_REGION(temp,nullptr);
 
   TestCase cases[] = {
+    {"ALIGN(1,2)","ALIGN(1,2)"},
     {"a+b+c+d","a+b+c+d"},
-    {"a-a-b-b-2*c-c","-(2*b-(3*c))"},
+    {"a-a-b-b-2*c-c","-(2*b)-(3*c)"},
     {"a+a+b+b+2*c+c","2*a+2*b+3*c"},
     {"a*b + a * b","2*a*b"},
     {"-a * b - a * b","-(2*a*b)"},
-    {"-((1*x)*(3-1))+1*y","-(2*x+y)"},
+    {"-((1*x)*(3-1))+1*y","-(2*x)+y"},
     {"-a-b-(a-b)-(-a+b)-(-(a-b)-(-a+b)+(a-b) + (-a+b))","-(a)-(b)"},
     {"(a-b)*(a-b)","a*a-(2*a*b)+b*b"},
     {"a*b + a*b + 2*a*b","4*a*b"},
@@ -2351,7 +2132,6 @@ void TestSymbolic(){
     {"(0+2*x)+(2*a-1)*y","2*x+2*a*y-(y)"},
     {"-6*(4-1)+5","-13"},
     {"-(1*(x-1))+0","-(x)+1"},
-    {"ALIGN(1,2)","ALIGN(1,2)"},
     {"1/x * y","y/x"},
     {"x/x","1"},
     {"(x*y)/x","y"},
@@ -2376,6 +2156,8 @@ void TestSymbolic(){
       Print(sym);
       printf("\nEnd  :");
       Print(normalized);
+
+      //return;
 
 #if 1
       printf("\nExpec:%.*s\n",UN(c.expectedNormalized));
@@ -2711,38 +2493,3 @@ static SymbolicExpression  SYM_INST_dataStrobeW = {.type = SymbolicExpressionTyp
 
 SymbolicExpression* SYM_axiStrobeW = &SYM_INST_axiStrobeW;
 SymbolicExpression* SYM_dataStrobeW = &SYM_INST_dataStrobeW;
-
-
-
-
-#include "newParser.hpp"
-
-SymbolicExpression* ParseSymbolicExpressionTest(String content,Arena* out){
-  return nullptr;
-#if 0
-  TEMP_REGION(temp,out);
-
-  FREE_ARENA(parseArena);
-
-  auto tokenizer = [](const char* start,const char* end) -> TokenizeResult {
-    TokenizeResult result = ParseWhitespace(start,end);
-    result |= ParseSymbols(start,end);
-    result |= ParseNumber(start,end);
-    result |= ParseIdentifier(start,end);
-    return result;
-  };
-  
-  Parser* parser = StartParsing(content,tokenizer,parseArena);
-
-  DEBUG_BREAK();
-  
-  while(!parser->Done()){
-    NewToken tok = parser->NextToken();
-
-    String repr = PushRepr(temp,tok);
-    printf("%.*s\n",UN(repr));
-  }
-
-  return nullptr;
-#endif
-}
