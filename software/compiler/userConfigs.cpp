@@ -336,139 +336,135 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       ConfigStatement* simple = stmts[stmts.size - 1];
       // TODO: Call entity function to make sure that the entity exists and it is a config wire
 
-      Token name = {};
-      Assert(simple->type == ConfigStatementType_STATEMENT);
-      name = GetBase(simple->lhs)->name;
-      
-      FULL_SWITCH(stmt->type){
-      // NOTE: This will always produce an address gen
-      case ConfigStatementType_FOR_LOOP:{
-        auto forLoops = PushList<AddressGenForDef2>(temp);
+      Token name = GetBase(simple->lhs)->name;
 
-        for(int i = 0; i < stmts.size - 1; i++){
-          *forLoops->PushElem() = stmts[i]->def2;
-        }
+      // TODO: If we do not find a statement we can just assume that the loop is empty, right? No need to Assert, we just skip and move on.
+      if(simple->type != ConfigStatementType_STATEMENT){
+        continue;
+      }
 
-        Array<AddressGenForDef2> loops = PushArray(temp,forLoops);
+      auto forLoops = PushList<AddressGenForDef2>(temp);
 
-        Entity* ent = env->GetEntity(simple->lhs,temp);
-        
-        String name = GetBase(simple->lhs)->name;
+      for(int i = 0; i < stmts.size - 1; i++){
+        *forLoops->PushElem() = stmts[i]->def2;
+      }
 
-        Entity* portEnt = nullptr;
-        if(ent->type == EntityType_MEM_PORT){
-          portEnt = ent;
-          ent = ent->parent;
-        }
-        
-        ParseResult parsedRhs = ParseRHS(env,simple->trueRhs,temp);
+      Array<AddressGenForDef2> loops = PushArray(temp,forLoops);
 
-        AddressAccess* access = nullptr;
+      Entity* ent = env->GetEntity(simple->lhs,temp);
 
-        if(parsedRhs.isExpr || parsedRhs.isArray){
-          access = CompileAddressGen(variableNames,loops,parsedRhs.expr,content);
-        }
-        AddressGenInst supported = ent->instance->declaration->supportedAddressGen;
+      Entity* portEnt = nullptr;
+      if(ent->type == EntityType_MEM_PORT){
+        portEnt = ent;
+        ent = ent->parent;
+      }
 
-        // TODO: This logic is stupid. Rework into something better when we finalize the addressGen change.
-        if(supported.type == AddressGenType_GEN){
-          ConfigStuff* newAssign = list->PushElem();
+      Entity* wirePort = nullptr;
+      if(ent->type == EntityType_CONFIG_WIRE){
+        wirePort = ent;
+        ent = ent->parent;
+      }
 
-          newAssign->type = ConfigStuffType_ADDRESS_GEN;
-          newAssign->access.access = access;
-          newAssign->access.inst = supported;
+      ParseResult parsedRhs = ParseRHS(env,simple->trueRhs,temp);
 
-          newAssign->lhs = PushString(out,name);
-        } else if(parsedRhs.isExpr || parsedRhs.isArray){
-          // NOTE: Memories and Generator do not follow the addr[expr]. They just have <instance> = <expr>.
-          ConfigStuff* newAssign = list->PushElem();
+      AddressAccess* access = nullptr;
 
-          newAssign->type = ConfigStuffType_ADDRESS_GEN;
-          newAssign->access.access = access;
-          newAssign->access.inst = supported;
+      if(parsedRhs.isExpr || parsedRhs.isArray){
+        access = CompileAddressGen(variableNames,loops,parsedRhs.expr,content);
+      }
+      AddressGenInst supported = ent->instance->declaration->supportedAddressGen;
 
-          if(portEnt){
-            newAssign->access.dir = portEnt->dir;
-            newAssign->access.port = portEnt->port;
-          }
-
-          newAssign->accessVariableName = PushString(out,parsedRhs.entityName);
-          newAssign->lhs = PushString(out,name);
-        } else {
-          ConfigStuff* newAssign = list->PushElem();
-
-          newAssign->type = ConfigStuffType_ADDRESS_GEN;
-          newAssign->access.access = access;
-          newAssign->access.inst = supported;
-          newAssign->accessVariableName = PushString(out,parsedRhs.entityName);
-          newAssign->lhs = PushString(out,name);
-        }
-      } break;
-      case ConfigStatementType_STATEMENT:{
-        ParseResult parsedRhs = ParseRHS(env,stmt->trueRhs,temp);
-
-        if(parsedRhs.isFunctionInvoc){
-          Token functionName = parsedRhs.functionName;
+      // TODO: This logic is stupid. Rework into something better when we finalize the addressGen change.
+      if(parsedRhs.isFunctionInvoc){
+        Token functionName = parsedRhs.functionName;
           
-          Array<SpecExpression*> args = parsedRhs.args;
+        Array<SpecExpression*> args = parsedRhs.args;
 
-          //FunctionInvocation* functionInvoc = stmt->func;
+        //FunctionInvocation* functionInvoc = stmt->func;
 
-          ConfigFunction* function = nameToFunction->Get(functionName);
-          if(!function){
-            // TODO: Error
-            printf("Error 2, function does not exist, make sure the name is correct\n");
-            exit(-1);
-            return nullptr;
-          }
+        ConfigFunction* function = nameToFunction->Get(functionName);
+        if(!function){
+          // TODO: Error
+          printf("Error 2, function does not exist, make sure the name is correct\n");
+          exit(-1);
+          return nullptr;
+        }
 
-          if(args.size != function->variables.size){
-            printf("Error 2.1, number of arguments does not match\n");
-            exit(-1);
-            return nullptr;
-          }
+        if(args.size != function->variables.size){
+          printf("Error 2.1, number of arguments does not match\n");
+          exit(-1);
+          return nullptr;
+        }
       
-          // Invocation var to function argument
-          Hashmap<String,SymbolicExpression*>* argToVar = PushHashmap<String,SymbolicExpression*>(temp,args.size);
-          for(int i = 0; i <  args.size; i++){
-            ConfigVariable arg = function->variables[i];
+        // Invocation var to function argument
+        Hashmap<String,SymbolicExpression*>* argToVar = PushHashmap<String,SymbolicExpression*>(temp,args.size);
+        for(int i = 0; i <  args.size; i++){
+          ConfigVariable arg = function->variables[i];
 
-            //SymbolicExpression* var = PushVariable(temp,functionInvoc->arguments[i]);
+          //SymbolicExpression* var = PushVariable(temp,functionInvoc->arguments[i]);
             
-            SymbolicExpression* var = SymbolicFromSpecExpression(args[i],temp);
-            argToVar->Insert(arg.name,var);
-          }
+          SymbolicExpression* var = SymbolicFromSpecExpression(args[i],temp);
+          argToVar->Insert(arg.name,var);
+        }
 
-          String name = GetBase(simple->lhs)->name;
+        String name = GetBase(simple->lhs)->name;
       
-          for(ConfigStuff assign : function->stuff){
-            // TODO: We are building the struct access expression in here but I got a feeling that we probably want to preserve data as much as possible in order to tackle merge later on.
-            String lhs = PushString(out,"%.*s.%.*s",UN(name),UN(assign.assign.lhs));
+        for(ConfigStuff assign : function->stuff){
+          // TODO: We are building the struct access expression in here but I got a feeling that we probably want to preserve data as much as possible in order to tackle merge later on.
+          String lhs = PushString(out,"%.*s.%.*s",UN(name),UN(assign.assign.lhs));
         
-            SymbolicExpression* rhs = assign.assign.rhs;
-            SymbolicExpression* newExpr = ReplaceVariables(rhs,argToVar,out);
+          SymbolicExpression* rhs = assign.assign.rhs;
+          SymbolicExpression* newExpr = ReplaceVariables(rhs,argToVar,out);
         
-            ConfigStuff* newAssign = list->PushElem();
-            newAssign->type = ConfigStuffType_ASSIGNMENT;
-            newAssign->assign.lhs = lhs;
-            newAssign->assign.rhs = newExpr;
-          }
+          ConfigStuff* newAssign = list->PushElem();
+          newAssign->type = ConfigStuffType_ASSIGNMENT;
+          newAssign->assign.lhs = lhs;
+          newAssign->assign.rhs = newExpr;
         }
-        if(parsedRhs.isExpr){
-          String name = GetBase(simple->lhs)->name;
+      } else if(wirePort){
+        String name = GetBase(simple->lhs)->name;
           
-          ConfigIdentifier* before = GetBeforeBase(simple->lhs);
-          String wireName = before->name;
+        ConfigIdentifier* before = GetBeforeBase(simple->lhs);
+        String wireName = before->name;
 
-          ConfigStuff* assign = list->PushElem();
-          assign->type = ConfigStuffType_ASSIGNMENT;
-          assign->assign.lhs = PushString(out,"%.*s.%.*s",UN(name),UN(wireName));
-          assign->assign.rhs = SymbolicDeepCopy(parsedRhs.expr,out);
+        ConfigStuff* assign = list->PushElem();
+        assign->type = ConfigStuffType_ASSIGNMENT;
+        assign->assign.lhs = PushString(out,"%.*s.%.*s",UN(name),UN(wireName));
+        assign->assign.rhs = SymbolicDeepCopy(parsedRhs.expr,out);
+      } else if(supported.type == AddressGenType_GEN){
+        ConfigStuff* newAssign = list->PushElem();
+
+        newAssign->type = ConfigStuffType_ADDRESS_GEN;
+        newAssign->access.access = access;
+        newAssign->access.inst = supported;
+
+        newAssign->lhs = PushString(out,name);
+      } else if(parsedRhs.isExpr || parsedRhs.isArray){
+        // NOTE: Memories and Generator do not follow the addr[expr]. They just have <instance> = <expr>.
+        ConfigStuff* newAssign = list->PushElem();
+
+        newAssign->type = ConfigStuffType_ADDRESS_GEN;
+        newAssign->access.access = access;
+        newAssign->access.inst = supported;
+
+        if(portEnt){
+          newAssign->access.dir = portEnt->dir;
+          newAssign->access.port = portEnt->port;
         }
+
+        newAssign->accessVariableName = PushString(out,parsedRhs.entityName);
+        newAssign->lhs = PushString(out,name);
+      } else {
+        ConfigStuff* newAssign = list->PushElem();
+
+        newAssign->type = ConfigStuffType_ADDRESS_GEN;
+        newAssign->access.access = access;
+        newAssign->access.inst = supported;
+        newAssign->accessVariableName = PushString(out,parsedRhs.entityName);
+        newAssign->lhs = PushString(out,name);
       }
     }
-    }
-  }    
+  }
 
   auto newStructs = PushList<String>(temp);
 

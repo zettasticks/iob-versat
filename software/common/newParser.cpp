@@ -43,7 +43,7 @@ String PushRepr(Arena* out,NewTokenType type){
     res = "Number";
   }
 
-  if(type >= NewTokenType_KEYWORD_START && type < NewTokenType_KEYWORD_END){
+  if(type >= NewTokenType_START_OF_KEYWORDS && type < NewTokenType_END_OF_KEYWORDS){
     return "Keyword";
   }
 
@@ -73,7 +73,7 @@ String PushRepr(Arena* out,NewTokenType type){
   return res;
 }
 
-String PushRepr(Arena* out,NewToken token){
+String PARSE_PushDebugRepr(Arena* out,NewToken token){
   String res = {};
 
   if(token.type == NewTokenType_IDENTIFIER){
@@ -128,6 +128,8 @@ void Parser::EnsureTokens(int amount){
     if(this->ptr < this->end){
       TokenizeResult res = this->tokenizer(this->ptr,this->end);
       token = res.token;
+      token.originalData.size = res.bytesParsed;
+
       bytesParsed = res.bytesParsed;
     }
 
@@ -159,8 +161,6 @@ void Parser::ReportError(String error){
   if(!errors){
     errors = PushList<String>(this->arena);
   }
-
-  DEBUG_BREAK();
   
   *errors->PushElem() = PushString(arena,error);
 }
@@ -168,7 +168,7 @@ void Parser::ReportError(String error){
 void Parser::ReportUnexpectedToken(NewToken token,BracketList<NewTokenType> expectedList){
   TEMP_REGION(temp,nullptr);
 
-  String tokenRepr = PushRepr(temp,token);
+  String tokenRepr = PARSE_PushDebugRepr(temp,token);
 
   auto builder = StartString(temp);
   builder->PushString("Unexpected token: %.*s\n",UN(tokenRepr));
@@ -249,7 +249,7 @@ NewToken Parser::ExpectNext(NewTokenType type){
     TEMP_REGION(temp,nullptr);
 
     String typeRepr = PushRepr(temp,type);
-    String repr = PushRepr(temp,tok);
+    String repr = PARSE_PushDebugRepr(temp,tok);
     String error = PushString(temp,"Unexpected token. Expected type: %.*s , Got: %.*s",UN(typeRepr),UN(repr));
     ReportError(error);
   }
@@ -267,7 +267,7 @@ ParserMark Parser::Mark(){
   NewToken tok = PeekToken();
   
   ParserMark res = {};
-  res.ptr = tok.ptr;
+  res.ptr = tok.originalData.data;
   return res;
 }
 
@@ -309,7 +309,7 @@ TokenizeResult ParseWhitespace(const char* start,const char* end){
   TokenizeResult res = {};
 
   const char* ptr = start;
-  res.token.ptr = start;
+  res.token.originalData.data = start;
   
   auto IsWhitespace = [](char ch){
     bool res = (ch == ' ' || 
@@ -341,7 +341,7 @@ TokenizeResult ParseComments(const char* start,const char* end){
   TokenizeResult res = {};
 
   const char* ptr = start;
-  res.token.ptr = start;
+  res.token.originalData.data = start;
 
   if(ptr + 1 >= end){
     return res;
@@ -387,7 +387,7 @@ TokenizeResult ParseSymbols(const char* start,const char* end){
   TokenizeResult res = {};
 
   const char* ptr = start;
-  res.token.ptr = start;
+  res.token.originalData.data = start;
   char ch = *ptr;
 
   // TODO: We are only parsing single character digits and we might want to parse more characters than this one.
@@ -418,7 +418,7 @@ TokenizeResult ParseNumber(const char* start,const char* end){
   TokenizeResult res = {};
 
   const char* ptr = start;
-  res.token.ptr = start;
+  res.token.originalData.data = start;
   
   int number = 0;
   while(ptr < end && (*ptr) >= '0' && (*ptr) <= '9'){
@@ -441,7 +441,7 @@ TokenizeResult ParseIdentifier(const char* start,const char* end){
   TokenizeResult res = {};
 
   const char* ptr = start;
-  res.token.ptr = start;
+  res.token.originalData.data = start;
   char ch = *ptr;
 
   auto isAlpha = [](char ch) -> bool{
@@ -479,7 +479,7 @@ TokenizeResult ParseIdentifier(const char* start,const char* end){
 TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,NewTokenType result){
   TokenizeResult res = {};
 
-  res.token.ptr = start;
+  res.token.originalData.data = start;
 
   if(start + format.size >= end){
     return res;
@@ -497,7 +497,7 @@ TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,
   return res;
 }
 
-bool Parse_IsCKeyword(String str){
+bool PARSE_IsCKeyword(String str){
 
 #define CHR(STR) if(STR == str) return true
 
@@ -541,7 +541,7 @@ bool Parse_IsCKeyword(String str){
    return false;
 }
 
-bool Parse_IsVerilogKeyword(String str){
+bool PARSE_IsVerilogKeyword(String str){
   // TODO: We really need a fast way of checking this using size + character by character branching path.
   //       However this is something that we want to push to the meta function generation. We do not want to actually write this and potentially get it wrong.
   String keywords[] = {"always","and","assign","automatic","begin","buf","bufif0","bufif1","case","casex","casez","cell","cmos","config","deassign","default","defparam","design","disable","edge","else","end","endcase","endconfig","endfunction","endgenerate","endmodule","endprimitive","endspecify","endtable","endtask","event","for","force","forever","fork","function","generate","genvar","highz0","highz1","if","ifnone","incdir","include","initial","inout","input","instance","integer","join","large","liblist","library","localparam","macromodule","medium","module","nand","negedge","nmos","nor","noshowcancelled","not","notif0","notif1","or","output","parameter","pmos","posedge","primitive","pull0","pull1","pulldown","pullup","pulsestyle_onevent","pulsestyle_ondetect","remos","real","realtime","reg","release","repeat","rnmos","rpmos","rtran","rtranif0","rtranif1","scalared","showcancelled","signed","small","specify","specparam","strong0","strong1","supply0","supply1","table","task","time","tran","tranif0","tranif1","tri","tri0","tri1","triand","trior","trireg","unsigned","use","vectored","wait","wand","weak0","weak1","while","wire","wor","xnor","xor"};

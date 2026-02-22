@@ -479,7 +479,7 @@ static Array<Pair<String,String>> InstantiateMem(AddressAccess* access,int port,
     }
   }
   
-  {
+  if(compiled.size > 0){
     InternalMemoryAccess l = compiled[0]; 
 
     if(port == 0){
@@ -494,6 +494,21 @@ static Array<Pair<String,String>> InstantiateMem(AddressAccess* access,int port,
       *list->PushElem() = {"incrB",PushString(out,l.incrementExpression)};
       *list->PushElem() = {"iterB",PushString(out,l.iterationExpression)};
       *list->PushElem() = {"shiftB",PushString(out,l.shiftExpression)};
+    }
+  } else {
+    // NOTE: Assume that the an empty loop is the same as a one iteration loop
+    if(port == 0){
+      *list->PushElem() = {"dutyA","1"};
+      *list->PushElem() = {"perA","1"};
+      *list->PushElem() = {"incrA","1"};
+      *list->PushElem() = {"iterA","0"};
+      *list->PushElem() = {"shiftA","0"};
+    } else {
+      *list->PushElem() = {"dutyB","1"};
+      *list->PushElem() = {"perB","1"};
+      *list->PushElem() = {"incrB","1"};
+      *list->PushElem() = {"iterB","0"};
+      *list->PushElem() = {"shiftB","0"};
     }
   }
     

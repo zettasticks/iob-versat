@@ -34,7 +34,7 @@ enum FUDeclarationType{
 
 struct Parameter{
   String name;
-  SymbolicExpression* valueExpr;
+  SymbolicExpression* defaultVal;
   ParamFlags flags;
 };
 

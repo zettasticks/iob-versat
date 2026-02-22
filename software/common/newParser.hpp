@@ -10,7 +10,7 @@ enum NewTokenType : u16{
   NewTokenType_UNTERMINATED_MULTILNE_COMMENT,
 
   // Single characters are equal to their ASCII value.
-  NewTokenType_CHAR_GROUP_0_START = '!',
+  NewTokenType_CHAR_GROUP_0_START = '!', // Start characters
   NewTokenType_CHAR_GROUP_0_LAST = '/',
   
   NewTokenType_CHAR_GROUP_1_START = ':',
@@ -20,7 +20,7 @@ enum NewTokenType : u16{
   NewTokenType_CHAR_GROUP_2_LAST = '`',
 
   NewTokenType_CHAR_GROUP_3_START = '{',
-  NewTokenType_CHAR_GROUP_3_LAST = '~',
+  NewTokenType_CHAR_GROUP_3_LAST = '~',  // End characters
 
   // Normal types commonly used
   NewTokenType_IDENTIFIER = 128,
@@ -39,7 +39,7 @@ enum NewTokenType : u16{
   NewTokenType_ROTATE_LEFT ,   // ><<
   
   // Keywords
-  NewTokenType_KEYWORD_MODULE,
+  NewTokenType_KEYWORD_MODULE, // Start keywords
   NewTokenType_KEYWORD_MERGE,
   NewTokenType_KEYWORD_SHARE,
   NewTokenType_KEYWORD_STATIC,
@@ -47,7 +47,7 @@ enum NewTokenType : u16{
   NewTokenType_KEYWORD_CONFIG,
   NewTokenType_KEYWORD_STATE,
   NewTokenType_KEYWORD_MEM,
-  NewTokenType_KEYWORD_FOR,
+  NewTokenType_KEYWORD_FOR,    // End keywords
 
   // TODO: While this is something that is kinda cool to have, it
   //       might also be fundamentally wrong.  Because of arrays and
@@ -76,18 +76,15 @@ enum NewTokenType : u16{
   NewTokenType_VERILOG_KEYWORD
 };
 
-#define NewTokenType_CHARACTER_START (NewTokenType_OPEN_PARENTHESIS)
-#define NewTokenType_CHARACTER_END   (NewTokenType_DOUBLE_QUOTE + 1)
-
-#define NewTokenType_KEYWORD_START   (NewTokenType_KEYWORD_MODULE)
-#define NewTokenType_KEYWORD_END     (NewTokenType_KEYWORD_MEM + 1)
+#define NewTokenType_START_OF_KEYWORDS   (NewTokenType_KEYWORD_MODULE)
+#define NewTokenType_END_OF_KEYWORDS     (NewTokenType_KEYWORD_FOR + 1)
 
 #define TOK_TYPE(IN) ((NewTokenType) IN)
 
 struct NewToken{
   NewTokenType type;
 
-  const char* ptr;
+  String originalData;
 
   union{
     String identifier;
@@ -97,7 +94,7 @@ struct NewToken{
   };
 };
 
-String PushRepr(Arena* out,NewToken token);
+String PARSE_PushDebugRepr(Arena* out,NewToken token);
 
 struct TokenizeResult{
   NewToken token;
@@ -176,6 +173,7 @@ struct Parser{
   NewToken ExpectNext(NewTokenType type);
   NewToken ExpectNext(char singleChar);
 
+  // TODO: Hopefully remove this.
   ParserMark Mark();
   String Point(ParserMark mark);
 
@@ -197,6 +195,9 @@ TokenizeResult ParseNumber(const char* start,const char* end);
 TokenizeResult ParseIdentifier(const char* start,const char* end);
 TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,NewTokenType result);
 
-bool Parse_IsCKeyword(String content);
-bool Parse_IsVerilogKeyword(String content);
+// ======================================
+// Check if identifier is a keyword in another language.
+
+bool PARSE_IsCKeyword(String identifier);
+bool PARSE_IsVerilogKeyword(String identifier);
 

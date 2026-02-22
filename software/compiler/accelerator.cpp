@@ -504,7 +504,7 @@ SymbolicExpression* GetParameterValue(FUInstance* inst,String name){
       if(paramVal){
         val = paramVal;
       } else {
-        val = param.valueExpr;
+        val = param.defaultVal;
       }
     }
   }

@@ -69,6 +69,11 @@ struct VarDeclaration{
   bool isArray;
 };
 
+struct ParameterDeclaration{
+  Token name;
+  SpecExpression* defaultValue;
+};
+
 struct PortExpression{
   FUInstance* inst;
   ConnectionExtra extra;
@@ -124,6 +129,7 @@ struct DefBase{
 
 struct ModuleDef : public DefBase{
   Token numberOutputs; // TODO: Not being used. Not sure if we gonna actually add this or not.
+  Array<ParameterDeclaration> params;
   Array<VarDeclaration> inputs;
   Array<InstanceDeclaration> declarations;
   Array<ConnectionDef> connections;
@@ -208,6 +214,7 @@ enum EntityType{
   EntityType_FU,
   EntityType_FU_ARRAY,
   EntityType_NODE,
+  EntityType_PARAM,
   EntityType_MEM_PORT, // User can "represent" a memory port by doing something like mem.in0 (input port 0).
   EntityType_CONFIG_WIRE,
   EntityType_STATE_WIRE,
@@ -241,10 +248,14 @@ struct Entity{
   Wire* wire;
 
   ConfigFunction* func;
-  String varName;
 
   int arraySize;
-  String arrayBaseName;
+
+  union {
+    String varName;
+    String arrayBaseName;
+    String paramName;
+  }; 
 
   VariableType varType;
   //};
@@ -309,6 +320,7 @@ struct Env{
   void AddConnection(ConnectionDef def);
   void AddEquality(ConnectionDef def);
 
+  void AddParam(Token name);
   void AddVariable(Token name);
 
   PortExpression InstantiateSpecExpression(SpecExpression* root);
@@ -337,7 +349,7 @@ struct GroupIterator{
 FUInstanceIterator StartIteration(Env* env,Entity* ent);
 
 // TODO
-// nocheckin
+// nocheckin - This needs to be moved to Env 
 SymbolicExpression* SymbolicFromSpecExpression(SpecExpression* spec,Arena* out);
 
 #if 0

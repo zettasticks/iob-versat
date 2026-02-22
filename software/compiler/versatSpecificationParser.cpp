@@ -309,9 +309,11 @@ FUInstance* CreateFUInstanceWithParameters(Accelerator* accel,FUDeclaration* typ
   return inst;
 }
 
-// TODO: Move this function to a better place
+// TODO: Merge this function with the RegisterSubUnit function. There is not purpose to having this be separated.
 FUDeclaration* InstantiateModule(String content,ModuleDef def){
   Arena* perm = globalPermanent;
+  TEMP_REGION(temp,perm);
+
   Accelerator* circuit = CreateAccelerator(def.name,AcceleratorPurpose_MODULE);
 
   FREE_ARENA(envArena);
@@ -353,8 +355,19 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
     
     exit(-1);
   }
+
+  auto paramList = PushList<ParameterDef>(temp);
+  for(ParameterDeclaration param : def.params){
+    env->AddParam(param.name);
+
+    ParameterDef* def = paramList->PushElem();
+    
+    def->name = param.name;
+    def->defaultValue = SymbolicFromSpecExpression(param.defaultValue,perm);
+  }
+  auto params = PushArray(temp,paramList);
   
-  FUDeclaration* res = RegisterSubUnit(circuit,SubUnitOptions_BAREBONES);
+  FUDeclaration* res = RegisterSubUnit(circuit,params,SubUnitOptions_BAREBONES);
   
   {
     TEMP_REGION(temp,nullptr);
@@ -617,7 +630,6 @@ Entity* Env::GetEntity(ConfigIdentifier* id,Arena* out){
             virtualWire->type = EntityType_MEM_PORT;
             virtualWire->dir = dir;
             virtualWire->port = port;
-            virtualWire->parent = ent;
             
             if(nextEnt) ReportError({},"Name collision");
             nextEnt = virtualWire;
@@ -660,7 +672,7 @@ Entity* Env::GetEntity(ConfigIdentifier* id,Arena* out){
 
                 userFunc->func = func;
                 userFunc->type = EntityType_CONFIG_FUNCTION;
-          
+
                 if(nextEnt) ReportError({},"Name collision");
                 nextEnt = userFunc;
               }
@@ -682,6 +694,10 @@ Entity* Env::GetEntity(ConfigIdentifier* id,Arena* out){
         } break;
       }
       } break;
+    }
+
+    if(nextEnt){
+      nextEnt->parent = ent;
     }
 
     ent = nextEnt;
@@ -954,6 +970,19 @@ void Env::AddEquality(ConnectionDef decl){
   table->Insert(inst->name,inst);
 }
 
+void Env::AddParam(Token name){
+  Entity* ent = GetEntity(name);
+
+  if(ent){
+    ReportError(name,"This name is already being used");
+  }
+
+  Entity* entity = PushNewEntity(name);
+
+  entity->type = EntityType_PARAM;
+  entity->paramName = name;
+}
+
 void Env::AddVariable(Token name){
   Entity* ent = GetEntity(name);
 
@@ -1151,7 +1180,7 @@ PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
 // TODO: Just to remove the syntax errors from the compiler
 Token C(NewToken t){
   Token res = {};
-  res.data = t.ptr;
+  res.data = t.originalData.data;
   res.size = t.identifier.size;
   return res;
 }
@@ -1833,6 +1862,19 @@ ConnectionDef ParseConnection(Parser* parser,Arena* out){
 // TODO: nocheckin - remove forward decl
 ConfigFunctionDef* ParseConfigFunction(Parser* parser,Arena* out);
 
+
+ParameterDeclaration ParseParameterDeclaration(Parser* parser,Arena* out){
+  ParameterDeclaration res = {};
+
+  res.name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+  
+  if(parser->IfNextToken('=')){
+    res.defaultValue = ParseMathExpression(parser,out);
+  }
+
+  return res;
+}
+
 // Any returned String points to tokenizer content.
 // As long as tokenizer is valid, strings returned by this function are also valid.
 ModuleDef ParseModuleDef(Parser* parser,Arena* out){
@@ -1841,6 +1883,29 @@ ModuleDef ParseModuleDef(Parser* parser,Arena* out){
   parser->ExpectNext(NewTokenType_KEYWORD_MODULE);
 
   Token name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+
+  Array<ParameterDeclaration> params = {};
+  if(parser->IfNextToken('#')){
+    parser->ExpectNext('(');
+
+    auto paramList = PushList<ParameterDeclaration>(temp);
+    
+    while(!parser->Done()){
+      ParameterDeclaration param = ParseParameterDeclaration(parser,out);
+      *paramList->PushElem() = param;
+    
+      if(parser->IfNextToken(',')){
+        continue;
+      } else {
+        break;
+      }
+    }
+
+    parser->ExpectNext(')');
+
+    params = PushArray(out,paramList);
+  }
+
   Array<VarDeclaration> vars = ParseModuleInputDeclaration(parser,out);
 
   //Token outputs = {};
@@ -1915,6 +1980,7 @@ ModuleDef ParseModuleDef(Parser* parser,Arena* out){
   ModuleDef def ={};
 
   def.name = name;
+  def.params = params;
   def.inputs = vars;
   def.declarations = declarations;
   def.connections = PushArray(out,cons);
@@ -2232,6 +2298,7 @@ static ConfigStatement* ParseConfigStatement(Parser* parser,Arena* out){
     stmt->type = ConfigStatementType_STATEMENT;
   } else {
     parser->ReportUnexpectedToken(parser->NextToken(),{});
+    // TODO: stmt = EmptyStmt (Return something so that code does not have to worry about null statements).
   }
 
   return stmt;

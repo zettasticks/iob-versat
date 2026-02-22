@@ -13,6 +13,7 @@
 #include "textualRepresentation.hpp"
 #include <strings.h>
 #include "symbolic.hpp"
+#include "versatSpecificationParser.hpp"
 
 Array<InstanceInfo>& AccelInfoIterator::GetCurrentMerge(){
   return info->infos[mergeIndex].info;
@@ -387,17 +388,19 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     elem->partitionIndex = 0;
     elem->individualWiresShared = inst->isSpecificConfigShared;
     elem->numberDelays = inst->declaration->NumberDelays();
-    elem->memMapBits = inst->declaration->info.memMapBits;
-
-    elem->configs = CopyArray(inst->declaration->configs,out);
-    elem->states = CopyArray(inst->declaration->states,out);
     elem->singleInterfaces = inst->declaration->singleInterfaces;
-    elem->externalMemory = CopyArray(inst->declaration->externalMemory,out);
     elem->supportedAddressGen = inst->declaration->supportedAddressGen;
 
-    elem->configSize = elem->configs.size;
-    elem->stateSize = elem->states.size;
-    elem->memMapBits = elem->decl->info.memMapBits;
+    // TODO: Remove these since we already store the array
+    elem->configSize = inst->declaration->configs.size;
+    elem->stateSize = inst->declaration->states.size;
+
+    // Can depend on parameters
+    elem->configs = CopyArray(inst->declaration->configs,out);
+    elem->states = CopyArray(inst->declaration->states,out);
+    elem->externalMemory = CopyArray(inst->declaration->externalMemory,out);
+    elem->memMapBits = inst->declaration->info.memMapBits;
+    elem->memMapSym = inst->declaration->info.memMapBitsSym;
 
     if(elem->memMapBits.has_value()){
       elem->memMappedSize = 1 << elem->memMapBits.value();
@@ -418,8 +421,6 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     if(inst->declaration->isOperation){
       elem->specialType = SpecialUnitType_OPERATION;
     }
-
-    // MARK
 
     Hashmap<String,SymbolicExpression*>* paramsMap = GetParametersOfUnit(inst,out);
     Array<ParamAndValue> params = PushArray<ParamAndValue>(out,paramsMap->nodesUsed);
@@ -474,6 +475,82 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
   Function(Function,build,accel,0,partitions,out);
   Array<InstanceInfo> res = EndArray(build);
 
+  // MARK1
+  // nocheckin - Look at this code and the InstantiateParameters functions and reorganize/cleanup this part.
+  //             A lot of "duplicated" code could potentially be removed.
+#if 1
+  // We instantiate parameters in here.
+  AccelInfo info;
+  info.infos = PushArray<MergePartition>(temp,1);
+  info.infos[0].info = res;
+  AccelInfoIterator iter = StartIteration(&info);
+
+  for(; iter.IsValid(); iter = iter.Step()){
+    InstanceInfo* info = iter.CurrentUnit();
+    InstanceInfo* parent = iter.GetParentUnit();
+
+    if(!parent){
+      continue;
+    }
+
+    auto map = PushTrieMap<String,SymbolicExpression*>(temp);
+    for(ParamAndValue p : parent->params){
+      map->Insert(p.name,p.val);
+    }
+
+    for(ParamAndValue& p : info->params){
+      SymbolicExpression* replaced = ReplaceVariables(p.val,map,out);
+
+      p.val = replaced;
+    }
+  }
+#endif
+
+  // NOTE: Parameters are partially instantiated in here. Only units that contain parents 
+  //       have their parameters instantiated. The reason is that for the last step, (the top units)
+  //       the parameters must be instantiated by using their default values before instantiating the lower units.
+
+#if 1
+  // Stuff that depends on parameters is set instantiated here.
+  iter = StartIteration(&info);
+  for(; iter.IsValid(); iter = iter.Step()){
+    InstanceInfo* info = iter.CurrentUnit();
+    InstanceInfo* parent = iter.GetParentUnit();
+
+    if(!parent){
+      continue;
+    }
+
+    auto map = PushTrieMap<String,SymbolicExpression*>(temp);
+    for(ParamAndValue p : info->params){
+      map->Insert(p.name,p.val);
+    }
+
+#if 1
+    for(Wire& w : info->configs){
+      w.sizeExpr = ReplaceVariables(w.sizeExpr,map,out);
+    }
+    for(Wire& w : info->states){
+      w.sizeExpr = ReplaceVariables(w.sizeExpr,map,out);
+    }
+#endif
+
+    if(info->memMapSym){
+      info->memMapSym = ReplaceVariables(info->memMapSym,map,out);
+    }
+
+#if 0
+    elem->externalMemory = CopyArray(inst->declaration->externalMemory,out);
+    elem->memMapBits = inst->declaration->info.memMapBits;
+
+    if(elem->memMapBits.has_value()){
+      elem->memMappedSize = 1 << elem->memMapBits.value();
+    }
+#endif
+  }
+#endif
+
+  // Fill in graph info
   for(Pair<FUInstance*,int> p : instanceToIndex){
     InstanceInfo* info = &res[p.second];
     FUInstance* inst = p.first;
@@ -527,6 +604,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     info->outputIsConnected = CopyArray(inst->outputs,out);
   }
 
+  // Fill in dag order.
   if(calculateOrder){
     DAGOrderNodes order = CalculateDAGOrder(accel,temp);
     for(Pair<FUInstance*,int> p : instanceToIndex){
@@ -581,7 +659,6 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
       }
     }
   }
-  
 
   // TODO: Move to a better place
   auto GetSharedIndex = [](int unitSharedIndex,int wireIndex){
@@ -1004,8 +1081,8 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
   SetDelays(SetDelays,initialIter,delays,0,out);
 }
 
-void FillStaticInfo(AccelInfo* info){
-  TEMP_REGION(temp,nullptr);
+void FillStaticInfo(AccelInfo* info,Arena* out){
+  TEMP_REGION(temp,out);
   AccelInfoIterator iter = StartIteration(info);
   for(int i = 0; i < iter.MergeSize(); i++){
     AccelInfoIterator it = iter;
@@ -1067,13 +1144,13 @@ void FillStaticInfo(AccelInfo* info){
     InstanceInfo* info = iter.CurrentUnit();
     if(info->isStatic){
       for(Wire w : info->configs){
-        w.name = GetStaticWireFullName(info,w,globalPermanent);
+        w.name = GetStaticWireFullName(info,w,out);
         uniqueWires->Insert(w);
       }
     }
   }
 
-  info->allStaticWires = PushArray(globalPermanent,uniqueWires);
+  info->allStaticWires = PushArray(out,uniqueWires);
 }
 
 void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel){
@@ -1418,4 +1495,78 @@ String GetStaticFullName(InstanceInfo* info,Arena* out){
 String GetStaticWireFullName(InstanceInfo* info,Wire wire,Arena* out){
   String fullName = PushString(out,"%.*s_%.*s_%.*s",UN(info->parentTypeName),UN(info->name),UN(wire.name));
   return fullName;
+}
+
+void InstantiateParameters(AccelInfo* info,Arena* out){
+  TEMP_REGION(temp,out);
+
+  for(int i = 0; i < info->infos.size; i++){
+    // Replace params with default values for the top units.
+    for(auto iter = StartIteration(info,i); iter.IsValid(); iter = iter.Next()){
+      InstanceInfo* info = iter.CurrentUnit();
+      Array<Parameter> params = info->decl->parameters;
+
+      auto map = PushTrieMap<String,SymbolicExpression*>(temp);
+      for(Parameter p : params){
+        map->Insert(p.name,p.defaultVal);
+      }
+
+      for(ParamAndValue& p : info->params){
+        SymbolicExpression* replaced = ReplaceVariables(p.val,map,out);
+
+        p.val = replaced;
+      }
+    }
+
+    // We start by instantiating the default values of the top units.
+    for(auto iter = StartIteration(info,i); iter.IsValid(); iter = iter.Next()){
+      InstanceInfo* info = iter.CurrentUnit();
+      Array<Parameter> params = info->decl->parameters;
+
+      auto map = PushTrieMap<String,SymbolicExpression*>(temp);
+      for(ParamAndValue p : info->params){
+        map->Insert(p.name,p.val);
+      }
+
+      for(Wire& w : info->configs){
+        w.sizeExpr = ReplaceVariables(w.sizeExpr,map,out);
+      }
+      for(Wire& w : info->states){
+        w.sizeExpr = ReplaceVariables(w.sizeExpr,map,out);
+      }
+
+      if(info->memMapSym){
+        info->memMapSym = ReplaceVariables(info->memMapSym,map,out);
+      }
+    }
+
+    // We propagate the values across the rest of the units.
+    // After this step all the units have their global parameter values.
+    for(auto iter = StartIteration(info,i); iter.IsValid(); iter = iter.Step()){
+      InstanceInfo* info = iter.CurrentUnit();
+      InstanceInfo* parent = iter.GetParentUnit();
+
+      if(!parent){
+        continue;
+      }
+
+      auto map = PushTrieMap<String,SymbolicExpression*>(temp);
+      for(ParamAndValue p : parent->params){
+        map->Insert(p.name,p.val);
+      }
+
+#if 1
+      for(Wire& w : info->configs){
+        w.sizeExpr = ReplaceVariables(w.sizeExpr,map,out);
+      }
+      for(Wire& w : info->states){
+        w.sizeExpr = ReplaceVariables(w.sizeExpr,map,out);
+      }
+#endif
+
+      if(info->memMapSym){
+        info->memMapSym = ReplaceVariables(info->memMapSym,map,out);
+      }
+    }    
+  }
 }

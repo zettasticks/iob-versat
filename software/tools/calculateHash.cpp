@@ -16,6 +16,8 @@ inline u64 HashString(String data,u64 hash){
   return hash;
 }
 
+#include "newParser.hpp"
+
 // 0 - exe name
 // 1+ - pair of files to calculate the hash
 int main(int argc,const char* argv[]){
@@ -30,6 +32,23 @@ int main(int argc,const char* argv[]){
   Arena inst2 = InitArena(Megabyte(64));
   contextArenas[1] = &inst2;
   
+  for(int i = 0; i < 8; i++){
+    singleUseCasesArenas[i] = InitArena(Megabyte(1));
+  }
+
+  TEMP_REGION(temp,nullptr);
+
+  FREE_ARENA(parsing);
+  auto TokenizeFunction = [](const char* start,const char* end) -> TokenizeResult{
+    TokenizeResult res = ParseWhitespace(start,end);
+    res |= ParseComments(start,end);
+    res |= ParseSymbols(start,end);
+    res |= ParseNumber(start,end);
+    res |= ParseIdentifier(start,end);
+
+    return res;
+  };
+  
   // djb2
   u64 hash = 5381;
   i32 amountOfTokens = 0;
@@ -39,20 +58,22 @@ int main(int argc,const char* argv[]){
     BLOCK_REGION(arena);
 
     String content = PushFile(arena,filepath);
+    
+    Parser* parser = StartParsing(content,TokenizeFunction,parsing);
 
-    Tokenizer tok(content,"`~!@#$%^&*()_-+=[{]}\\|;:'\",<.>/?",{""});
+    while(!parser->Done()){
+      NewToken token = parser->NextToken();
 
-    while(!tok.Done()){
-      Token token = tok.NextToken();
-
-      for(int i = 0; i < token.size; i++){
-        hash = ((hash << 5) + hash) + token.data[i];
+      String repr = token.originalData;
+      for(int i = 0; i < repr.size; i++){
+        hash = ((hash << 5) + hash) + repr[i];
       }
+
       amountOfTokens += 1;
     }
   }
 
-  printf("%d:%lu\n",amountOfTokens,hash);
+  printf("HASH_RESULT:%d:%lu\n",amountOfTokens,hash);
 
   return 0;
 }

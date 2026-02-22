@@ -1,5 +1,6 @@
 #pragma once
 
+#include "symbolic.hpp"
 #include "utils.hpp"
 #include "memory.hpp"
 
@@ -31,6 +32,11 @@ enum SubUnitOptions{
   SubUnitOptions_FULL
 };
 
+struct ParameterDef{
+  String name;
+  SymbolicExpression* defaultValue;
+};
+
 // Global parameters are verilog parameters that Versat assumes that exist and that it uses through the entire accelerator.
 // Units are not required to implement them but if they do, their values comes from Versat and user cannot change them.
 bool IsGlobalParameter(String name);
@@ -51,7 +57,7 @@ void FillDeclarationWithDelayType(FUDeclaration* decl);
 
 // Declaration functions
 FUDeclaration* RegisterIterativeUnit(Accelerator* accel,FUInstance* inst,int latency,String name);
-FUDeclaration* RegisterSubUnit(Accelerator* circuit,SubUnitOptions options = SubUnitOptions_FULL);
+FUDeclaration* RegisterSubUnit(Accelerator* circuit,Array<ParameterDef> params = {}, SubUnitOptions options = SubUnitOptions_FULL);
 
 // Helper functions, useful to implement custom units
 FUInstance* CreateOrGetInput(Accelerator* accel,String name,int portNumber);

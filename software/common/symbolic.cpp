@@ -546,6 +546,13 @@ SymbolicExpression* SymbolicDiv(SymbolicExpression* top,SymbolicExpression* bott
   return res;
 }
 
+SymbolicExpression* SymbolicSubPlusOne(SymbolicExpression* higher,SymbolicExpression* lower,Arena* out){
+  SymbolicExpression* sub = SymbolicSub(higher,lower,out);
+  SymbolicExpression* add = SymbolicAdd(sub,SYM_one,out);
+
+  return add;
+}
+
 SymbolicExpression* SymbolicFunc(String functionName,Array<SymbolicExpression*> terms,Arena* out){
   SymbolicExpression* res = PushStruct<SymbolicExpression>(out);
   res->type = SymbolicExpressionType_FUNC;
@@ -1839,6 +1846,44 @@ SymbolicExpression* SymbolicReplace(SymbolicExpression* base,String varToReplace
 }
 
 SymbolicExpression* ReplaceVariables(SymbolicExpression* base,Hashmap<String,SymbolicExpression*>* values,Arena* out){
+  switch(base->type){
+  case SymbolicExpressionType_LITERAL:
+    return SymbolicDeepCopy(base,out);
+  case SymbolicExpressionType_VARIABLE: {
+    SymbolicExpression** exists = values->Get(base->variable);
+    
+    if(exists){
+      return SymbolicDeepCopy(*exists,out);
+    } else {
+      return SymbolicDeepCopy(base,out);
+    }
+  } break;
+  case SymbolicExpressionType_FUNC:
+    //WARN_CODE(); // Treating this the same as the sum or mul case.
+  case SymbolicExpressionType_SUM:
+  case SymbolicExpressionType_MUL: {
+    Array<SymbolicExpression*> children = PushArray<SymbolicExpression*>(out,base->terms.size);
+    for(int i = 0; i < children.size; i++){
+      children[i] = ReplaceVariables(base->terms[i],values,out);
+    }
+
+    SymbolicExpression* copy = CopyExpression(base,out);
+    copy->terms = children;
+
+    return copy;
+  }
+  case SymbolicExpressionType_DIV:{
+    SymbolicExpression* res = CopyExpression(base,out);
+    res->top = ReplaceVariables(base->top,values,out);
+    res->bottom = ReplaceVariables(base->bottom,values,out); 
+
+    return res;
+  } break;
+  }
+  NOT_POSSIBLE();
+}
+
+SymbolicExpression* ReplaceVariables(SymbolicExpression* base,TrieMap<String,SymbolicExpression*>* values,Arena* out){
   switch(base->type){
   case SymbolicExpressionType_LITERAL:
     return SymbolicDeepCopy(base,out);

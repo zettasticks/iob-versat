@@ -51,7 +51,7 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
   decl.parameters = PushArray<Parameter>(perm,instantiated.size);
   for(int i = 0; i < instantiated.size; i++){
     decl.parameters[i].name = info->defaultParameters[i].name;
-    decl.parameters[i].valueExpr = SymbolicExpressionFromVerilog(info->defaultParameters[i].expr,perm);
+    decl.parameters[i].defaultVal = SymbolicExpressionFromVerilog(info->defaultParameters[i].expr,perm);
     decl.parameters[i].flags = info->defaultParameters[i].flags;
   }
 
@@ -165,6 +165,11 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
 
   if(info->memoryMapped) {
     decl.info.memMapBits = EvalRange(info->memoryMappedBits,instantiated);
+
+    SymbolicExpression* high = SymbolicExpressionFromVerilog(info->memoryMappedBits.high,out);
+    SymbolicExpression* low = SymbolicExpressionFromVerilog(info->memoryMappedBits.low,out);
+
+    decl.info.memMapBitsSym = SymbolicSubPlusOne(high,low,out);
   }
 
   decl.singleInterfaces = info->singleInterfaces;
@@ -427,7 +432,7 @@ void FillDeclarationWithDelayType(FUDeclaration* decl){
   }
 }
 
-FUDeclaration* RegisterSubUnit(Accelerator* circuit,SubUnitOptions options){
+FUDeclaration* RegisterSubUnit(Accelerator* circuit,Array<ParameterDef> params,SubUnitOptions options){
   DEBUG_PATH("RegisterSubUnit");
   DEBUG_PATH(circuit->name);
 
@@ -454,14 +459,21 @@ FUDeclaration* RegisterSubUnit(Accelerator* circuit,SubUnitOptions options){
 
   // Default parameters given to all modules. Parameters need a proper revision, but need to handle parameters going up in the hierarchy
 
-  res->parameters = PushArray<Parameter>(permanent,6);
+  res->parameters = PushArray<Parameter>(permanent,6 + params.size);
   res->parameters[0] = {"ADDR_W",PushLiteral(permanent,32)};
   res->parameters[1] = {"DATA_W",PushLiteral(permanent,32)};
   res->parameters[2] = {"DELAY_W",PushLiteral(permanent,7)};
   res->parameters[3] = {"AXI_ADDR_W",PushLiteral(permanent,32)};
   res->parameters[4] = {"AXI_DATA_W",PushLiteral(permanent,32)};
   res->parameters[5] = {"LEN_W",PushLiteral(permanent,20)};
-  
+
+  for(int i = 0; i < params.size; i++){
+    ParameterDef def = params[i];
+
+    res->parameters[6 + i].name = def.name;
+    res->parameters[6 + i].defaultVal = def.defaultValue;
+  }
+
   bool containsMerge = false;
 
   for(FUInstance* inst : circuit->allocated){
@@ -794,7 +806,7 @@ Hashmap<String,SymbolicExpression*>* GetParametersOfUnit(FUInstance* inst,Arena*
       if(val){
         map->Insert(param.name,val);
       } else {
-        map->Insert(param.name,param.valueExpr);
+        map->Insert(param.name,param.defaultVal);
       }
     }
   }
@@ -830,7 +842,7 @@ Array<WireInformation> CalculateWireInformation(Pool<FUInstance> nodes,Hashmap<S
       if(IsGlobalParameter(p.name)){
         defaultParams->Insert(p.name,PushVariable(out,p.name));
       } else {
-        defaultParams->Insert(p.name,p.valueExpr);
+        defaultParams->Insert(p.name,p.defaultVal);
       }
     }
     

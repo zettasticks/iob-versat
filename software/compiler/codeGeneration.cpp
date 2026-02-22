@@ -486,7 +486,7 @@ void EmitCombOperations(AccelInfo info,VEmitter* m){
 }
 
 // TODO: We want to merge this with the TopLevelInstanciateUnits. 
-void EmitInstanciateUnits(AccelInfo info,VEmitter* m,FUDeclaration* module,Array<Array<int>> wireIndexByInstanceGood,Array<Wire> configs){
+void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,Array<Array<int>> wireIndexByInstanceGood,Array<Wire> configs){
   TEMP_REGION(temp,m->arena);
   
   int delaySeen = 0;
@@ -496,7 +496,7 @@ void EmitInstanciateUnits(AccelInfo info,VEmitter* m,FUDeclaration* module,Array
   int memoryMappedSeen = 0;
   int externalSeen = 0;
 
-  for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Next()){
+  for(auto iter = StartIteration(&accelInfo); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* info = iter.CurrentUnit();
     int instIndex = iter.GetIndex();
 
@@ -593,6 +593,7 @@ void EmitInstanciateUnits(AccelInfo info,VEmitter* m,FUDeclaration* module,Array
     if(decl->info.memMapBits.has_value()){
       m->PortConnect("valid",SF("memoryMappedEnable[%d]",memoryMappedSeen));
       m->PortConnect("wstrb","wstrb");
+
       if(decl->info.memMapBits.value() > 0){
         m->PortConnect("addr",SF("addr[%d-1:0]",decl->info.memMapBits.value()));
       }
@@ -4886,7 +4887,7 @@ void OutputTestbench(FUDeclaration* decl,FILE* file){
   m->Module(SF("%.*s_tb",UN(decl->name)));
 
   for(Parameter p : decl->parameters){
-    String repr = PushRepr(temp,p.valueExpr);
+    String repr = PushRepr(temp,p.defaultVal);
 
     // NOTE: Since AXI_ADDR_W is usually used to instantiate a memory,
     // need to severely reduce size otherwise simulation can get stuck

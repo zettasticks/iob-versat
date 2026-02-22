@@ -8,7 +8,6 @@
 
 // TODO: A lot of places are normalizing when there is no need. The more normalizations we perform on the lower levels the worse performance and memory penalties we incur. Normalization only needs to be performed if needed, otherwise try to keep whatever format we have
 
-struct Tokenizer;
 struct Arena;
 
 // ============================================================================
@@ -132,6 +131,9 @@ SymbolicExpression* SymbolicMult(Array<SymbolicExpression*> terms,Arena* out);
 SymbolicExpression* SymbolicMult(Array<SymbolicExpression*> terms,SymbolicExpression* extra,Arena* out);
 SymbolicExpression* SymbolicDiv(SymbolicExpression* top,SymbolicExpression* bottom,Arena* out);
 
+// For the cases where we are dealing with ranges and want to calculate size([A,B] = B - A + 1)
+SymbolicExpression* SymbolicSubPlusOne(SymbolicExpression* higher,SymbolicExpression* lower,Arena* out);
+
 SymbolicExpression* SymbolicFunc(String functionName,Array<SymbolicExpression*> terms,Arena* out);
 
 // ======================================
@@ -171,7 +173,10 @@ SymbolicExpression* ApplySimilarTermsAddition(SymbolicExpression* expr,Arena* ou
 SymbolicExpression* MoveDivToTop(SymbolicExpression* base,Arena* out);
 SymbolicExpression* NormalizeLiterals(SymbolicExpression* expr,Arena* out);
 SymbolicExpression* SymbolicReplace(SymbolicExpression* base,String varToReplace,SymbolicExpression* replacingExpr,Arena* out);
+
 SymbolicExpression* ReplaceVariables(SymbolicExpression* expr,Hashmap<String,SymbolicExpression*>* values,Arena* out);
+SymbolicExpression* ReplaceVariables(SymbolicExpression* expr,TrieMap<String,SymbolicExpression*>* values,Arena* out);
+
 SymbolicExpression* Normalize(SymbolicExpression* expr,Arena* out,bool debugPrint = false);
 SymbolicExpression* Derivate(SymbolicExpression* expr,String base,Arena* out);
 

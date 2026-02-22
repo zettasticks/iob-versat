@@ -42,6 +42,46 @@ enum SpecialUnitType{
 };
 
 // TODO: Put some note explaining the required changes when inserting stuff here.
+
+// TODO: IMPORTANT: A lot of this data is not properly handling parameters.
+//       As an example, the mem mapped bits and all that stuff is not actually being influenced by the parameters
+//       This means that a lot of this info does not change if we have different parameters or not to the units.
+//       We are also getting "lucky" because some of the codeGeneration code is not actually using these values
+//       when it should. We are essentially bypassing the logic that we have in here because the data that is 
+//       calculated in here is not proper.
+
+// NOTE: How to fix this? The way I see it is that the simplest way of doing this is to first do a pass where we
+//       calculate all the values of the parameters globally. Meaning that if I have a unit instantiated with
+//       unit #(.PARAM_A(5),.PARAM_B(PARAM_X)) and the module above has unit #(.PARAM_X(7)) then we 
+//       have the values of the unit parameters being .PARAM_A = 5, .PARAM_B = 7.
+
+//       After doing this first pass we can then calculated everything that requires parameters by making a 
+//       a reference to these values.
+
+// NOTE: Basically, 1) Instantiate everything, every unit knows what the final value of its parameter is.
+//                  2) Calculate all the other stuff based on the "environment" of its parameters.
+//                  3) All the codeGeneration data is provided from InstanceInfo meaning that if something is 
+//                     miss calculated the problem is in here not in codeGeneration.cpp.
+
+
+LEFT HERE - We changed parameters but we are going too far. Parameters like DATA_W should not be changed,
+            they should remain global parameters that every module has access to but cannot change their meaning
+            and the generated verilog depends on DATA_W.
+
+            This also means that the user cannot define parameters whose name coincide with it but this is something
+            that we can do later.
+
+            Priority is to now test the changes, potentially change the codeGeneration code to use 
+            data from AccelInfo and check if we solved the memMapped problem.
+
+// nocheckin - A bunch of members have different purposes and we are not keeping track of it.
+//             Some members are extracted directly from the inst so not important.
+//             Some members are symbolic expressions because they might depend on parameters and such.
+//             Some members are instantiation of symbolic expressions. These members only make sense 
+//               for the final AccelInfo, the one used to generate the Verilog/C code.
+//             Either we separate stuff into proper structures (which I do not like since I prefer to have
+//               every in the same place) or we divide the members into groups according to how they are used
+//               and put some comments explaining stuff.
 struct InstanceInfo{
   int level;
   FUDeclaration* decl;
@@ -73,6 +113,8 @@ struct InstanceInfo{
   Array<ParamAndValue> params;
 
   int isConfigStatic; // Static must be handle separately, for the top level accelerator. 
+
+  // TODO: REMOVE Since we already store the config arrays.
   int configSize;
 
   bool isStatic;
@@ -83,6 +125,8 @@ struct InstanceInfo{
   Array<bool> isSpecificConfigShared;
   
   Opt<int> statePos;
+
+  // TODO: REMOVE Since we already store the config arrays.
   int stateSize;
   
   // Some of these could be removed and be computed from the others
@@ -90,6 +134,8 @@ struct InstanceInfo{
   Opt<int> memMapBits;
   Opt<int> memMappedSize;
   Opt<String> memDecisionMask; // This is local to the accelerator
+
+  SymbolicExpression* memMapSym;
 
   Opt<int> delayPos;
   Array<int> extraDelay;
@@ -227,6 +273,8 @@ struct AccelInfo{
   
   // TODO: Should be an SymbolicExpression. We probably want everything to be a symbolic expression at this point.
   Opt<int> memMapBits;
+  SymbolicExpression* memMapBitsSym;
+
   int unitsMapped;
   bool isMemoryMapped;
   bool signalLoop;
@@ -286,7 +334,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
 Array<Partition> GenerateInitialPartitions(Accelerator* accel,Arena* out);
 
 void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out);
-void FillStaticInfo(AccelInfo* info);
+void FillStaticInfo(AccelInfo* info,Arena* out);
 
 // This function does not perform calculations that are only relevant to the top accelerator (like static units configs and such).
 AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,bool calculateOrder = true);
@@ -314,3 +362,6 @@ bool IsUnitCombinatorialOperation(InstanceInfo* info);
 
 String GetStaticFullName(InstanceInfo* info,Arena* out);
 String GetStaticWireFullName(InstanceInfo* info,Wire wire,Arena* out);
+
+// nocheckin: Reorganize, must be to a better place.
+void InstantiateParameters(AccelInfo* info,Arena* temp);

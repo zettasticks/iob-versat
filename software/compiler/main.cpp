@@ -664,9 +664,12 @@ int main(int argc,char* argv[]){
 #endif
   }
 
-
   AccelInfo info = CalculateAcceleratorInfo(accel,true,temp,true);
-  FillStaticInfo(&info);
+
+  DEBUG_BREAK();
+
+  InstantiateParameters(&info,temp);
+  FillStaticInfo(&info,temp);
   
   VersatComputedValues val = ComputeVersatValues(accel,&info,temp);
   Array<ExternalMemoryInterface> external = val.externalMemoryInterfaces;
