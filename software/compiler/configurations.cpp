@@ -221,7 +221,7 @@ String GetEntityMemName(InstanceInfo* info,Arena* out){
 Array<Pair<String,int>> ExtractMem(Array<InstanceInfo> info,Arena* out){
   int count = 0;
   for(InstanceInfo& in : info){
-    if(!in.isComposite && in.memMapped.has_value()){
+    if(!in.isComposite && in.memMapBits.has_value()){
       count += 1;
     }
   }
@@ -229,7 +229,7 @@ Array<Pair<String,int>> ExtractMem(Array<InstanceInfo> info,Arena* out){
   Array<Pair<String,int>> res = PushArray<Pair<String,int>>(out,count);
   int index = 0;
   for(InstanceInfo& in : info){
-    if(!in.isComposite && in.memMapped.has_value()){
+    if(!in.isComposite && in.memMapBits.has_value()){
       String name = GetEntityMemName(&in,out); 
       res[index++] = {name,(int) in.memMapped.value()};
     }
@@ -345,6 +345,9 @@ String GetName(Array<Partition> partitions,Arena* out){
   return EndString(out,builder);
 }
 
+// nocheckin
+bool IsGlobalParameter(String name);
+
 // TODO: Move this function to a better place
 // This function cannot return an array for merge units because we do not have the merged units info in this level.
 // This function only works for modules and for recursing the merged info to upper modules.
@@ -391,20 +394,16 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     elem->singleInterfaces = inst->declaration->singleInterfaces;
     elem->supportedAddressGen = inst->declaration->supportedAddressGen;
 
-    // TODO: Remove these since we already store the array
-    elem->configSize = inst->declaration->configs.size;
-    elem->stateSize = inst->declaration->states.size;
-
     // Can depend on parameters
     elem->configs = CopyArray(inst->declaration->configs,out);
     elem->states = CopyArray(inst->declaration->states,out);
     elem->externalMemory = CopyArray(inst->declaration->externalMemory,out);
+
     elem->memMapBits = inst->declaration->info.memMapBits;
     elem->memMapSym = inst->declaration->info.memMapBitsSym;
 
-    if(elem->memMapBits.has_value()){
-      elem->memMappedSize = 1 << elem->memMapBits.value();
-    }
+    // nocheckin
+    elem->memSize = inst->declaration->info.amountOfMemMappedInterfaces;
 
     if(inst->declaration == BasicDeclaration::input){
       elem->specialType = SpecialUnitType_INPUT;
@@ -495,6 +494,10 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
 
     auto map = PushTrieMap<String,SymbolicExpression*>(temp);
     for(ParamAndValue p : parent->params){
+      if(IsGlobalParameter(p.name)){
+        continue;
+      }
+
       map->Insert(p.name,p.val);
     }
 
@@ -523,6 +526,10 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
 
     auto map = PushTrieMap<String,SymbolicExpression*>(temp);
     for(ParamAndValue p : info->params){
+      if(IsGlobalParameter(p.name)){
+        continue;
+      }
+
       map->Insert(p.name,p.val);
     }
 
@@ -842,7 +849,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
         if(stateUnit->statePos.has_value()){
           int statePos = startIndex + stateUnit->statePos.value();
           
-          if(unit->stateSize){
+          if(unit->states.size){
             unit->statePos = statePos;
           }
           
@@ -858,7 +865,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
       for(AccelInfoIterator it = iter; it.IsValid(); it = it.Next()){
         InstanceInfo* unit = it.CurrentUnit();
 
-        if(unit->stateSize){
+        if(unit->states.size){
           unit->statePos = stateIndex;
         }
         
@@ -867,13 +874,56 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
           Recurse(Recurse,inside,stateIndex);
         }
 
-        stateIndex += unit->stateSize;
+        stateIndex += unit->states.size;
       }
     }
   };
 
   CalculateState(CalculateState,initialIter,0);
   
+  //LEFT HERE - Memory mapping is not taking into account the possibility of parameters.
+
+  // nocheckin - Maybe slower than needed and 
+  {
+    int memGlobalIndex = 0;
+    for(auto iter = initialIter; iter.IsValid(); iter = iter.Step()){
+      InstanceInfo* info = iter.CurrentUnit();
+
+      if(info->memMapBits.has_value() && !info->isComposite){
+        info->memGlobalIndex = memGlobalIndex++;
+        info->memSize = 1;
+      }
+    }
+
+    auto CalculateGlobalMemSize = [](auto CalculateGlobalMemSize,AccelInfoIterator iter) -> void{
+      InstanceInfo* info = iter.CurrentUnit();
+      if(!info->isComposite){
+        return;
+      }
+      
+      for(auto child = iter.StepInsideOnly(); child.IsValid(); child = child.Next()){
+        CalculateGlobalMemSize(CalculateGlobalMemSize,child);
+      }
+
+      int size = 0;
+      int firstIndex = 9999999;
+      for(auto childIter = iter.StepInsideOnly(); childIter.IsValid(); childIter = childIter.Next()){
+        InstanceInfo* child = childIter.CurrentUnit();
+        
+        firstIndex = MIN(child->memGlobalIndex,firstIndex);
+        size += child->memSize;
+      }
+
+      info->memGlobalIndex = firstIndex;
+      info->memSize = size;
+    };
+
+    // Set the composite units
+    for(auto iter = initialIter; iter.IsValid(); iter = iter.Next()){
+      CalculateGlobalMemSize(CalculateGlobalMemSize,iter);
+    }
+  }
+
   // Handle memory mapping
   auto CalculateMemory = [](auto Recurse,AccelInfoIterator& iter,iptr currentMem,Arena* out) -> void{
     TEMP_REGION(temp,out);
@@ -886,7 +936,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
         InstanceInfo* unit = it.CurrentUnit();
         InstanceInfo* memUnit = parentIter.CurrentUnit();
         
-        if(memUnit->memMapped.has_value()){
+        if(memUnit->memMapBits.has_value()){
           unit->memMapped = memUnit->memMapped.value() + currentMem;
           
           AccelInfoIterator inside = it.StepInsideOnly();
@@ -967,7 +1017,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
       for(AccelInfoIterator it = iter; it.IsValid(); it = it.Next()){
         InstanceInfo* unit = it.CurrentUnit();
 
-        if(unit->memMapped.has_value()){
+        if(unit->memMapBits.has_value()){
           AccelInfoIterator inside = it.StepInsideOnly();
           Recurse(Recurse,inside,unit->memMapped.value(),out);
         }
@@ -1081,6 +1131,34 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
   SetDelays(SetDelays,initialIter,delays,0,out);
 }
 
+/*
+
+How do we handle parameters in the mem mapped interface?
+
+If we have a unit of addr size 3, 3 and 4 then we know that the size of
+the module mem mapped is gonna be 5 (3 + 3 = 4 and 4 + 4 = 5).
+
+But what if the size of the units is X, Y and Z?
+
+If we still want the modules to still be verilog modules then we need to keep the parameters alive.
+Only the top level is the thing that we generate that instantiates stuff. The verilog modules 
+are still generated based on parameters.
+
+If we have 2,2,2,2 then we can use 4 (2 + 2 = 3, 2 + 2 = 3, 3 + 3 = 4).
+
+This means that we cannot just take the smallest values and build from there.
+
+What is the easiest way of solving this?
+
+We could either instantiate specific modules for the specific things that we are doing.
+
+Or we could change the generated code to instead of receiving an address it actually receives a valid signal for every
+single memory mapped interface. That way the mapping is only performed at the top level instead of each module decoding the signal individually.
+
+This might also be better since we simplify the debugging immensily.
+
+*/
+
 void FillStaticInfo(AccelInfo* info,Arena* out){
   TEMP_REGION(temp,out);
   AccelInfoIterator iter = StartIteration(info);
@@ -1095,7 +1173,7 @@ void FillStaticInfo(AccelInfo* info,Arena* out){
       InstanceInfo* unit = it.CurrentUnit();
       InstanceInfo* parent = it.GetParentUnit(); 
 
-      if(unit->configSize == 0){
+      if(unit->configs.size == 0){
         continue;
       }
         
@@ -1112,7 +1190,7 @@ void FillStaticInfo(AccelInfo* info,Arena* out){
           configPos =  *result.data;
         } else {
           configPos = currentStaticIndex;
-          currentStaticIndex += unit->configSize;
+          currentStaticIndex += unit->configs.size;
         }
           
         *result.data = configPos;
@@ -1374,6 +1452,9 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
 
   FillAccelInfoFromCalculatedInstanceInfo(&result,accel);
 
+  // nocheckin - Maybe slower than needed and 
+
+
   // User configs are declaration level.
   if(size > 1){
     PartitionInfoIterator* iter = StartPartitionIteration(accel,temp);
@@ -1407,6 +1488,15 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
 
   result.configWires = PushArray<Wire>(out,result.configs);
   result.stateWires = PushArray<Wire>(out,result.states);
+
+  // nocheckin: revise this and check if correct.
+  int memMappedSize = 0;
+  for(AccelInfoIterator iter = StartIteration(&result); iter.IsValid(); iter = iter.Next()){
+    InstanceInfo* unit = iter.CurrentUnit();
+
+    memMappedSize += unit->memSize;
+  }
+  result.amountOfMemMappedInterfaces = memMappedSize;
 
   int configIndex = 0;
   for(AccelInfoIterator iter = StartIteration(&result); iter.IsValid(); iter = iter.Step()){
@@ -1525,6 +1615,10 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
 
       auto map = PushTrieMap<String,SymbolicExpression*>(temp);
       for(ParamAndValue p : info->params){
+        if(IsGlobalParameter(p.name)){
+          continue;
+        }
+
         map->Insert(p.name,p.val);
       }
 
@@ -1552,6 +1646,10 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
 
       auto map = PushTrieMap<String,SymbolicExpression*>(temp);
       for(ParamAndValue p : parent->params){
+        if(IsGlobalParameter(p.name)){
+          continue;
+        }
+
         map->Insert(p.name,p.val);
       }
 

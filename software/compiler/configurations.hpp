@@ -63,16 +63,23 @@ enum SpecialUnitType{
 //                  3) All the codeGeneration data is provided from InstanceInfo meaning that if something is 
 //                     miss calculated the problem is in here not in codeGeneration.cpp.
 
-
+#if 0
 LEFT HERE - We changed parameters but we are going too far. Parameters like DATA_W should not be changed,
             they should remain global parameters that every module has access to but cannot change their meaning
             and the generated verilog depends on DATA_W.
+
+            Global parameters are: DATA_W, ADDR_W, LEN_W, AXI_DATA_W, AXI_ADDR_W, DELAY_W
+
+            If we eventually find that we do actually care about the value of any of these at versat time we can 
+            just instantiate them.
 
             This also means that the user cannot define parameters whose name coincide with it but this is something
             that we can do later.
 
             Priority is to now test the changes, potentially change the codeGeneration code to use 
             data from AccelInfo and check if we solved the memMapped problem.
+#endif
+
 
 // nocheckin - A bunch of members have different purposes and we are not keeping track of it.
 //             Some members are extracted directly from the inst so not important.
@@ -114,9 +121,6 @@ struct InstanceInfo{
 
   int isConfigStatic; // Static must be handle separately, for the top level accelerator. 
 
-  // TODO: REMOVE Since we already store the config arrays.
-  int configSize;
-
   bool isStatic;
   bool isGloballyStatic;
   
@@ -125,15 +129,21 @@ struct InstanceInfo{
   Array<bool> isSpecificConfigShared;
   
   Opt<int> statePos;
-
-  // TODO: REMOVE Since we already store the config arrays.
-  int stateSize;
   
   // Some of these could be removed and be computed from the others
+  // The value of the start and the memory mask.
+  // If we just have memMapped and the total size of the mem mapped 
+  // address then we could generate the memDecisionMask.
   Opt<iptr> memMapped; // Used on Code Gen, to create the addresses for the memories.
+  String memDecisionMask; // This is local to the accelerator
+
+  // nocheckin
   Opt<int> memMapBits;
-  Opt<int> memMappedSize;
-  Opt<String> memDecisionMask; // This is local to the accelerator
+  int memGlobalIndex;
+  int memSize;
+  String globalMemDecisionMask;
+  int memStart;
+  int memEnd;
 
   SymbolicExpression* memMapSym;
 
@@ -252,6 +262,7 @@ struct AccelInfo{
   int inputs;
   int outputs;
 
+  int amountOfMemMappedInterfaces;
   int configs;
   int states;
   int delays;
@@ -271,7 +282,6 @@ struct AccelInfo{
   String staticExpr; // nocheckin: Check this 
   String delayStart; // nocheckin: Check this. Why string? Why not an actual expression
   
-  // TODO: Should be an SymbolicExpression. We probably want everything to be a symbolic expression at this point.
   Opt<int> memMapBits;
   SymbolicExpression* memMapBitsSym;
 

@@ -61,15 +61,6 @@ struct ConfigStatement{
 
   // TODO: Union
   ConfigIdentifier* lhs; // We currently only support <name>.<wire> assignments. NOTE: But I think that we eventually need to support N names and one wire.
-  Array<Token> rhs;
-
-  // TODO: Union
-#if 0
-  ConfigRHSType rhsType;
-  SymbolicExpression* expr;
-  ConfigIdentifier* rhsId;
-  FunctionInvocation* func;
-#endif
 
   SpecExpression* trueRhs;
 

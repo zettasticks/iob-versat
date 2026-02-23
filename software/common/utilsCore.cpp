@@ -640,6 +640,20 @@ void HexStringToHex(unsigned char* buffer,String str){
   }
 }
 
+int String_CommonPrefixSize(String first,String second){
+  int size = MIN(first.size,second.size);
+  int amount = 0;
+  for(int i = 0; i < size; i++){
+    if(first[i] == second[i]){
+      amount += 1;
+    } else {
+      break;
+    }
+  }
+
+  return amount;
+}
+
 static unsigned int randomSeed = 1;
 void SeedRandomNumber(unsigned int val){
   if(val == 0){

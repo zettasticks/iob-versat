@@ -59,9 +59,9 @@ Array<String> ExtractMemoryMasks(AccelInfo info,Arena* out){
   for(AccelInfoIterator iter = StartIteration(&info); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* unit = iter.CurrentUnit();
 
-    if(unit->memDecisionMask.has_value()){
-      *builder.PushElem() = unit->memDecisionMask.value();
-    } else if(unit->memMapped.has_value()){
+    if(unit->memMapBits.has_value()){
+      *builder.PushElem() = unit->memDecisionMask;
+    } else if(unit->memMapBits.has_value()){
       *builder.PushElem() = {}; // Empty mask (happens when only one unit with mem exists, bit weird but no need to change for now);
     }
   }
@@ -495,7 +495,8 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
   int ioSeen = 0;
   int memoryMappedSeen = 0;
   int externalSeen = 0;
-
+  int memMappedSeen = 0;
+  
   for(auto iter = StartIteration(&accelInfo); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* info = iter.CurrentUnit();
     int instIndex = iter.GetIndex();
@@ -589,9 +590,19 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
       externalSeen += 1;
     }
 
+    if(decl->info.memMapBits.has_value()){
+      if(info->isComposite){
+        for(int i = 0; i < info->memSize; i++){
+          m->PortConnectIndexed("unit_valid_%d",i,SF("unit_valid_%d",memMappedSeen++));
+        }
+      } else {
+        m->PortConnect("valid",SF("unit_valid_%d",memoryMappedSeen));
+      }
+    }
+
     // Memory mapping
     if(decl->info.memMapBits.has_value()){
-      m->PortConnect("valid",SF("memoryMappedEnable[%d]",memoryMappedSeen));
+      //m->PortConnect("valid",SF("memoryMappedEnable[%d]",memoryMappedSeen));
       m->PortConnect("wstrb","wstrb");
 
       if(decl->info.memMapBits.value() > 0){
@@ -652,6 +663,7 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
   int ioSeen = 0;
   int memoryMappedSeen = 0;
   int externalSeen = 0;
+  int memMappedSeen = 0;
 
   for(auto iter = StartIteration(accelInfo); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* info = iter.CurrentUnit();
@@ -759,9 +771,19 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
       externalSeen += 1;
     }
 
+    if(decl->info.memMapBits.has_value()){
+      if(info->isComposite){
+        for(int i = 0; i < info->memSize; i++){
+          m->PortConnectIndexed("unit_valid_%d",i,SF("unit_valids[%d]",memMappedSeen++));
+        }
+      } else {
+        m->PortConnect("valid",SF("unit_valids[%d]",memoryMappedSeen++));
+      }
+    }
+
     // Memory mapping
     if(info->memMapBits.has_value()){
-      m->PortConnect("valid",SF("memoryMappedEnable[%d]",memoryMappedSeen));
+      //m->PortConnect("valid",SF("memoryMappedEnable[%d]",memoryMappedSeen));
       m->PortConnect("wstrb","data_wstrb");
       if(info->memMapBits.value() > 0){
         m->PortConnect("addr",SF("csr_addr[%d-1:0]",info->memMapBits.value()));
@@ -975,12 +997,19 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
   m->Timescale("1ns","1ps");
 
   m->Module(module->name);
+
+  for(Parameter p : module->parameters){
+    m->ModuleParam(p.name,p.defaultVal);
+  }
+
+#if 0
   m->ModuleParam("AXI_ADDR_W",0);
   m->ModuleParam("AXI_DATA_W",0);
   m->ModuleParam("ADDR_W",0);
   m->ModuleParam("DATA_W",0);
   m->ModuleParam("DELAY_W",0);
   m->ModuleParam("LEN_W",0);
+#endif
 
   // TODO: For now, we always output these interfaces because the wrapper that interacts with the Verilated unit is not capable of handling the lack of these wires. Furthermore, changing this stuff is probably a bit time consuming right now, as we need to change the logic used for simulating units that do not contain wires like rst, clk and so on.
   //       In fact, simulating a design that does not contain a clk seems to require a entirely different approach compared to a clocked one. Since we are in full control of the generated code we can do it, but will probably take some work.
@@ -1068,9 +1097,18 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
       m->OutputIndexed("ext_2p_data_out_%d",i,sym_ext.tp.dataSizeOut);
     }
   }
+  
+  // MARK1
+#if 1
+  if(module->info.amountOfMemMappedInterfaces){
+    for(int i = 0; i < module->info.amountOfMemMappedInterfaces; i++){
+      m->InputIndexed("unit_valid_%d",i);
+    }
+  }
+#endif
 
   if(module->info.memMapBits){
-    m->Input("valid");
+    //m->Input("valid");
     if(module->info.memMapBits.value() > 0){
       m->Input("addr",module->info.memMapBits.value());
     }
@@ -1087,7 +1125,7 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
     m->Wire("unitRValid",info.unitsMapped);
     m->Assign("rvalid","(|unitRValid)");
 
-    m->Reg("memoryMappedEnable",memoryMasks.size);
+    //m->Reg("memoryMappedEnable",memoryMasks.size);
 
     m->WireArray("unitRData",info.unitsMapped,"DATA_W");
     m->WireAndAssignJoinBlock("unitRDataFinal","|","DATA_W");
@@ -1097,6 +1135,8 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
     m->EndBlock();
     m->Assign("rdata","unitRDataFinal");
 
+    // nocheckin
+#if 0
     m->CombBlock();
     {
       m->Set("memoryMappedEnable",SF("%d'b0",info.unitsMapped));
@@ -1114,6 +1154,7 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
       m->EndIf();
     }
     m->EndBlock();
+#endif
   }
 
   if(info.nDones){
@@ -1482,7 +1523,7 @@ Array<TypeStructInfoElement> ExtractStructuredConfigs(Array<InstanceInfo> info,A
       continue;
     }
     
-    for(int i = 0; i < in.configSize; i++){
+    for(int i = 0; i < in.configs.size; i++){
       int config = in.individualWiresGlobalConfigPos[i];
 
       maxConfig = std::max(maxConfig,config);
@@ -1657,7 +1698,7 @@ StructInfo* GenerateStateStruct(AccelInfoIterator iter,Arena* out){
           elem.name = iter.GetMergeName();
           elem.childStruct = subInfo;
           elem.localPos = 0;
-          elem.size = topUnit->stateSize;
+          elem.size = topUnit->states.size;
 
           *list->PushElem() = elem;
         }
@@ -1698,7 +1739,7 @@ StructInfo* GenerateStateStruct(AccelInfoIterator iter,Arena* out){
 
     // TODO: Kinda of an hack because we do not have local state pos the same way we have local config pos.
     elem.localPos = unit->statePos.value() - parentGlobalStatePos;
-    elem.size = unit->stateSize;
+    elem.size = unit->states.size;
     elem.doesNotBelong = unit->doesNotBelong;
     
     *list->PushElem() = elem;
@@ -1753,7 +1794,7 @@ StructInfo* GenerateConfigStructRecurse(AccelInfoIterator iter,TrieMap<StructInf
           elem.name = iter.GetMergeName();
           elem.childStruct = subInfo;
           elem.localPos = 0; // Zero because the merge struct is basically a wrapper. 
-          elem.size = topUnit->configSize;
+          elem.size = topUnit->configs.size;
           elem.isMergeMultiplexer = topUnit->isMergeMultiplexer;
 
           *list->PushElem() = elem;
@@ -2636,15 +2677,47 @@ assign data_wstrb = csr_wstrb;
     }
   }
 
+
   {
     VEmitter* m = StartVCode(temp);
+
+    // nocheckin
+    m->Comment("HERE");
+    m->Reg("unit_valids",info.amountOfMemMappedInterfaces);
+
+    m->CombBlock();
+    
+    m->Assign("unit_valids","0");
+
+    if(info.amountOfMemMappedInterfaces == 1){
+      m->If("data_valid & memoryMappedAddr");
+      m->Set("unit_valids[0]","1'b1");
+      m->EndIf();
+    } else {
+      for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
+        InstanceInfo* unit = iter.CurrentUnit();
+
+        if(unit->isComposite || Empty(unit->globalMemDecisionMask)){
+          continue;
+        }
+
+        int maxMemoryBit = val.memoryConfigDecisionBit - 1;
+
+        String mask = unit->globalMemDecisionMask;
+        m->If(SF("data_valid & memoryMappedAddr & (csr_addr[(%d-1) -: %d] == %d'b%.*s)",maxMemoryBit,mask.size,mask.size,UN(mask)));
+        m->Set(SF("unit_valids[%d]",unit->memGlobalIndex),"1'b1");
+        m->EndIf();
+      }
+    }
+    m->EndBlock();
+
     if(info.unitsMapped >= 1){
       Array<String> memoryMasks = ExtractMemoryMasks(info,temp);
 
       m->Wire("unitRValid",info.unitsMapped);
       m->Assign("csr_rvalid","versat_rvalid | (|unitRValid)");
 
-      m->Reg("memoryMappedEnable",memoryMasks.size);
+      //m->Reg("memoryMappedEnable",memoryMasks.size);
 
       m->WireArray("unitRData",info.unitsMapped,"DATA_W");
       m->WireAndAssignJoinBlock("unitRDataFinal","|","DATA_W");
@@ -2653,7 +2726,9 @@ assign data_wstrb = csr_wstrb;
       }
       m->EndBlock();
       m->Assign("csr_rdata","versat_rvalid ? versat_rdata : unitRDataFinal");
-
+      
+      // nocheckin
+#if 0
       m->CombBlock();
       {
         m->Set("memoryMappedEnable",SF("%d'b0",info.unitsMapped));
@@ -2671,6 +2746,7 @@ assign data_wstrb = csr_wstrb;
         m->EndIf();
       }
       m->EndBlock();
+#endif
     } else {
       m->Assign("csr_rdata","versat_rdata");
       m->Assign("csr_rvalid","versat_rvalid");
@@ -4198,7 +4274,52 @@ static iptr WRITE_@{0} = 0;)FOO";
     String content = PushASTRepr(c,temp);
     TE_SetString("memoryAccessDefines",content);
   }
+  
+  {
+    CEmitter* c = StartCCode(temp);
 
+    int varIndex = 0;
+    for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
+      InstanceInfo* unit = iter.CurrentUnit();
+
+      if(unit->isComposite){
+        continue;
+      }
+      if(!unit->memMapBits.has_value()){
+        continue;
+      }
+
+      String expr = PushString(temp,"(address >= %d && address <= %d) ? 1 : 0",unit->memStart,unit->memEnd);
+      
+      c->VarDeclare("int",SF("unit_valid_%d",varIndex++),expr);
+    }
+
+    String content = PushASTRepr(c,temp);
+    TE_SetString("memoryUnpack",content);
+  }
+
+  {
+    CEmitter* c = StartCCode(temp);
+    
+    for(int i = 0; i < info.amountOfMemMappedInterfaces; i++){
+      c->Assignment(SF("    self->unit_valid_%d",i),SF("unit_valid_%d",i));
+    }
+
+    String content = PushASTRepr(c,temp);
+    TE_SetString("memorySetValid",content);
+  }
+
+  {
+    CEmitter* c = StartCCode(temp);
+    
+    for(int i = 0; i < info.amountOfMemMappedInterfaces; i++){
+      c->Assignment(SF("    self->unit_valid_%d",i),"0");
+    }
+
+    String content = PushASTRepr(c,temp);
+    TE_SetString("memoryUnsetValid",content);
+  }
+  
   TE_SetString("typeName",typeName);
     
   if(info.implementsDone){

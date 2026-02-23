@@ -38,6 +38,8 @@ String ReprMemorySize(size_t val,Arena* out);
 
 String JoinStrings(Array<String> strings,String separator,Arena* out);
 
+String PushBinaryRepr(Arena* out,int number);
+
 static inline bool Contains(String bigger,String smaller){
   TEMP_REGION(temp,nullptr);
   

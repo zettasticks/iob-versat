@@ -236,6 +236,21 @@ String JoinStrings(Array<String> strings,String separator,Arena* out){
   return EndString(out,builder);
 }
 
+String PushBinaryRepr(Arena* out,int number){
+  char* buffer = (char*) PushBytes(out,33);
+  int index = 0;
+  for(int i = 31; i >= 0; i--){
+    buffer[index++] = (number & (1 << i)) ? '1' : '0';
+  }
+
+  buffer[32] = '0';
+  String res = {};
+  res.data = buffer;
+  res.size = 32;
+
+  return res;
+}
+
 String JoinStrings(ArenaList<String>* strings,String separator,Arena* out){
   TEMP_REGION(temp,out);
   bool first = true;

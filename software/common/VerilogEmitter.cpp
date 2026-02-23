@@ -485,6 +485,13 @@ void VEmitter::ModuleParam(String name,String value){
   p->second = PushString(arena,value);
 }
 
+void VEmitter::ModuleParam(String name,SymbolicExpression* expr){
+  TEMP_REGION(temp,arena);
+  String repr = PushRepr(temp,expr);
+
+  ModuleParam(name,repr);
+}
+
 void VEmitter::EndModule(){
   while(buffer[top-1]->type != VASTType_MODULE_DECL){
     PopLevel();

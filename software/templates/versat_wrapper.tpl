@@ -359,9 +359,13 @@ extern "C" int MemoryAccess(int address,int value,int write){
 
 @{memoryAccessDefines}
 
+@{memoryUnpack}
+
 #ifdef HAS_MEMORY_MAP
   if(write){
-    self->valid = 1;
+    @{memorySetValid}
+
+    //self->valid = 1;
     self->wstrb = 0xf;
 
     #ifdef MEMORY_MAP_BITS
@@ -373,7 +377,8 @@ extern "C" int MemoryAccess(int address,int value,int write){
           InternalUpdateAccelerator();
       //}
 
-      self->valid = 0;
+      @{memoryUnsetValid}
+      //self->valid = 0;
       self->wstrb = 0x00;
     #ifdef MEMORY_MAP_BITS
       self->addr = 0x00000000;
@@ -384,7 +389,9 @@ extern "C" int MemoryAccess(int address,int value,int write){
                 
       return 0;
    } else {
-      self->valid = 1;
+      @{memorySetValid}
+
+      //self->valid = 1;
       self->wstrb = 0x0;
     #ifdef MEMORY_MAP_BITS
       self->addr = address;
@@ -398,7 +405,8 @@ extern "C" int MemoryAccess(int address,int value,int write){
 
       int res = self->rdata;
 
-      self->valid = 0;
+      @{memoryUnsetValid}
+      //self->valid = 0;
     #ifdef MEMORY_MAP_BITS
       self->addr = 0;
     #endif

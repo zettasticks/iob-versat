@@ -292,6 +292,7 @@ struct VEmitter{
   void Module(String name);
   void ModuleParam(String name,int value); // A global param of a module
   void ModuleParam(String name,String value);
+  void ModuleParam(String name,SymbolicExpression* expr = SYM_one);
   void EndModule();
 
   void Task(String name);

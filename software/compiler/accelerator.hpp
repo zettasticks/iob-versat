@@ -277,7 +277,7 @@ struct VersatComputedValues{
   int nUnitsIO;
   int numberConnections;
 
-  int memoryAddressBits;
+  int memoryAddressBits; // Not equal to (memoryConfigDecisionBit - 1)
   int memoryConfigDecisionBit;
 
   // External memories, not memory mapped.

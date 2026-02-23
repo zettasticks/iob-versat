@@ -547,7 +547,7 @@ Array<FUDeclaration*> MemSubTypes(AccelInfo* info,Arena* out){
 
   Array<InstanceInfo> test = info->infos[0].info;
   for(InstanceInfo& info : test){
-    if(info.memMappedSize.has_value()){
+    if(info.memMapBits.has_value()){
       maps->Insert(GetTypeByName(info.typeName));
     }
   }
@@ -676,14 +676,14 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
       res.unitsMapped += 1;
     }
 
-    res.nConfigs += unit->configSize;
+    res.nConfigs += unit->configs.size;
     for(Wire& wire : unit->configs){
       configBits += wire.bitSize;
 
       configExpr = Normalize(SymbolicAdd(configExpr,wire.sizeExpr,temp),temp);
     }
 
-    res.nStates += unit->stateSize;
+    res.nStates += unit->states.size;
     for(Wire& wire : unit->states){
       res.stateBits += wire.bitSize;
     }
@@ -775,13 +775,12 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
   res.memoryMappedBytes = memoryMappedDWords * 4;
   res.memoryAddressBits = log2i(memoryMappedDWords);
 
-  res.configurationAddressBits = log2i(nConfigurations);
-  res.stateAddressBits = log2i(res.nStates);
+  res.configurationAddressBits = log2i(nConfigurations) + 2;
+  res.stateAddressBits = log2i(res.nStates)  + 2;
 
-  int memoryMappingAddressBits = res.memoryAddressBits;
   int stateConfigurationAddressBits = MAX(res.configurationAddressBits,res.stateAddressBits);
 
-  res.memoryConfigDecisionBit = MAX(stateConfigurationAddressBits,memoryMappingAddressBits) + 2;
+  res.memoryConfigDecisionBit = MAX(stateConfigurationAddressBits,res.memoryAddressBits) + 1;
   
   res.numberConnections = info->numberConnections;
 

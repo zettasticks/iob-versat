@@ -605,6 +605,7 @@ char GetHex(int value);
 Byte HexCharToNumber(char ch);
 
 void HexStringToHex(unsigned char* buffer,String str);
+int String_CommonPrefixSize(String first,String second);
 
 // Weak random generator but produces same results in pc-emul and in simulation
 void SeedRandomNumber(uint seed);

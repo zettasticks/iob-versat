@@ -666,13 +666,54 @@ int main(int argc,char* argv[]){
 
   AccelInfo info = CalculateAcceleratorInfo(accel,true,temp,true);
 
-  DEBUG_BREAK();
-
   InstantiateParameters(&info,temp);
   FillStaticInfo(&info,temp);
-  
+
   VersatComputedValues val = ComputeVersatValues(accel,&info,temp);
   Array<ExternalMemoryInterface> external = val.externalMemoryInterfaces;
+
+  DEBUG_BREAK();
+
+  int maxMemoryBit = val.memoryConfigDecisionBit - 1;
+  for(int i = 0; i < info.infos.size; i++){
+    for(auto iter = StartIteration(&info,i); iter.IsValid(); iter = iter.Step()){
+      InstanceInfo* unit = iter.CurrentUnit();
+
+      if(unit->isComposite){
+        continue;
+      }
+    
+      if(!unit->memMapBits.has_value()){
+        continue;
+      }
+      int start = unit->memMapped.value();
+      int end = start + (1 << unit->memMapBits.value()) - 1;
+
+      unit->memStart = start;
+      unit->memEnd = end;
+
+      String startBin = PushBinaryRepr(temp,start);
+      String endBin = PushBinaryRepr(temp,end);
+
+      int equalTo = String_CommonPrefixSize(startBin,endBin);
+
+      int sizeOfNonMask = 32 - equalTo;
+
+      startBin = Offset(startBin,32 - maxMemoryBit);
+      endBin = Offset(endBin,32 - maxMemoryBit);
+
+      int maskSize = maxMemoryBit - sizeOfNonMask;
+
+      String mask = startBin;
+      mask.size = maskSize;
+        
+      unit->globalMemDecisionMask = mask;
+
+      printf("A: %.*s %.*s %.*s %d\n",UN(startBin),UN(endBin),UN(mask),sizeOfNonMask);
+    }
+  }
+  
+  DEBUG_BREAK();
   
   OutputTopLevelFiles(accel,type,
                       globalOptions.hardwareOutputFilepath,
