@@ -668,8 +668,6 @@ int main(int argc,char* argv[]){
 
   AccelInfo info = CalculateAcceleratorInfo(accel,true,temp,true);
 
-  DEBUG_BREAK();
-
   InstantiateParameters(&info,temp);
   FillStaticInfo(&info,temp);
 

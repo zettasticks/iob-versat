@@ -545,8 +545,10 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       ConfigStatement* stmt = stmts[0];
       ConfigStatement* simple = stmts[stmts.size - 1];
 
-      bool singleStatement = (individualStatements.size == 1);
-
+      bool singleStatement = (stmts.size == 1);
+      
+      // We currently only support a single statement or a single loop.
+      // We technically can do multi loops just fine, just need to augment the logic to support it.
       Assert(singleStatement || (stmt->type == ConfigStatementType_FOR_LOOP 
                               && simple->type == ConfigStatementType_STATEMENT));
 
