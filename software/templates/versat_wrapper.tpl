@@ -240,6 +240,7 @@ static void InternalUpdateAccelerator(){
    
    baseAddress = 0;
 
+   // Save external
 @{saveExternal}
 
    self->eval();
@@ -359,19 +360,22 @@ extern "C" int MemoryAccess(int address,int value,int write){
 
 @{memoryAccessDefines}
 
+  int actualAddress = address;
+
 @{memoryUnpack}
 
 #ifdef HAS_MEMORY_MAP
   if(write){
     @{memorySetValid}
 
-    //self->valid = 1;
     self->wstrb = 0xf;
 
     #ifdef MEMORY_MAP_BITS
-      self->addr = address;
+      self->addr = actualAddress;
     #endif
       self->wdata = value;
+
+      self->eval();
 
       //while(!self->ready){ For now we assume all writes have no delay 
           InternalUpdateAccelerator();
@@ -386,7 +390,7 @@ extern "C" int MemoryAccess(int address,int value,int write){
       self->wdata = 0x00000000;
 
       InternalUpdateAccelerator();
-                
+
       return 0;
    } else {
       @{memorySetValid}
@@ -394,7 +398,7 @@ extern "C" int MemoryAccess(int address,int value,int write){
       //self->valid = 1;
       self->wstrb = 0x0;
     #ifdef MEMORY_MAP_BITS
-      self->addr = address;
+      self->addr = actualAddress;
     #endif
 
       self->eval();

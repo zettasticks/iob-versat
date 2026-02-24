@@ -4285,8 +4285,13 @@ static iptr WRITE_@{0} = 0;)FOO";
       }
 
       String expr = PushString(temp,"(address >= %d && address <= %d) ? 1 : 0",unit->memStart,unit->memEnd);
-      
+
       c->VarDeclare("int",SF("unit_valid_%d",varIndex++),expr);
+
+      String expr2 = PushString(temp,"(address >= %d && address <= %d)",unit->memStart,unit->memEnd);
+      c->If(expr2);
+      c->Assignment("actualAddress",SF("address - %d",unit->memStart));
+      c->EndIf();
     }
 
     String content = PushASTRepr(c,temp);
