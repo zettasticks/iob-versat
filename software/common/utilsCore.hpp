@@ -27,7 +27,11 @@ inline float ABS(float f){return (f < 0.0f ? -f : f);};
 // TODO: We probably want to standardize some of these. Do it right. Care about overflow and stuff like that
 //       Either that or use values from C or something.
 #ifndef INT_MAX
-#define INT_MAX ((1<<30) + ((1<<30) - 1))
+#define INT_MAX 2147483647
+#endif
+
+#ifndef INT_MIN
+#define INT_MIN -2147483648
 #endif
 
 #define ALIGN_DOWN(val,size) (val & (~(size - 1)))

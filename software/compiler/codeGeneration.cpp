@@ -54,21 +54,6 @@ String GetRelativePathFromSourceToTarget(String sourcePath,String targetPath,Are
   return PushString(out,"%s",res.c_str());
 }
 
-Array<String> ExtractMemoryMasks(AccelInfo info,Arena* out){
-  auto builder = StartArray<String>(out);
-  for(AccelInfoIterator iter = StartIteration(&info); iter.IsValid(); iter = iter.Next()){
-    InstanceInfo* unit = iter.CurrentUnit();
-
-    if(unit->memMapBits.has_value()){
-      *builder.PushElem() = unit->memDecisionMask;
-    } else if(unit->memMapBits.has_value()){
-      *builder.PushElem() = {}; // Empty mask (happens when only one unit with mem exists, bit weird but no need to change for now);
-    }
-  }
-
-  return EndArray(builder);
-}
-
 Array<Array<MuxInfo>> CalculateMuxInformation(AccelInfoIterator* iter,Arena* out){
   auto ExtractMuxInfo = [](AccelInfoIterator iter,Arena* out) -> Array<MuxInfo>{
     TEMP_REGION(temp,out);
@@ -498,47 +483,49 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
   int memMappedSeen = 0;
   
   for(auto iter = StartIteration(&accelInfo); iter.IsValid(); iter = iter.Next()){
-    InstanceInfo* info = iter.CurrentUnit();
+    InstanceInfo* unit = iter.CurrentUnit();
     int instIndex = iter.GetIndex();
 
-    FUDeclaration* decl = info->decl;
+    // nocheckin 
+    // TODO: REMOVE THE DECLARATION FROM HERE. WE NEED TO LOOK AT THE INSTANCE INFO.
+    FUDeclaration* decl = unit->decl;
     if(decl == BasicDeclaration::input || decl == BasicDeclaration::output || decl->IsCombinatorialOperation()){
       continue;
     }
 
-    m->StartInstance(decl->name,SF("%.*s_%d",UN(info->name),instIndex));
+    m->StartInstance(decl->name,SF("%.*s_%d",UN(unit->name),instIndex));
 
-    for(ParamAndValue p : info->params){
+    for(ParamAndValue p : unit->params){
       if(p.val){
         m->InstanceParam(p.name,p.val);
       }
     }
     
-    for(int i = 0; i < info->outputIsConnected.size; i++){
-      if(info->outputIsConnected[i]){
-        m->PortConnectIndexed("out%d",i,SF("output_%d_%d",info->id,i));
+    for(int i = 0; i < unit->outputIsConnected.size; i++){
+      if(unit->outputIsConnected[i]){
+        m->PortConnectIndexed("out%d",i,SF("output_%d_%d",unit->id,i));
       } else {
         m->PortConnectIndexed("out%d",i,"");
       }
     }
 
-    for(int i = 0; i < info->inputsDirectly.size; i++){
-      if(info->inputsDirectly[i].inst != -1){
-        InstanceInfo* other = iter.GetUnit(info->inputsDirectly[i].inst);
-        m->PortConnectIndexed("in%d",i,GetOutputName(other,info->inputsDirectly[i].port,temp));
+    for(int i = 0; i < unit->inputsDirectly.size; i++){
+      if(unit->inputsDirectly[i].inst != -1){
+        InstanceInfo* other = iter.GetUnit(unit->inputsDirectly[i].inst);
+        m->PortConnectIndexed("in%d",i,GetOutputName(other,unit->inputsDirectly[i].port,temp));
       } else {
         m->PortConnectIndexed("in%d",i,"0");
       }
     }
 
     // Configs and dealing with static configs if the unit is static
-    if(info->isStatic){
+    if(unit->isStatic){
       for(Wire w : decl->configs){
-        String repr = GetStaticWireFullName(info,w,temp);
+        String repr = GetStaticWireFullName(unit,w,temp);
         m->PortConnect(w.name,repr);
       }
     } else {
-      Array<int> ind = info->individualWiresGlobalConfigPos;
+      Array<int> ind = unit->individualWiresGlobalConfigPos;
       for(int i = 0; i < ind.size; i++){
         m->PortConnect(PushString(temp,"%.*s",UN(decl->configs[i].name)),configs[ind[i]].name);
       }
@@ -590,9 +577,9 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
       externalSeen += 1;
     }
 
-    if(decl->info.memMapBits.has_value()){
-      if(info->isComposite){
-        for(int i = 0; i < info->memSize; i++){
+    if(unit->memMapSym){
+      if(unit->isComposite){
+        for(int i = 0; i < unit->memSize; i++){
           m->PortConnectIndexed("unit_valid_%d",i,SF("unit_valid_%d",memMappedSeen++));
         }
       } else {
@@ -601,12 +588,21 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
     }
 
     // Memory mapping
-    if(decl->info.memMapBits.has_value()){
+    DEBUG_BREAK();
+    if(unit->memMapSym){
       //m->PortConnect("valid",SF("memoryMappedEnable[%d]",memoryMappedSeen));
       m->PortConnect("wstrb","wstrb");
-
-      if(decl->info.memMapBits.value() > 0){
-        m->PortConnect("addr",SF("addr[%d-1:0]",decl->info.memMapBits.value()));
+      
+      // nocheckin
+      Opt<int> p = ConstantEvaluate(unit->memMapSym);
+      
+      // nocheckin: This check is kinda problematic.
+      //            First it means that we are not handling the 
+      if(p.has_value() && p.value() <= 2 && false){
+        // Do nothing
+      } else {
+        String repr = PushRepr(temp,unit->memMapSym);
+        m->PortConnect("addr",SF("addr[%.*s-1:0]",UN(repr)));
       }
       m->PortConnect("rdata",SF("unitRData[%d]",memoryMappedSeen));
       m->PortConnect("rvalid",SF("unitRValid[%d]",memoryMappedSeen));
@@ -666,17 +662,18 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
   int memMappedSeen = 0;
 
   for(auto iter = StartIteration(accelInfo); iter.IsValid(); iter = iter.Next()){
-    InstanceInfo* info = iter.CurrentUnit();
-    FUInstance* inst = info->inst;
-    int instIndex = info->localIndex;
+    InstanceInfo* unit = iter.CurrentUnit();
+    FUInstance* inst = unit->inst;
+    int instIndex = unit->localIndex;
 
+    // TODO: REMOVE DEPENDENCY ON FUDECLARATION.
     FUDeclaration* decl = inst->declaration;
 
-    if(info->specialType == SpecialUnitType_INPUT || info->specialType == SpecialUnitType_OUTPUT || IsUnitCombinatorialOperation(info)){
+    if(unit->specialType == SpecialUnitType_INPUT || unit->specialType == SpecialUnitType_OUTPUT || IsUnitCombinatorialOperation(unit)){
       continue;
     }
 
-    m->StartInstance(info->typeName,SF("%.*s_%d",UN(inst->name),instIndex));
+    m->StartInstance(unit->typeName,SF("%.*s_%d",UN(inst->name),instIndex));
 
     Hashmap<String,SymbolicExpression*>* params = GetParametersOfUnit(inst,temp);
     for(Pair<String,SymbolicExpression**> p : params){
@@ -684,9 +681,14 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
         m->InstanceParam(p.first,*p.second);
       }
     }
-    if(info->memMapBits.has_value()){
+    if(unit->memMapSym){
+      // MARKX
+#if 1
+      params->Insert("ADDR_W",unit->memMapSym);
+#else
       SymbolicExpression* expr = PushLiteral(temp,info->memMapBits.value());
       params->Insert("ADDR_W",expr);
+#endif
     }
     
     for(int i = 0; i < inst->outputs.size; i++){
@@ -697,10 +699,10 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
       }
     }
 
-    for(int i = 0; i < info->inputsDirectly.size; i++){
-      if(info->inputsDirectly[i].inst != -1){
-        InstanceInfo* other = iter.GetUnit(info->inputsDirectly[i].inst);
-        m->PortConnectIndexed("in%d",i,GetOutputName(other,info->inputsDirectly[i].port,temp));
+    for(int i = 0; i < unit->inputsDirectly.size; i++){
+      if(unit->inputsDirectly[i].inst != -1){
+        InstanceInfo* other = iter.GetUnit(unit->inputsDirectly[i].inst);
+        m->PortConnectIndexed("in%d",i,GetOutputName(other,unit->inputsDirectly[i].port,temp));
       } else {
         m->PortConnectIndexed("in%d",i,"0");
       }
@@ -709,7 +711,7 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
     SymbolicExpression* configDataExpr = PushLiteral(temp,0);
     
     int configDataIndex = 0;
-    for(Wire w : info->configs){
+    for(Wire w : unit->configs){
       String repr = PushRepr(temp,configDataExpr);
       String size = PushRepr(temp,w.sizeExpr);
       
@@ -731,7 +733,7 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
     
     // Delays
     SymbolicExpression* delayExpr = val.delayStart;
-    for(int i = 0; i < info->numberDelays; i++){
+    for(int i = 0; i < unit->numberDelays; i++){
       String repr = PushRepr(temp,delayExpr);
 
       m->PortConnectIndexed("delay%d",i,PushString(temp,"configdata[(%.*s)+:DELAY_W]",UN(repr)));
@@ -740,14 +742,14 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
     
     // State
     int stateIndex = 0;
-    for(Wire w : info->states){
+    for(Wire w : unit->states){
       m->PortConnect(w.name,PushString(temp,"statedata[%d+:%d]",stateIndex,w.bitSize));
       stateIndex += w.bitSize;
     }
 
     // External memories
-    for(int i = 0; i <  info->externalMemory.size; i++){
-      ExternalMemoryInterface ext = info->externalMemory[i];
+    for(int i = 0; i <  unit->externalMemory.size; i++){
+      ExternalMemoryInterface ext = unit->externalMemory[i];
       if(ext.type == ExternalMemoryType::ExternalMemoryType_DP){
         m->PortConnectIndexed("ext_dp_addr_%d_port_0",i,"ext_dp_addr_%d_port_0_o",externalSeen);
         m->PortConnectIndexed("ext_dp_out_%d_port_0",i,"ext_dp_out_%d_port_0_o",externalSeen);
@@ -771,9 +773,9 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
       externalSeen += 1;
     }
 
-    if(decl->info.memMapBits.has_value()){
-      if(info->isComposite){
-        for(int i = 0; i < info->memSize; i++){
+    if(unit->memMapSym){
+      if(unit->isComposite){
+        for(int i = 0; i < unit->memSize; i++){
           m->PortConnectIndexed("unit_valid_%d",i,SF("unit_valids[%d]",memMappedSeen++));
         }
       } else {
@@ -782,11 +784,21 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
     }
 
     // Memory mapping
-    if(info->memMapBits.has_value()){
+    if(unit->memMapSym){
       //m->PortConnect("valid",SF("memoryMappedEnable[%d]",memoryMappedSeen));
       m->PortConnect("wstrb","data_wstrb");
-      if(info->memMapBits.value() > 0){
-        m->PortConnect("addr",SF("csr_addr[%d-1:0]",info->memMapBits.value()));
+
+      //GetLiteralValue(SymbolicExpression* expr);
+
+      if(unit->memMapSym){
+        Opt<int> memMapBits = ConstantEvaluate(unit->memMapSym);
+
+        if(memMapBits.has_value() && memMapBits.value() <= 2 && false){
+          // Do nothing. Units with no addr have a 0 value for memMapSym
+        } else {
+          String repr = PushRepr(temp,unit->memMapSym);
+          m->PortConnect("addr",SF("csr_addr[(%.*s)-1:0]",UN(repr)));
+        }
       }
       m->PortConnect("rdata",SF("unitRData[%d]",memoryMappedSeen));
       m->PortConnect("rvalid",SF("unitRValid[%d]",memoryMappedSeen));
@@ -809,22 +821,22 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
       ioSeen += 1;
     }
 
-    if(info->singleInterfaces & SingleInterfaces_SIGNAL_LOOP){
+    if(unit->singleInterfaces & SingleInterfaces_SIGNAL_LOOP){
       m->PortConnect("signal_loop","signal_loop");
     }
-    if(info->singleInterfaces & SingleInterfaces_RUNNING){
+    if(unit->singleInterfaces & SingleInterfaces_RUNNING){
       m->PortConnect("running","running");
     }
-    if(info->singleInterfaces & SingleInterfaces_RUN){
+    if(unit->singleInterfaces & SingleInterfaces_RUN){
       m->PortConnect("run","run");
     }
-    if(info->singleInterfaces & SingleInterfaces_DONE){
+    if(unit->singleInterfaces & SingleInterfaces_DONE){
       m->PortConnect("done",SF("unitDone[%d]",doneSeen++));
     }
-    if(info->singleInterfaces & SingleInterfaces_CLK){
+    if(unit->singleInterfaces & SingleInterfaces_CLK){
       m->PortConnect("clk","clk");
     }
-    if(info->singleInterfaces & SingleInterfaces_RESET){
+    if(unit->singleInterfaces & SingleInterfaces_RESET){
       m->PortConnect("rst","rst");
     }
       
@@ -932,12 +944,16 @@ VerilogModuleInterface* GenerateModuleInterface(FUDeclaration* decl,Arena* out){
   }
   m->EndGroup();
 
-  if(decl->info.memMapBits){
+  if(decl->info.memMapBitsSym){
     m->StartGroup("MemoryMapped");
     m->AddPort("valid",SYM_one,WireDir_INPUT);
-    if(decl->info.memMapBits.value() > 0){
-      SymbolicExpression* expr = PushLiteral(out,decl->info.memMapBits.value());
-      m->AddPort("addr",expr,WireDir_INPUT);
+
+    Opt<int> p = ConstantEvaluate(decl->info.memMapBitsSym);
+
+    if(p.has_value() && p.value() <= 2 && false){
+      // Do nothing
+    } else {
+      m->AddPort("addr",decl->info.memMapBitsSym,WireDir_INPUT);
     }
     m->AddPort("wstrb",SYM_dataStrobeW,WireDir_INPUT);
     m->AddPort("wdata",SYM_dataW,WireDir_INPUT);
@@ -1107,10 +1123,15 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
   }
 #endif
 
-  if(module->info.memMapBits){
-    //m->Input("valid");
-    if(module->info.memMapBits.value() > 0){
-      m->Input("addr",module->info.memMapBits.value());
+  DEBUG_BREAK_IF(module->name == "API_Config");
+
+  if(module->info.memMapBitsSym){
+    Opt<int> p = ConstantEvaluate(module->info.memMapBitsSym);
+
+    if(p.has_value() && p.value() <= 2 && false){
+      // Do nothing
+    } else {
+      m->Input("addr",module->info.memMapBitsSym);
     }
     m->Input("wstrb",SYM_dataStrobeW);
     m->Input("wdata",SYM_dataW);
@@ -1120,8 +1141,6 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
   
   // Memory mapped units
   if(info.unitsMapped >= 1){
-    Array<String> memoryMasks = ExtractMemoryMasks(info,temp);
-
     m->Wire("unitRValid",info.unitsMapped);
     m->Assign("rvalid","(|unitRValid)");
 
@@ -1469,7 +1488,7 @@ static Array<TypeStructInfoElement> GenerateAddressStructFromType(FUDeclaration*
   for(FUInstance* node : decl->fixedDelayCircuit->allocated){
     FUDeclaration* decl = node->declaration;
 
-    if(!(decl->info.memMapBits.has_value())){
+    if(!decl->info.memMapBitsSym){
       continue;
     }
 
@@ -1482,7 +1501,7 @@ static Array<TypeStructInfoElement> GenerateAddressStructFromType(FUDeclaration*
   for(FUInstance* node : decl->fixedDelayCircuit->allocated){
     FUDeclaration* decl = node->declaration;
 
-    if(!(decl->info.memMapBits.has_value())){
+    if(!decl->info.memMapBitsSym){
       continue;
     }
 
@@ -1602,8 +1621,6 @@ void OutputIterativeSource(FUDeclaration* decl,FILE* file){
   // TODO: If going back to iteratives, remove this. Only Top level should care about Versat Values.
   VersatComputedValues val = ComputeVersatValues(&info,false);
 
-  Array<String> memoryMasks = ExtractMemoryMasks(info,temp);
-
   Hashmap<StaticId,StaticData>* staticUnits = CollectStaticUnits(&info,temp);
   
   Pool<FUInstance> nodes = accel->allocated;
@@ -1618,7 +1635,6 @@ void OutputIterativeSource(FUDeclaration* decl,FILE* file){
   TemplateSetCustom("parameters",MakeValue(&parameters));
   TemplateSetCustom("staticUnits",MakeValue(staticUnits));
   TemplateSetCustom("accel",MakeValue(decl));
-  TemplateSetCustom("memoryMasks",MakeValue(&memoryMasks));
   TemplateSetCustom("instances",MakeValue(&nodes));
   TemplateSetNumber("unitsMapped",val.unitsMapped);
   TemplateSetCustom("inputDecl",MakeValue(BasicDeclaration::input));
@@ -2235,12 +2251,13 @@ static void Output_Makefile(VersatComputedValues val,String typeName,String soft
       TE_SetString("moduleUnits",EndString(temp,s));
     }
 
-    if(info->memMapBits.has_value()){
-      TE_SetNumber("addressSize",info->memMapBits.value());
+    Opt<int> p = ConstantEvaluate(info->memMapBitsSym);
+    if(p.has_value()){
+      TE_SetNumber("addressSize",p.value());
     } else {
       TE_SetNumber("addressSize",10); // TODO: We need to figure out the best thing to do in this situation.
     }
-      
+
     TE_SetNumber("databusDataSize",globalOptions.databusDataSize);
 
     String traceType = {};
@@ -2669,7 +2686,7 @@ assign data_wstrb = csr_wstrb;
   }
 
   {
-    if(val.memoryMappedBytes == 0){
+    if(val.unitsMapped == 0){
       TE_SetString("memoryConfigDecisionExpr","1'b0");
     } else {
       String content = PushString(temp,"data_address[%d]",val.memoryConfigDecisionBit);
@@ -2712,12 +2729,8 @@ assign data_wstrb = csr_wstrb;
     m->EndBlock();
 
     if(info.unitsMapped >= 1){
-      Array<String> memoryMasks = ExtractMemoryMasks(info,temp);
-
       m->Wire("unitRValid",info.unitsMapped);
       m->Assign("csr_rvalid","versat_rvalid | (|unitRValid)");
-
-      //m->Reg("memoryMappedEnable",memoryMasks.size);
 
       m->WireArray("unitRData",info.unitsMapped,"DATA_W");
       m->WireAndAssignJoinBlock("unitRDataFinal","|","DATA_W");
@@ -2726,27 +2739,6 @@ assign data_wstrb = csr_wstrb;
       }
       m->EndBlock();
       m->Assign("csr_rdata","versat_rvalid ? versat_rdata : unitRDataFinal");
-      
-      // nocheckin
-#if 0
-      m->CombBlock();
-      {
-        m->Set("memoryMappedEnable",SF("%d'b0",info.unitsMapped));
-        m->If("data_valid & memoryMappedAddr");
-        for(int i = 0; i <  memoryMasks.size; i++){
-           String mask  =  memoryMasks[i];
-          if(!Empty(mask)){
-            m->If(SF("csr_addr[(%d-1) -: %d] == %d'b%.*s",topLevelDecl->info.memMapBits.value(),mask.size,mask.size,UN(mask)));
-            m->Set(SF("memoryMappedEnable[%d]",i),"1'b1");
-            m->EndIf();
-          } else {
-            m->Set(SF("memoryMappedEnable[%d]",i),"1'b1");
-          }
-        }
-        m->EndIf();
-      }
-      m->EndBlock();
-#endif
     } else {
       m->Assign("csr_rdata","versat_rdata");
       m->Assign("csr_rvalid","versat_rvalid");
@@ -3770,7 +3762,9 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
   TE_SetNumber("nInputs",info.inputs);
   TE_SetBool("implementsDone",info.implementsDone);
 
-  TE_SetNumber("memoryMapBits",info.memMapBits.value_or(0));
+  Opt<int> p = ConstantEvaluate(info.memMapBitsSym);
+
+  TE_SetNumber("memoryMapBits",p.value_or(0));
   TE_SetNumber("nIOs",info.nIOs);
   TE_SetBool("trace",globalDebug.outputVCD);
   TE_SetBool("signalLoop",info.signalLoop);
@@ -4263,11 +4257,12 @@ static iptr WRITE_@{0} = 0;)FOO";
   {
     CEmitter* c = StartCCode(temp);
 
-    if(info.memMapBits.has_value()){
+    if(info.memMapBitsSym){
       c->Define("HAS_MEMORY_MAP");
 
-      if(info.memMapBits.value() != 0){
-        c->Define("MEMORY_MAP_BITS",PushString(temp,"%d",info.memMapBits.value()));
+      if(info.memMapBitsSym){
+        String repr = PushRepr(temp,info.memMapBitsSym);
+        c->Define("MEMORY_MAP_BITS",repr);
       }
     }
       
@@ -4285,7 +4280,7 @@ static iptr WRITE_@{0} = 0;)FOO";
       if(unit->isComposite){
         continue;
       }
-      if(!unit->memMapBits.has_value()){
+      if(!unit->memMapSym){
         continue;
       }
 

@@ -272,7 +272,6 @@ struct VersatComputedValues{
   int stateAddressBits;
 
   int unitsMapped;
-  int memoryMappedBytes;
 
   int nUnitsIO;
   int numberConnections;

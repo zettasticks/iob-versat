@@ -221,7 +221,7 @@ String GetEntityMemName(InstanceInfo* info,Arena* out){
 Array<Pair<String,int>> ExtractMem(Array<InstanceInfo> info,Arena* out){
   int count = 0;
   for(InstanceInfo& in : info){
-    if(!in.isComposite && in.memMapBits.has_value()){
+    if(!in.isComposite && in.memMapSym){
       count += 1;
     }
   }
@@ -229,7 +229,7 @@ Array<Pair<String,int>> ExtractMem(Array<InstanceInfo> info,Arena* out){
   Array<Pair<String,int>> res = PushArray<Pair<String,int>>(out,count);
   int index = 0;
   for(InstanceInfo& in : info){
-    if(!in.isComposite && in.memMapBits.has_value()){
+    if(!in.isComposite && in.memMapSym){
       String name = GetEntityMemName(&in,out); 
       res[index++] = {name,(int) in.memMapped.value()};
     }
@@ -399,7 +399,8 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     elem->states = CopyArray(inst->declaration->states,out);
     elem->externalMemory = CopyArray(inst->declaration->externalMemory,out);
 
-    elem->memMapBits = inst->declaration->info.memMapBits;
+    //elem->memMapBits = inst->declaration->info.memMapBits;
+    //elem->memMapValid = inst->declaration->info.memMapBits.has_value();
     elem->memMapSym = inst->declaration->info.memMapBitsSym;
 
     // nocheckin
@@ -514,15 +515,28 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
   //       the parameters must be instantiated by using their default values before instantiating the lower units.
 
 #if 1
-  // Stuff that depends on parameters is set instantiated here.
+
+/*
+  If module A contains parameter X
+  And module A instantiates unit a with parameter Y = X.
+
+  We want parameter to propagate (a.Y = X);
+
+  If module B instantiates unit a without any parameter.
+  We want parameter to be the default (a.Y = Default).
+*/
+
+  // Stuff that depends on parameters is instantiated here.
   iter = StartIteration(&info);
   for(; iter.IsValid(); iter = iter.Step()){
     InstanceInfo* info = iter.CurrentUnit();
     InstanceInfo* parent = iter.GetParentUnit();
 
+#if 0
     if(!parent){
       continue;
     }
+#endif
 
     auto map = PushTrieMap<String,SymbolicExpression*>(temp);
     for(ParamAndValue p : info->params){
@@ -543,7 +557,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
 #endif
 
     if(info->memMapSym){
-      info->memMapSym = ReplaceVariables(info->memMapSym,map,out);
+      info->memMapSym = Normalize(ReplaceVariables(info->memMapSym,map,temp),out);
     }
 
 #if 0
@@ -881,15 +895,13 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
 
   CalculateState(CalculateState,initialIter,0);
   
-  //LEFT HERE - Memory mapping is not taking into account the possibility of parameters.
-
   // nocheckin - Maybe slower than needed and 
   {
     int memGlobalIndex = 0;
     for(auto iter = initialIter; iter.IsValid(); iter = iter.Step()){
       InstanceInfo* info = iter.CurrentUnit();
 
-      if(info->memMapBits.has_value() && !info->isComposite){
+      if(info->memMapSym && !info->isComposite){
         info->memGlobalIndex = memGlobalIndex++;
         info->memSize = 1;
       }
@@ -924,7 +936,52 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
     }
   }
 
+  // MARK1 
+
   // Handle memory mapping
+
+  // For the modules, memory mapping is just calculating the maximum
+  // 
+
+#if 1
+  auto CalculateMemory = [](auto Recurse,AccelInfoIterator& iter,iptr currentMem,Arena* out) -> void{
+    TEMP_REGION(temp,out);
+    InstanceInfo* parent = iter.GetParentUnit();
+    if(parent){
+      AccelInfoIterator parentIter = StartIteration(&parent->decl->info,parent->partitionIndex);
+
+      for(AccelInfoIterator it = iter; it.IsValid(); it = it.Next(),parentIter = parentIter.Next()){
+        InstanceInfo* unit = it.CurrentUnit();
+        InstanceInfo* memUnit = parentIter.CurrentUnit();
+        
+        unit->memMapSym = memUnit->memMapSym;
+      }
+    } else {
+      InstanceInfo* unit = iter.CurrentUnit();
+
+      if(!unit->isComposite){
+        return;
+      }
+
+      auto list = PushList<SymbolicExpression*>(temp);
+      for(AccelInfoIterator it = iter.StepInsideOnly(); it.IsValid(); it = it.Next()){
+        InstanceInfo* unit = it.CurrentUnit();
+
+        if(unit->memMapSym){
+          *list->PushElem() = unit->memMapSym;
+        }
+      }
+
+      if(!Empty(list)){
+        SymbolicExpression* max = SymbolicMax(list,temp);
+        unit->memMapSym = Normalize(max,out);
+      }
+    }
+  };
+
+  DEBUG_BREAK();
+  CalculateMemory(CalculateMemory,initialIter,0,out);
+#else
   auto CalculateMemory = [](auto Recurse,AccelInfoIterator& iter,iptr currentMem,Arena* out) -> void{
     TEMP_REGION(temp,out);
     
@@ -936,7 +993,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
         InstanceInfo* unit = it.CurrentUnit();
         InstanceInfo* memUnit = parentIter.CurrentUnit();
         
-        if(memUnit->memMapBits.has_value()){
+        if(memUnit->memMapValid){
           unit->memMapped = memUnit->memMapped.value() + currentMem;
           
           AccelInfoIterator inside = it.StepInsideOnly();
@@ -950,7 +1007,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
       for(AccelInfoIterator it = iter; it.IsValid(); it = it.Next()){
         InstanceInfo* unit = it.CurrentUnit();
 
-        if(unit->memMapBits.has_value()){
+        if(unit->memMapValid){
           Node* n = PushStruct<Node>(temp);
           *n = (Node){unit,unit->memMapBits.value()};
           *builder.PushElem() = n;
@@ -996,14 +1053,6 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
           Assert(top->right == nullptr);
 
           InstanceInfo* info = top->unit;
-          
-          auto builder = StartString(temp);
-          for(int i = max - 1; i >= top->value; i--){
-            builder->PushChar(GET_BIT(bitAccum,i) ? '1' : '0');
-          }
-          String decisionMask = EndString(out,builder);
-          PushNullByte(out);
-          info->memDecisionMask = decisionMask;
 
           info->memMapped = bitAccum;
         } else {
@@ -1017,7 +1066,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
       for(AccelInfoIterator it = iter; it.IsValid(); it = it.Next()){
         InstanceInfo* unit = it.CurrentUnit();
 
-        if(unit->memMapBits.has_value()){
+        if(unit->memMapValid){
           AccelInfoIterator inside = it.StepInsideOnly();
           Recurse(Recurse,inside,unit->memMapped.value(),out);
         }
@@ -1026,6 +1075,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
   };
 
   CalculateMemory(CalculateMemory,initialIter,0,out);
+#endif
   
   // Delay pos is just basically State position without anything different, right?
   auto CalculateDelayPos = [](auto Recurse,AccelInfoIterator& iter,int startIndex) -> void{
@@ -1131,34 +1181,6 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
   SetDelays(SetDelays,initialIter,delays,0,out);
 }
 
-/*
-
-How do we handle parameters in the mem mapped interface?
-
-If we have a unit of addr size 3, 3 and 4 then we know that the size of
-the module mem mapped is gonna be 5 (3 + 3 = 4 and 4 + 4 = 5).
-
-But what if the size of the units is X, Y and Z?
-
-If we still want the modules to still be verilog modules then we need to keep the parameters alive.
-Only the top level is the thing that we generate that instantiates stuff. The verilog modules 
-are still generated based on parameters.
-
-If we have 2,2,2,2 then we can use 4 (2 + 2 = 3, 2 + 2 = 3, 3 + 3 = 4).
-
-This means that we cannot just take the smallest values and build from there.
-
-What is the easiest way of solving this?
-
-We could either instantiate specific modules for the specific things that we are doing.
-
-Or we could change the generated code to instead of receiving an address it actually receives a valid signal for every
-single memory mapped interface. That way the mapping is only performed at the top level instead of each module decoding the signal individually.
-
-This might also be better since we simplify the debugging immensily.
-
-*/
-
 void FillStaticInfo(AccelInfo* info,Arena* out){
   TEMP_REGION(temp,out);
   AccelInfoIterator iter = StartIteration(info);
@@ -1242,8 +1264,21 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
 
   TrieSet<int>* configsSeen = PushTrieSet<int>(temp);
 
-  AccelInfoIterator iter = StartIteration(info);
-  for(;iter.IsValid(); iter = iter.Next()){
+  auto list = PushList<SymbolicExpression*>(temp);
+  for(AccelInfoIterator it = StartIteration(info); it.IsValid(); it = it.Next()){
+    InstanceInfo* unit = it.CurrentUnit();
+
+    if(unit->memMapSym){
+      *list->PushElem() = unit->memMapSym;
+    }
+  }
+  // nocheckin
+  if(!Empty(list)){
+    SymbolicExpression* max = SymbolicMax(list,globalPermanent);
+    info->memMapBitsSym = Normalize(max,globalPermanent);
+  }
+
+  for(AccelInfoIterator iter = StartIteration(info) ;iter.IsValid(); iter = iter.Next()){
     InstanceInfo* info = iter.CurrentUnit();
     for(int i : info->individualWiresGlobalConfigPos){
       if(i >= 0){
@@ -1255,7 +1290,6 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
   info->configs = configsSeen->map->inserted;
 
   // Handle non-static information
-  int memoryMappedDWords = 0;
   int unitsMapped = 0;
   int nDones = 0;
   for(FUInstance* ptr : accel->allocated){
@@ -1271,11 +1305,8 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
       seenShared[inst->sharedIndex] = true;
     }
     
-    if(type->info.memMapBits.has_value()){
+    if(type->info.memMapBitsSym){
       info->isMemoryMapped = true;
-
-      memoryMappedDWords = AlignBitBoundary(memoryMappedDWords,type->info.memMapBits.value());
-      memoryMappedDWords += (1 << type->info.memMapBits.value());
 
       unitsMapped += 1;
     }
@@ -1300,9 +1331,6 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
     }
   }
 
-  if(unitsMapped){
-    info->memMapBits = log2i(memoryMappedDWords);
-  }
   info->unitsMapped = unitsMapped;
   info->nDones = nDones;
   
@@ -1630,7 +1658,7 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
       }
 
       if(info->memMapSym){
-        info->memMapSym = ReplaceVariables(info->memMapSym,map,out);
+        info->memMapSym = Normalize(ReplaceVariables(info->memMapSym,map,temp),out);
       }
     }
 
@@ -1663,7 +1691,7 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
 #endif
 
       if(info->memMapSym){
-        info->memMapSym = ReplaceVariables(info->memMapSym,map,out);
+        info->memMapSym = Normalize(ReplaceVariables(info->memMapSym,map,temp),out);
       }
     }    
   }

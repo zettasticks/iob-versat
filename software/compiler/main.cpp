@@ -672,8 +672,6 @@ int main(int argc,char* argv[]){
   VersatComputedValues val = ComputeVersatValues(accel,&info,temp);
   Array<ExternalMemoryInterface> external = val.externalMemoryInterfaces;
 
-  DEBUG_BREAK();
-
   int maxMemoryBit = val.memoryConfigDecisionBit - 1;
   for(int i = 0; i < info.infos.size; i++){
     for(auto iter = StartIteration(&info,i); iter.IsValid(); iter = iter.Step()){
@@ -683,11 +681,17 @@ int main(int argc,char* argv[]){
         continue;
       }
     
-      if(!unit->memMapBits.has_value()){
+      if(!unit->memMapSym){
         continue;
       }
+
+      // This is after parameter instantiation which means that we can actually calculate this.
+
+      Opt<int> memMapBits = ConstantEvaluate(unit->memMapSym);
+      Assert(memMapBits.has_value());
+      
       int start = unit->memMapped.value();
-      int end = start + (1 << unit->memMapBits.value()) - 1;
+      int end = start + (1 << memMapBits.value()) - 1;
 
       unit->memStart = start;
       unit->memEnd = end;
@@ -712,8 +716,6 @@ int main(int argc,char* argv[]){
       printf("A: %.*s %.*s %.*s %d\n",UN(startBin),UN(endBin),UN(mask),sizeOfNonMask);
     }
   }
-  
-  DEBUG_BREAK();
   
   OutputTopLevelFiles(accel,type,
                       globalOptions.hardwareOutputFilepath,

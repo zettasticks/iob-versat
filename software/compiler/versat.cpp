@@ -164,12 +164,14 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
   decl.info.nIOs = info->nIO;
 
   if(info->memoryMapped) {
-    decl.info.memMapBits = EvalRange(info->memoryMappedBits,instantiated);
+    if(info->memoryMappedBits.high == nullptr || info->memoryMappedBits.low == nullptr){
+      decl.info.memMapBitsSym = SYM_zero;
+    } else {
+      SymbolicExpression* high = SymbolicExpressionFromVerilog(info->memoryMappedBits.high,out);
+      SymbolicExpression* low = SymbolicExpressionFromVerilog(info->memoryMappedBits.low,out);
 
-    SymbolicExpression* high = SymbolicExpressionFromVerilog(info->memoryMappedBits.high,out);
-    SymbolicExpression* low = SymbolicExpressionFromVerilog(info->memoryMappedBits.low,out);
-
-    decl.info.memMapBitsSym = SymbolicSubPlusOne(high,low,out);
+      decl.info.memMapBitsSym = Normalize(SymbolicSubPlusOne(high,low,temp),out);
+    }
   }
 
   decl.singleInterfaces = info->singleInterfaces;

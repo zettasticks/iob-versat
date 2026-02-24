@@ -134,18 +134,21 @@ struct InstanceInfo{
   // The value of the start and the memory mask.
   // If we just have memMapped and the total size of the mem mapped 
   // address then we could generate the memDecisionMask.
-  Opt<iptr> memMapped; // Used on Code Gen, to create the addresses for the memories.
-  String memDecisionMask; // This is local to the accelerator
+  //Opt<iptr> memMapped; // Used on Code Gen, to create the addresses for the memories.
 
   // nocheckin
-  Opt<int> memMapBits;
+  //bool memMapValid;
+  //Opt<int> memMapBits;
+
+  SymbolicExpression* memMapSym;
+
+  Opt<iptr> memMapped; // After parameter instantiation and this only makes sense for the top level.
+
   int memGlobalIndex;
   int memSize;
   String globalMemDecisionMask;
   int memStart;
   int memEnd;
-
-  SymbolicExpression* memMapSym;
 
   Opt<int> delayPos;
   Array<int> extraDelay;
@@ -281,8 +284,8 @@ struct AccelInfo{
 
   String staticExpr; // nocheckin: Check this 
   String delayStart; // nocheckin: Check this. Why string? Why not an actual expression
-  
-  Opt<int> memMapBits;
+
+  // This value is now the MAXIMUM of the units addresses.
   SymbolicExpression* memMapBitsSym;
 
   int unitsMapped;

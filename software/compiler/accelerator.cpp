@@ -545,10 +545,12 @@ Array<FUDeclaration*> MemSubTypes(AccelInfo* info,Arena* out){
   
   Set<FUDeclaration*>* maps = PushSet<FUDeclaration*>(temp,99);
 
-  Array<InstanceInfo> test = info->infos[0].info;
-  for(InstanceInfo& info : test){
-    if(info.memMapBits.has_value()){
-      maps->Insert(GetTypeByName(info.typeName));
+  if(info->infos.size > 0){
+    Array<InstanceInfo> test = info->infos[0].info;
+    for(InstanceInfo& info : test){
+      if(info.memMapSym){
+        maps->Insert(GetTypeByName(info.typeName));
+      }
     }
   }
   
@@ -649,15 +651,95 @@ int ExternalMemoryByteSize(Array<ExternalMemoryInterface> interfaces){
   return size;
 }
 
+
+struct HuffmanNode{
+  InstanceInfo* unit;
+  int value;
+  // Leafs have both of these at nullptr
+  HuffmanNode* left;
+  HuffmanNode* right;
+}; 
+
 VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Arena* out){
   TEMP_REGION(temp,out);
   VersatComputedValues res = {};
 
-  int memoryMappedDWords = 0;
   int delayBits = 0;
   int configBits = 0;
   int numberUnits = 0;
   int numberDones = 0;
+
+  int maxMemMapBits = 0;
+
+  {
+    for(int i = 0; i < info->infos.size; i++){
+      auto builder = PushList<HuffmanNode*>(temp);
+      for(AccelInfoIterator iter = StartIteration(info,i); iter.IsValid(); iter = iter.Step()){
+        InstanceInfo* unit = iter.CurrentUnit();
+        if(unit->isComposite){
+          continue;
+        }
+        if(!unit->memMapSym){
+          continue;
+        }
+    
+        Opt<int> val = ConstantEvaluate(unit->memMapSym);
+
+        HuffmanNode* n = PushStruct<HuffmanNode>(temp);
+        *n = {unit,val.value()};
+        *builder->PushElem() = n;
+      }
+
+      Array<HuffmanNode*> baseNodes = PushArray(temp,builder);
+
+      if(baseNodes.size > 0){
+        auto Sort = [](Array<HuffmanNode*>& toSort){
+          for(int i = 0; i < toSort.size; i++){
+            for(int j = i + 1; j < toSort.size; j++){
+              if(toSort[i]->value < toSort[j]->value){
+                SWAP(toSort[i],toSort[j]);
+              }
+            }
+          }
+        };
+
+        Sort(baseNodes);
+
+        while(baseNodes.size > 1){
+          HuffmanNode* left = baseNodes[baseNodes.size - 2];
+          HuffmanNode* right = baseNodes[baseNodes.size - 1];
+      
+          HuffmanNode* n = PushStruct<HuffmanNode>(temp);
+          n->value = MAX(left->value,right->value) + 1;
+          n->left = left;
+          n->right = right;
+          baseNodes[baseNodes.size - 2] = n;
+          baseNodes.size -= 1;
+
+          Sort(baseNodes);
+        }
+    
+        HuffmanNode* top = baseNodes[0];
+        maxMemMapBits = top->value;
+      
+        auto NodeRecurse = [](auto Recurse,HuffmanNode* top,int max,int bitAccum,Arena* out) -> void{
+          if(top->left == nullptr){
+            TEMP_REGION(temp,out);
+            Assert(top->right == nullptr);
+
+            InstanceInfo* info = top->unit;
+
+            info->memMapped = bitAccum;
+          } else {
+            Recurse(Recurse,top->left,max,SET_BIT(bitAccum,top->left->value),out);
+            Recurse(Recurse,top->right,max,bitAccum,out);
+          }
+        };
+
+        NodeRecurse(NodeRecurse,top,top->value,0,out);
+      }
+    }
+  }
 
   SymbolicExpression* configExpr = PushLiteral(temp,0);
   
@@ -665,14 +747,11 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
 
   int defaultDelaySize = 7;
   int externalMemoryInterfaces = 0; 
-  
+
   for(AccelInfoIterator iter = StartIteration(info); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* unit = iter.CurrentUnit();
     
-    if(unit->memMapBits.has_value()){
-      memoryMappedDWords = AlignBitBoundary(memoryMappedDWords,unit->memMapBits.value());
-      memoryMappedDWords += 1 << unit->memMapBits.value();
-
+    if(unit->memMapSym){
       res.unitsMapped += 1;
     }
 
@@ -772,8 +851,7 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
   int nConfigurations = res.nConfigs + res.nStatics + res.nDelays;
   res.configurationBits = configBits + staticBits + delayBits;
 
-  res.memoryMappedBytes = memoryMappedDWords * 4;
-  res.memoryAddressBits = log2i(memoryMappedDWords);
+  res.memoryAddressBits = maxMemMapBits;
 
   res.configurationAddressBits = log2i(nConfigurations) + 2;
   res.stateAddressBits = log2i(res.nStates)  + 2;

@@ -369,6 +369,80 @@ int Evaluate(SymbolicExpression* expr,Hashmap<String,int>* values){
   return val;
 }
 
+Opt<int> ConstantEvaluate(SymbolicExpression* expr){
+  if(!expr){
+    return {};
+  }
+
+  bool error = false;
+  auto Evaluate = [&error](auto Evaluate,SymbolicExpression* expr) -> int{ 
+    int val = 0;
+    switch(expr->type){
+    case SymbolicExpressionType_FUNC: {
+      if(expr->name == "Max"){
+        int res = INT_MIN;
+        for(SymbolicExpression* s : expr->terms){
+          res = MAX(res,Evaluate(Evaluate,s));
+        }
+
+        return res;
+      }
+
+      return 0;
+    } break;
+    case SymbolicExpressionType_LITERAL:{
+      val = expr->literal;
+    } break;
+    case SymbolicExpressionType_VARIABLE:{
+      error = true;
+    } break;
+    case SymbolicExpressionType_DIV:{
+      int left = Evaluate(Evaluate,expr->top);
+      int right = Evaluate(Evaluate,expr->bottom);
+
+      if(right == 0){
+        PRINTF_WITH_LOCATION("Division by zero\n");
+        DEBUG_BREAK_OR_EXIT();
+        return 0;
+      }
+
+      val = (left / right);
+    } break;
+    case SymbolicExpressionType_SUM: // fallthrough
+    case SymbolicExpressionType_MUL:{
+      bool isMul = (expr->type == SymbolicExpressionType_MUL);
+      int value = isMul ? 1 : 0;
+
+      for(SymbolicExpression* child : expr->terms){
+        int subVal = Evaluate(Evaluate,child);
+
+        if(isMul){
+          value *= subVal;
+        } else {
+          value += subVal;
+        }
+      }
+
+      val = value;
+    } break;
+    }
+
+    if(expr->negative){
+      val = -val;
+    }
+
+    return val;
+  };
+
+  int val = Evaluate(Evaluate,expr);
+
+  if(error){
+    return {};
+  }
+  
+  return val;
+}
+
 #define EXPECT(TOKENIZER,STR) \
   TOKENIZER->AssertNextToken(STR)
 
@@ -542,6 +616,19 @@ SymbolicExpression* SymbolicDiv(SymbolicExpression* top,SymbolicExpression* bott
 
   res->top = top;
   res->bottom = bottom;
+
+  return res;
+}
+
+SymbolicExpression* SymbolicMax(ArenaList<SymbolicExpression*>* elems,Arena* out){
+  if(Empty(elems)){
+    return PushLiteral(out,0);
+  }
+
+  SymbolicExpression* res = PushStruct<SymbolicExpression>(out);
+  res->type = SymbolicExpressionType_FUNC;
+  res->name = "Max";
+  res->terms = PushArray(out,elems);
 
   return res;
 }
@@ -1235,6 +1322,64 @@ SymbolicExpression* NormalizeLiterals(SymbolicExpression* expr,Arena* out){
   NOT_POSSIBLE();
 }
 
+SymbolicExpression* NormalizeFunctions(SymbolicExpression* expr,Arena* out){
+  TEMP_REGION(temp,out);
+  switch(expr->type){
+  case SymbolicExpressionType_FUNC:{
+    if(expr->name == "Max"){
+      if(expr->terms.size == 1){
+        return ApplyNegation(NormalizeFunctions(expr->terms[0],out),expr->negative);
+      }
+
+      int maximum = INT_MIN;
+      bool atLeastOne = false;
+      auto list = PushList<SymbolicExpression*>(temp);
+      for(SymbolicExpression* s : expr->terms){
+        SymbolicExpression* child = NormalizeFunctions(s,out);
+        
+        Opt<int> constant = ConstantEvaluate(s);
+        if(constant.has_value()){
+          atLeastOne = true;
+          maximum = MAX(maximum,constant.value());
+        } else {
+          *list->PushElem() = child;
+        }
+      }
+
+      if(Empty(list)){
+        Assert(atLeastOne);
+        return ApplyNegation(PushLiteral(out,maximum),expr->negative);
+      }
+
+      if(atLeastOne){
+        *list->PushElem() = PushLiteral(out,maximum);
+      }
+
+      SymbolicExpression* res = PushStruct<SymbolicExpression>(out);
+      res->type = expr->type;
+      res->terms = PushArray(out,list);
+      res->negative = expr->negative;
+
+      return res;
+    } else {
+      return SymbolicDeepCopy(expr,out);
+    }
+  } break;
+  case SymbolicExpressionType_VARIABLE:
+  case SymbolicExpressionType_LITERAL: {
+    return SymbolicDeepCopy(expr,out);
+  } break;
+  case SymbolicExpressionType_SUM: // fallthrough
+  case SymbolicExpressionType_MUL: {
+    return ApplyGeneric(expr,out,NormalizeFunctions);
+  } break;
+  case SymbolicExpressionType_DIV:{
+    return ApplyGeneric(expr,out,NormalizeFunctions);
+  } break;
+  }
+  NOT_POSSIBLE();
+}
+
 // Must call normalizeLiteral before calling this one. 
 MultPartition CollectTermsWithLiteralMultiplier(SymbolicExpression* expr,Arena* out){
   //Assert(expr->type == SymbolicExpressionType_ARRAY && expr->op == '*');
@@ -1884,6 +2029,10 @@ SymbolicExpression* ReplaceVariables(SymbolicExpression* base,Hashmap<String,Sym
 }
 
 SymbolicExpression* ReplaceVariables(SymbolicExpression* base,TrieMap<String,SymbolicExpression*>* values,Arena* out){
+  if(!base){
+    return base;
+  }
+
   switch(base->type){
   case SymbolicExpressionType_LITERAL:
     return SymbolicDeepCopy(base,out);
@@ -2066,6 +2215,13 @@ SymbolicExpression* Normalize(SymbolicExpression* expr,Arena* out,bool debugPrin
   for(int i = 0; i < 10; i++){
     BLOCK_REGION(temp);
     if(debugPrint) printf("%d:\n",i);
+
+    next = NormalizeFunctions(current,out);
+    CheckIfSymbolicExpressionsShareNodes(current,next);
+    current = next;
+    if(debugPrint) printf("Normalize Functions:\n");
+    if(debugPrint) {Print(current); printf("\n");}
+    if(debugPrintAST) PrintAST(current);
 
     next = NormalizeLiterals(current,out);
     CheckIfSymbolicExpressionsShareNodes(current,next);

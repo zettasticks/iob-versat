@@ -115,6 +115,7 @@ Array<SymbolicReprAtom> CompileRepresentation(SymbolicExpression* expr,Arena* ou
 // Evaluation, mostly debugging purposes for now.
 
 int Evaluate(SymbolicExpression* expr,Hashmap<String,int>* values);
+Opt<int> ConstantEvaluate(SymbolicExpression* expr); // Only evaluates successfully if the expression can be evaluated directly (no variables).
 
 // ======================================
 // Low level symbolic building blocks
@@ -130,6 +131,9 @@ SymbolicExpression* SymbolicMult(SymbolicExpression* left,SymbolicExpression* ri
 SymbolicExpression* SymbolicMult(Array<SymbolicExpression*> terms,Arena* out);
 SymbolicExpression* SymbolicMult(Array<SymbolicExpression*> terms,SymbolicExpression* extra,Arena* out);
 SymbolicExpression* SymbolicDiv(SymbolicExpression* top,SymbolicExpression* bottom,Arena* out);
+
+// nocheckin: Make this proper, not the hacky stuff that we did
+SymbolicExpression* SymbolicMax(ArenaList<SymbolicExpression*>* elems,Arena* out);
 
 // For the cases where we are dealing with ranges and want to calculate size([A,B] = B - A + 1)
 SymbolicExpression* SymbolicSubPlusOne(SymbolicExpression* higher,SymbolicExpression* lower,Arena* out);
@@ -172,6 +176,8 @@ SymbolicExpression* ApplyDistributivity(SymbolicExpression* expr,Arena* out);
 SymbolicExpression* ApplySimilarTermsAddition(SymbolicExpression* expr,Arena* out);
 SymbolicExpression* MoveDivToTop(SymbolicExpression* base,Arena* out);
 SymbolicExpression* NormalizeLiterals(SymbolicExpression* expr,Arena* out);
+
+
 SymbolicExpression* SymbolicReplace(SymbolicExpression* base,String varToReplace,SymbolicExpression* replacingExpr,Arena* out);
 
 SymbolicExpression* ReplaceVariables(SymbolicExpression* expr,Hashmap<String,SymbolicExpression*>* values,Arena* out);
