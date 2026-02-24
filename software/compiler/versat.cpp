@@ -497,11 +497,7 @@ FUDeclaration* RegisterSubUnit(Accelerator* circuit,Array<ParameterDef> params,S
     res->baseCircuit = CopyAccelerator(circuit,AcceleratorPurpose_BASE,true); 
 
     CalculateDelayResult delays = CalculateDelay(circuit,temp);
-
-    region(temp){
-      FixDelays(circuit,delays.edgesDelay);
-    }
-
+    FixDelays(circuit,delays.edgesDelay);
     res->fixedDelayCircuit = circuit;
     res->fixedDelayCircuit->name = res->name;
   } else {
@@ -513,11 +509,7 @@ FUDeclaration* RegisterSubUnit(Accelerator* circuit,Array<ParameterDef> params,S
     res->flattenMapping = p.second;
   
     CalculateDelayResult delays = CalculateDelay(circuit,temp);
-
-    region(temp){
-      FixDelays(circuit,delays.edgesDelay);
-    }
-
+    FixDelays(circuit,delays.edgesDelay);
     res->fixedDelayCircuit = circuit;
   }
 
@@ -806,7 +798,7 @@ Hashmap<String,SymbolicExpression*>* GetParametersOfUnit(FUInstance* inst,Arena*
       map->Insert(param.name,PushVariable(out,param.name));
     } else {
       if(val){
-        map->Insert(param.name,val);
+        map->Insert(param.name,SymbolicDeepCopy(val,out));
       } else {
         map->Insert(param.name,param.defaultVal);
       }

@@ -127,7 +127,7 @@ Array<Array<InstanceInfo*>> VUnitInfoPerMerge(AccelInfo info,Arena* out){
       *list->PushElem() = info;
     }
 
-    unitInfoPerMerge[i] = PushArray(temp,list);
+    unitInfoPerMerge[i] = PushArray(out,list);
   }
 
   return unitInfoPerMerge;

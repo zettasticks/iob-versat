@@ -304,7 +304,7 @@ static Array<Pair<String,String>> InstantiateGen(AddressAccess* access,int maxLo
   SymbolicExpression* freeTerm = access->external->freeTerm;
 
   ArenaList<Pair<String,String>>* list = PushList<Pair<String,String>>(temp);
-  String start = PushRepr(temp,freeTerm);
+  String start = PushRepr(out,freeTerm);
 
   *list->PushElem() = {"start",start};
 
@@ -457,7 +457,7 @@ static Array<Pair<String,String>> InstantiateMem(AddressAccess* access,int port,
   SymbolicExpression* freeTerm = access->external->freeTerm;
 
   ArenaList<Pair<String,String>>* list = PushList<Pair<String,String>>(temp);
-  String start = PushRepr(temp,freeTerm);
+  String start = PushRepr(out,freeTerm);
 
   if(port == 0){
     *list->PushElem() = {"startA",start};

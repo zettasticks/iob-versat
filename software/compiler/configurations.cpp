@@ -463,9 +463,13 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
         InstanceInfo* subUnit = iter.CurrentUnit();
         InstanceInfo* elem = array.PushElem();
 
+        // no checking
+        // TODO: This is stupid and already caused 2 bugs I think.
+        //       Anything like arrays and such will cause problems. Cannot just copy it this way.
         *elem = *subUnit;
         elem->individualWiresGlobalConfigPos = CopyArray(subUnit->individualWiresGlobalConfigPos,out);
         Memset(elem->individualWiresGlobalConfigPos,0);
+        elem->params = CopyArray(subUnit->params,out);
         elem->level += 1;
       }
     }
@@ -514,7 +518,6 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
   //       have their parameters instantiated. The reason is that for the last step, (the top units)
   //       the parameters must be instantiated by using their default values before instantiating the lower units.
 
-#if 1
 
 /*
   If module A contains parameter X
@@ -547,29 +550,49 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
       map->Insert(p.name,p.val);
     }
 
-#if 1
     for(Wire& w : info->configs){
       w.sizeExpr = ReplaceVariables(w.sizeExpr,map,out);
     }
     for(Wire& w : info->states){
       w.sizeExpr = ReplaceVariables(w.sizeExpr,map,out);
     }
-#endif
 
     if(info->memMapSym){
       info->memMapSym = Normalize(ReplaceVariables(info->memMapSym,map,temp),out);
     }
+  }
 
-#if 0
-    elem->externalMemory = CopyArray(inst->declaration->externalMemory,out);
-    elem->memMapBits = inst->declaration->info.memMapBits;
+  iter = StartIteration(&info);
+  for(; iter.IsValid(); iter = iter.Step()){
+    InstanceInfo* info = iter.CurrentUnit();
+    InstanceInfo* parent = iter.GetParentUnit();
 
-    if(elem->memMapBits.has_value()){
-      elem->memMappedSize = 1 << elem->memMapBits.value();
+#if 1
+    if(!parent){
+      continue;
     }
 #endif
+
+    auto map = PushTrieMap<String,SymbolicExpression*>(temp);
+    for(ParamAndValue p : parent->params){
+      if(IsGlobalParameter(p.name)){
+        continue;
+      }
+
+      map->Insert(p.name,p.val);
+    }
+
+    for(Wire& w : info->configs){
+      w.sizeExpr = ReplaceVariables(w.sizeExpr,map,out);
+    }
+    for(Wire& w : info->states){
+      w.sizeExpr = ReplaceVariables(w.sizeExpr,map,out);
+    }
+
+    if(info->memMapSym){
+      info->memMapSym = Normalize(ReplaceVariables(info->memMapSym,map,temp),out);
+    }
   }
-#endif
 
   // Fill in graph info
   for(Pair<FUInstance*,int> p : instanceToIndex){
@@ -979,7 +1002,6 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
     }
   };
 
-  DEBUG_BREAK();
   CalculateMemory(CalculateMemory,initialIter,0,out);
 #else
   auto CalculateMemory = [](auto Recurse,AccelInfoIterator& iter,iptr currentMem,Arena* out) -> void{
