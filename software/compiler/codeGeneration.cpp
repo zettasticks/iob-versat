@@ -1018,15 +1018,6 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
     m->ModuleParam(p.name,p.defaultVal);
   }
 
-#if 0
-  m->ModuleParam("AXI_ADDR_W",0);
-  m->ModuleParam("AXI_DATA_W",0);
-  m->ModuleParam("ADDR_W",0);
-  m->ModuleParam("DATA_W",0);
-  m->ModuleParam("DELAY_W",0);
-  m->ModuleParam("LEN_W",0);
-#endif
-
   // TODO: For now, we always output these interfaces because the wrapper that interacts with the Verilated unit is not capable of handling the lack of these wires. Furthermore, changing this stuff is probably a bit time consuming right now, as we need to change the logic used for simulating units that do not contain wires like rst, clk and so on.
   //       In fact, simulating a design that does not contain a clk seems to require a entirely different approach compared to a clocked one. Since we are in full control of the generated code we can do it, but will probably take some work.
   //if(module->singleInterfaces & SingleInterfaces_RUN){

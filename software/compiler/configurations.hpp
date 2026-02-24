@@ -155,6 +155,8 @@ struct InstanceInfo{
   int baseNodeDelay;
   int numberDelays;
 
+  // TODO: There are a couple of variables like these that we could just put into an union.
+  // Only makes sense on buffer units.
   int variableBufferDelay;
 
   bool isComposite;
