@@ -276,7 +276,12 @@ int main(int argc,char* argv[]){
   InitializeSimpleDeclarations();
   InitializeUserConfigs();
   InitParser(perm);
+  SYM_Init();
   
+  //TestSym2();
+
+  //return 0;
+
   //TestSymbolic();
 
   argp argp = { options, parse_opt, "SpecFile\n-T UnitName", "Dataflow to accelerator compiler. Check tutorial in https://github.com/IObundle/iob-versat to learn how to write a specification file"};

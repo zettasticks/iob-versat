@@ -221,3 +221,86 @@ SymbolicExpression* GetLoopLinearSumTotalSize(LoopLinearSum* in,Arena* out);
 void Print(LoopLinearSum* sum,bool printNewLine = false);
 void Repr(StringBuilder* builder,LoopLinearSum* sum);
 String PushRepr(LoopLinearSum* sum,Arena* out);
+
+void SYM_Init();
+
+enum SYM_Type{
+  SYM_Type_LITERAL,
+  SYM_Type_VARIABLE,
+  SYM_Type_SUM,
+  SYM_Type_MUL,
+  SYM_Type_DIV,
+  SYM_Type_FUNC
+};
+
+struct SYM_Node;
+struct SYM_Expr{
+  SYM_Node* node;
+};
+
+inline SYM_Node* Negate(SYM_Node* ptr);
+
+inline bool operator==(SYM_Expr lhs,SYM_Expr rhs){return lhs.node == rhs.node;}
+inline SYM_Expr Negate(SYM_Expr expr){SYM_Expr res = {Negate(expr.node)}; return res;}
+
+struct SYM_Node{
+  SYM_Type type;
+
+  union{
+    int literal;
+    String variable;
+
+    struct {
+      union{
+        SYM_Expr top;
+        SYM_Expr left;
+      };
+      union {
+        SYM_Expr bottom;
+        SYM_Expr right;
+      };
+    };
+    
+    struct {
+      String name;
+      Array<SYM_Expr> args; // Terms of SUM and MUL. Function arguments for FUNC
+    } func;
+  };
+  
+  SYM_Node* hashNext;
+};
+
+inline SYM_Node* Negate(SYM_Node* ptr){return (SYM_Node*) (((iptr) ptr) ^ 0x1);}
+inline bool IsNegative(SYM_Node* ptr){return (((iptr) ptr) & 0x1);}
+inline SYM_Node* GetPointer(SYM_Node* ptr){return (SYM_Node*) (((iptr) ptr) & ~0x1);}
+
+/*
+
+We started using an array of terms to simplify the handlying of stuff like
+distributivity and stuff like that.
+
+For the binary case, how do we know to add two literals in an addition chain?
+
+1 + a + b + 5
+
+gives the tree
+
+(((1 + a) + b) + 5)
+
+or something similar
+
+I guess we could just call a function to collect everything into an array and then operate from there.
+
+*/
+
+inline bool Valid(SYM_Expr expr){return expr.node != nullptr;}
+void SYM_Print(SYM_Expr expr);
+
+SYM_Expr operator+(SYM_Expr left,SYM_Expr right);
+SYM_Expr operator-(SYM_Expr left,SYM_Expr right);
+SYM_Expr operator-(SYM_Expr right);
+SYM_Expr operator*(SYM_Expr left,SYM_Expr right);
+SYM_Expr operator/(SYM_Expr left,SYM_Expr right);
+
+
+void TestSym2();

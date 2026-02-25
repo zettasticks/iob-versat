@@ -41,12 +41,12 @@ module Buffer #(
    ) ext_2p (
       // Writting port
       .w_en_i  (ext_2p_write),
-      .w_addr_i(ext_2p_addr_out),
+      .w_addr_i(ext_2p_addr_out << 2),
       .w_data_i(ext_2p_data_out),
 
       // Reading port
       .r_en_i  (ext_2p_read),
-      .r_addr_i(ext_2p_addr_in),
+      .r_addr_i(ext_2p_addr_in  << 2),
       .r_data_o(ext_2p_data_in),
 
       .clk_i(clk)

@@ -316,7 +316,7 @@ void VEmitter::InsertDeclaration(VAST* declarationAST){
     case VASTType_TOP_LEVEL: {
       Assert(false);
     } break;
-    } END_SWITCH();
+    } 
   }
 }
 
@@ -369,7 +369,7 @@ void VEmitter::InsertPortDeclaration(VAST* portAST){
     case VASTType_TOP_LEVEL: {
       Assert(false);
     } break;
-    } END_SWITCH();
+    }
   }
 };
 
@@ -422,7 +422,7 @@ void VEmitter::InsertPortConnect(VAST* portAST){
     case VASTType_TOP_LEVEL: {
       Assert(false);
     } break;
-    } END_SWITCH();
+    }
   }
 };
 
@@ -1491,7 +1491,7 @@ void Repr(VAST* top,StringBuilder* b,VState* state,int level){
     b->PushString("end\n");
   } break;
   
-  } END_SWITCH();
+  }
 }
 
 void Repr(VAST* top,StringBuilder* b){

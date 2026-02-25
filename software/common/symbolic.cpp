@@ -6,6 +6,7 @@
 #include "utilsCore.hpp"
 
 #include "newParser.hpp"
+#include <cstdint>
 
 static TokenizerTemplate* tmpl;
 
@@ -2694,3 +2695,478 @@ static SymbolicExpression  SYM_INST_dataStrobeW = {.type = SymbolicExpressionTyp
 
 SymbolicExpression* SYM_axiStrobeW = &SYM_INST_axiStrobeW;
 SymbolicExpression* SYM_dataStrobeW = &SYM_INST_dataStrobeW;
+
+static struct {
+  Arena* arena;
+  
+  SYM_Node* hashTable[1024];
+} SYM_State;
+
+void SYM_Init(){
+  static Arena arenaInst = InitArena(Megabyte(1));
+  SYM_State.arena = &arenaInst;
+}
+
+SYM_Expr GetOrAllocateLiteral(int literal){
+  int hash = literal % 1024;
+
+  SYM_Node* ptr = SYM_State.hashTable[hash];
+  SYM_Node* previous = ptr;
+
+  SYM_Node* res = nullptr;
+  for(; ptr; previous = ptr,ptr = ptr->hashNext){
+    if(ptr->type == SYM_Type_LITERAL && ptr->literal == literal){
+      res = ptr;
+      break;
+    }
+  }
+
+  if(!res){
+    res = PushStruct<SYM_Node>(SYM_State.arena);
+    res->type = SYM_Type_LITERAL;
+    res->literal = literal;
+
+    if(previous){
+      previous->hashNext = res;
+    } else {
+      SYM_State.hashTable[hash] = res;
+    }
+  }
+  
+  SYM_Expr result = {res};
+
+  return result;
+}
+
+SYM_Expr GetOrAllocateVariable(String name){
+  int hash = Hash(name) % 1024;
+
+  SYM_Node* ptr = SYM_State.hashTable[hash];
+  SYM_Node* previous = ptr;
+
+  SYM_Node* res = nullptr;
+  for(; ptr; previous = ptr,ptr = ptr->hashNext){
+    if(ptr->type == SYM_Type_VARIABLE && ptr->variable == name){
+      res = ptr;
+      break;
+    }
+  }
+
+  if(!res){
+    res = PushStruct<SYM_Node>(SYM_State.arena);
+    res->type = SYM_Type_VARIABLE;
+    res->variable = PushString(SYM_State.arena,name);
+
+    if(previous){
+      previous->hashNext = res;
+    } else {
+      SYM_State.hashTable[hash] = res;
+    }
+  }
+  
+  SYM_Expr result = {res};
+
+  return result;
+}
+
+int64_t Hash(SYM_Expr expr){
+  bool negate = IsNegative(expr.node);
+  SYM_Node* node = GetPointer(expr.node);
+
+  int64_t res = 0;
+  FULL_SWITCH(node->type){
+    case SYM_Type_LITERAL: {
+      res += (int64_t) node->literal;
+    } break;
+    case SYM_Type_VARIABLE: {
+      res += Hash(node->variable);
+    } break;
+    case SYM_Type_MUL:
+    case SYM_Type_DIV:
+    case SYM_Type_SUM: {
+      res += Hash(node->left) + Hash(node->right);
+    } break;
+    case SYM_Type_FUNC: {
+      res += Hash(node->func.name);
+
+      for(SYM_Expr expr : node->func.args){
+        res += Hash(expr);
+      }
+    } break;
+  }
+
+  return res;
+}
+
+SYM_Expr GetOrAllocateOp(SYM_Type type,SYM_Expr top,SYM_Expr bottom){
+  int hash = (Hash(top)+Hash(bottom)) % 1024;
+
+  SYM_Node* ptr = SYM_State.hashTable[hash];
+  SYM_Node* previous = ptr;
+
+  SYM_Node* res = nullptr;
+  for(; ptr; previous = ptr,ptr = ptr->hashNext){
+    if(ptr->type == type && ptr->top == top && ptr->bottom == bottom){
+      res = ptr;
+      break;
+    }
+  }
+
+  if(!res){
+    res = PushStruct<SYM_Node>(SYM_State.arena);
+    res->type = type;
+    res->top = top;
+    res->bottom = bottom;
+
+    if(previous){
+      previous->hashNext = res;
+    } else {
+      SYM_State.hashTable[hash] = res;
+    }
+  }
+  
+  SYM_Expr result = {res};
+
+  return result;
+}
+
+//SYM_Expr GetOrAllocateFunc(String name,Array<SYM_Expr> args){}
+//SYM_Expr GetOrAllocateFunc(String name,ArenaList<SYM_Expr>* args){}
+
+SYM_Expr operator+(SYM_Expr left,SYM_Expr right){
+  return GetOrAllocateOp(SYM_Type_SUM,left,right);
+}
+
+SYM_Expr operator-(SYM_Expr left,SYM_Expr right){
+  return GetOrAllocateOp(SYM_Type_SUM,left,Negate(right));
+}
+
+SYM_Expr operator-(SYM_Expr left){
+  SYM_Expr res = {Negate(left.node)};
+  return res;
+}
+
+SYM_Expr operator*(SYM_Expr left,SYM_Expr right){
+  return GetOrAllocateOp(SYM_Type_MUL,left,right);
+}
+
+SYM_Expr operator/(SYM_Expr left,SYM_Expr right){
+  return GetOrAllocateOp(SYM_Type_DIV,left,right);
+}
+
+SYM_Expr ParseSYM_Expr(Parser* parser,int bindingPower = -1){
+  TEMP_REGION(temp,nullptr);
+
+  // Parse unary
+  bool negative = false;
+  while(!parser->Done()){
+    if(parser->IfNextToken('-')){
+      negative = !negative;
+      continue;
+    }
+
+    break;
+  }
+
+  // Parse atom
+  SYM_Expr res = {};
+  
+  NewToken atom = parser->PeekToken();
+  if(atom.type == '('){
+    parser->ExpectNext('(');
+
+    res = ParseSYM_Expr(parser);
+
+    parser->ExpectNext(')');
+  } else if(atom.type == NewTokenType_NUMBER){
+    NewToken number = parser->ExpectNext(NewTokenType_NUMBER);
+    res = GetOrAllocateLiteral(number.number);
+  } else if(atom.type == NewTokenType_IDENTIFIER){
+    parser->NextToken();
+
+#if 0
+    if(parser->IfNextToken('(')){
+      auto argList = PushList<SYM_Expr>(temp);
+      while(!parser->Done()){
+        SYM_Expr argument = ParseSYM_Expr(parser);
+        *argList->PushElem() = argument;
+          
+        if(parser->IfPeekToken(')')){
+          break;
+        }
+
+        parser->IfNextToken(',');
+      }
+      parser->ExpectNext(')');
+
+      SYM_Expr func = GetOrAllocateFunc(atom.identifier,argList);
+
+      res = func;
+    } 
+#endif
+
+    if(!Valid(res)){
+      res = GetOrAllocateVariable(atom.identifier);
+    }
+  } else {
+    // TODO: Better error reporting
+    parser->ReportUnexpectedToken(atom,{});
+  }
+
+  if(negative){
+    res = -res;
+  }
+
+  struct OpInfo{
+    NewTokenType type;
+    int bindingPower;
+  };
+
+  // TODO: This should be outside the function itself. No point initializing every time.
+  auto infos = PushArray<OpInfo>(temp,4);
+
+  // TODO: Need to double check binding power and potentially
+  //       implement associativity (how is 'a / b / c / d' supposed to work?)
+  infos[0] = {TOK_TYPE('+'),0};
+  infos[1] = {TOK_TYPE('-'),0};
+  infos[2] = {TOK_TYPE('*'),1};
+  infos[3] = {TOK_TYPE('/'),2};
+  
+  // Parse binary ops.
+  while(!parser->Done()){
+    NewToken peek = parser->PeekToken();
+
+    bool continueOuter = false;
+    for(OpInfo info : infos){
+      if(peek.type == info.type){
+        if(info.bindingPower > bindingPower){
+          parser->NextToken();
+
+          SYM_Expr right = ParseSYM_Expr(parser,info.bindingPower);
+
+          if(info.type == '+'){
+            res = res + right;
+          } else if(info.type == '-'){
+            res = res - right;
+          } else if(info.type == '*'){
+            res = res * right;
+          } else if(info.type == '/'){
+            res = res / right;
+          } else {
+            Assert(false);
+          }
+
+          continueOuter = true;
+          break;
+        }
+      }
+    }
+
+    if(continueOuter){
+      continue;
+    }
+
+    break;
+  }
+ 
+  Assert(Valid(res));
+  return res;
+}
+
+SYM_Expr ParseSYM(String content){
+  FREE_ARENA(parseArena);
+
+  auto tokenizer = [](const char* start,const char* end) -> TokenizeResult {
+    TokenizeResult result = ParseWhitespace(start,end);
+    result |= ParseComments(start,end);
+    result |= ParseSymbols(start,end);
+    result |= ParseNumber(start,end);
+    result |= ParseIdentifier(start,end);
+    return result;
+  };
+  
+  Parser* parser = StartParsing(content,tokenizer,parseArena);
+  SYM_Expr expr = ParseSYM_Expr(parser);
+
+  return expr;
+}
+
+int TypeToBindingStrength(SYM_Type type){
+  FULL_SWITCH(type){
+  case SYM_Type_LITERAL: return 1;
+  case SYM_Type_VARIABLE: return 1;
+  case SYM_Type_SUM: return 2;
+  case SYM_Type_MUL: return 3;
+  case SYM_Type_DIV: return 4;
+  case SYM_Type_FUNC: return 5;
+  }
+  NOT_POSSIBLE();
+}
+
+SYM_Expr GetLeftmostExprOfAddition(SYM_Expr top){
+  bool negate = IsNegative(top.node);
+  SYM_Node* node = GetPointer(top.node);
+
+  SYM_Expr res = top;
+  
+  if(node->type == SYM_Type_SUM){
+    res = GetLeftmostExprOfAddition(node->left);
+  }
+
+  return res;
+}
+
+void SYM_Print(SYM_Expr expr){
+  TEMP_REGION(temp,nullptr);
+
+  auto b = StartString(temp);
+
+  auto Recurse = [b](auto Recurse,SYM_Expr top,int parentBindingStrength) -> void{
+    bool negate = IsNegative(top.node);
+    SYM_Node* node = GetPointer(top.node);
+
+    if(negate){
+      b->PushString("-");
+    }
+
+    int bindingStrength = TypeToBindingStrength(node->type);
+    bool bind = (parentBindingStrength > bindingStrength) || negate;
+
+    FULL_SWITCH(node->type){
+    case SYM_Type_LITERAL: b->PushString("%d",node->literal); break;
+    case SYM_Type_VARIABLE: b->PushString(node->variable); break;
+    case SYM_Type_MUL:
+    case SYM_Type_DIV:
+    case SYM_Type_SUM:{
+      String op = {};
+      SWITCH(node->type){
+        case SYM_Type_SUM:{
+          op = "+";
+
+          if(IsNegative(node->right.node) ||  IsNegative(GetLeftmostExprOfAddition(node->right).node)){
+            op = ""; // The node negative will put the '-'
+          }
+        } break;
+        case SYM_Type_MUL: op = "*"; break;
+        case SYM_Type_DIV: op = "/"; break;
+        default: NOT_POSSIBLE();
+      }
+
+      if(bind){
+        b->PushString("(");
+      }
+
+      Recurse(Recurse,node->left,bindingStrength);
+
+      b->PushString(op);
+
+      Recurse(Recurse,node->right,bindingStrength);
+
+      if(bind){
+        b->PushString(")");
+      }
+    } break;
+    case SYM_Type_FUNC:{
+      b->PushString(node->func.name);
+      b->PushString("(");
+      bool first = true;
+      for(SYM_Expr arg : node->func.args){
+        if(first){
+          first = false;
+        } else {
+          b->PushString(",");
+        }
+        Recurse(Recurse,arg,0);
+      }
+      b->PushString(")");
+    } break;
+  }
+  };
+
+  Recurse(Recurse,expr,0);
+
+  String res = EndString(temp,b);
+  printf("%.*s\n",UN(res));
+}
+
+SYM_Expr RemoveParenthesis(SYM_Expr in){
+  bool negate = IsNegative(in.node);
+  SYM_Node* node = GetPointer(in.node);
+
+  SYM_Expr res = in;
+  SWITCH(node->type){
+  case SYM_Type_SUM:{
+    SYM_Expr left = RemoveParenthesis(node->left);
+    SYM_Expr right = RemoveParenthesis(node->right);
+
+    if(negate){
+      res = GetOrAllocateOp(SYM_Type_SUM,Negate(left),Negate(right));
+    } else {
+      res = GetOrAllocateOp(SYM_Type_SUM,left,right);
+    }
+  } break;
+  case SYM_Type_MUL:{
+    SYM_Expr left = RemoveParenthesis(node->left);
+    SYM_Expr right = RemoveParenthesis(node->right);
+
+    if(negate){
+      res = GetOrAllocateOp(SYM_Type_MUL,Negate(left),Negate(right));
+    } else {
+      res = GetOrAllocateOp(SYM_Type_SUM,left,right);
+    }
+  } break;
+  case SYM_Type_DIV:{
+    SYM_Expr top = RemoveParenthesis(node->top);
+    SYM_Expr bottom = RemoveParenthesis(node->bottom);
+    
+    if(negate){
+      res = GetOrAllocateOp(SYM_Type_DIV,Negate(top),bottom);
+    } else {
+      res = GetOrAllocateOp(SYM_Type_SUM,top,bottom);
+    }
+  } break;
+}
+
+  return res;
+}
+
+SYM_Expr Normalize(SYM_Expr in){
+  SYM_Expr res = RemoveParenthesis(in);
+
+  return res;
+}
+
+void TestSym2(){
+  TestCase tests[] = {
+    {"a-(b + c)","a-b-c"}
+#if 0
+    {"a+b","a+b"},
+    {"a*b","a*b"},
+    {"a+b*c","a+b*c"},
+    {"a*b+c","a*b+c"},
+    {"a+(a)","2*a"},
+    {"a+(b*c)",""},
+    {"a*(b+c)",""},
+#endif
+  };
+
+  DEBUG_BREAK();
+  for(TestCase t : tests){
+    SYM_Expr expr = ParseSYM(t.input);
+    SYM_Print(expr);
+    SYM_Expr res = Normalize(expr);
+    SYM_Print(res);
+  }
+}
+
+#if 0
+LEFT HERE -
+
+The status is this:
+  We want to remove the bitsize integer from Wire.
+  Before doing this, I want to make it easier to handle symbolic expressions, by means
+    of making it simple to operate on them (using operation overload) and by 
+  On versat_ai, I might want to take another look at the bug.
+    Also need to implement the log function first in software and then in hardware.
+    But of course we need to make the exp simulate correctly first before progressing on the hardware for log.
+#endif

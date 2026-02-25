@@ -392,7 +392,7 @@ bool IsModuleLike(ConstructDef def){
     return true;
     break;
     break;
-} END_SWITCH();
+}
 
   Assert(false);
   return false;
@@ -417,7 +417,7 @@ Array<Token> TypesUsed(ConstructDef def,Arena* out){
   case ConstructType_ITERATIVE:{
     NOT_IMPLEMENTED("yet");
   };
-} END_SWITCH();
+}
 
   return {};
 }
@@ -435,7 +435,7 @@ FUDeclaration* InstantiateSpecifications(String content,ConstructDef def){
     NOT_IMPLEMENTED("yet");
   }; 
   default: Assert(false);
-  } END_SWITCH();
+  }
 
   return nullptr;
 }

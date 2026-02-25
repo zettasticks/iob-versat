@@ -74,13 +74,17 @@ inline float ABS(float f){return (f < 0.0f ? -f : f);};
 
 // NOTE: This macro instructs gcc to give an error for any switch that does not implement every case.
 //       Always end the switch with the END_SWITCH macro to restore the proper diagnostic message (which is just a warning)
-#define FULL_SWITCH(expr) _Pragma("GCC diagnostic error \"-Wswitch-enum\"") \
-  switch(expr)
+#define FULL_SWITCH(expr) \
+  _Pragma("GCC diagnostic push") \
+  _Pragma("GCC diagnostic error \"-Wswitch-enum\"") \
+  switch(expr) \
+  _Pragma("GCC diagnostic pop")
 
-#define SWITCH(expr) _Pragma("GCC diagnostic warning \"-Wswitch-enum\"") \
-  switch(expr)
-
-#define END_SWITCH() _Pragma("GCC diagnostic warning \"-Wswitch-enum\"")
+#define SWITCH(expr) \
+  _Pragma("GCC diagnostic push") \
+  _Pragma("GCC diagnostic ignored \"-Wswitch-enum\"") \
+  switch(expr) \
+  _Pragma("GCC diagnostic pop")
 
 template<typename F>
 class _Defer{

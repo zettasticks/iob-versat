@@ -226,7 +226,7 @@ String EmitExternalMemoryInstances(Array<ExternalMemoryInterface> external,Arena
       }
       m->EndInstance();
     }
-  } END_SWITCH();
+  }
   }
 
   VAST* ast = EndVCode(m);
@@ -265,7 +265,7 @@ String EmitExternalMemoryPort(Array<ExternalMemoryInterface> external,Arena* out
       m->Output(SF("ext_2p_addr_in_%d_o",i),ext.tp.bitSizeIn);
       m->Input(SF("ext_2p_data_in_%d_i",i),ext.tp.dataSizeIn);
     } break;
-  } END_SWITCH()
+  }
   }
 
   m->EndPortGroup();
@@ -305,7 +305,7 @@ String EmitExternalMemoryInternalPortmap(Array<ExternalMemoryInterface> external
       m->PortConnect(PushString(temp,"ext_2p_addr_in_%d_o",i),PushString(temp,"ext_2p_addr_in_%d_o",i));
       m->PortConnect(PushString(temp,"ext_2p_data_in_%d_i",i),PushString(temp,"ext_2p_data_in_%d_i",i));
     }
-  } END_SWITCH();
+  }
   }
 
   VAST* ast = EndVCode(m);
@@ -367,7 +367,7 @@ String EmitInternalMemoryWires(Array<ExternalMemoryInterface> external,Arena* ou
       m->Assign(PushString(temp,"VERSAT0_ext_2p_write_%d_o",i),PushString(temp,"ext_2p_write_%d_o",i));
       m->Assign(PushString(temp,"VERSAT0_ext_2p_read_%d_o",i),PushString(temp,"ext_2p_read_%d_o",i));
     } break;
-    } END_SWITCH();
+    }
   }
 
   VAST* ast = EndVCode(m);
@@ -3839,7 +3839,7 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
         c->Define(PushString(temp,"BYTE_SIZE_ext_2p_data_out_%d",id),
                   PushString(temp,"(WIRE_SIZE_ext_2p_data_out_%d / 8)",id));
       } break;
-    } END_SWITCH();
+    }
     }
       
     String content = PushASTRepr(c,temp);
@@ -3863,7 +3863,7 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
       case ExternalMemoryType::ExternalMemoryType_2P:{
         b->PushString("BYTE_SIZE_ext_2p_%d",id);
       } break;
-    } END_SWITCH();
+    }
     }
     String sum = EndString(temp,b);
 
@@ -4011,7 +4011,7 @@ if(SimulateDatabus){
         vals->Insert("id",PushString(temp,"%d",ext.interface));
         TE_SimpleSubstitute(s,saveExternalTwoP,vals);
       } break;
-    } END_SWITCH();
+    }
     }
     String content = EndString(temp,s);
       
@@ -4060,7 +4060,7 @@ if(SimulateDatabus){
         vals->Insert("id",PushString(temp,"%d",ext.interface));
         TE_SimpleSubstitute(s,readMemoryTwoP,vals);
       } break;
-    } END_SWITCH();
+    }
     }
     String content = EndString(temp,s);
       
@@ -4109,7 +4109,7 @@ if(SimulateDatabus){
         vals->Insert("id",PushString(temp,"%d",ext.interface));
         TE_SimpleSubstitute(s,writeMemoryTwoP,vals);
       } break;
-    } END_SWITCH();
+    }
     }
     String content = EndString(temp,s);
       

@@ -822,7 +822,7 @@ SymbolicExpression* SymbolicExpressionFromVerilog(Expression* topExpr,Arena* out
   case Expression::LITERAL: {
     return PushLiteral(out,topExpr->val.number);
   } break;
-} END_SWITCH();
+}
   
   return {};
 }
