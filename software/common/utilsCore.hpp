@@ -486,6 +486,16 @@ inline bool operator!=(String first,String second){
   return res;
 }
 
+inline bool operator<(String first,String second){
+  bool res = (strncmp(first.data,second.data,MIN(first.size,second.size)) < 0);
+  return res;
+}
+
+inline int Compare(String first,String second){
+  int res = strncmp(first.data,second.data,MIN(first.size,second.size));
+  return res;
+}
+
 template<typename T>
 bool operator==(Array<T> first,Array<T> second){
    if(first.size != second.size){

@@ -225,6 +225,7 @@ String PushRepr(LoopLinearSum* sum,Arena* out);
 void SYM_Init();
 
 enum SYM_Type{
+  // Order is important, it encodes the order of the way terms should be displayed (literals first, vars second and so on)
   SYM_Type_LITERAL,
   SYM_Type_VARIABLE,
   SYM_Type_SUM,
@@ -233,15 +234,42 @@ enum SYM_Type{
   SYM_Type_FUNC
 };
 
+inline String META_Repr(SYM_Type val){
+  switch(val){
+    case SYM_Type_LITERAL : {
+      return String("SYM_Type_LITERAL");
+    } break;
+    case SYM_Type_VARIABLE : {
+      return String("SYM_Type_VARIABLE");
+    } break;
+    case SYM_Type_SUM : {
+      return String("SYM_Type_SUM");
+    } break;
+    case SYM_Type_MUL : {
+      return String("SYM_Type_MUL");
+    } break;
+    case SYM_Type_DIV : {
+      return String("SYM_Type_DIV");
+    } break;
+    case SYM_Type_FUNC : {
+      return String("SYM_Type_FUNC");
+    } break;
+  }
+  Assert(false);
+  return {};
+}
+
 struct SYM_Node;
 struct SYM_Expr{
   SYM_Node* node;
 };
 
 inline SYM_Node* Negate(SYM_Node* ptr);
+inline bool IsNegative(SYM_Node* ptr);
 
 inline bool operator==(SYM_Expr lhs,SYM_Expr rhs){return lhs.node == rhs.node;}
 inline SYM_Expr Negate(SYM_Expr expr){SYM_Expr res = {Negate(expr.node)}; return res;}
+inline bool IsNegative(SYM_Expr expr){return IsNegative(expr.node);}
 
 struct SYM_Node{
   SYM_Type type;
@@ -274,6 +302,11 @@ inline SYM_Node* Negate(SYM_Node* ptr){return (SYM_Node*) (((iptr) ptr) ^ 0x1);}
 inline bool IsNegative(SYM_Node* ptr){return (((iptr) ptr) & 0x1);}
 inline SYM_Node* GetPointer(SYM_Node* ptr){return (SYM_Node*) (((iptr) ptr) & ~0x1);}
 
+inline SYM_Node* GetPointer(SYM_Expr expr){return GetPointer(expr.node);}
+
+extern SYM_Expr SYM_Zero;
+extern SYM_Expr SYM_One;
+
 /*
 
 We started using an array of terms to simplify the handlying of stuff like
@@ -302,5 +335,92 @@ SYM_Expr operator-(SYM_Expr right);
 SYM_Expr operator*(SYM_Expr left,SYM_Expr right);
 SYM_Expr operator/(SYM_Expr left,SYM_Expr right);
 
+bool operator<(SYM_Expr left,SYM_Expr right);
+
+int Compare(SYM_Expr left,SYM_Expr right);
+
+// For an expression of the form a*b*c*d*e, returns the members individually and the literal seperatly.
+struct SYM_MultTerms{
+  Array<SYM_Expr> terms;
+};
+
+struct SYM_MultPartition{
+  SYM_Expr literal;
+  SYM_MultTerms mults;
+};
+
+int64_t Hash(SYM_Expr expr);
+
+inline u64 Hash(SYM_MultTerms terms){
+  u64 res = 0;
+  for(int i = 0; i < terms.terms.size; i++){
+    res += Hash(terms.terms[i]);
+  }
+
+  return res;
+}
+
+inline bool operator==(SYM_MultTerms left,SYM_MultTerms right){
+  if(left.terms.size != right.terms.size){
+    return false;
+  }
+
+  int size = left.terms.size;
+  for(int i = 0; i < size; i++){
+    if(!(left.terms[i] == right.terms[i])){
+      return false;
+    }
+  }
+
+  return true;
+}
+
+inline bool operator<(SYM_MultTerms left,SYM_MultTerms right){
+  if(left.terms.size < right.terms.size){
+    return true;
+  }
+
+  if(left.terms.size > right.terms.size){
+    return false;
+  }
+
+  int size = left.terms.size;
+  
+  for(int i = 0; i < size; i++){
+    if(left.terms[i] < right.terms[i]){
+      if(left.terms[i] == right.terms[i]){
+        continue;
+      }
+
+      return false;
+    }
+  }
+
+  return true;
+}  
+
+static inline int Compare(SYM_MultTerms left,SYM_MultTerms right){
+  if(left.terms.size > right.terms.size){
+    return 1;
+  }
+
+  if(left.terms.size < right.terms.size){
+    return -1;
+  }
+
+  int size = left.terms.size;
+  
+  for(int i = 0; i < size; i++){
+    int com = Compare(left.terms[i],right.terms[i]);
+
+    if(com == 0){
+      continue;
+    }
+
+    return com;
+  }
+
+  return 0;
+}
 
 void TestSym2();
