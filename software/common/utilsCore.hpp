@@ -593,7 +593,7 @@ int AlignNextPower2(int val);
 int Align(int val,int alignment);
 unsigned int AlignBitBoundary(unsigned int val,int numberBits); // Align value so the lower numberBits are all zeros
 bool IsPowerOf2(int val);
-int RandomNumberBetween(int minimum,int maximum); // Maximum not included
+int RandomNumberBetween(int minimumIncluded,int maximumNotIncluded);
 
 void Print(Array<int> array,int digitSize = 0);
 void Print(Array<float> array,int digitSize = 0);

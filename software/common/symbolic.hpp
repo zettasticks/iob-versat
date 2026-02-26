@@ -231,7 +231,7 @@ enum SYM_Type{
   SYM_Type_SUM,
   SYM_Type_MUL,
   SYM_Type_DIV,
-  SYM_Type_FUNC
+  SYM_Type_FUNC // We only care about 2 args functions so no need to support more than that.
 };
 
 inline String META_Repr(SYM_Type val){
@@ -274,6 +274,7 @@ inline bool IsNegative(SYM_Expr expr){return IsNegative(expr.node);}
 struct SYM_Node{
   SYM_Type type;
 
+  String name; // For functions
   union{
     int literal;
     String variable;
@@ -282,17 +283,14 @@ struct SYM_Node{
       union{
         SYM_Expr top;
         SYM_Expr left;
+        SYM_Expr first;
       };
       union {
         SYM_Expr bottom;
         SYM_Expr right;
+        SYM_Expr second;
       };
     };
-    
-    struct {
-      String name;
-      Array<SYM_Expr> args; // Terms of SUM and MUL. Function arguments for FUNC
-    } func;
   };
   
   SYM_Node* hashNext;
@@ -306,25 +304,7 @@ inline SYM_Node* GetPointer(SYM_Expr expr){return GetPointer(expr.node);}
 
 extern SYM_Expr SYM_Zero;
 extern SYM_Expr SYM_One;
-
-/*
-
-We started using an array of terms to simplify the handlying of stuff like
-distributivity and stuff like that.
-
-For the binary case, how do we know to add two literals in an addition chain?
-
-1 + a + b + 5
-
-gives the tree
-
-(((1 + a) + b) + 5)
-
-or something similar
-
-I guess we could just call a function to collect everything into an array and then operate from there.
-
-*/
+extern SYM_Expr SYM_MinusOne;
 
 inline bool Valid(SYM_Expr expr){return expr.node != nullptr;}
 void SYM_Print(SYM_Expr expr);
@@ -337,6 +317,14 @@ SYM_Expr operator/(SYM_Expr left,SYM_Expr right);
 
 bool operator<(SYM_Expr left,SYM_Expr right);
 
+struct SYM_EvaluateResult{
+  int result;
+  Array<String> errors;
+  bool divByZero;
+
+  bool Error(){return errors.size > 0;}
+};
+
 int Compare(SYM_Expr left,SYM_Expr right);
 
 // For an expression of the form a*b*c*d*e, returns the members individually and the literal seperatly.
@@ -347,6 +335,11 @@ struct SYM_MultTerms{
 struct SYM_MultPartition{
   SYM_Expr literal;
   SYM_MultTerms mults;
+};
+
+struct SYM_Partition{
+  SYM_Expr leftovers;
+  bool exists;
 };
 
 int64_t Hash(SYM_Expr expr);
@@ -424,3 +417,4 @@ static inline int Compare(SYM_MultTerms left,SYM_MultTerms right){
 }
 
 void TestSym2();
+char*  SYM_DebugRepr(SYM_Expr expr);

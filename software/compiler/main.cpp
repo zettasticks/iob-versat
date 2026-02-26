@@ -278,11 +278,11 @@ int main(int argc,char* argv[]){
   InitParser(perm);
   SYM_Init();
   
-  //TestSym2();
+#if 1
+  TestSym2();
 
-  //return 0;
-
-  //TestSymbolic();
+  return 0;
+#endif
 
   argp argp = { options, parse_opt, "SpecFile\n-T UnitName", "Dataflow to accelerator compiler. Check tutorial in https://github.com/IObundle/iob-versat to learn how to write a specification file"};
 
@@ -726,6 +726,8 @@ int main(int argc,char* argv[]){
                       globalOptions.hardwareOutputFilepath,
                       globalOptions.softwareOutputFilepath,
                       val);
+
+  DEBUG_BREAK();
 
   // NOTE: This data is printed so it can be captured by the IOB python setup.
   // TODO: Probably want a more robust way of doing this. Eventually want to printout some stats so we can
