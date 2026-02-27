@@ -68,6 +68,58 @@ SymbolicExpression* SymbolicFromSpecExpression(SpecExpression* spec,Arena* out){
   return Normalize(res,out);
 }
 
+SYM_Expr SymbolicFromSpecExpression2(SpecExpression* spec){
+  auto Recurse = [](auto Recurse,SpecExpression* top) -> SYM_Expr{
+    SYM_Expr res = {};
+
+    switch(top->type){
+    case SpecType_OPERATION:{
+      if(top->expressions.size == 1){
+        if(top->op[0] == '-' || top->op[0] == '~'){
+          SYM_Expr left  = Recurse(Recurse,top->expressions[0]);
+          res = -left;
+        } else {
+          NOT_IMPLEMENTED();
+        }
+      } else {
+        SYM_Expr left  = Recurse(Recurse,top->expressions[0]);
+        SYM_Expr right = Recurse(Recurse,top->expressions[1]);
+
+        if(top->op[0] == '+'){
+          res = left + right;
+        }
+        if(top->op[0] == '-'){
+          res = left - right;
+        }
+        if(top->op[0] == '*'){
+          res = left * right;
+        }
+        if(top->op[0] == '/'){
+          res = left / right;
+        }
+      }
+    } break;
+    case SpecType_NAME:
+    case SpecType_VAR:{
+      res = SYM_Variable(top->name);
+    } break;
+    case SpecType_LITERAL:{
+      res = SYM_Literal(top->val);
+    } break;
+    case SpecType_SINGLE_ACCESS:
+    case SpecType_ARRAY_ACCESS:
+    case SpecType_FUNCTION_CALL: Assert(false);
+    }
+
+    return res;
+  };
+
+  SYM_Expr res = Recurse(Recurse,spec);
+  Assert(Valid(res));
+
+  return res;
+}
+
 // TODO: Rework expression parsing to support error reporting similar to module diff.
 //       A simple form of synchronization after detecting an error would vastly improve error reporting
 //       Change iterative and merge to follow module def.

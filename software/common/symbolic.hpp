@@ -304,7 +304,6 @@ inline SYM_Node* GetPointer(SYM_Expr expr){return GetPointer(expr.node);}
 
 extern SYM_Expr SYM_Zero;
 extern SYM_Expr SYM_One;
-extern SYM_Expr SYM_MinusOne;
 
 inline bool Valid(SYM_Expr expr){return expr.node != nullptr;}
 void SYM_Print(SYM_Expr expr);
@@ -314,6 +313,9 @@ SYM_Expr operator-(SYM_Expr left,SYM_Expr right);
 SYM_Expr operator-(SYM_Expr right);
 SYM_Expr operator*(SYM_Expr left,SYM_Expr right);
 SYM_Expr operator/(SYM_Expr left,SYM_Expr right);
+
+SYM_Expr SYM_Variable(String name);
+SYM_Expr SYM_Literal(int value);
 
 bool operator<(SYM_Expr left,SYM_Expr right);
 

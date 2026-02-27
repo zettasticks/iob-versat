@@ -2704,7 +2704,6 @@ static struct {
 
 SYM_Expr SYM_Zero;
 SYM_Expr SYM_One;
-SYM_Expr SYM_MinusOne;
 
 SYM_Expr GetOrAllocateLiteral(int input){
   int literal = input;
@@ -3187,7 +3186,7 @@ inline bool IsLiteralOne(SYM_Expr in){
 }
 
 inline bool IsLiteralMinusOne(SYM_Expr in){
-  bool res = (in == SYM_MinusOne);
+  bool res = (in == -SYM_One);
   return res;
 }
 
@@ -3198,6 +3197,10 @@ inline bool IsDiv(SYM_Expr in){
 }
 
 SYM_Expr operator+(SYM_Expr left,SYM_Expr right){
+  if(right > left){
+    SWAP(left,right);
+  }
+
   if(IsLiteralZero(left)){
     return right;
   }
@@ -3227,12 +3230,18 @@ SYM_Expr operator+(SYM_Expr left,SYM_Expr right){
     
     return (left * div->bottom + CondNegate(div->top,negative)) / div->bottom;
   }
-#if 0
+#if 1
   if(isDivLeft && isDivRight){
     SYM_Node* divLeft = GetPointer(left);
     SYM_Node* divRight = GetPointer(right);
     
-    return ((divLeft->top * divRight->bottom) + (divLeft->bottom * divRight->top)) / (divLeft->bottom * divRight->bottom);
+    bool leftNeg = IsNegative(left);
+    bool rightNeg = IsNegative(right);
+
+    SYM_Expr topLeft = CondNegate(divLeft->top,leftNeg);
+    SYM_Expr topRight = CondNegate(divRight->top,rightNeg);
+
+    return ((topLeft * divRight->bottom) + (topRight * divLeft->bottom)) / (divLeft->bottom * divRight->bottom);
   }
 #endif
 
@@ -3256,6 +3265,10 @@ SYM_Expr operator-(SYM_Expr left){
 }
 
 SYM_Expr operator*(SYM_Expr left,SYM_Expr right){
+  if(right > left){
+    SWAP(left,right);
+  }
+  
   if(IsLiteralZero(left) || IsLiteralZero(right)){
     return SYM_Zero;
   }
@@ -3281,26 +3294,28 @@ SYM_Expr operator*(SYM_Expr left,SYM_Expr right){
   bool isDivLeft = IsDiv(left);
   bool isDivRight = IsDiv(right);
 
-#if 0
+  // Division interactions
   if(isDivLeft && !isDivRight){
     SYM_Node* div = GetPointer(left);
     bool negative = IsNegative(left);
     
-    return CondNegate((right * div->top / div->bottom),negative);
+    return (CondNegate(right,negative) * div->top) / div->bottom;
   }
   if(!isDivLeft && isDivRight){
     SYM_Node* div = GetPointer(right);
     bool negative = IsNegative(right);
     
-    return CondNegate((left * div->top / div->bottom),negative);
+    return (CondNegate(left,negative) * div->top) / div->bottom;
   }
   if(isDivLeft && isDivRight){
     SYM_Node* divLeft = GetPointer(left);
     SYM_Node* divRight = GetPointer(right);
     
-    return ((divLeft->top * divRight->top) / (divLeft->bottom * divRight->bottom));
+    bool leftNeg = IsNegative(left);
+    bool rightNeg = IsNegative(right);
+    
+    return ((CondNegate(divLeft->top,leftNeg) * CondNegate(divRight->top,rightNeg)) / (divLeft->bottom * divRight->bottom));
   }
-#endif
 
   return GetOrAllocateOp(SYM_Type_MUL,left,right);
 }
@@ -3338,7 +3353,7 @@ SYM_Expr operator/(SYM_Expr top,SYM_Expr bottom){
     bool negate = IsNegative(top);
     negate = negate ^ IsNegative(bottom);
     
-    return (negate ? SYM_MinusOne : SYM_One);
+    return (negate ? -SYM_One : SYM_One);
   }
 
   if(IsDiv(top)){
@@ -3355,6 +3370,14 @@ SYM_Expr operator/(SYM_Expr top,SYM_Expr bottom){
   }
 
   return GetOrAllocateOp(SYM_Type_DIV,top,bottom);
+}
+
+SYM_Expr SYM_Variable(String name){
+  return GetOrAllocateVariable(name);
+}
+
+SYM_Expr SYM_Literal(int value){
+  return GetOrAllocateLiteral(value);
 }
 
 SYM_Expr ParseSYM_Expr(Parser* parser,int bindingPower = -1){
@@ -3984,6 +4007,9 @@ SYM_Expr NormalizeLiterals(SYM_Expr in){
     topValue = ApplyDistributivity(topValue);
 
     // Try to find expressions of the form (a*b + b) / b
+    // NOTE: Disabled and probably not worth it to enable. Need to fix negative related bugs to put this working
+    //       and we do not really gain anything from this other that cleaning up some expressions.
+    //       This stuff should be a separate function anyway
     if(false && GetPointer(topValue)->type == SYM_Type_SUM){
       Array<SYM_Expr> sumTerms = GetChildrenOfSum(topValue,temp);
 
@@ -4352,18 +4378,22 @@ SYM_Expr Normalize(SYM_Expr in){
 
 void TestSym2(){
   TestCase tests[] = {
-    {"a * (1 / b)","a/b"},
-    {"(a-b)*(a-b)","b*b-2*a*b+a*a"},
-    {"(a+b)*(a+b)","a*a+2*a*b+b*b"},
+#if 0
+    // NOTE: Disabled since division by common mult is not currently implemented 
+    //       ex : (x + xy) / x will not simplify to 1 + y  
     {"1+8+7+a*6*4/(a*p)","(24+16*p)/p"},
     {"(x*y + x)/x","1+y"},
     {"1+8+7+a*6*4/(a*p/(7+8*8/(e+5+g+9*5)))","(9936+e*16*p+g*16*p+800*p+168*e+168*g)/(e*p+g*p+50*p)"},
-    {"1/x * y","y/x"},
-    {"(0+2*x)+(2*a-1)*y","-y+2*x+2*a*y"},
+#endif
+#if 1
     {"a / b + c / d","(b*c+a*d)/(b*d)"},
+    {"(0+2*x)+(2*a-1)*y","-y+2*x+a*2*y"},
+    {"1/x * y","y/x"},
+    {"(a-b)*(a-b)","b*b+a*-2*b+a*a"},
+    {"(a+b)*(a+b)","a*a+a*2*b+b*b"},
+    {"a * (1 / b)","a/b"},
     {"(1 / b) * a","a/b"},
     {"(a/b) * (c/d)","(a*c)/(b*d)"},
-#if 0
     {"MAX(1+a+2,4)","MAX(2+1+a,4)"},
     {"(x*y)/x","y"},
     {"(x*x*y)/x","x*y"},
@@ -4453,32 +4483,6 @@ void TestSym2(){
   }
 #endif
 
-#if 0
-  int checked = 0;
-  for(int j = 3; j < 10; j++){
-    for(int i = 0; i < 5000; i++){
-      SeedRandomNumber(j * 100000 + i);
-      SYM_Expr test = GenerateRandomExpression(j);
-
-      //SYM_Print(test);
-      NormalizeResult normalize = NormalizeWhileChecking(test);
-
-      if(normalize.failedEvaluation && !normalize.failedFromDivZero){
-        printf("Failed normalization evaluation (%.*s:%d) (%d:%d): %d vs %d\n",UN(normalize.problematicFunction),normalize.functionLine,j,i,normalize.expected,normalize.gotOnError);
-        SYM_Print(test);
-        SYM_Print(normalize.res);
-      } else {
-        checked += 1;
-        //printf("OK\n");
-      }
-
-      //return;
-    }
-  }
-  printf("Checked: %d\n",checked);
-  return;
-#endif
-
   TEMP_REGION(temp,nullptr);
 
 #if 1
@@ -4504,6 +4508,33 @@ void TestSym2(){
     }
   }
 #endif
+
+#if 1
+  int checked = 0;
+  for(int j = 3; j < 15; j++){
+    printf("%d\n",j);
+    for(int i = 0; i < 5000; i++){
+      SeedRandomNumber(j * 100000 + i);
+      SYM_Expr test = GenerateRandomExpression(j);
+
+      //SYM_Print(test);
+      NormalizeResult normalize = NormalizeWhileChecking(test);
+
+      if(normalize.failedEvaluation && !normalize.failedFromDivZero){
+        printf("Failed normalization evaluation (%.*s:%d) (%d:%d): %d vs %d\n",UN(normalize.problematicFunction),normalize.functionLine,j,i,normalize.expected,normalize.gotOnError);
+        SYM_Print(test);
+        SYM_Print(normalize.res);
+      } else {
+        checked += 1;
+        //printf("OK\n");
+      }
+
+      //return;
+    }
+  }
+  printf("Checked: %d\n",checked);
+  return;
+#endif
 }
 
 void SYM_Init(){
@@ -4512,7 +4543,6 @@ void SYM_Init(){
 
   SYM_Zero = GetOrAllocateLiteral(0);
   SYM_One = GetOrAllocateLiteral(1);
-  SYM_MinusOne = Negate(SYM_One);
 }
 
 char* SYM_DebugRepr(SYM_Expr expr){
