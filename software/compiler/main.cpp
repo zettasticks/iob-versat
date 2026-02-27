@@ -10,6 +10,7 @@
 #include "filesystem.hpp"
 #include "globals.hpp"
 #include "memory.hpp"
+#include "symbolic.hpp"
 #include "utils.hpp"
 #include "parser.hpp"
 #include "utilsCore.hpp"
@@ -686,13 +687,18 @@ int main(int argc,char* argv[]){
         continue;
       }
     
-      if(!unit->memMapSym){
+      if(!Valid(unit->memMapSym)){
         continue;
       }
 
       // This is after parameter instantiation which means that we can actually calculate this.
+      
+      SYM_EvaluateResult eval = SYM_ConstantEvaluate(unit->memMapSym,temp);
+      
+      // nocheckin
+      // TODO: Properly check the result 
 
-      Opt<int> memMapBits = ConstantEvaluate(unit->memMapSym);
+      Opt<int> memMapBits = eval.result;
       Assert(memMapBits.has_value());
       
       int start = unit->memMapped.value();
@@ -820,6 +826,10 @@ int main(int argc,char* argv[]){
 
 We should move graph stuff to a separate file (or keep it in accelerator.hpp and make it the proper place for it).
 Remove the dynamic arena and just share memory between the nodes.
+
+Symbolic expressions removal:
+
+-- We removed a bunch of stuff and a lot of weirdness appears. Multiple places we store strings for no reason when we can just store the expression themselves. Need to check these cases and actually handle them.
 
 */
 

@@ -221,7 +221,7 @@ String GetEntityMemName(InstanceInfo* info,Arena* out){
 Array<Pair<String,int>> ExtractMem(Array<InstanceInfo> info,Arena* out){
   int count = 0;
   for(InstanceInfo& in : info){
-    if(!in.isComposite && in.memMapSym){
+    if(!in.isComposite && Valid(in.memMapSym)){
       count += 1;
     }
   }
@@ -229,7 +229,7 @@ Array<Pair<String,int>> ExtractMem(Array<InstanceInfo> info,Arena* out){
   Array<Pair<String,int>> res = PushArray<Pair<String,int>>(out,count);
   int index = 0;
   for(InstanceInfo& in : info){
-    if(!in.isComposite && in.memMapSym){
+    if(!in.isComposite && Valid(in.memMapSym)){
       String name = GetEntityMemName(&in,out); 
       res[index++] = {name,(int) in.memMapped.value()};
     }
@@ -422,12 +422,12 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
       elem->specialType = SpecialUnitType_OPERATION;
     }
 
-    Hashmap<String,SymbolicExpression*>* paramsMap = GetParametersOfUnit(inst,out);
-    Array<ParamAndValue> params = PushArray<ParamAndValue>(out,paramsMap->nodesUsed);
+    auto paramsMap = GetParametersOfUnit(inst,out);
+    Array<ParamAndValue> params = PushArray<ParamAndValue>(out,paramsMap->inserted);
 
     int index = 0;
-    for(Pair<String,SymbolicExpression**> p : paramsMap){
-      params[index++] = (ParamAndValue) {.name = p.first,.val = *p.second};
+    for(Pair<String,SYM_Expr> p : paramsMap){
+      params[index++] = (ParamAndValue) {.name = p.first,.val = p.second};
     }
     elem->params = params;
 
@@ -497,17 +497,17 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
       continue;
     }
 
-    auto map = PushTrieMap<String,SymbolicExpression*>(temp);
+    auto map = PushTrieMap<SYM_Expr,SYM_Expr>(temp);
     for(ParamAndValue p : parent->params){
       if(IsGlobalParameter(p.name)){
         continue;
       }
 
-      map->Insert(p.name,p.val);
+      map->Insert(SYM_Variable(p.name),p.val);
     }
 
     for(ParamAndValue& p : info->params){
-      SymbolicExpression* replaced = ReplaceVariables(p.val,map,out);
+      SYM_Expr replaced = SYM_Replace(p.val,map);
 
       p.val = replaced;
     }
@@ -541,24 +541,24 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     }
 #endif
 
-    auto map = PushTrieMap<String,SymbolicExpression*>(temp);
+    auto map = PushTrieMap<SYM_Expr,SYM_Expr>(temp);
     for(ParamAndValue p : info->params){
       if(IsGlobalParameter(p.name)){
         continue;
       }
 
-      map->Insert(p.name,p.val);
+      map->Insert(SYM_Variable(p.name),p.val);
     }
 
     for(Wire& w : info->configs){
-      w.sizeExpr = ReplaceVariables(w.sizeExpr,map,out);
+      w.sizeExpr = SYM_Replace(w.sizeExpr,map);
     }
     for(Wire& w : info->states){
-      w.sizeExpr = ReplaceVariables(w.sizeExpr,map,out);
+      w.sizeExpr = SYM_Replace(w.sizeExpr,map);
     }
 
-    if(info->memMapSym){
-      info->memMapSym = Normalize(ReplaceVariables(info->memMapSym,map,temp),out);
+    if(Valid(info->memMapSym)){
+      info->memMapSym = SYM_Replace(info->memMapSym,map);
     }
   }
 
@@ -573,24 +573,24 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     }
 #endif
 
-    auto map = PushTrieMap<String,SymbolicExpression*>(temp);
+    auto map = PushTrieMap<SYM_Expr,SYM_Expr>(temp);
     for(ParamAndValue p : parent->params){
       if(IsGlobalParameter(p.name)){
         continue;
       }
 
-      map->Insert(p.name,p.val);
+      map->Insert(SYM_Variable(p.name),p.val);
     }
 
     for(Wire& w : info->configs){
-      w.sizeExpr = ReplaceVariables(w.sizeExpr,map,out);
+      w.sizeExpr = SYM_Replace(w.sizeExpr,map);
     }
     for(Wire& w : info->states){
-      w.sizeExpr = ReplaceVariables(w.sizeExpr,map,out);
+      w.sizeExpr = SYM_Replace(w.sizeExpr,map);
     }
 
-    if(info->memMapSym){
-      info->memMapSym = Normalize(ReplaceVariables(info->memMapSym,map,temp),out);
+    if(Valid(info->memMapSym)){
+      info->memMapSym = SYM_Replace(info->memMapSym,map);
     }
   }
 
@@ -924,7 +924,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
     for(auto iter = initialIter; iter.IsValid(); iter = iter.Step()){
       InstanceInfo* info = iter.CurrentUnit();
 
-      if(info->memMapSym && !info->isComposite){
+      if(Valid(info->memMapSym) && !info->isComposite){
         info->memGlobalIndex = memGlobalIndex++;
         info->memSize = 1;
       }
@@ -986,19 +986,17 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
         return;
       }
 
-      auto list = PushList<SymbolicExpression*>(temp);
+      SYM_Expr maximum = SYM_Zero;
+
       for(AccelInfoIterator it = iter.StepInsideOnly(); it.IsValid(); it = it.Next()){
         InstanceInfo* unit = it.CurrentUnit();
 
-        if(unit->memMapSym){
-          *list->PushElem() = unit->memMapSym;
+        if(Valid(unit->memMapSym)){
+          maximum = SYM_Func("Max",maximum,unit->memMapSym);
         }
       }
 
-      if(!Empty(list)){
-        SymbolicExpression* max = SymbolicMax(list,temp);
-        unit->memMapSym = Normalize(max,out);
-      }
+      unit->memMapSym = maximum;
     }
   };
 
@@ -1286,19 +1284,14 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
 
   TrieSet<int>* configsSeen = PushTrieSet<int>(temp);
 
-  auto list = PushList<SymbolicExpression*>(temp);
+  SYM_Expr maximum = SYM_Zero;
   for(AccelInfoIterator it = StartIteration(info); it.IsValid(); it = it.Next()){
     InstanceInfo* unit = it.CurrentUnit();
 
-    if(unit->memMapSym){
-      *list->PushElem() = unit->memMapSym;
-    }
+    maximum = SYM_Func("Max",maximum,unit->memMapSym);
   }
   // nocheckin
-  if(!Empty(list)){
-    SymbolicExpression* max = SymbolicMax(list,globalPermanent);
-    info->memMapBitsSym = Normalize(max,globalPermanent);
-  }
+  info->memMapBitsSym = maximum;
 
   for(AccelInfoIterator iter = StartIteration(info) ;iter.IsValid(); iter = iter.Next()){
     InstanceInfo* info = iter.CurrentUnit();
@@ -1327,7 +1320,7 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
       seenShared[inst->sharedIndex] = true;
     }
     
-    if(type->info.memMapBitsSym){
+    if(Valid(type->info.memMapBitsSym)){
       info->isMemoryMapped = true;
 
       unitsMapped += 1;
@@ -1376,7 +1369,7 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
   //       or if it is only needed by the top accelerator.
   //       For now we calculate it to make easier to debug by inspecting the data.
   //       But need to take another look eventually
-  SymbolicExpression* staticExpr = PushLiteral(temp,0);
+  SYM_Expr staticExpr = SYM_Zero;
   for(FUInstance* ptr : accel->allocated){
     FUInstance* inst = ptr;
     if(inst->isStatic){
@@ -1390,7 +1383,7 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
       for(Wire& wire : inst->declaration->configs){
         info->staticBits += wire.bitSize;
 
-        staticExpr = Normalize(SymbolicAdd(staticExpr,wire.sizeExpr,temp),temp);
+        staticExpr = staticExpr + wire.sizeExpr;
       }
     }
 
@@ -1405,15 +1398,14 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
           for(Wire& wire : pair.second->configs){
             info->staticBits += wire.bitSize;
 
-            staticExpr = Normalize(SymbolicAdd(staticExpr,wire.sizeExpr,temp),temp);
+            staticExpr = staticExpr + wire.sizeExpr;
           }
         }
       }
     }
   }
 
-  // TODO: HACK, VERY BAD
-  info->staticExpr = PushRepr(globalPermanent,staticExpr);
+  info->staticExpr = staticExpr;
   
   for(FUInstance* ptr : accel->allocated){
     info->numberConnections += Size(ptr->allOutputs);
@@ -1552,7 +1544,7 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
   for(AccelInfoIterator iter = StartIteration(&result); iter.IsValid(); iter = iter.Step()){
     InstanceInfo* unit = iter.CurrentUnit();
 
-    Hashmap<String,SymbolicExpression*>* params = PushHashmap<String,SymbolicExpression*>(temp,unit->params.size);
+    auto params = PushTrieMap<String,SYM_Expr>(temp);
 
     for(ParamAndValue p : unit->params){
       params->Insert(p.name,p.val);
@@ -1577,7 +1569,7 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
       result.configWires[configIndex] = wire;
 
       // TODO: We need to do this for state as well. And we probably want to make this more explicit.
-      result.configWires[configIndex].sizeExpr = ReplaceVariables(wire.sizeExpr,params,out);
+      result.configWires[configIndex].sizeExpr = SYM_Replace(wire.sizeExpr,params);
       result.configWires[configIndex++].name = PushString(out,"%.*s_%.*s",UN(unit->name),UN(wire.name));
     }
   }
@@ -1608,14 +1600,14 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
   return result;
 }
 
-SymbolicExpression* GetParameterValue(InstanceInfo* info,String name){
+SYM_Expr GetParameterValue(InstanceInfo* info,String name){
   for(ParamAndValue val : info->params){
     if(val.name == name){
       return val.val;
     }
   }
 
-  return nullptr;
+  return SYM_Nil;
 }
 
 bool IsUnitCombinatorialOperation(InstanceInfo* info){
@@ -1646,13 +1638,13 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
       InstanceInfo* info = iter.CurrentUnit();
       Array<Parameter> params = info->decl->parameters;
 
-      auto map = PushTrieMap<String,SymbolicExpression*>(temp);
+      auto map = PushTrieMap<String,SYM_Expr>(temp);
       for(Parameter p : params){
         map->Insert(p.name,p.defaultVal);
       }
 
       for(ParamAndValue& p : info->params){
-        SymbolicExpression* replaced = ReplaceVariables(p.val,map,out);
+        SYM_Expr replaced = SYM_Replace(p.val,map);
 
         p.val = replaced;
       }
@@ -1663,7 +1655,7 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
       InstanceInfo* info = iter.CurrentUnit();
       Array<Parameter> params = info->decl->parameters;
 
-      auto map = PushTrieMap<String,SymbolicExpression*>(temp);
+      auto map = PushTrieMap<String,SYM_Expr>(temp);
       for(ParamAndValue p : info->params){
         if(IsGlobalParameter(p.name)){
           continue;
@@ -1673,14 +1665,14 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
       }
 
       for(Wire& w : info->configs){
-        w.sizeExpr = ReplaceVariables(w.sizeExpr,map,out);
+        w.sizeExpr = SYM_Replace(w.sizeExpr,map);
       }
       for(Wire& w : info->states){
-        w.sizeExpr = ReplaceVariables(w.sizeExpr,map,out);
+        w.sizeExpr = SYM_Replace(w.sizeExpr,map);
       }
 
-      if(info->memMapSym){
-        info->memMapSym = Normalize(ReplaceVariables(info->memMapSym,map,temp),out);
+      if(Valid(info->memMapSym)){
+        info->memMapSym = SYM_Replace(info->memMapSym,map);
       }
     }
 
@@ -1694,7 +1686,7 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
         continue;
       }
 
-      auto map = PushTrieMap<String,SymbolicExpression*>(temp);
+      auto map = PushTrieMap<String,SYM_Expr>(temp);
       for(ParamAndValue p : parent->params){
         if(IsGlobalParameter(p.name)){
           continue;
@@ -1705,15 +1697,15 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
 
 #if 1
       for(Wire& w : info->configs){
-        w.sizeExpr = ReplaceVariables(w.sizeExpr,map,out);
+        w.sizeExpr = SYM_Replace(w.sizeExpr,map);
       }
       for(Wire& w : info->states){
-        w.sizeExpr = ReplaceVariables(w.sizeExpr,map,out);
+        w.sizeExpr = SYM_Replace(w.sizeExpr,map);
       }
 #endif
 
-      if(info->memMapSym){
-        info->memMapSym = Normalize(ReplaceVariables(info->memMapSym,map,temp),out);
+      if(Valid(info->memMapSym)){
+        info->memMapSym = SYM_Replace(info->memMapSym,map);
       }
     }    
   }

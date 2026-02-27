@@ -7,7 +7,6 @@
 #include "versatSpecificationParser.hpp"
 
 struct FUDeclaration;
-struct SymbolicExpression;
 struct AddressAccess;
 struct Parser;
 
@@ -132,7 +131,7 @@ enum ConfigStuffType{
 // TODO: We probably want to remove this and just pass everything into ConfigStuff.
 struct ConfigAssignment{
   String lhs;
-  SymbolicExpression* rhs;
+  SYM_Expr rhs;
   String rhsId;
   
   String special;

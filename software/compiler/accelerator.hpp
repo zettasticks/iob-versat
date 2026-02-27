@@ -10,7 +10,6 @@ struct Edge;
 struct AccelInfo;
 struct ConfigFunction;
 struct InstanceInfo;
-struct SymbolicExpression;
 
 typedef Hashmap<FUInstance*,FUInstance*> InstanceMap;
 typedef Hashmap<Edge,Edge> EdgeMap;
@@ -143,7 +142,7 @@ enum NodeType{
 };
 
 struct ParameterValue{
-  SymbolicExpression* val;
+  SYM_Expr val;
   //String val; // Mostly a placeholder for now. Eventually want a better way of handling parameters and expression of parameters
 };
 
@@ -232,7 +231,7 @@ struct WireInformation{
   Wire wire;
   int addr;
   bool isStatic;
-  SymbolicExpression* startBitExpr;
+  SYM_Expr startBitExpr;
 };
 
 // NOTE: These values are specific to the top accelerator only. They differ because of stuff like DMA, the config interface for the accelerator and so on.
@@ -283,9 +282,9 @@ struct VersatComputedValues{
   //int externalMemoryInterfaces;
   int totalExternalMemory;  
 
-  SymbolicExpression* configSizeExpr;
-  SymbolicExpression* delayStart;
-  SymbolicExpression* configurationBitsExpr;
+  SYM_Expr configSizeExpr;
+  SYM_Expr delayStart;
+  SYM_Expr configurationBitsExpr;
 };
 
 struct DAGOrderNodes{
@@ -414,8 +413,8 @@ FUInstance* GetOutputInstance(Pool<FUInstance>* nodes);
 // ======================================
 // Params
 
-bool SetParameter(FUInstance* inst,String parameterName,SymbolicExpression* val); // False if param does not exist
-SymbolicExpression* GetParameterValue(FUInstance* inst,String name);
+bool SetParameter(FUInstance* inst,String parameterName,SYM_Expr val); // False if param does not exist
+SYM_Expr GetParameterValue(FUInstance* inst,String name);
 
 //
 // Graph fixes and operations

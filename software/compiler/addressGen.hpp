@@ -6,9 +6,8 @@
 
 #include "embeddedData.hpp"
 
-struct SymbolicExpression;
-struct LoopLinearSum;
-struct LoopLinearSumTerm;
+#include "symbolic.hpp"
+
 struct CEmitter;
 struct SpecExpression;
 
@@ -35,7 +34,7 @@ struct AddressAccess{
   LoopLinearSum* internal;
   LoopLinearSum* external;
 
-  SymbolicExpression* dutyDivExpr; // Any expression of the form (A/B) is broken up, this var saves B and the internal/external LoopLinearSum take the A part (otherwise this is nullptr). This simplifies a lot of things, since we only care about B at the very end. 
+  SYM_Expr dutyDivExpr; // Any expression of the form (A/B) is broken up, this var saves B and the internal/external LoopLinearSum take the A part (otherwise this is nullptr). This simplifies a lot of things, since we only care about B at the very end. 
   
   Array<String> inputVariableNames;
 };
@@ -94,7 +93,7 @@ void   Print(AddressAccess* access);
 // Compilation 
 
 // TODO: We probably want to take in an Env* so that we can check stuff and we probably want to move this to the spec parser. No reason for other code to have token and to depend on parser stuff.
-AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> loops,SymbolicExpression* addr,String content);
+AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> loops,SYM_Expr addr,String content);
 
 // ======================================
 // Conversion
@@ -112,5 +111,5 @@ void EmitGenStatements(CEmitter* m,AccessAndType access,String varName);
 // ======================================
 // LoopLinearSumTerm handling
 
-SymbolicExpression* GetLoopHighestDecider(LoopLinearSumTerm* term);
+SYM_Expr GetLoopHighestDecider(LoopLinearSumTerm* term);
 

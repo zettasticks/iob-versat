@@ -34,7 +34,7 @@ enum SubUnitOptions{
 
 struct ParameterDef{
   String name;
-  SymbolicExpression* defaultValue;
+  SYM_Expr defaultValue;
 };
 
 // Global parameters are verilog parameters that Versat assumes that exist and that it uses through the entire accelerator.
@@ -42,7 +42,7 @@ struct ParameterDef{
 bool IsGlobalParameter(String name);
 
 // Returns the parameters including default parameters if the unit does not define them (defaults from the declaration)
-Hashmap<String,SymbolicExpression*>* GetParametersOfUnit(FUInstance* inst,Arena* out);
+TrieMap<String,SYM_Expr>* GetParametersOfUnit(FUInstance* inst,Arena* out);
 
 // Misc
 bool CheckValidName(String name); // Check if name can be used as identifier in verilog

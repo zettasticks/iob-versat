@@ -29,7 +29,7 @@ struct StructInfo;
 
 struct ParamAndValue{
   String name;
-  SymbolicExpression* val;
+  SYM_Expr val;
 };
 
 enum SpecialUnitType{
@@ -140,7 +140,7 @@ struct InstanceInfo{
   //bool memMapValid;
   //Opt<int> memMapBits;
 
-  SymbolicExpression* memMapSym;
+  SYM_Expr memMapSym;
 
   Opt<iptr> memMapped; // After parameter instantiation and this only makes sense for the top level.
 
@@ -284,11 +284,11 @@ struct AccelInfo{
 
   Array<Wire> allStaticWires;
 
-  String staticExpr; // nocheckin: Check this 
-  String delayStart; // nocheckin: Check this. Why string? Why not an actual expression
+  SYM_Expr staticExpr; // nocheckin: Check this 
+  SYM_Expr delayStart; // nocheckin: Check this. Why string? Why not an actual expression
 
   // This value is now the MAXIMUM of the units addresses.
-  SymbolicExpression* memMapBitsSym;
+  SYM_Expr memMapBitsSym;
 
   int unitsMapped;
   bool isMemoryMapped;
@@ -368,7 +368,7 @@ String GetEntityMemName(InstanceInfo* info,Arena* out);
 
 String ReprStaticConfig(StaticId id,Wire* wire,Arena* out);
 
-SymbolicExpression* GetParameterValue(InstanceInfo* info,String name);
+SYM_Expr GetParameterValue(InstanceInfo* info,String name);
 
 bool IsUnitCombinatorialOperation(InstanceInfo* info);
 

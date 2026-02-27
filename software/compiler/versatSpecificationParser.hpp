@@ -351,7 +351,6 @@ FUInstanceIterator StartIteration(Env* env,Entity* ent);
 // TODO
 // nocheckin - This needs to be moved to Env 
 SYM_Expr SymbolicFromSpecExpression2(SpecExpression* spec);
-SymbolicExpression* SymbolicFromSpecExpression(SpecExpression* spec,Arena* out);
 
 #if 0
 LEFT HERE - We are still removing old parser stuff and making the needed changes.

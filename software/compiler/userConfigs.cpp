@@ -157,7 +157,7 @@ struct ParseResult{
   bool containsAccess;
   bool isExpr;
   
-  SymbolicExpression* expr;
+  SYM_Expr expr;
   Array<SpecExpression*> args;
   Token entityName;
   Token wireName; 
@@ -180,7 +180,7 @@ ParseResult ParseRHS(Env* env,SpecExpression* top,Arena* out){
   ParseResult res = {};
   if(top->type == SpecType_ARRAY_ACCESS){
     res.isArray = true;
-    res.expr = SymbolicFromSpecExpression(top->expressions[0],out);
+    res.expr = SymbolicFromSpecExpression2(top->expressions[0]);
     res.entityName = top->name;
   } else if(top->type == SpecType_SINGLE_ACCESS){
     res.containsAccess = true;
@@ -192,7 +192,7 @@ ParseResult ParseRHS(Env* env,SpecExpression* top,Arena* out){
     res.functionName = top->name;
   } else {    
     res.isExpr = true;
-    res.expr = SymbolicFromSpecExpression(top,out);
+    res.expr = SymbolicFromSpecExpression2(top);
   }
 
   return res;
@@ -397,13 +397,13 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         }
       
         // Invocation var to function argument
-        Hashmap<String,SymbolicExpression*>* argToVar = PushHashmap<String,SymbolicExpression*>(temp,args.size);
+        TrieMap<String,SYM_Expr>* argToVar = PushTrieMap<String,SYM_Expr>(temp);
         for(int i = 0; i <  args.size; i++){
           ConfigVariable arg = function->variables[i];
 
           //SymbolicExpression* var = PushVariable(temp,functionInvoc->arguments[i]);
             
-          SymbolicExpression* var = SymbolicFromSpecExpression(args[i],temp);
+          SYM_Expr var = SymbolicFromSpecExpression2(args[i]);
           argToVar->Insert(arg.name,var);
         }
 
@@ -413,8 +413,8 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           // TODO: We are building the struct access expression in here but I got a feeling that we probably want to preserve data as much as possible in order to tackle merge later on.
           String lhs = PushString(out,"%.*s.%.*s",UN(name),UN(assign.assign.lhs));
         
-          SymbolicExpression* rhs = assign.assign.rhs;
-          SymbolicExpression* newExpr = ReplaceVariables(rhs,argToVar,out);
+          SYM_Expr rhs = assign.assign.rhs;
+          SYM_Expr newExpr = SYM_Replace(rhs,argToVar);
         
           ConfigStuff* newAssign = list->PushElem();
           newAssign->type = ConfigStuffType_ASSIGNMENT;
@@ -430,7 +430,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         ConfigStuff* assign = list->PushElem();
         assign->type = ConfigStuffType_ASSIGNMENT;
         assign->assign.lhs = PushString(out,"%.*s.%.*s",UN(name),UN(wireName));
-        assign->assign.rhs = SymbolicDeepCopy(parsedRhs.expr,out);
+        assign->assign.rhs = parsedRhs.expr;
       } else if(supported.type == AddressGenType_GEN){
         ConfigStuff* newAssign = list->PushElem();
 
@@ -579,11 +579,11 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
       String sizeExpr = "1";
       if(!singleStatement){
-        SymbolicExpression* start = SymbolicFromSpecExpression(stmt->def2.startSym,temp);
-        SymbolicExpression* end = SymbolicFromSpecExpression(stmt->def2.endSym,temp);
+        SYM_Expr start = SymbolicFromSpecExpression2(stmt->def2.startSym);
+        SYM_Expr end = SymbolicFromSpecExpression2(stmt->def2.endSym);
 
-        SymbolicExpression* diff = SymbolicSub(end,start,temp);
-        sizeExpr = PushRepr(out,diff);
+        SYM_Expr diff = end - start;
+        sizeExpr = SYM_Repr(diff,out);
       }
 
       ConfigStuff* assign = list->PushElem();

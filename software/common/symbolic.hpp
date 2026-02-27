@@ -10,6 +10,7 @@
 
 struct Arena;
 
+#if 0
 // ============================================================================
 // Symbolic Expressions
 
@@ -63,23 +64,6 @@ struct MultPartition{
   SymbolicExpression* base;
   SymbolicExpression* leftovers;
 }; 
-
-// ============================================================================
-// Loop Linear Sum
-
-struct LoopLinearSumTerm{
-  String var;
-  SymbolicExpression* term;
-  SymbolicExpression* loopStart;
-  SymbolicExpression* loopEnd;
-};
-
-// A Sum of expressions in the form term * X + term * Y + term * Z + ... + constant, where X,Y and Z are loop variables that range from a start expression to a end expression.
-struct LoopLinearSum{
-  // 0 is the innermost and size-1 the outermost loop
-  Array<LoopLinearSumTerm> terms;
-  SymbolicExpression* freeTerm;
-};
 
 // ======================================
 // Globals
@@ -197,30 +181,7 @@ void TestSymbolic();
 // Expr must be a sum of mul. Assuming that variableName only appears once. TODO: Probably would be best to create a function that first groups everything so that variableName only appears once and then call this function. Or maybe do the grouping inside here if needed.
 // TODO: This function is kinda not needed. We only use it to break apart a symbolic expression into a LoopLinearSumTerm, but even then we can do it better because we know the format of the variables inside the symbolic expression and we could simplify this.
 Opt<SymbolicExpression*> GetMultExpressionAssociatedTo(SymbolicExpression* expr,String variableName,Arena* out);
-
-// ======================================
-// Building
-
-LoopLinearSum* PushLoopLinearSumEmpty(Arena* out);
-LoopLinearSum* PushLoopLinearSumFreeTerm(SymbolicExpression* term,Arena* out);
-LoopLinearSum* PushLoopLinearSumSimpleVar(String loopVarName,SymbolicExpression* term,SymbolicExpression* start,SymbolicExpression* end,Arena* out);
-
-// ======================================
-// Manipulation
-
-LoopLinearSum* Copy(LoopLinearSum* in,Arena* out);
-LoopLinearSum* AddLoopLinearSum(LoopLinearSum* inner,LoopLinearSum* outer,Arena* out);
-LoopLinearSum* RemoveLoop(LoopLinearSum* in,int index,Arena* out);
-SymbolicExpression* TransformIntoSymbolicExpression(LoopLinearSum* sum,Arena* out);
-
-SymbolicExpression* GetLoopLinearSumTotalSize(LoopLinearSum* in,Arena* out);
-
-// ======================================
-// Representation
-
-void Print(LoopLinearSum* sum,bool printNewLine = false);
-void Repr(StringBuilder* builder,LoopLinearSum* sum);
-String PushRepr(LoopLinearSum* sum,Arena* out);
+#endif
 
 void SYM_Init();
 
@@ -264,10 +225,36 @@ struct SYM_Expr{
   SYM_Node* node;
 };
 
+static SYM_Expr SYM_Nil = {};
+
+extern SYM_Expr SYM_Zero;
+extern SYM_Expr SYM_One;
+extern SYM_Expr SYM_Two;
+extern SYM_Expr SYM_Eight;
+
+extern SYM_Expr SYM_AddrW;
+extern SYM_Expr SYM_AxiAddrW;
+extern SYM_Expr SYM_AxiDataW;
+extern SYM_Expr SYM_AxiStrobeW;
+extern SYM_Expr SYM_LenW;
+extern SYM_Expr SYM_DelayW;
+extern SYM_Expr SYM_DataW;
+extern SYM_Expr SYM_DataStrobeW;
+
 inline SYM_Node* Negate(SYM_Node* ptr);
 inline bool IsNegative(SYM_Node* ptr);
 
-inline bool operator==(SYM_Expr lhs,SYM_Expr rhs){return lhs.node == rhs.node;}
+SYM_Expr Abs(SYM_Expr in);
+
+inline bool operator==(SYM_Expr lhs,SYM_Expr rhs){
+  if(Abs(lhs) == SYM_Zero && Abs(rhs) == SYM_Zero){
+    return true;
+  }
+
+  return lhs.node == rhs.node;
+}
+
+inline bool operator!=(SYM_Expr lhs,SYM_Expr rhs){return !(lhs == rhs);}
 inline SYM_Expr Negate(SYM_Expr expr){SYM_Expr res = {Negate(expr.node)}; return res;}
 inline bool IsNegative(SYM_Expr expr){return IsNegative(expr.node);}
 
@@ -302,9 +289,6 @@ inline SYM_Node* GetPointer(SYM_Node* ptr){return (SYM_Node*) (((iptr) ptr) & ~0
 
 inline SYM_Node* GetPointer(SYM_Expr expr){return GetPointer(expr.node);}
 
-extern SYM_Expr SYM_Zero;
-extern SYM_Expr SYM_One;
-
 inline bool Valid(SYM_Expr expr){return expr.node != nullptr;}
 void SYM_Print(SYM_Expr expr);
 
@@ -315,19 +299,36 @@ SYM_Expr operator*(SYM_Expr left,SYM_Expr right);
 SYM_Expr operator/(SYM_Expr left,SYM_Expr right);
 
 SYM_Expr SYM_Variable(String name);
+SYM_Expr SYM_Func(String name,SYM_Expr first,SYM_Expr second);
 SYM_Expr SYM_Literal(int value);
 
-SYM_Expr Derivate(SYM_Expr expr,String var);
+SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<String,SYM_Expr>* replacements);
+SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<SYM_Expr,SYM_Expr>* replacements);
+SYM_Expr SYM_Replace(SYM_Expr expr,SYM_Expr toReplace,SYM_Expr replacement);
+
+SYM_Expr SYM_Derivate(SYM_Expr expr,String var);
+
+SYM_Expr SYM_Factor(SYM_Expr expr,SYM_Expr commonFactor);
+
+void SYM_Repr(StringBuilder* b,SYM_Expr expr);
+String SYM_Repr(SYM_Expr expr,Arena* out);
+
+Pair<SYM_Expr,SYM_Expr> SYM_BreakDiv(SYM_Expr in);
 
 bool operator<(SYM_Expr left,SYM_Expr right);
 
 struct SYM_EvaluateResult{
   int result;
   Array<String> errors;
+
+  // TODO: Replace with a big flag approach
   bool divByZero;
+  bool nonConstantValue;
 
   bool Error(){return errors.size > 0;}
 };
+
+SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr in,Arena* out);
 
 int Compare(SYM_Expr left,SYM_Expr right);
 
@@ -422,3 +423,47 @@ static inline int Compare(SYM_MultTerms left,SYM_MultTerms right){
 
 void TestSym2();
 char*  SYM_DebugRepr(SYM_Expr expr);
+
+int LiteralValue(SYM_Expr in);
+bool IsLiteral(SYM_Expr in);
+
+// ============================================================================
+// Loop Linear Sum
+
+struct LoopLinearSumTerm{
+  String var;
+  SYM_Expr term;
+  SYM_Expr loopStart;
+  SYM_Expr loopEnd;
+};
+
+// A Sum of expressions in the form term * X + term * Y + term * Z + ... + constant, where X,Y and Z are loop variables that range from a start expression to a end expression.
+struct LoopLinearSum{
+  // 0 is the innermost and size-1 the outermost loop
+  Array<LoopLinearSumTerm> terms;
+  SYM_Expr freeTerm;
+};
+
+// ======================================
+// Building
+
+LoopLinearSum* PushLoopLinearSumEmpty(Arena* out);
+LoopLinearSum* PushLoopLinearSumFreeTerm(SYM_Expr term,Arena* out);
+LoopLinearSum* PushLoopLinearSumSimpleVar(String loopVarName,SYM_Expr term,SYM_Expr start,SYM_Expr end,Arena* out);
+
+// ======================================
+// Manipulation
+
+LoopLinearSum* Copy(LoopLinearSum* in,Arena* out);
+LoopLinearSum* AddLoopLinearSum(LoopLinearSum* inner,LoopLinearSum* outer,Arena* out);
+LoopLinearSum* RemoveLoop(LoopLinearSum* in,int index,Arena* out);
+SYM_Expr TransformIntoSymbolicExpression(LoopLinearSum* sum,Arena* out);
+
+SYM_Expr GetLoopLinearSumTotalSize(LoopLinearSum* in,Arena* out);
+
+// ======================================
+// Representation
+
+void Print(LoopLinearSum* sum,bool printNewLine = false);
+void Repr(StringBuilder* builder,LoopLinearSum* sum);
+String PushRepr(LoopLinearSum* sum,Arena* out);

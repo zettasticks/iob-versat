@@ -784,6 +784,8 @@ Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths
   return PushArray(out,modules);
 }
 
+// nocheckin
+#if 0
 SymbolicExpression* SymbolicExpressionFromVerilog(Expression* topExpr,Arena* out){
   FULL_SWITCH(topExpr->type){
   case Expression::UNDEFINED: {
@@ -833,6 +835,61 @@ SymbolicExpression* SymbolicExpressionFromVerilog(ExpressionRange range,Arena* o
   SymbolicExpression* top = SymbolicExpressionFromVerilog(range.top,temp);
   SymbolicExpression* bottom = SymbolicExpressionFromVerilog(range.bottom,temp);
   SymbolicExpression* res = Normalize(SymbolicAdd(SymbolicSub(top,bottom,temp),SYM_one,temp),out);
+
+  return res;
+}
+#endif
+
+SYM_Expr SymbolicExpressionFromVerilog(Expression* topExpr){
+  SYM_Expr res = SYM_Nil;
+
+  FULL_SWITCH(topExpr->type){
+  case Expression::UNDEFINED: {
+    Assert(false);
+  } break;
+  case Expression::OPERATION: {
+    SYM_Expr left = SymbolicExpressionFromVerilog(topExpr->expressions[0]);
+    SYM_Expr right = SymbolicExpressionFromVerilog(topExpr->expressions[1]);
+    
+    switch(topExpr->op[0]){
+    case '+':{
+      res = left + right;
+    } break;
+    case '-':{
+      res = left + right;
+    } break;
+    case '*':{
+      res = left * right;
+    } break;
+    case '/':{
+      res = left / right;
+    } break;
+    default:{
+      // TODO: Better error message
+      NOT_IMPLEMENTED("");
+    } break;
+    } 
+  } break;
+  case Expression::IDENTIFIER: {
+    res = SYM_Variable(topExpr->id);
+  } break;
+  case Expression::FUNCTION: {
+    // TODO: Better error message and we probably can do more stuff here
+    NOT_IMPLEMENTED("");
+  } break;
+  case Expression::LITERAL: {
+    res = SYM_Literal(topExpr->val.number);
+  } break;
+}
+  
+  return res;
+}
+
+SYM_Expr SymbolicExpressionFromVerilog(ExpressionRange range){
+  SYM_Expr top = SymbolicExpressionFromVerilog(range.top);
+  SYM_Expr bottom = SymbolicExpressionFromVerilog(range.bottom);
+
+  SYM_Expr res = top - bottom + SYM_One;
 
   return res;
 }

@@ -455,7 +455,7 @@ void FixDelays(Accelerator* accel,Hashmap<Edge,DelayInfo>* edgeDelays){
       buffer = CreateFUInstance(accel,BasicDeclaration::fixedBuffer,bufferName);
       buffer->bufferAmount = delay - BasicDeclaration::fixedBuffer->info.infos[0].outputLatencies[0];
 
-      SetParameter(buffer,"AMOUNT",PushLiteral(globalPermanent,buffer->bufferAmount));
+      SetParameter(buffer,"AMOUNT",SYM_Literal(buffer->bufferAmount));
     } else {
       String bufferName = PushString(globalPermanent,"buffer%d",buffersInserted);
 
@@ -494,14 +494,14 @@ FUInstance* GetOutputInstance(Pool<FUInstance>* nodes){
   return nullptr;
 }
 
-SymbolicExpression* GetParameterValue(FUInstance* inst,String name){
-  SymbolicExpression* val = {};
+SYM_Expr GetParameterValue(FUInstance* inst,String name){
+  SYM_Expr val = SYM_Nil;
   for(int i = 0; i < inst->declaration->parameters.size; i++){
     Parameter param = inst->declaration->parameters[i];
-    SymbolicExpression* paramVal = inst->parameterValues[i].val;
+    SYM_Expr paramVal = inst->parameterValues[i].val;
 
     if(CompareString(param.name,name)){
-      if(paramVal){
+      if(Valid(paramVal)){
         val = paramVal;
       } else {
         val = param.defaultVal;
@@ -548,7 +548,7 @@ Array<FUDeclaration*> MemSubTypes(AccelInfo* info,Arena* out){
   if(info->infos.size > 0){
     Array<InstanceInfo> test = info->infos[0].info;
     for(InstanceInfo& info : test){
-      if(info.memMapSym){
+      if(Valid(info.memMapSym)){
         maps->Insert(GetTypeByName(info.typeName));
       }
     }
@@ -679,14 +679,16 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
         if(unit->isComposite){
           continue;
         }
-        if(!unit->memMapSym){
+        if(!Valid(unit->memMapSym)){
           continue;
         }
-    
-        Opt<int> val = ConstantEvaluate(unit->memMapSym);
+
+        SYM_EvaluateResult evaluation = SYM_ConstantEvaluate(unit->memMapSym,temp);
+        // nocheckin
+        // TODO: Proper check the evaluation results
 
         HuffmanNode* n = PushStruct<HuffmanNode>(temp);
-        *n = {unit,val.value()};
+        *n = {unit,evaluation.result};
         *builder->PushElem() = n;
       }
 
@@ -741,7 +743,7 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
     }
   }
 
-  SymbolicExpression* configExpr = PushLiteral(temp,0);
+  SYM_Expr configExpr = SYM_Zero;
   
   auto builder = StartArray<ExternalMemoryInterface>(temp);
 
@@ -751,7 +753,7 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
   for(AccelInfoIterator iter = StartIteration(info); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* unit = iter.CurrentUnit();
     
-    if(unit->memMapSym){
+    if(Valid(unit->memMapSym)){
       res.unitsMapped += 1;
     }
 
@@ -759,7 +761,7 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
     for(Wire& wire : unit->configs){
       configBits += wire.bitSize;
 
-      configExpr = Normalize(SymbolicAdd(configExpr,wire.sizeExpr,temp),temp);
+      configExpr = configExpr + wire.sizeExpr;
     }
 
     res.nStates += unit->states.size;
@@ -788,10 +790,10 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
     }
   }    
 
-  SymbolicExpression* staticSize = ParseSymbolicExpression(info->staticExpr,temp);
-  SymbolicExpression* delayStart = Normalize(SymbolicAdd(configExpr,staticSize,temp),out);
+  SYM_Expr staticSize = info->staticExpr;
+  SYM_Expr delayStart = configExpr + staticSize;
 
-  res.configSizeExpr = Normalize(configExpr,out);
+  res.configSizeExpr = configExpr;
   res.delayStart = delayStart;
   
   res.nDones = numberDones;
@@ -808,10 +810,10 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
   int staticBitsStart = configBits;
   res.delayBitsStart = staticBitsStart + staticBits;
 
-  SymbolicExpression* total = SymbolicAdd(configExpr,staticSize,temp);
-  total = SymbolicAdd(total,SymbolicMult(PushLiteral(temp,res.nDelays),PushVariable(temp,"DELAY_W"),temp),temp);
+  SYM_Expr total = configExpr + staticSize;
+  total = total + SYM_Literal(res.nDelays) * SYM_DelayW;
   
-  res.configurationBitsExpr = Normalize(total,out);
+  res.configurationBitsExpr = total;
 
   // Versat specific registers are treated as a special maping (all 0's) of 1 configuration and 1 state register
   auto registerList = PushList<VersatRegister>(temp);
@@ -885,7 +887,7 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
   return res;
 }
 
-bool SetParameter(FUInstance* inst,String parameterName,SymbolicExpression* val){
+bool SetParameter(FUInstance* inst,String parameterName,SYM_Expr val){
   FUDeclaration* decl = inst->declaration;
   int paramSize = decl->parameters.size;
   

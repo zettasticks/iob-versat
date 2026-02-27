@@ -8,6 +8,13 @@
 #include "newParser.hpp"
 #include <cstdint>
 
+struct TestCase{
+  String input;
+  String expectedNormalized;
+};
+
+
+#if 0
 static TokenizerTemplate* tmpl;
 
 int TypeToBindingStrength(SymbolicExpression* expr){
@@ -2310,11 +2317,6 @@ SymbolicExpression* Normalize(SymbolicExpression* expr,Arena* out,bool debugPrin
   return current;
 }
 
-struct TestCase{
-  String input;
-  String expectedNormalized;
-};
-
 void TestSymbolic(){
   TEMP_REGION(temp,nullptr);
 
@@ -2476,32 +2478,33 @@ Opt<SymbolicExpression*> GetMultExpressionAssociatedTo(SymbolicExpression* expr,
   }
   return {};
 }
+#endif
 
 LoopLinearSum* PushLoopLinearSumEmpty(Arena* out){
   LoopLinearSum* res = PushStruct<LoopLinearSum>(out);
 
   // NOTE: Everything is simpler is freeTerm is already initialized to zero.
-  res->freeTerm = PushLiteral(out,0);
+  res->freeTerm = SYM_Zero;
   return res;
 }
 
-LoopLinearSum* PushLoopLinearSumFreeTerm(SymbolicExpression* term,Arena* out){
+LoopLinearSum* PushLoopLinearSumFreeTerm(SYM_Expr term,Arena* out){
   LoopLinearSum* res = PushStruct<LoopLinearSum>(out);
 
-  res->freeTerm = SymbolicDeepCopy(term,out);
+  res->freeTerm = term;
   return res;
 }
 
-LoopLinearSum* PushLoopLinearSumSimpleVar(String loopVarName,SymbolicExpression* term,SymbolicExpression* start,SymbolicExpression* end,Arena* out){
+LoopLinearSum* PushLoopLinearSumSimpleVar(String loopVarName,SYM_Expr term,SYM_Expr start,SYM_Expr end,Arena* out){
   LoopLinearSum* res = PushStruct<LoopLinearSum>(out);
 
   res->terms = PushArray<LoopLinearSumTerm>(out,1);
   res->terms[0].var = PushString(out,loopVarName);
-  res->terms[0].term = SymbolicDeepCopy(term,out);
-  res->terms[0].loopStart = SymbolicDeepCopy(start,out);
-  res->terms[0].loopEnd = SymbolicDeepCopy(end,out);
+  res->terms[0].term = term;
+  res->terms[0].loopStart = start;
+  res->terms[0].loopEnd = end;
   
-  res->freeTerm = PushLiteral(out,0);
+  res->freeTerm = SYM_Zero;
 
   return res;
 }
@@ -2514,12 +2517,12 @@ LoopLinearSum* Copy(LoopLinearSum* in,Arena* out){
   res->terms = PushArray<LoopLinearSumTerm>(out,size);
   for(int i = 0; i < size; i++){
     res->terms[i].var = PushString(out,in->terms[i].var);
-    res->terms[i].term = SymbolicDeepCopy(in->terms[i].term,out);
-    res->terms[i].loopStart = SymbolicDeepCopy(in->terms[i].loopStart,out);
-    res->terms[i].loopEnd = SymbolicDeepCopy(in->terms[i].loopEnd,out);
+    res->terms[i].term = in->terms[i].term;
+    res->terms[i].loopStart = in->terms[i].loopStart;
+    res->terms[i].loopEnd = in->terms[i].loopEnd;
   }
 
-  res->freeTerm = SymbolicDeepCopy(in->freeTerm,out);
+  res->freeTerm = in->freeTerm;
   return res;
 }
 
@@ -2533,18 +2536,18 @@ LoopLinearSum* AddLoopLinearSum(LoopLinearSum* inner,LoopLinearSum* outer,Arena*
   res->terms = PushArray<LoopLinearSumTerm>(out,totalSize);
   for(int i = 0; i < innerSize; i++){
     res->terms[i].var = PushString(out,inner->terms[i].var);
-    res->terms[i].term = SymbolicDeepCopy(inner->terms[i].term,out);
-    res->terms[i].loopStart = SymbolicDeepCopy(inner->terms[i].loopStart,out);
-    res->terms[i].loopEnd = SymbolicDeepCopy(inner->terms[i].loopEnd,out);
+    res->terms[i].term = inner->terms[i].term;
+    res->terms[i].loopStart = inner->terms[i].loopStart;
+    res->terms[i].loopEnd = inner->terms[i].loopEnd;
   }
   for(int i = 0; i < outerSize; i++){
     res->terms[i + innerSize].var = PushString(out,outer->terms[i].var);
-    res->terms[i + innerSize].term = SymbolicDeepCopy(outer->terms[i].term,out);
-    res->terms[i + innerSize].loopStart = SymbolicDeepCopy(outer->terms[i].loopStart,out);
-    res->terms[i + innerSize].loopEnd = SymbolicDeepCopy(outer->terms[i].loopEnd,out);
+    res->terms[i + innerSize].term = outer->terms[i].term;
+    res->terms[i + innerSize].loopStart = outer->terms[i].loopStart;
+    res->terms[i + innerSize].loopEnd = outer->terms[i].loopEnd;
   }
 
-  res->freeTerm = Normalize(SymbolicAdd(inner->freeTerm,outer->freeTerm,out),out);
+  res->freeTerm = inner->freeTerm + outer->freeTerm;
 
   return res;
 }
@@ -2557,62 +2560,46 @@ LoopLinearSum* RemoveLoop(LoopLinearSum* in,int index,Arena* out){
   return res;
 }
 
-SymbolicExpression* TransformIntoSymbolicExpression(LoopLinearSum* sum,Arena* out){
+SYM_Expr TransformIntoSymbolicExpression(LoopLinearSum* sum,Arena* out){
   TEMP_REGION(temp,out);
 
   int size = sum->terms.size;
-  Array<SymbolicExpression*> individualTermsArray = PushArray<SymbolicExpression*>(temp,size + 1);
+  Array<SYM_Expr> individualTermsArray = PushArray<SYM_Expr>(temp,size + 1);
 
   // TODO: We probably can simplify this function. The rest of the code appears to be able to handle normalization of this expression and it appears that we do not have to be as careful when creating the expression as we previously where.
   
   // The expression is carefully constructed in order to avoid the normalization process removing the grouping of variables. Easier than changing the normalization process to preserve groupings in some situations and not in others.
+  SYM_Expr res = SYM_Zero;
+
   int inserted = 0;
   for(LoopLinearSumTerm term : sum->terms){
-    SymbolicExpression* normalized = Normalize(term.term,temp);
-    SymbolicExpression* fullTerm = nullptr;
+    SYM_Expr fullTerm = term.term * SYM_Variable(term.var);
 
-    // NOTE: Since no normalization, need to take into account identity of multiplication. Similar to NOTE below
-    if(normalized->type == SymbolicExpressionType_LITERAL && GetLiteralValue(normalized) == 1){
-      fullTerm = PushVariable(temp,term.var);
-    } else {
-      fullTerm = SymbolicMult(normalized,PushVariable(temp,term.var),temp);
-    }
-
-    individualTermsArray[inserted++] = fullTerm; 
-  }
-
-  // NOTE: Since we do not normalize the final expression, need to take into account the identity of addition, so that we do not end up with an extra +0 for no reason
-  if(sum->freeTerm->type == SymbolicExpressionType_LITERAL && GetLiteralValue(sum->freeTerm) == 0){
-    individualTermsArray.size -= 1;
-  } else {
-    individualTermsArray[inserted++] = SymbolicDeepCopy(sum->freeTerm,temp);
-  }
+    res = res + fullTerm;
     
-  // We do not normalize this expression in order to keep all the variables inside the same
-  SymbolicExpression* res = SymbolicAdd(individualTermsArray,temp);
+    //individualTermsArray[inserted++] = fullTerm; 
+  }
 
-  // Everything is in temp arena, final copy to out arena.
-  res = SymbolicDeepCopy(res,out);
+  res = res + sum->freeTerm;
   
   return res;
 }
 
-SymbolicExpression* LoopLinearSumTermSize(LoopLinearSumTerm* term,Arena* out){
-  SymbolicExpression* expr = SymbolicSub(term->loopEnd,term->loopStart,out);
+SYM_Expr LoopLinearSumTermSize(LoopLinearSumTerm* term,Arena* out){
+  SYM_Expr expr = term->loopEnd - term->loopStart;
   return expr;
 }
 
-SymbolicExpression* GetLoopLinearSumTotalSize(LoopLinearSum* in,Arena* out){
+SYM_Expr GetLoopLinearSumTotalSize(LoopLinearSum* in,Arena* out){
   TEMP_REGION(temp,out);
 
-  SymbolicExpression* expr = PushLiteral(temp,1); 
+  SYM_Expr expr = SYM_One; 
   for(LoopLinearSumTerm term : in->terms){
-    SymbolicExpression* loopSize = LoopLinearSumTermSize(&term,temp);
-    expr = SymbolicMult(expr,loopSize,temp);
+    SYM_Expr loopSize = LoopLinearSumTermSize(&term,temp);
+    expr = expr * loopSize;
   }
   
-  SymbolicExpression* result = Normalize(expr,out);
-  return result;
+  return expr;
 }
 
 void Print(LoopLinearSum* sum,bool printNewLine){
@@ -2622,14 +2609,14 @@ void Print(LoopLinearSum* sum,bool printNewLine){
 
   for(int i = size - 1; i >= 0; i--){
     printf("for %.*s ",UN(sum->terms[i].var));
-    Print(sum->terms[i].loopStart);
+    SYM_Print(sum->terms[i].loopStart);
     printf("..");
-    Print(sum->terms[i].loopEnd);
+    SYM_Print(sum->terms[i].loopEnd);
     printf("\n");
   }
 
-  SymbolicExpression* fullExpression = TransformIntoSymbolicExpression(sum,temp);
-  Print(fullExpression);
+  SYM_Expr fullExpression = TransformIntoSymbolicExpression(sum,temp);
+  SYM_Print(fullExpression);
 
   if(printNewLine){
     printf("\n");
@@ -2643,14 +2630,14 @@ void Repr(StringBuilder* builder,LoopLinearSum* sum){
 
   for(int i = size - 1; i >= 0; i--){
     builder->PushString("for %.*s ",UN(sum->terms[i].var));
-    Repr(builder,sum->terms[i].loopStart);
+    SYM_Repr(builder,sum->terms[i].loopStart);
     builder->PushString("..");
-    Repr(builder,sum->terms[i].loopEnd);
+    SYM_Repr(builder,sum->terms[i].loopEnd);
     builder->PushString("\n");
   }
 
-  SymbolicExpression* fullExpression = TransformIntoSymbolicExpression(sum,temp);
-  Repr(builder,fullExpression);
+  SYM_Expr fullExpression = TransformIntoSymbolicExpression(sum,temp);
+  SYM_Repr(builder,fullExpression);
 }
 
 String PushRepr(LoopLinearSum* sum,Arena* out){
@@ -2664,38 +2651,6 @@ String PushRepr(LoopLinearSum* sum,Arena* out){
 // ============================================================================
 // Global special Symbolic Expressions 
 
-static SymbolicExpression SYM_INST_zero      = {.type = SymbolicExpressionType_LITERAL,.literal = 0};
-static SymbolicExpression SYM_INST_one       = {.type = SymbolicExpressionType_LITERAL,.literal = 1};
-static SymbolicExpression SYM_INST_two       = {.type = SymbolicExpressionType_LITERAL,.literal = 2};
-static SymbolicExpression SYM_INST_eight     = {.type = SymbolicExpressionType_LITERAL,.literal = 8};
-static SymbolicExpression SYM_INST_thirtyTwo = {.type = SymbolicExpressionType_LITERAL,.literal = 32};
-
-static SymbolicExpression SYM_INST_dataW    = {.type = SymbolicExpressionType_VARIABLE,.variable = "DATA_W"};
-static SymbolicExpression SYM_INST_addrW    = {.type = SymbolicExpressionType_VARIABLE,.variable = "ADDR_W"};
-static SymbolicExpression SYM_INST_axiAddrW = {.type = SymbolicExpressionType_VARIABLE,.variable = "AXI_ADDR_W"};
-static SymbolicExpression SYM_INST_axiDataW = {.type = SymbolicExpressionType_VARIABLE,.variable = "AXI_DATA_W"};
-static SymbolicExpression SYM_INST_delayW   = {.type = SymbolicExpressionType_VARIABLE,.variable = "DELAY_W"};
-static SymbolicExpression SYM_INST_lenW     = {.type = SymbolicExpressionType_VARIABLE,.variable = "LEN_W"};
-
-SymbolicExpression* SYM_zero = &SYM_INST_zero;
-SymbolicExpression* SYM_one = &SYM_INST_one;
-SymbolicExpression* SYM_two = &SYM_INST_two;
-SymbolicExpression* SYM_eight = &SYM_INST_eight;
-SymbolicExpression* SYM_thirtyTwo = &SYM_INST_thirtyTwo;
-
-SymbolicExpression* SYM_dataW = &SYM_INST_dataW;
-SymbolicExpression* SYM_addrW = &SYM_INST_addrW;
-SymbolicExpression* SYM_axiAddrW = &SYM_INST_axiAddrW;
-SymbolicExpression* SYM_axiDataW = &SYM_INST_axiDataW;
-SymbolicExpression* SYM_delayW = &SYM_INST_delayW;
-SymbolicExpression* SYM_lenW = &SYM_INST_lenW;
-
-static SymbolicExpression  SYM_INST_axiStrobeW  = {.type = SymbolicExpressionType_DIV,.top = SYM_axiDataW,.bottom = SYM_eight};
-static SymbolicExpression  SYM_INST_dataStrobeW = {.type = SymbolicExpressionType_DIV,.top = SYM_dataW,.bottom = SYM_eight};
-
-SymbolicExpression* SYM_axiStrobeW = &SYM_INST_axiStrobeW;
-SymbolicExpression* SYM_dataStrobeW = &SYM_INST_dataStrobeW;
-
 static struct {
   Arena* arena;
   
@@ -2704,6 +2659,17 @@ static struct {
 
 SYM_Expr SYM_Zero;
 SYM_Expr SYM_One;
+SYM_Expr SYM_Two;
+SYM_Expr SYM_Eight;
+
+SYM_Expr SYM_AddrW;
+SYM_Expr SYM_AxiAddrW;
+SYM_Expr SYM_AxiDataW;
+SYM_Expr SYM_AxiStrobeW;
+SYM_Expr SYM_LenW;
+SYM_Expr SYM_DelayW;
+SYM_Expr SYM_DataW;
+SYM_Expr SYM_DataStrobeW;
 
 SYM_Expr GetOrAllocateLiteral(int input){
   int literal = input;
@@ -3376,8 +3342,73 @@ SYM_Expr SYM_Variable(String name){
   return GetOrAllocateVariable(name);
 }
 
+SYM_Expr SYM_Func(String name,SYM_Expr first,SYM_Expr second){
+  return GetOrAllocateFunc(name,first,second);
+}
+
 SYM_Expr SYM_Literal(int value){
   return GetOrAllocateLiteral(value);
+}
+
+SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<SYM_Expr,SYM_Expr>* replacements){
+  auto Recurse = [replacements](auto Recurse,SYM_Expr top) -> SYM_Expr{
+    bool negate = IsNegative(top.node);
+    SYM_Node* node = GetPointer(top.node);
+
+    SYM_Expr* possibleReplace = replacements->Get(top);
+
+    SYM_Expr res = SYM_Nil;
+    if(possibleReplace){
+      res = *possibleReplace;
+    } else {
+      FULL_SWITCH(node->type){
+      case SYM_Type_LITERAL: 
+      case SYM_Type_VARIABLE: return top;
+      case SYM_Type_FUNC:
+      case SYM_Type_MUL:
+      case SYM_Type_DIV:
+      case SYM_Type_SUM: {
+        SYM_Expr left = SYM_Replace(node->left,replacements);
+        SYM_Expr right = SYM_Replace(node->right,replacements);
+
+        SWITCH(node->type){
+        case SYM_Type_FUNC: res = SYM_Func(node->name,left,right); break;
+        case SYM_Type_MUL: res = left * right; break;
+        case SYM_Type_DIV: res = left / right; break;
+        case SYM_Type_SUM: res = left + right; break;
+      } 
+
+      } break;
+    }
+    }
+      
+    res = CondNegate(res,negate);
+    return res;
+  };
+  
+  SYM_Expr replaced = Recurse(Recurse,expr);
+  return replaced;
+}
+
+SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<String,SYM_Expr>* replacements){
+  TEMP_REGION(temp,nullptr);
+
+  auto map = PushTrieMap<SYM_Expr,SYM_Expr>(temp);
+
+  for(Pair<String,SYM_Expr> p : replacements){
+    map->Insert(SYM_Variable(p.first),p.second);
+  }
+
+  return SYM_Replace(expr,map);
+}
+
+SYM_Expr SYM_Replace(SYM_Expr expr,SYM_Expr toReplace,SYM_Expr replacement){
+  TEMP_REGION(temp,nullptr);
+
+  auto map = PushTrieMap<SYM_Expr,SYM_Expr>(temp);
+  map->Insert(toReplace,replacement);
+
+  return SYM_Replace(expr,map);
 }
 
 SYM_Expr ParseSYM_Expr(Parser* parser,int bindingPower = -1){
@@ -3587,11 +3618,7 @@ String SYM_ReprHier(SYM_Expr expr,Arena* out){
   return res;
 }
 
-String SYM_Repr(SYM_Expr expr,Arena* out){
-  TEMP_REGION(temp,out);
-
-  auto b = StartString(temp);
-
+void SYM_Repr(StringBuilder* b,SYM_Expr expr){
   auto Recurse = [b](auto Recurse,SYM_Expr top,int parentBindingStrength) -> void{
     bool negate = IsNegative(top.node);
     SYM_Node* node = GetPointer(top.node);
@@ -3611,17 +3638,17 @@ String SYM_Repr(SYM_Expr expr,Arena* out){
     case SYM_Type_SUM:{
       String op = {};
       SWITCH(node->type){
-        case SYM_Type_SUM:{
-          op = "+";
+      case SYM_Type_SUM:{
+        op = "+";
 
-          if(IsNegative(node->right.node) ||  IsNegative(GetLeftmostExprOfAddition(node->right).node)){
-            op = ""; // The node negative will put the '-'
-          }
-        } break;
-        case SYM_Type_MUL: op = "*"; break;
-        case SYM_Type_DIV: op = "/"; break;
-        default: NOT_POSSIBLE();
-      }
+        if(IsNegative(node->right.node) ||  IsNegative(GetLeftmostExprOfAddition(node->right).node)){
+          op = ""; // The node negative will put the '-'
+        }
+      } break;
+      case SYM_Type_MUL: op = "*"; break;
+      case SYM_Type_DIV: op = "/"; break;
+      default: NOT_POSSIBLE();
+    }
 
       if(bind){
         b->PushString("(");
@@ -3649,6 +3676,29 @@ String SYM_Repr(SYM_Expr expr,Arena* out){
   };
 
   Recurse(Recurse,expr,0);
+}
+
+Pair<SYM_Expr,SYM_Expr> SYM_BreakDiv(SYM_Expr in){
+  SYM_Expr top = in;
+  SYM_Expr bottom = SYM_One;
+  
+  if(IsDiv(in)){
+    bool negate = IsNegative(in.node);
+    SYM_Node* node = GetPointer(in.node);
+
+    top = CondNegate(node->top,negate);
+    bottom = node->bottom;
+  }
+
+  return {top,bottom};
+}
+
+String SYM_Repr(SYM_Expr expr,Arena* out){
+  TEMP_REGION(temp,out);
+
+  auto b = StartString(temp);
+
+  SYM_Repr(b,expr);
 
   String res = EndString(temp,b);
   return res;
@@ -4098,7 +4148,7 @@ SYM_Expr OrderTerms(SYM_Expr in){
   return res;
 }
 
-SYM_Expr Derivate(SYM_Expr expr,String var){
+SYM_Expr SYM_Derivate(SYM_Expr expr,String var){
   bool negate = IsNegative(expr.node);
   SYM_Node* node = GetPointer(expr.node);
 
@@ -4115,10 +4165,10 @@ SYM_Expr Derivate(SYM_Expr expr,String var){
       }
     } break;
     case SYM_Type_SUM:{
-      res = Derivate(node->left,var) + Derivate(node->right,var);
+      res = SYM_Derivate(node->left,var) + SYM_Derivate(node->right,var);
     } break;
     case SYM_Type_MUL:{
-      res = Derivate(node->left,var) * node->right + Derivate(node->right,var) * node->left;
+      res = SYM_Derivate(node->left,var) * node->right + SYM_Derivate(node->right,var) * node->left;
     } break;
     // NOTE: We do not actually want derivations to handle divs or custom functions.
     //       In theory the address gen stuff already removed these from consideration before calling derivate.
@@ -4135,6 +4185,10 @@ SYM_Expr Derivate(SYM_Expr expr,String var){
   res = CondNegate(res,negate);
 
   return res;
+}
+
+SYM_Expr SYM_Factor(SYM_Expr expr,SYM_Expr commonFactor){
+  LEFT HERE - Need to finish this.
 }
 
 SYM_EvaluateResult SYM_DebugEvaluate(SYM_Expr top,TrieMap<String,SYM_Expr>* values,Arena* out){
@@ -4205,6 +4259,78 @@ SYM_EvaluateResult SYM_DebugEvaluate(SYM_Expr top,TrieMap<String,SYM_Expr>* valu
   };
   
   float result = Recurse(Recurse,top);
+
+  SYM_EvaluateResult res = {};
+  res.result = (int) result;
+  res.errors = PushArray(out,errorList);
+  res.divByZero = divByZero;
+  
+  return res;
+}
+
+SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top,Arena* out){
+  TEMP_REGION(temp,out);
+
+  auto errorList = PushList<String>(temp);
+  bool divByZero = false;
+  bool nonConstantValue = false;
+
+  // NOTE: Evaluation is performed in floating point otherwise the division would cause problems 
+  //       simply by the order of evaluation. 4 * 9 / 4 is 9 but if we evaluate the 9 / 4 first as integers
+  //       it becomes 9 / 4 = 2 and the final result is 8
+  //       Also remember that this is used for debugging purposes. A proper evaluator would just do things in integers
+  //       because it would start from a normalized expression.
+  auto Recurse = [errorList,out,&divByZero,&nonConstantValue](auto Recurse,SYM_Expr expr) -> int {
+    bool negate = IsNegative(expr.node);
+    SYM_Node* node = GetPointer(expr.node);
+
+    int res = 0;
+    FULL_SWITCH(node->type){
+    case SYM_Type_LITERAL:{
+      res = node->literal;
+    } break;
+    case SYM_Type_VARIABLE:{
+      nonConstantValue = true;
+    } break;
+    case SYM_Type_SUM:{
+      int left = Recurse(Recurse,node->left);
+      int right = Recurse(Recurse,node->right);
+
+      res = left + right;
+    } break;
+    case SYM_Type_MUL:{
+      int left = Recurse(Recurse,node->left);
+      int right = Recurse(Recurse,node->right);
+
+      res = left * right;
+    } break;
+    case SYM_Type_DIV:{
+      int top = Recurse(Recurse,node->top);
+      int bottom = Recurse(Recurse,node->bottom);
+      
+      if(bottom == 0){
+        *errorList->PushElem() = PushString(out,"Div by zero detected. Assuming result is one and proceeding");
+        divByZero = true;
+        res = 1;
+      } else {
+        res = top / bottom;
+      }
+    } break;
+    case SYM_Type_FUNC:{
+      res = 0;
+      
+      NOT_IMPLEMENTED();
+    } break;
+    }
+
+    if(negate){
+      res = -res;
+    }
+
+    return res;
+  };
+  
+  int result = Recurse(Recurse,top);
 
   SYM_EvaluateResult res = {};
   res.result = (int) result;
@@ -4582,6 +4708,17 @@ void SYM_Init(){
 
   SYM_Zero = GetOrAllocateLiteral(0);
   SYM_One = GetOrAllocateLiteral(1);
+  SYM_Two = GetOrAllocateLiteral(2);
+  SYM_Eight = GetOrAllocateLiteral(8);
+
+  SYM_AddrW = GetOrAllocateVariable("ADDR_W");
+  SYM_AxiAddrW = GetOrAllocateVariable("AXI_ADDR_W");
+  SYM_AxiDataW = GetOrAllocateVariable("AXI_DATA_W");
+  SYM_AxiStrobeW = SYM_AxiDataW / SYM_Eight;
+  SYM_LenW = GetOrAllocateVariable("LEN_W");
+  SYM_DelayW = GetOrAllocateVariable("DELAY_W");
+  SYM_DataW = GetOrAllocateVariable("DATA_W");
+  SYM_DataStrobeW = SYM_DataW / SYM_Eight;
 }
 
 char* SYM_DebugRepr(SYM_Expr expr){

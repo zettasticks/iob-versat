@@ -47,7 +47,7 @@ struct Wire{
   int bitSize; // TODO: This needs to be removed. We need to base all the logic on sizeExpr in order to properly handle parameters. Furthermore, if we eventually need to collapse parameters into concrete values, SymbolicExpressions can also do that. 
   VersatStage stage;
 
-  SymbolicExpression* sizeExpr;
+  SYM_Expr sizeExpr;
 };
 
 inline u64 Hash(Wire w){
@@ -117,7 +117,7 @@ struct ExternalMemoryInterfaceTemplate : public ExternalMemoryTemplate<T>{
 
 typedef ExternalMemoryInterfaceTemplate<int> ExternalMemoryInterface;
 typedef ExternalMemoryInterfaceTemplate<ExpressionRange> ExternalMemoryInterfaceExpression;
-typedef ExternalMemoryInterfaceTemplate<SymbolicExpression*> ExternalMemorySymbolic;
+typedef ExternalMemoryInterfaceTemplate<SYM_Expr> ExternalMemorySymbolic;
 
 struct ExternalMemoryID{
   int interface;
@@ -199,6 +199,9 @@ struct ModuleInfo{
 
 SymbolicExpression* SymbolicExpressionFromVerilog(Expression* topExpr,Arena* out);
 SymbolicExpression* SymbolicExpressionFromVerilog(ExpressionRange range,Arena* out);
+
+SYM_Expr SymbolicExpressionFromVerilog(Expression* topExpr);
+SYM_Expr SymbolicExpressionFromVerilog(ExpressionRange range);
 
 String PreprocessVerilogFile(String fileContent,Array<String> includeFilepaths,Arena* out);
 Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths,Arena* out); // Only handles preprocessed files

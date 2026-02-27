@@ -4,6 +4,7 @@
 #include "globals.hpp"
 
 #include "declaration.hpp"
+#include "memory.hpp"
 #include "symbolic.hpp"
 #include "templateEngine.hpp"
 #include "utils.hpp"
@@ -51,18 +52,18 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
   decl.parameters = PushArray<Parameter>(perm,instantiated.size);
   for(int i = 0; i < instantiated.size; i++){
     decl.parameters[i].name = info->defaultParameters[i].name;
-    decl.parameters[i].defaultVal = SymbolicExpressionFromVerilog(info->defaultParameters[i].expr,perm);
+    decl.parameters[i].defaultVal = SymbolicExpressionFromVerilog(info->defaultParameters[i].expr);
     decl.parameters[i].flags = info->defaultParameters[i].flags;
   }
 
-  decl.inputSize = PushArray<SymbolicExpression*>(out,info->inputs.size);
-  decl.outputSize = PushArray<SymbolicExpression*>(out,info->outputs.size);
+  decl.inputSize = PushArray<SYM_Expr>(out,info->inputs.size);
+  decl.outputSize = PushArray<SYM_Expr>(out,info->outputs.size);
 
   for(int i = 0; i < info->inputs.size; i++){
-    decl.inputSize[i] = SymbolicExpressionFromVerilog(info->inputs[i].range,out);
+    decl.inputSize[i] = SymbolicExpressionFromVerilog(info->inputs[i].range);
   }
   for(int i = 0; i < info->outputs.size; i++){
-    decl.outputSize[i] = SymbolicExpressionFromVerilog(info->outputs[i].range,out);
+    decl.outputSize[i] = SymbolicExpressionFromVerilog(info->outputs[i].range);
   }
     
   for(int i = 0; i < instantiated.size; i++){
@@ -92,7 +93,7 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
     configs[i].bitSize = size;
     configs[i].stage = info->configs[i].stage;
 
-    configs[i].sizeExpr = SymbolicExpressionFromVerilog(wire.bitSize,out);
+    configs[i].sizeExpr = SymbolicExpressionFromVerilog(wire.bitSize);
   }
 
   for(int i = 0; i < info->states.size; i++){
@@ -104,7 +105,7 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
     states[i].bitSize = size;
     states[i].stage = info->states[i].stage;
 
-    states[i].sizeExpr = SymbolicExpressionFromVerilog(wire.bitSize,out);
+    states[i].sizeExpr = SymbolicExpressionFromVerilog(wire.bitSize);
   }
 
   for(int i = 0; i < info->externalInterfaces.size; i++){
@@ -134,16 +135,16 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
 
     switch(expr.type){
     case ExternalMemoryType::ExternalMemoryType_2P:{
-      extSym[i].tp.bitSizeIn = SymbolicExpressionFromVerilog(expr.tp.bitSizeIn,out);
-      extSym[i].tp.bitSizeOut = SymbolicExpressionFromVerilog(expr.tp.bitSizeOut,out);
-      extSym[i].tp.dataSizeIn = SymbolicExpressionFromVerilog(expr.tp.dataSizeIn,out);
-      extSym[i].tp.dataSizeOut = SymbolicExpressionFromVerilog(expr.tp.dataSizeOut,out);
+      extSym[i].tp.bitSizeIn = SymbolicExpressionFromVerilog(expr.tp.bitSizeIn);
+      extSym[i].tp.bitSizeOut = SymbolicExpressionFromVerilog(expr.tp.bitSizeOut);
+      extSym[i].tp.dataSizeIn = SymbolicExpressionFromVerilog(expr.tp.dataSizeIn);
+      extSym[i].tp.dataSizeOut = SymbolicExpressionFromVerilog(expr.tp.dataSizeOut);
     }break;
     case ExternalMemoryType::ExternalMemoryType_DP:{
       for(int ii = 0; ii < 2; ii++){
-        extSym[i].dp[ii].bitSize = SymbolicExpressionFromVerilog(expr.dp[ii].bitSize,out);
-        extSym[i].dp[ii].dataSizeIn = SymbolicExpressionFromVerilog(expr.dp[ii].dataSizeIn,out);
-        extSym[i].dp[ii].dataSizeOut = SymbolicExpressionFromVerilog(expr.dp[ii].dataSizeOut,out);
+        extSym[i].dp[ii].bitSize = SymbolicExpressionFromVerilog(expr.dp[ii].bitSize);
+        extSym[i].dp[ii].dataSizeIn = SymbolicExpressionFromVerilog(expr.dp[ii].dataSizeIn);
+        extSym[i].dp[ii].dataSizeOut = SymbolicExpressionFromVerilog(expr.dp[ii].dataSizeOut);
       }
     }break;
     }
@@ -165,12 +166,12 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
 
   if(info->memoryMapped) {
     if(info->memoryMappedBits.high == nullptr || info->memoryMappedBits.low == nullptr){
-      decl.info.memMapBitsSym = SYM_zero;
+      decl.info.memMapBitsSym = SYM_Zero;
     } else {
-      SymbolicExpression* high = SymbolicExpressionFromVerilog(info->memoryMappedBits.high,out);
-      SymbolicExpression* low = SymbolicExpressionFromVerilog(info->memoryMappedBits.low,out);
+      SYM_Expr high = SymbolicExpressionFromVerilog(info->memoryMappedBits.high);
+      SYM_Expr low = SymbolicExpressionFromVerilog(info->memoryMappedBits.low);
 
-      decl.info.memMapBitsSym = Normalize(SymbolicSubPlusOne(high,low,temp),out);
+      decl.info.memMapBitsSym = high - low + SYM_One;
     }
   }
 
@@ -290,7 +291,7 @@ void FillDeclarationWithAcceleratorValues(FUDeclaration* decl,Accelerator* accel
     for(FUInstance* ptr : accel->allocated){
       Array<ExternalMemorySymbolic> arr = ptr->declaration->externalMemorySymbol;
 
-      Hashmap<String,SymbolicExpression*>* params = GetParametersOfUnit(ptr,temp);
+      TrieMap<String,SYM_Expr>* params = GetParametersOfUnit(ptr,temp);
 
       for(int i = 0; i < arr.size; i++){
         ExternalMemorySymbolic sym = {};
@@ -300,18 +301,18 @@ void FillDeclarationWithAcceleratorValues(FUDeclaration* decl,Accelerator* accel
           
         switch(arr[i].type){
         case ExternalMemoryType_2P:{
-          sym.tp.bitSizeIn = ReplaceVariables(arr[i].tp.bitSizeIn,params,out);
-          sym.tp.dataSizeIn = ReplaceVariables(arr[i].tp.dataSizeIn,params,out);
-          sym.tp.bitSizeOut = ReplaceVariables(arr[i].tp.bitSizeOut,params,out);
-          sym.tp.dataSizeOut = ReplaceVariables(arr[i].tp.dataSizeOut,params,out);
+          sym.tp.bitSizeIn = SYM_Replace(arr[i].tp.bitSizeIn,params);
+          sym.tp.dataSizeIn = SYM_Replace(arr[i].tp.dataSizeIn,params);
+          sym.tp.bitSizeOut = SYM_Replace(arr[i].tp.bitSizeOut,params);
+          sym.tp.dataSizeOut = SYM_Replace(arr[i].tp.dataSizeOut,params);
         } break;
         case ExternalMemoryType_DP:{
-          sym.dp[0].bitSize = ReplaceVariables(arr[i].dp[0].bitSize,params,out);
-          sym.dp[0].dataSizeIn = ReplaceVariables(arr[i].dp[0].dataSizeIn,params,out);
-          sym.dp[0].dataSizeOut = ReplaceVariables(arr[i].dp[0].dataSizeOut,params,out);
-          sym.dp[1].bitSize = ReplaceVariables(arr[i].dp[1].bitSize,params,out);
-          sym.dp[1].dataSizeIn = ReplaceVariables(arr[i].dp[1].dataSizeIn,params,out);
-          sym.dp[1].dataSizeOut = ReplaceVariables(arr[i].dp[1].dataSizeOut,params,out);
+          sym.dp[0].bitSize = SYM_Replace(arr[i].dp[0].bitSize,params);
+          sym.dp[0].dataSizeIn = SYM_Replace(arr[i].dp[0].dataSizeIn,params);
+          sym.dp[0].dataSizeOut = SYM_Replace(arr[i].dp[0].dataSizeOut,params);
+          sym.dp[1].bitSize = SYM_Replace(arr[i].dp[1].bitSize,params);
+          sym.dp[1].dataSizeIn = SYM_Replace(arr[i].dp[1].dataSizeIn,params);
+          sym.dp[1].dataSizeOut = SYM_Replace(arr[i].dp[1].dataSizeOut,params);
         } break;
         }
 
@@ -344,7 +345,7 @@ void FillDeclarationWithAcceleratorValues(FUDeclaration* decl,Accelerator* accel
   for(AccelInfoIterator iter = StartIteration(&val); iter.IsValid(); iter = iter.Step()){
     InstanceInfo* unit = iter.CurrentUnit();
 
-    Hashmap<String,SymbolicExpression*>* params = PushHashmap<String,SymbolicExpression*>(temp,unit->params.size);
+    auto params = PushTrieMap<String,SYM_Expr>(temp);
 
     for(ParamAndValue p : unit->params){
       params->Insert(p.name,p.val);
@@ -369,7 +370,7 @@ void FillDeclarationWithAcceleratorValues(FUDeclaration* decl,Accelerator* accel
       decl->configs[configIndex] = wire;
 
       // TODO: We need to do this for state as well. And we probably want to make this more explicit.
-      decl->configs[configIndex].sizeExpr = ReplaceVariables(wire.sizeExpr,params,out);
+      decl->configs[configIndex].sizeExpr = SYM_Replace(wire.sizeExpr,params);
       decl->configs[configIndex++].name = PushString(out,"%.*s_%.*s",UN(unit->name),UN(wire.name));
     }
   }
@@ -462,12 +463,12 @@ FUDeclaration* RegisterSubUnit(Accelerator* circuit,Array<ParameterDef> params,S
   // Default parameters given to all modules. Parameters need a proper revision, but need to handle parameters going up in the hierarchy
 
   res->parameters = PushArray<Parameter>(permanent,6 + params.size);
-  res->parameters[0] = {"ADDR_W",PushLiteral(permanent,32)};
-  res->parameters[1] = {"DATA_W",PushLiteral(permanent,32)};
-  res->parameters[2] = {"DELAY_W",PushLiteral(permanent,7)};
-  res->parameters[3] = {"AXI_ADDR_W",PushLiteral(permanent,32)};
-  res->parameters[4] = {"AXI_DATA_W",PushLiteral(permanent,32)};
-  res->parameters[5] = {"LEN_W",PushLiteral(permanent,20)};
+  res->parameters[0] = {"ADDR_W",SYM_Literal(32)};
+  res->parameters[1] = {"DATA_W",SYM_Literal(32)};
+  res->parameters[2] = {"DELAY_W",SYM_Literal(7)};
+  res->parameters[3] = {"AXI_ADDR_W",SYM_Literal(32)};
+  res->parameters[4] = {"AXI_DATA_W",SYM_Literal(32)};
+  res->parameters[5] = {"LEN_W",SYM_Literal(20)};
 
   for(int i = 0; i < params.size; i++){
     ParameterDef def = params[i];
@@ -555,12 +556,12 @@ FUDeclaration* RegisterSubUnit(Accelerator* circuit,Array<ParameterDef> params,S
       data.configs = PushArray<Wire>(permanent,inst->declaration->configs.size);
 
       // We need to instantiate the verilog parameters in here.
-      Hashmap<String,SymbolicExpression*>* params = GetParametersOfUnit(inst,temp);
+      auto params = GetParametersOfUnit(inst,temp);
       for(int i = 0; i <  inst->declaration->configs.size; i++){
         Wire w  =  inst->declaration->configs[i];
 
         data.configs[i] = w;
-        data.configs[i].sizeExpr = ReplaceVariables(w.sizeExpr,params,permanent);
+        data.configs[i].sizeExpr = SYM_Replace(w.sizeExpr,params);
       }
 
       res->staticUnits->InsertIfNotExist(id,data);
@@ -785,22 +786,24 @@ bool IsGlobalParameter(String name){
   return false;
 }
 
-Hashmap<String,SymbolicExpression*>* GetParametersOfUnit(FUInstance* inst,Arena* out){
+TrieMap<String,SYM_Expr>* GetParametersOfUnit(FUInstance* inst,Arena* out){
   FUDeclaration* decl = inst->declaration;
 
-  auto map = PushHashmap<String,SymbolicExpression*>(out,decl->parameters.size);
+  auto map = PushTrieMap<String,SYM_Expr>(out);
   
   for(int i = 0; i < decl->parameters.size; i++){
     Parameter param = decl->parameters[i];
-    SymbolicExpression* val = inst->parameterValues[i].val;
+    SYM_Expr val = inst->parameterValues[i].val;
 
-    if(IsGlobalParameter(param.name)){
-      map->Insert(param.name,PushVariable(out,param.name));
+    String paramName = param.name;
+
+    if(IsGlobalParameter(paramName)){
+      map->Insert(paramName,SYM_Variable(paramName));
     } else {
-      if(val){
-        map->Insert(param.name,SymbolicDeepCopy(val,out));
+      if(Valid(val)){
+        map->Insert(paramName,val);
       } else {
-        map->Insert(param.name,param.defaultVal);
+        map->Insert(paramName,param.defaultVal);
       }
     }
   }
@@ -813,7 +816,7 @@ Array<WireInformation> CalculateWireInformation(Pool<FUInstance> nodes,Hashmap<S
   
   auto list = PushList<WireInformation>(temp);
 
-  SymbolicExpression* expr = PushLiteral(temp,0);
+  SYM_Expr expr = SYM_Zero;
   
   int addr = addrOffset;
   for(auto n : nodes){
@@ -822,21 +825,21 @@ Array<WireInformation> CalculateWireInformation(Pool<FUInstance> nodes,Hashmap<S
       info.wire = w;
       info.addr = 4 * addr++; // TODO: This 4 is because we are using addresses that are byte aligned in a 32 bit system. We could make this proper instead of hardcoded.
 
-      info.startBitExpr = Normalize(expr,out);
+      info.startBitExpr = expr;
       
-      expr = SymbolicAdd(info.startBitExpr,w.sizeExpr,temp);
+      expr = info.startBitExpr + w.sizeExpr;
       *list->PushElem() = info;
     }
   }
   for(Pair<StaticId,StaticData*> n : staticUnits){
     FUDeclaration* decl = n.second->decl;
-    Hashmap<String,SymbolicExpression*>* defaultParams = PushHashmap<String,SymbolicExpression*>(temp,decl->parameters.size);
+    auto defaultParams = PushTrieMap<SYM_Expr,SYM_Expr>(temp);
 
     for(Parameter p : decl->parameters){
       if(IsGlobalParameter(p.name)){
-        defaultParams->Insert(p.name,PushVariable(out,p.name));
+        defaultParams->Insert(SYM_Variable(p.name),SYM_Variable(p.name));
       } else {
-        defaultParams->Insert(p.name,p.defaultVal);
+        defaultParams->Insert(SYM_Variable(p.name),p.defaultVal);
       }
     }
     
@@ -844,14 +847,14 @@ Array<WireInformation> CalculateWireInformation(Pool<FUInstance> nodes,Hashmap<S
       WireInformation info = {};
       info.wire = w;
       info.wire.name = ReprStaticConfig(n.first,&w,out);
-      info.wire.sizeExpr = ReplaceVariables(w.sizeExpr,defaultParams,out);
+      info.wire.sizeExpr = SYM_Replace(w.sizeExpr,defaultParams);
 
       info.addr = 4 * addr++;
       info.isStatic = true;
 
-      info.startBitExpr = Normalize(expr,out);
+      info.startBitExpr = expr;
 
-      expr = SymbolicAdd(info.startBitExpr,info.wire.sizeExpr,temp);
+      expr = info.startBitExpr + info.wire.sizeExpr;
 
       *list->PushElem() = info;
     }
@@ -868,13 +871,13 @@ Array<WireInformation> CalculateWireInformation(Pool<FUInstance> nodes,Hashmap<S
 
       WireInformation info = {};
       info.wire = wire;
-      info.wire.sizeExpr = PushVariable(out,"DELAY_W");
+      info.wire.sizeExpr = SYM_DelayW;
       
       info.addr = 4 * addr++;
 
-      info.startBitExpr = Normalize(expr,out);
+      info.startBitExpr = expr;
 
-      expr = SymbolicAdd(info.startBitExpr,PushVariable(temp,"DELAY_W"),temp);
+      expr = info.startBitExpr + SYM_DelayW;
 
       *list->PushElem() = info;
     }

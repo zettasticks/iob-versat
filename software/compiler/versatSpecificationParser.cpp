@@ -21,6 +21,7 @@
 static SpecExpression SPEC_LITERAL_0 = {.val = 0,.type = SpecType_LITERAL};
 
 // nocheckin
+#if 0
 // TODO: Need to take an Env to properly check stuff.
 SymbolicExpression* SymbolicFromSpecExpression(SpecExpression* spec,Arena* out){
   TEMP_REGION(temp,out);  
@@ -67,6 +68,7 @@ SymbolicExpression* SymbolicFromSpecExpression(SpecExpression* spec,Arena* out){
 
   return Normalize(res,out);
 }
+#endif
 
 SYM_Expr SymbolicFromSpecExpression2(SpecExpression* spec){
   auto Recurse = [](auto Recurse,SpecExpression* top) -> SYM_Expr{
@@ -350,7 +352,7 @@ FUInstance* CreateFUInstanceWithParameters(Accelerator* accel,FUDeclaration* typ
   FUInstance* inst = CreateFUInstance(accel,type,name);
   
   for(auto pair : decl.parameters){
-    SymbolicExpression* expr = SymbolicFromSpecExpression(pair.second,globalPermanent);
+    SYM_Expr expr = SymbolicFromSpecExpression2(pair.second);
     bool result = SetParameter(inst,pair.first,expr);
 
     if(!result){
@@ -415,7 +417,7 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
     ParameterDef* def = paramList->PushElem();
     
     def->name = param.name;
-    def->defaultValue = SymbolicFromSpecExpression(param.defaultValue,perm);
+    def->defaultValue = SymbolicFromSpecExpression2(param.defaultValue);
   }
   auto params = PushArray(temp,paramList);
   
@@ -761,11 +763,15 @@ Entity* Env::GetEntity(ConfigIdentifier* id,Arena* out){
 int Env::CalculateConstantExpression(SpecExpression* top){
   TEMP_REGION(temp,nullptr);
 
-  // TODO: SLOW AND NOT ROBUST TO ERRORS
-  SymbolicExpression* expr = SymbolicFromSpecExpression(top,temp);
+  // TODO: We do not want to call this, we want to put the logic inside here.
+  SYM_Expr expr = SymbolicFromSpecExpression2(top);
 
-  int val = Evaluate(expr,nullptr);
-  return val;
+  SYM_EvaluateResult eval = SYM_ConstantEvaluate(expr,nullptr);
+
+  // nocheckin
+  // TODO: Properly check and reports errors from this evaluation.
+
+  return eval.result;
 }
 
 Entity* Env::GetEntity(SpecExpression* id,Arena* out){

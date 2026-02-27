@@ -20,12 +20,10 @@ AddressAccess* Copy(AddressAccess* in,Arena* out){
   return res;
 }
 
-SymbolicExpression* LoopMaximumValue(LoopLinearSumTerm term,Arena* out){
-  TEMP_REGION(temp,out);
-  
-  SymbolicExpression* maxVal = SymbolicSub(term.loopEnd,PushLiteral(temp,1),temp);
+SYM_Expr LoopMaximumValue(LoopLinearSumTerm term){
+  SYM_Expr maxVal = term.loopEnd - SYM_One;
 
-  return Normalize(maxVal,out);
+  return maxVal;
 }
 
 void Repr(StringBuilder* builder,AddressAccess* access){
@@ -55,28 +53,24 @@ void Print(AddressAccess* access){
   printf("\nInternal:\n");
   Print(access->internal);
   printf("\n");
-  if(access->dutyDivExpr){
+  if(Valid(access->dutyDivExpr)){
     printf("Duty:\n");
-    Print(access->dutyDivExpr);
+    SYM_Print(access->dutyDivExpr);
     printf("\n");
   }
 }
 
-SymbolicExpression* EvaluateMaxLinearSumValue(LoopLinearSum* sum,Arena* out){
-  TEMP_REGION(temp,out);
-  
-  SymbolicExpression* val = SymbolicDeepCopy(sum->freeTerm,temp);
+SYM_Expr EvaluateMaxLinearSumValue(LoopLinearSum* sum){
+  SYM_Expr val = sum->freeTerm;
 
   for(int i = 0; i <  sum->terms.size; i++){
     LoopLinearSumTerm term  =  sum->terms[i];
 
-    SymbolicExpression* maxLoopValue = LoopMaximumValue(term,temp);
-    SymbolicExpression* maxTermValue = SymbolicMult(term.term,maxLoopValue,temp);
+    SYM_Expr maxLoopValue = LoopMaximumValue(term);
+    SYM_Expr maxTermValue = term.term * maxLoopValue;
     
-    val = SymbolicAdd(val,maxTermValue,temp);
+    val = val + maxTermValue;
   }
-
-  val = Normalize(val,out);
 
   return val;
 }
@@ -84,20 +78,20 @@ SymbolicExpression* EvaluateMaxLinearSumValue(LoopLinearSum* sum,Arena* out){
 AddressAccess* ConvertAccessTo1External(AddressAccess* access,Arena* out){
   TEMP_REGION(temp,out);
 
-  SymbolicExpression* freeTerm = access->external->freeTerm;
+  SYM_Expr freeTerm = access->external->freeTerm;
   
   AddressAccess* result = Copy(access,out);
-  result->external->freeTerm = PushLiteral(temp,0); // Pretend that the free term does not exist
+  result->external->freeTerm = SYM_Zero; // Pretend that the free term does not exist
   
   result->internal = Copy(result->external,out);
   result->external = PushLoopLinearSumEmpty(out);
   
-  SymbolicExpression* maxLoopValue = EvaluateMaxLinearSumValue(result->internal,temp);
-  maxLoopValue = Normalize(SymbolicAdd(maxLoopValue,PushLiteral(temp,1),temp),out);
+  SYM_Expr maxLoopValue = EvaluateMaxLinearSumValue(result->internal);
+  maxLoopValue = maxLoopValue + SYM_One;
 
-  result->external = PushLoopLinearSumSimpleVar("x",PushLiteral(temp,1),PushLiteral(temp,0),maxLoopValue,out);
-  result->external->freeTerm = SymbolicDeepCopy(freeTerm,out);
-  result->dutyDivExpr = SymbolicDeepCopy(access->dutyDivExpr,out);
+  result->external = PushLoopLinearSumSimpleVar("x",SYM_One,SYM_Zero,maxLoopValue,out);
+  result->external->freeTerm = freeTerm;
+  result->dutyDivExpr = access->dutyDivExpr;
   
   return result;
 }
@@ -108,63 +102,56 @@ AddressAccess* ConvertAccessTo2External(AddressAccess* access,int biggestLoopInd
   LoopLinearSum* external = result->external;
   
   // We pretent that the free term does not exist and then shift the initial address of the final external expression by the free term.
-  SymbolicExpression* freeTerm = external->freeTerm;
-  external->freeTerm = PushLiteral(out,0);
+  SYM_Expr freeTerm = external->freeTerm;
+  external->freeTerm = SYM_Zero;
   
   int highestConstantIndex = biggestLoopIndex;
-  SymbolicExpression* highestConstant = access->external->terms[biggestLoopIndex].term;
+  SYM_Expr highestConstant = access->external->terms[biggestLoopIndex].term;
 
-  LoopLinearSum temp = {};
-  temp.terms = RemoveElement(external->terms,highestConstantIndex,out);
-  temp.freeTerm = external->freeTerm;
+  LoopLinearSum oneSort = {};
+  oneSort.terms = RemoveElement(external->terms,highestConstantIndex,out);
+  oneSort.freeTerm = external->freeTerm;
 
   // We perform a loop "evaluation" here. 
-  SymbolicExpression* val = EvaluateMaxLinearSumValue(&temp,out);
-  SymbolicExpression* maxLoopValueExpr = Normalize(SymbolicAdd(val,PushLiteral(out,1),out),out);
+  SYM_Expr val = EvaluateMaxLinearSumValue(&oneSort);
+  SYM_Expr maxLoopValueExpr = val + SYM_One;
 
-  Array<SymbolicExpression*> terms = PushArray<SymbolicExpression*>(out,2);
-  terms[0] = maxLoopValueExpr;
-  terms[1] = PushVariable(out,"VERSAT_DIFF_W");
-  maxLoopValueExpr = SymbolicFunc("ALIGN",terms,out);
+  maxLoopValueExpr = SYM_Func("ALIGN",maxLoopValueExpr,SYM_Variable("VERSAT_DIFF_W"));
   
   result->internal = Copy(external,out);
   result->internal->terms[highestConstantIndex].term = maxLoopValueExpr; //PushLiteral(out,maxLoopValue);
   
-  LoopLinearSum* innermostExternal = PushLoopLinearSumSimpleVar("x",PushLiteral(out,1),PushLiteral(out,0),maxLoopValueExpr,out);
+  LoopLinearSum* innermostExternal = PushLoopLinearSumSimpleVar("x",SYM_One,SYM_Zero,maxLoopValueExpr,out);
 
   // NOTE: Not sure about the end of this loop. We carry it directly but need to do further tests to make sure that this works fine.
-  LoopLinearSum* outerMostExternal = PushLoopLinearSumSimpleVar("y",highestConstant,PushLiteral(out,0),external->terms[highestConstantIndex].loopEnd,out);
+  LoopLinearSum* outerMostExternal = PushLoopLinearSumSimpleVar("y",highestConstant,SYM_Zero,external->terms[highestConstantIndex].loopEnd,out);
   
   result->external = AddLoopLinearSum(innermostExternal,outerMostExternal,out);
-  result->external->freeTerm = SymbolicDeepCopy(freeTerm,out);
-  result->dutyDivExpr = SymbolicDeepCopy(access->dutyDivExpr,out);
+  result->external->freeTerm = freeTerm;
+  result->dutyDivExpr = access->dutyDivExpr;
   
   return result;
 }
 
-SymbolicExpression* GetLoopHighestDecider(LoopLinearSumTerm* term){
+SYM_Expr GetLoopHighestDecider(LoopLinearSumTerm* term){
   return term->term;
 }
 
-static SymbolicExpression* GetLoopSize(LoopLinearSumTerm def,Arena* out,bool removeOne = false){
-  TEMP_REGION(temp,out);
-
-  SymbolicExpression* diff = SymbolicSub(def.loopEnd,def.loopStart,temp);
+static SYM_Expr GetLoopSize(LoopLinearSumTerm def,bool removeOne = false){
+  SYM_Expr diff = def.loopEnd - def.loopStart;
     
   if(removeOne){
-    diff = SymbolicSub(diff,PushLiteral(temp,1),temp);
+    diff = diff - SYM_One;
   }
     
-  SymbolicExpression* final = Normalize(diff,out);
-  return final;
+  return diff;
 };
 
 String GetLoopSizeRepr(LoopLinearSumTerm def,Arena* out,bool removeOne = false){
-  TEMP_REGION(temp,out);
-  return PushRepr(out,GetLoopSize(def,temp,removeOne));
+  return SYM_Repr(GetLoopSize(def,removeOne),out);
 };
 
-static ExternalMemoryAccess CompileExternalMemoryAccess(LoopLinearSum* access,SymbolicExpression* dutyExpr,Arena* out){
+static ExternalMemoryAccess CompileExternalMemoryAccess(LoopLinearSum* access,SYM_Expr dutyExpr,Arena* out){
   TEMP_REGION(temp,out);
 
   int size = access->terms.size;
@@ -176,7 +163,7 @@ static ExternalMemoryAccess CompileExternalMemoryAccess(LoopLinearSum* access,Sy
   LoopLinearSumTerm inner = access->terms[0];
   LoopLinearSumTerm outer = access->terms[access->terms.size - 1];
 
-  SymbolicExpression* fullExpression = TransformIntoSymbolicExpression(access,temp);
+  SYM_Expr fullExpression = TransformIntoSymbolicExpression(access,temp);
   
   result.length = GetLoopSizeRepr(inner,out);
   
@@ -185,31 +172,31 @@ static ExternalMemoryAccess CompileExternalMemoryAccess(LoopLinearSum* access,Sy
     result.amountMinusOne = "0";
     result.addrShift = "0";
   } else {
-    SymbolicExpression* derived = Normalize(Derivate(fullExpression,outer.var,temp),temp);
-    result.addrShift = PushRepr(out,derived);
+    SYM_Expr derived = SYM_Derivate(fullExpression,outer.var);
+    result.addrShift = SYM_Repr(derived,out);
     
-    SymbolicExpression* outerLoopSize = GetLoopSize(outer,temp);
-    SymbolicExpression* all = Normalize(SymbolicMult(GetLoopSize(inner,temp),outerLoopSize,temp),temp);
+    SYM_Expr outerLoopSize = GetLoopSize(outer,temp);
+    SYM_Expr all = GetLoopSize(inner) * outerLoopSize;
 
-    result.totalTransferSize = PushRepr(out,all);
+    result.totalTransferSize = SYM_Repr(all,out);
     result.amountMinusOne = GetLoopSizeRepr(outer,out,true);
   }
   
   return result;
 }
 
-static CompiledAccess CompileAccess(LoopLinearSum* access,SymbolicExpression* dutyDiv,Arena* out){
+static CompiledAccess CompileAccess(LoopLinearSum* access,SYM_Expr dutyDiv,Arena* out){
   TEMP_REGION(temp,out);
   
   auto GenerateLoopExpressionPairSymbolic = [dutyDiv](Array<LoopLinearSumTerm> loops,
-                                                      SymbolicExpression* expr,Arena* out) -> CompiledAccess{
+                                                      SYM_Expr expr,Arena* out) -> CompiledAccess{
     TEMP_REGION(temp,out);
 
     // TODO: Because we are adding an extra loop, there is a possibility of failure since the unit might not support enough loops to implement this. For the SingleLoop VS DoubleLoop the problem does not occur because we know that Singleloop is possible and DoubleLoop is easier on the address gen of the internal loop which is the limitting factor.
     //       Overall, we need to push this stuff upwards, so that we can simplify the code. It is easier to check and handle address gens that are to big before starting to emit stuff and writing to files.
     // NOTE: The only thing that we need to do is to add +1 to the amount of loops if a unit contains a duty expression. The failure is exactly the same, "address gen contains more loops than the unit is capable of handling"
-    SymbolicExpression* duty = dutyDiv;
-    if(duty){
+    SYM_Expr duty = dutyDiv;
+    if(Valid(duty)){
       // In order to solve duty, we want to use two loops for the innermost loop. The first loop will have a period equal to the duty division expression and a duty of 1.
       // The second loop will have the expression of the original loop.
       Array<LoopLinearSumTerm> newLoops = PushArray<LoopLinearSumTerm>(temp,loops.size + 1);
@@ -219,8 +206,8 @@ static CompiledAccess CompileAccess(LoopLinearSum* access,SymbolicExpression* du
       }
 
       newLoops[0].var = "NONE";
-      newLoops[0].term = PushLiteral(temp,1);
-      newLoops[0].loopStart = PushLiteral(temp,0);
+      newLoops[0].term = SYM_One;
+      newLoops[0].loopStart = SYM_Zero;
       newLoops[0].loopEnd = duty;
 
       //newLoops[1].loopEnd = SymbolicDiv(newLoops[1].loopEnd,duty,temp);
@@ -237,43 +224,38 @@ static CompiledAccess CompileAccess(LoopLinearSum* access,SymbolicExpression* du
       InternalMemoryAccess& res = result[i];
       res = {};
 
-      SymbolicExpression* derived = Derivate(expr,l0.var,temp);
-      SymbolicExpression* firstDerived = Normalize(derived,temp);
+      SYM_Expr derived = SYM_Derivate(expr,l0.var);
+      SYM_Expr firstDerived = derived;
         
       res.periodExpression = GetLoopSizeRepr(l0,out);
-      res.incrementExpression = PushRepr(out,firstDerived);
+      res.incrementExpression = SYM_Repr(firstDerived,out);
 
       if(i == 0){
-        if(duty){
+        if(Valid(duty)){
           result[0].dutyExpression = "1";
         } else {
-          result[0].dutyExpression = PushString(out,PushRepr(temp,loops[0].loopEnd)); // For now, do not care too much about duty. Use a full duty
+          result[0].dutyExpression = PushString(out,SYM_Repr(loops[0].loopEnd,temp)); // For now, do not care too much about duty. Use a full duty
         }
       }
       
-      String firstEnd = PushRepr(temp,l0.loopEnd);
-      SymbolicExpression* firstEndSym = ParseSymbolicExpression(firstEnd,temp);
+      SYM_Expr firstEndSym = l0.loopEnd;
 
       res.shiftWithoutRemovingIncrement = "0"; // By default
       if(i * 2 + 1 < loops.size){
         LoopLinearSumTerm l1 = loops[i*2 + 1];
 
         res.iterationExpression = GetLoopSizeRepr(l1,out);
-        SymbolicExpression* derived = Normalize(Derivate(expr,l1.var,temp),temp);
+        SYM_Expr derived = SYM_Derivate(expr,l1.var);
 
-        res.shiftWithoutRemovingIncrement = PushRepr(out,derived);
+        res.shiftWithoutRemovingIncrement = SYM_Repr(derived,out);
         
         // We handle shifts very easily. We just remove the effects of all the previous period increments and then apply the shift.
         // That way we just have to calculate the derivative in relation to the shift, instead of calculating the change from a period term to a iteration term.
         // We need to subtract 1 because the period increment is only applied (period - 1) times.
-        SymbolicExpression* templateSym = ParseSymbolicExpression("-(firstIncrement * (firstEnd - 1)) + term",temp);
 
-        SymbolicExpression* replaced = SymbolicReplace(templateSym,"firstIncrement",firstDerived,temp);
-        replaced = SymbolicReplace(replaced,"firstEnd",firstEndSym,temp);
-        replaced = SymbolicReplace(replaced,"term",derived,temp);
-        replaced = Normalize(replaced,temp,false);
+        SYM_Expr replaced = -(firstDerived * (firstEndSym - SYM_One)) + derived;
         
-        res.shiftExpression = PushRepr(out,replaced);
+        res.shiftExpression = SYM_Repr(replaced,out);
       } else {
         res.iterationExpression = "0";
         res.shiftExpression = "0";
@@ -283,15 +265,14 @@ static CompiledAccess CompileAccess(LoopLinearSum* access,SymbolicExpression* du
     CompiledAccess com = {};
     com.internalAccess = result;
 
-    if(duty){
-      com.dutyDivExpression = PushRepr(out,duty);
+    if(Valid(duty)){
+      com.dutyDivExpression = SYM_Repr(duty,out);
     }
     
     return com;
   };
 
-  SymbolicExpression* fullExpression = TransformIntoSymbolicExpression(access,temp);
-  fullExpression = Normalize(fullExpression,temp);
+  SYM_Expr fullExpression = TransformIntoSymbolicExpression(access,temp);
   
   CompiledAccess res = GenerateLoopExpressionPairSymbolic(access->terms,fullExpression,out);
   
@@ -301,10 +282,10 @@ static CompiledAccess CompileAccess(LoopLinearSum* access,SymbolicExpression* du
 static Array<Pair<String,String>> InstantiateGen(AddressAccess* access,int maxLoops,Arena* out){
   TEMP_REGION(temp,out);
   Array<InternalMemoryAccess> compiled = CompileAccess(access->external,access->dutyDivExpr,temp).internalAccess;
-  SymbolicExpression* freeTerm = access->external->freeTerm;
+  SYM_Expr freeTerm = access->external->freeTerm;
 
   ArenaList<Pair<String,String>>* list = PushList<Pair<String,String>>(temp);
-  String start = PushRepr(out,freeTerm);
+  String start = SYM_Repr(freeTerm,out);
 
   *list->PushElem() = {"start",start};
 
@@ -362,12 +343,13 @@ Array<Pair<String,String>> InstantiateRead(AddressAccess* access,int highestExte
 
   auto internal = compiled.internalAccess;
   
-  SymbolicExpression* freeTerm = access->external->freeTerm;
+  SYM_Expr freeTerm = access->external->freeTerm;
     
-  if(IsZero(freeTerm)){
+  if(freeTerm == SYM_Zero){
     freeTerm = access->internal->freeTerm;
   } else {
-    Assert(IsZero(access->internal->freeTerm)); // NOTE: I do not think it is possible for both external and internal to have free terms.
+    // NOTE: I do not think it is possible for both external and internal to have free terms.
+    Assert(access->internal->freeTerm == SYM_Zero);
   }
 
   // ======================================
@@ -378,8 +360,8 @@ Array<Pair<String,String>> InstantiateRead(AddressAccess* access,int highestExte
   
   // NOTE: We push the start term to the ext pointer in order to save memory inside the unit. This is being done in a  kinda hacky way, but nothing major.
   String ext_addr = extVarName;
-  if(!IsZero(freeTerm)){
-    String repr = PushRepr(temp,freeTerm);
+  if(freeTerm != SYM_Zero){
+    String repr = SYM_Repr(freeTerm,temp);
 
     ext_addr = PushString(out,"(((float*) %.*s) + (%.*s))",UN(extVarName),UN(repr));
   }
@@ -454,10 +436,10 @@ Array<Pair<String,String>> InstantiateRead(AddressAccess* access,int highestExte
 static Array<Pair<String,String>> InstantiateMem(AddressAccess* access,int port,bool input,int maxLoops,Arena* out){
   TEMP_REGION(temp,out);
   Array<InternalMemoryAccess> compiled = CompileAccess(access->external,access->dutyDivExpr,temp).internalAccess;
-  SymbolicExpression* freeTerm = access->external->freeTerm;
+  SYM_Expr freeTerm = access->external->freeTerm;
 
   ArenaList<Pair<String,String>>* list = PushList<Pair<String,String>>(temp);
-  String start = PushRepr(out,freeTerm);
+  String start = SYM_Repr(freeTerm,out);
 
   if(port == 0){
     *list->PushElem() = {"startA",start};
@@ -550,7 +532,7 @@ static Array<Pair<String,String>> InstantiateMem(AddressAccess* access,int port,
   return PushArray(out,list);
 }
 
-AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> loops,SymbolicExpression* addr,String content){
+AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> loops,SYM_Expr addr,String content){
   Arena* out = globalPermanent;
   
   TEMP_REGION(temp,out);
@@ -600,80 +582,73 @@ AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> lo
   Array<String> loopVars = EndArray(loopVarBuilder);
       
   // Builds expression for the internal address which is basically just a multiplication of all the loops sizes
-  SymbolicExpression* loopExpression = PushLiteral(temp,1);
+  SYM_Expr loopExpression = SYM_One;
   for(AddressGenForDef2 loop : loops){
     // TODO: Handle parsing errors
     // TODO: Performance, we are parsing this twice, there is another below. Maybe we can join the loops into a single one
 
-    SymbolicExpression* start = SymbolicFromSpecExpression(loop.startSym,temp);
-    SymbolicExpression* end = SymbolicFromSpecExpression(loop.endSym,temp);
+    SYM_Expr start = SymbolicFromSpecExpression2(loop.startSym);
+    SYM_Expr end = SymbolicFromSpecExpression2(loop.endSym);
 
-    SymbolicExpression* diff = SymbolicSub(end,start,temp);
+    SYM_Expr diff = end - start;
 
-    loopExpression = SymbolicMult(loopExpression,diff,temp);
+    loopExpression = loopExpression * diff;
   }
-  SymbolicExpression* finalExpression = Normalize(loopExpression,temp);
+  SYM_Expr finalExpression = loopExpression;
 
   // Building expression for the external address
   // TODO: Handle parsing errors
-  SymbolicExpression* symbolicExpr = addr;
-  //SymbolicExpression* symbolicExpr = ParseSymbolicExpression(symbolicTokens,globalPermanent);
-  Assert(symbolicExpr);
-  SymbolicExpression* normalized = Normalize(symbolicExpr,temp);
+  SYM_Expr symbolicExpr = addr;
+  SYM_Expr normalized = symbolicExpr;
 
-  SymbolicExpression* fullExpr = normalized;
-  SymbolicExpression* dutyDiv = nullptr;
-  if(normalized->type == SymbolicExpressionType_DIV){
-      fullExpr = normalized->top;
-      dutyDiv = normalized->bottom;
-  }
+  SYM_Expr fullExpr = normalized;
+  SYM_Expr dutyDiv = SYM_Nil;
+
+  Pair<SYM_Expr,SYM_Expr> pair = SYM_BreakDiv(normalized);
+
+  fullExpr = pair.first;
+  dutyDiv = pair.second;
   
-  // NOTE: If this hits, we probaby need to improve the normalization of divs. It should always be possible to normalize a symbolic expression into a (A/B) format, I think.
-  Assert(fullExpr->type != SymbolicExpressionType_DIV);
-  
+  // NOTE: Do not need to group stuff anymore, I think.
+  //       The function that performs partition should work regardless
+#if 0
   for(String str : loopVars){
     fullExpr = Group(fullExpr,str,temp);
   }
+#endif
         
   LoopLinearSum* expr = PushLoopLinearSumEmpty(temp);
   for(int i = 0; i < loopVars.size; i++){
     String var = loopVars[i];
 
-    // TODO: This function is kinda too heavy for what is being implemented.
-    Opt<SymbolicExpression*> termOpt = GetMultExpressionAssociatedTo(fullExpr,var,temp); 
-
-    SymbolicExpression* term = termOpt.value_or(nullptr);
-    if(!term){
-      term = PushLiteral(temp,0);
-    }
+    SYM_Expr term = SYM_Factor(fullExpr,SYM_Variable(var));
 
     AddressGenForDef2 loop = loops[i];
     
     // TODO: Performance, we are parsing the start and end stuff twice. This is the second, the first is above.
-    SymbolicExpression* start = SymbolicFromSpecExpression(loop.startSym,temp);
-    SymbolicExpression* end = SymbolicFromSpecExpression(loop.endSym,temp);
+    SYM_Expr start = SymbolicFromSpecExpression2(loop.startSym);
+    SYM_Expr end = SymbolicFromSpecExpression2(loop.endSym);
     
     LoopLinearSum* sum = PushLoopLinearSumSimpleVar(loop.loopVariable,term,start,end,temp);
     expr = AddLoopLinearSum(sum,expr,temp);
   }
   
   // Extracts the constant term
-  SymbolicExpression* toCalcConst = fullExpr;
+  SYM_Expr toCalcConst = fullExpr;
 
   // TODO: Currently we are not dealing with loops that do not start at zero
-  SymbolicExpression* zero = PushLiteral(temp,0);
   for(String str : loopVars){
-    toCalcConst = SymbolicReplace(toCalcConst,str,zero,temp);
+    toCalcConst = SYM_Replace(toCalcConst,SYM_Variable(str),SYM_Zero);
   }
-  toCalcConst = Normalize(toCalcConst,temp);
+  toCalcConst = toCalcConst;
 
   LoopLinearSum* freeTerm = PushLoopLinearSumFreeTerm(toCalcConst,temp);
       
   AddressAccess* result = PushStruct<AddressAccess>(out);
   result->inputVariableNames = CopyArray<String>(inputs,out);
-  result->internal = PushLoopLinearSumSimpleVar("x",PushLiteral(temp,1),PushLiteral(temp,0),finalExpression,out);
+  result->internal = PushLoopLinearSumSimpleVar("x",SYM_One,SYM_Zero,finalExpression,out);
   result->external = AddLoopLinearSum(expr,freeTerm,out);
-  result->dutyDivExpr = SymbolicDeepCopy(dutyDiv,out);
+  result->dutyDivExpr = dutyDiv;
   
   return result;
 };
@@ -728,12 +703,12 @@ void EmitReadStatements(CEmitter* m,AccessAndType access,String varName,String e
     AddressAccess* singleLoop = ConvertAccessTo1External(access,temp);
 
     region(temp){
-      String repr = PushRepr(temp,GetLoopLinearSumTotalSize(doubleLoop->external,temp));
+      String repr = SYM_Repr(GetLoopLinearSumTotalSize(doubleLoop->external,temp),temp);
       c->VarDeclare("int","doubleLoop",repr);
     }
 
     region(temp){
-      String repr2 = PushRepr(temp,GetLoopLinearSumTotalSize(singleLoop->external,temp));
+      String repr2 = SYM_Repr(GetLoopLinearSumTotalSize(singleLoop->external,temp),temp);
       c->VarDeclare("int","singleLoop",repr2);
     }
 
@@ -808,7 +783,7 @@ void EmitReadStatements(CEmitter* m,AccessAndType access,String varName,String e
   if(initial->external->terms.size > 1){
     for(int i = 0; i <  initial->external->terms.size; i++){
       LoopLinearSumTerm term  =  initial->external->terms[i];
-      String repr = PushRepr(temp,GetLoopHighestDecider(&term));
+      String repr = SYM_Repr(GetLoopHighestDecider(&term),temp);
       String name = PushString(temp,"_VERSAT_a%d",i);
       String comment = PushString(temp,"Loop var: %.*s",UN(term.var));
 
