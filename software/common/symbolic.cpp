@@ -4098,6 +4098,45 @@ SYM_Expr OrderTerms(SYM_Expr in){
   return res;
 }
 
+SYM_Expr Derivate(SYM_Expr expr,String var){
+  bool negate = IsNegative(expr.node);
+  SYM_Node* node = GetPointer(expr.node);
+
+  SYM_Expr res = {};
+  FULL_SWITCH(node->type){
+    case SYM_Type_LITERAL:{
+      res = SYM_Zero;
+    } break;
+    case SYM_Type_VARIABLE:{
+      res = SYM_Zero;
+      
+      if(node->variable == var){
+        res = SYM_One;
+      }
+    } break;
+    case SYM_Type_SUM:{
+      res = Derivate(node->left,var) + Derivate(node->right,var);
+    } break;
+    case SYM_Type_MUL:{
+      res = Derivate(node->left,var) * node->right + Derivate(node->right,var) * node->left;
+    } break;
+    // NOTE: We do not actually want derivations to handle divs or custom functions.
+    //       In theory the address gen stuff already removed these from consideration before calling derivate.
+    //       So this is more likely an error than a missing feature. If we ever reach this point need to investigate
+    //       why
+    case SYM_Type_DIV:{
+      NOT_IMPLEMENTED();
+    } break;
+    case SYM_Type_FUNC:{
+      NOT_IMPLEMENTED();
+    } break;
+  }
+
+  res = CondNegate(res,negate);
+
+  return res;
+}
+
 SYM_EvaluateResult SYM_DebugEvaluate(SYM_Expr top,TrieMap<String,SYM_Expr>* values,Arena* out){
   TEMP_REGION(temp,out);
 

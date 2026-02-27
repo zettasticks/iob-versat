@@ -317,6 +317,8 @@ SYM_Expr operator/(SYM_Expr left,SYM_Expr right);
 SYM_Expr SYM_Variable(String name);
 SYM_Expr SYM_Literal(int value);
 
+SYM_Expr Derivate(SYM_Expr expr,String var);
+
 bool operator<(SYM_Expr left,SYM_Expr right);
 
 struct SYM_EvaluateResult{
