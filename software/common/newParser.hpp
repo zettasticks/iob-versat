@@ -154,6 +154,7 @@ struct Parser{
   ArenaList<String>* errors;
 
   ParsingOptions options;
+  const char* currentFile; // Optional, gives better error messages
 
   // Helpers
   void EnsureTokens(int amount);
@@ -194,6 +195,8 @@ TokenizeResult ParseSymbols(const char* start,const char* end);
 TokenizeResult ParseNumber(const char* start,const char* end);
 TokenizeResult ParseIdentifier(const char* start,const char* end);
 TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,NewTokenType result);
+
+//TODO: Create a parse remaining so that any other symbol does not cause problems further down the line.
 
 // ======================================
 // Check if identifier is a keyword in another language.

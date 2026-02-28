@@ -494,24 +494,6 @@ FUInstance* GetOutputInstance(Pool<FUInstance>* nodes){
   return nullptr;
 }
 
-SYM_Expr GetParameterValue(FUInstance* inst,String name){
-  SYM_Expr val = SYM_Nil;
-  for(int i = 0; i < inst->declaration->parameters.size; i++){
-    Parameter param = inst->declaration->parameters[i];
-    SYM_Expr paramVal = inst->parameterValues[i].val;
-
-    if(CompareString(param.name,name)){
-      if(Valid(paramVal)){
-        val = paramVal;
-      } else {
-        val = param.defaultVal;
-      }
-    }
-  }
-
-  return val;
-}
-
 PortInstance GetAssociatedOutputPortInstance(FUInstance* unit,int portIndex){
   PortInstance inPort = unit->inputs[portIndex];
   FUInstance* outInst = inPort.inst;
@@ -548,7 +530,7 @@ Array<FUDeclaration*> MemSubTypes(AccelInfo* info,Arena* out){
   if(info->infos.size > 0){
     Array<InstanceInfo> test = info->infos[0].info;
     for(InstanceInfo& info : test){
-      if(Valid(info.memMapSym)){
+      if(!SYM_IsZeroValue(info.memMapSym)){
         maps->Insert(GetTypeByName(info.typeName));
       }
     }
@@ -679,7 +661,7 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
         if(unit->isComposite){
           continue;
         }
-        if(!Valid(unit->memMapSym)){
+        if(SYM_IsZeroValue(unit->memMapSym)){
           continue;
         }
 
@@ -753,7 +735,7 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
   for(AccelInfoIterator iter = StartIteration(info); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* unit = iter.CurrentUnit();
     
-    if(Valid(unit->memMapSym)){
+    if(!SYM_IsZeroValue(unit->memMapSym)){
       res.unitsMapped += 1;
     }
 

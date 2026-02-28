@@ -225,8 +225,6 @@ struct SYM_Expr{
   SYM_Node* node;
 };
 
-static SYM_Expr SYM_Nil = {};
-
 extern SYM_Expr SYM_Zero;
 extern SYM_Expr SYM_One;
 extern SYM_Expr SYM_Two;
@@ -246,8 +244,13 @@ inline bool IsNegative(SYM_Node* ptr);
 
 SYM_Expr Abs(SYM_Expr in);
 
+bool IsLiteral(SYM_Expr in);
+int LiteralValue(SYM_Expr in);
+
 inline bool operator==(SYM_Expr lhs,SYM_Expr rhs){
-  if(Abs(lhs) == SYM_Zero && Abs(rhs) == SYM_Zero){
+  // TODO: Instead of trying to "fix" negative zero, just change the negate function to 
+  //       never negate if the expr points to literal zero. It is just easier.
+  if(IsLiteral(lhs) && IsLiteral(rhs) && LiteralValue(lhs) == LiteralValue(rhs)){
     return true;
   }
 
@@ -289,7 +292,8 @@ inline SYM_Node* GetPointer(SYM_Node* ptr){return (SYM_Node*) (((iptr) ptr) & ~0
 
 inline SYM_Node* GetPointer(SYM_Expr expr){return GetPointer(expr.node);}
 
-inline bool Valid(SYM_Expr expr){return expr.node != nullptr;}
+// nocheckin (REMOVE THIS SINCE EVERY SYM_EXPR IS NOW VALID)
+inline bool Valid(SYM_Expr expr){return true;}
 void SYM_Print(SYM_Expr expr);
 
 SYM_Expr operator+(SYM_Expr left,SYM_Expr right);
@@ -309,6 +313,11 @@ SYM_Expr SYM_Replace(SYM_Expr expr,SYM_Expr toReplace,SYM_Expr replacement);
 SYM_Expr SYM_Derivate(SYM_Expr expr,String var);
 
 SYM_Expr SYM_Factor(SYM_Expr expr,SYM_Expr commonFactor);
+
+bool SYM_IsZeroValue(SYM_Expr expr);
+bool SYM_IsOneValue(SYM_Expr expr);
+
+SYM_Expr SYM_Normalize(SYM_Expr in);
 
 void SYM_Repr(StringBuilder* b,SYM_Expr expr);
 String SYM_Repr(SYM_Expr expr,Arena* out);

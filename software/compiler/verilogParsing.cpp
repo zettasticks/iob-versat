@@ -841,7 +841,7 @@ SymbolicExpression* SymbolicExpressionFromVerilog(ExpressionRange range,Arena* o
 #endif
 
 SYM_Expr SymbolicExpressionFromVerilog(Expression* topExpr){
-  SYM_Expr res = SYM_Nil;
+  SYM_Expr res = SYM_Zero;
 
   FULL_SWITCH(topExpr->type){
   case Expression::UNDEFINED: {

@@ -2657,6 +2657,7 @@ static struct {
   SYM_Node* hashTable[1024];
 } SYM_State;
 
+SYM_Expr SYM_Nil = {};
 SYM_Expr SYM_Zero;
 SYM_Expr SYM_One;
 SYM_Expr SYM_Two;
@@ -2671,7 +2672,189 @@ SYM_Expr SYM_DelayW;
 SYM_Expr SYM_DataW;
 SYM_Expr SYM_DataStrobeW;
 
+inline SYM_Type GetType(SYM_Node* node){
+  if(node == nullptr){
+    return SYM_Type_LITERAL;
+  }
+
+  return node->type;
+}
+
+SYM_Type GetType(SYM_Expr in){
+  SYM_Node* node = GetPointer(in.node);
+  return GetType(node);
+}
+
+bool IsLiteral(SYM_Expr in){
+  SYM_Node* node = GetPointer(in.node);
+  if(node == nullptr){
+    return true;
+  }
+
+  bool res = (GetType(node) == SYM_Type_LITERAL);
+  return res;
+}
+
+bool IsVariable(SYM_Expr in){
+  SYM_Node* node = GetPointer(in.node);
+  bool res = (GetType(node) == SYM_Type_VARIABLE);
+  return res;
+}
+
+int LiteralValue(SYM_Node* in){
+  bool negate = IsNegative(in);
+  SYM_Node* node = GetPointer(in);
+
+  if(node == nullptr){
+    return 0;
+  }
+
+  int res = node->literal;
+  if(negate){
+    res = -res;
+  }
+
+  return res;
+}
+
+int LiteralValue(SYM_Expr in){
+  Assert(IsLiteral(in));
+
+  return LiteralValue(in.node);
+}
+
+String VariableValue(SYM_Expr in){
+  Assert(IsVariable(in));
+  
+  SYM_Node* node = GetPointer(in.node);
+  return node->variable;
+}
+
+
+void SortInPlace(Array<SYM_Expr>& toSort){
+  for(int i = 0; i < toSort.size; i++){
+    for(int j = i + 1; j < toSort.size; j++){
+      if(toSort[i] < toSort[j]){
+        SWAP(toSort[i],toSort[j]);
+      }
+    }
+  }
+};
+
+SYM_Expr CondNegate(SYM_Expr in,bool negate){
+  SYM_Expr res = in;
+  if(negate){
+    res = Negate(res);
+  }
+  return res;
+}
+
+SYM_Expr Abs(SYM_Expr in){
+  SYM_Expr res = in;
+  if(IsNegative(res)){
+    res = Negate(res);
+  }
+
+  return res;
+}
+
+inline bool IsLiteralZero(SYM_Expr in){
+  bool res = (Abs(in) == SYM_Zero);
+  return res;
+}
+
+inline bool IsLiteralOne(SYM_Expr in){
+  bool res = (in == SYM_One);
+  return res;
+}
+
+inline bool IsLiteralMinusOne(SYM_Expr in){
+  bool res = (in == -SYM_One);
+  return res;
+}
+
+inline bool IsDiv(SYM_Expr in){
+  SYM_Node* node = GetPointer(in.node);
+  bool res = (GetType(node) == SYM_Type_DIV);
+  return res;
+}
+
+Array<SYM_Expr> GetChildrenOfMul(SYM_Expr top,Arena* out){
+  TEMP_REGION(temp,out);
+
+  bool negateFinal = false;
+
+  auto list = PushList<SYM_Expr>(temp);
+  auto Recurse = [list,&negateFinal](auto Recurse,SYM_Expr ptr) -> void{
+    SYM_Node* node = GetPointer(ptr.node);
+
+    bool negateThis = IsNegative(ptr);
+
+    if(GetType(node) == SYM_Type_MUL){
+      if(IsNegative(ptr)){
+        negateFinal = !negateFinal;
+      }
+      
+      Recurse(Recurse,node->left);
+      Recurse(Recurse,node->right);
+    } else {
+      *list->PushElem() = ptr;
+    }
+  };
+
+  SYM_Node* node = GetPointer(top.node);
+  //Assert(node->type == SYM_Type_MUL);
+
+  Recurse(Recurse,top);
+
+  Array<SYM_Expr> res = PushArray(out,list);
+  SortInPlace(res);
+  
+  // We just shove the negation into the first term
+  if(res.size > 0){
+    res[0] = CondNegate(res[0],negateFinal);
+  }
+  
+  return res;
+}
+
+Array<SYM_Expr> GetChildrenOfSum(SYM_Expr top,Arena* out){
+  TEMP_REGION(temp,out);
+
+  auto list = PushList<SYM_Expr>(temp);
+  auto Recurse = [list](auto Recurse,SYM_Expr ptr,bool negate) -> void{
+    SYM_Node* node = GetPointer(ptr.node);
+
+    bool negateThis = IsNegative(ptr);
+
+    negate = (negate != negateThis);
+
+    if(GetType(node) == SYM_Type_SUM){
+      Recurse(Recurse,node->left,negate);
+      Recurse(Recurse,node->right,negate);
+    } else {
+      SYM_Expr res = Abs(ptr);
+
+      *list->PushElem() = CondNegate(res,negate);
+    }
+  };
+
+  SYM_Node* node = GetPointer(top.node);
+  Assert(GetType(node) == SYM_Type_SUM);
+
+  Recurse(Recurse,top,false);
+
+  Array<SYM_Expr> res = PushArray(out,list);
+  SortInPlace(res);
+  
+  return res;
+}
+
 SYM_Expr GetOrAllocateLiteral(int input){
+  if(input == 0){
+    return {};
+  }
+
   int literal = input;
   
   bool negative = false;
@@ -2687,7 +2870,7 @@ SYM_Expr GetOrAllocateLiteral(int input){
 
   SYM_Node* res = nullptr;
   for(; ptr; previous = ptr,ptr = ptr->hashNext){
-    if(ptr->type == SYM_Type_LITERAL && ptr->literal == literal){
+    if(ptr->type == SYM_Type_LITERAL && LiteralValue(ptr) == literal){
       res = ptr;
       break;
     }
@@ -2776,197 +2959,7 @@ SYM_Expr GetOrAllocateFunc(String name,SYM_Expr first,SYM_Expr second){
   SYM_Expr result = {res};
 
   return result;
-  
 }
-//SYM_Expr GetOrAllocateFunc(String name,ArenaList<SYM_Expr>* args){}
-
-int64_t Hash(SYM_Expr expr){
-  bool negate = IsNegative(expr.node);
-  SYM_Node* node = GetPointer(expr.node);
-
-  int64_t res = 0;
-  FULL_SWITCH(node->type){
-    case SYM_Type_LITERAL: {
-      res += (int64_t) node->literal;
-    } break;
-    case SYM_Type_VARIABLE: {
-      res += Hash(node->variable);
-    } break;
-    case SYM_Type_FUNC: res += Hash(node->name);
-    case SYM_Type_MUL:
-    case SYM_Type_DIV:
-    case SYM_Type_SUM: {
-      res += Hash(node->left) + Hash(node->right);
-    } break;
-  }
-
-  return res;
-}
-
-bool IsLiteral(SYM_Expr in){
-  SYM_Node* node = GetPointer(in.node);
-  bool res = node->type == SYM_Type_LITERAL;
-  return res;
-}
-
-bool IsVariable(SYM_Expr in){
-  SYM_Node* node = GetPointer(in.node);
-  bool res = node->type == SYM_Type_VARIABLE;
-  return res;
-}
-
-SYM_Type GetType(SYM_Expr in){
-  SYM_Node* node = GetPointer(in.node);
-  return node->type;
-}
-
-int LiteralValue(SYM_Expr in){
-  Assert(IsLiteral(in));
-
-  bool negate = IsNegative(in.node);
-  SYM_Node* node = GetPointer(in.node);
-
-  int res = node->literal;
-  if(negate){
-    res = -res;
-  }
-
-  return res;
-}
-
-String VariableValue(SYM_Expr in){
-  Assert(IsVariable(in));
-  
-  SYM_Node* node = GetPointer(in.node);
-  return node->variable;
-}
-
-void SortInPlace(Array<SYM_Expr>& toSort){
-  for(int i = 0; i < toSort.size; i++){
-    for(int j = i + 1; j < toSort.size; j++){
-      if(toSort[i] < toSort[j]){
-        SWAP(toSort[i],toSort[j]);
-      }
-    }
-  }
-};
-
-SYM_Expr CondNegate(SYM_Expr in,bool negate){
-  SYM_Expr res = in;
-  if(negate){
-    res = Negate(res);
-  }
-  return res;
-}
-
-SYM_Expr Abs(SYM_Expr in){
-  SYM_Expr res = in;
-  if(IsNegative(res)){
-    res = Negate(res);
-  }
-
-  return res;
-}
-
-Array<SYM_Expr> GetChildrenOfSum(SYM_Expr top,Arena* out){
-  TEMP_REGION(temp,out);
-
-  auto list = PushList<SYM_Expr>(temp);
-  auto Recurse = [list](auto Recurse,SYM_Expr ptr,bool negate) -> void{
-    SYM_Node* node = GetPointer(ptr.node);
-
-    bool negateThis = IsNegative(ptr);
-
-    negate = (negate != negateThis);
-
-    if(node->type == SYM_Type_SUM){
-      Recurse(Recurse,node->left,negate);
-      Recurse(Recurse,node->right,negate);
-    } else {
-      SYM_Expr res = Abs(ptr);
-
-      *list->PushElem() = CondNegate(res,negate);
-    }
-  };
-
-  SYM_Node* node = GetPointer(top.node);
-  Assert(node->type == SYM_Type_SUM);
-
-  Recurse(Recurse,top,false);
-
-  Array<SYM_Expr> res = PushArray(out,list);
-  SortInPlace(res);
-  
-  return res;
-}
-
-Array<SYM_Expr> GetChildrenOfMul(SYM_Expr top,Arena* out){
-  TEMP_REGION(temp,out);
-
-  bool negateFinal = false;
-
-  auto list = PushList<SYM_Expr>(temp);
-  auto Recurse = [list,&negateFinal](auto Recurse,SYM_Expr ptr) -> void{
-    SYM_Node* node = GetPointer(ptr.node);
-
-    bool negateThis = IsNegative(ptr);
-
-    if(node->type == SYM_Type_MUL){
-      if(IsNegative(ptr)){
-        negateFinal = !negateFinal;
-      }
-      
-      Recurse(Recurse,node->left);
-      Recurse(Recurse,node->right);
-    } else {
-      *list->PushElem() = ptr;
-    }
-  };
-
-  SYM_Node* node = GetPointer(top.node);
-  //Assert(node->type == SYM_Type_MUL);
-
-  Recurse(Recurse,top);
-
-  Array<SYM_Expr> res = PushArray(out,list);
-  SortInPlace(res);
-  
-  // We just shove the negation into the first term
-  if(res.size > 0){
-    res[0] = CondNegate(res[0],negateFinal);
-  }
-  
-  return res;
-}
-
-// nocheckin
-#if 0
-Array<SYM_Expr> GetMulCommutativeMembers(SYM_Expr top,Arena* out){
-  TEMP_REGION(temp,out);
-
-  auto list = PushList<SYM_Expr>(temp);
-  auto Recurse = [list](auto Recurse,SYM_Expr ptr) -> void{
-    bool negate = IsNegative(ptr.node);
-    SYM_Node* node = GetPointer(ptr.node);
-
-    if(node->type == SYM_Type_MUL){
-      Recurse(Recurse,node->left);
-      Recurse(Recurse,node->right);
-    } else {
-      SYM_Expr res = ptr;
-
-      *list->PushElem() = res;
-    }
-  };
-
-  Recurse(Recurse,top);
-
-  Array<SYM_Expr> res = PushArray(out,list);
-  SortInPlace(res);
-  
-  return res;
-}
-#endif
 
 bool operator<(SYM_Expr left,SYM_Expr right){
   TEMP_REGION(temp,nullptr);
@@ -3141,24 +3134,26 @@ SYM_Expr GetOrAllocateOp(SYM_Type type,SYM_Expr topIn,SYM_Expr bottomIn){
   return result;
 }
 
-inline bool IsLiteralZero(SYM_Expr in){
-  bool res = (Abs(in) == SYM_Zero);
-  return res;
-}
+int64_t Hash(SYM_Expr expr){
+  bool negate = IsNegative(expr.node);
+  SYM_Node* node = GetPointer(expr.node);
 
-inline bool IsLiteralOne(SYM_Expr in){
-  bool res = (in == SYM_One);
-  return res;
-}
+  int64_t res = 0;
+  FULL_SWITCH(GetType(node)){
+    case SYM_Type_LITERAL: {
+      res += (int64_t) LiteralValue(node);
+    } break;
+    case SYM_Type_VARIABLE: {
+      res += Hash(node->variable);
+    } break;
+    case SYM_Type_FUNC: res += Hash(node->name);
+    case SYM_Type_MUL:
+    case SYM_Type_DIV:
+    case SYM_Type_SUM: {
+      res += Hash(node->left) + Hash(node->right);
+    } break;
+  }
 
-inline bool IsLiteralMinusOne(SYM_Expr in){
-  bool res = (in == -SYM_One);
-  return res;
-}
-
-inline bool IsDiv(SYM_Expr in){
-  SYM_Node* node = GetPointer(in.node);
-  bool res = (node->type == SYM_Type_DIV);
   return res;
 }
 
@@ -3361,7 +3356,7 @@ SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<SYM_Expr,SYM_Expr>* replacements){
     if(possibleReplace){
       res = *possibleReplace;
     } else {
-      FULL_SWITCH(node->type){
+      FULL_SWITCH(GetType(node)){
       case SYM_Type_LITERAL: 
       case SYM_Type_VARIABLE: return top;
       case SYM_Type_FUNC:
@@ -3371,7 +3366,7 @@ SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<SYM_Expr,SYM_Expr>* replacements){
         SYM_Expr left = SYM_Replace(node->left,replacements);
         SYM_Expr right = SYM_Replace(node->right,replacements);
 
-        SWITCH(node->type){
+        SWITCH(GetType(node)){
         case SYM_Type_FUNC: res = SYM_Func(node->name,left,right); break;
         case SYM_Type_MUL: res = left * right; break;
         case SYM_Type_DIV: res = left / right; break;
@@ -3558,10 +3553,10 @@ SYM_Expr GetLeftmostExprOfAddition(SYM_Expr top){
 
   SYM_Expr res = top;
 
-  if(node->type == SYM_Type_SUM){
+  if(GetType(node) == SYM_Type_SUM){
     res = GetLeftmostExprOfAddition(node->left);
   }
-  if(node->type == SYM_Type_MUL){
+  if(GetType(node) == SYM_Type_MUL){
     res = GetLeftmostExprOfAddition(node->left);
   }
 
@@ -3577,14 +3572,14 @@ String SYM_ReprHier(SYM_Expr expr,Arena* out){
     bool negate = IsNegative(top.node);
     SYM_Node* node = GetPointer(top.node);
 
-    String typeRepr = META_Repr(node->type);
+    String typeRepr = META_Repr(GetType(node));
 
     if(negate){
       b->PushString("-");
     }
     
-    FULL_SWITCH(node->type){
-    case SYM_Type_LITERAL: b->PushString("%d",node->literal); break;
+    FULL_SWITCH(GetType(node)){
+    case SYM_Type_LITERAL: b->PushString("%d",LiteralValue(node)); break;
     case SYM_Type_VARIABLE: b->PushString("%.*s",UN(node->variable)); break;
     case SYM_Type_FUNC:
     case SYM_Type_MUL:
@@ -3592,7 +3587,7 @@ String SYM_ReprHier(SYM_Expr expr,Arena* out){
     case SYM_Type_SUM: {
       b->PushString("(");
 
-      FULL_SWITCH(node->type){
+      FULL_SWITCH(GetType(node)){
       case SYM_Type_LITERAL: break;
       case SYM_Type_VARIABLE: break;
       case SYM_Type_MUL: b->PushString("*"); break;
@@ -3627,17 +3622,17 @@ void SYM_Repr(StringBuilder* b,SYM_Expr expr){
       b->PushString("-");
     }
 
-    int bindingStrength = TypeToBindingStrength(node->type);
+    int bindingStrength = TypeToBindingStrength(GetType(node));
     bool bind = (parentBindingStrength > bindingStrength) || negate;
 
-    FULL_SWITCH(node->type){
-    case SYM_Type_LITERAL: b->PushString("%d",node->literal); break;
+    FULL_SWITCH(GetType(node)){
+    case SYM_Type_LITERAL: b->PushString("%d",LiteralValue(node)); break;
     case SYM_Type_VARIABLE: b->PushString(node->variable); break;
     case SYM_Type_MUL:
     case SYM_Type_DIV:
     case SYM_Type_SUM:{
       String op = {};
-      SWITCH(node->type){
+      SWITCH(GetType(node)){
       case SYM_Type_SUM:{
         op = "+";
 
@@ -3700,7 +3695,7 @@ String SYM_Repr(SYM_Expr expr,Arena* out){
 
   SYM_Repr(b,expr);
 
-  String res = EndString(temp,b);
+  String res = EndString(out,b);
   return res;
 }
 
@@ -3716,7 +3711,7 @@ SYM_Expr RemoveParenthesis(SYM_Expr in){
   SYM_Node* node = GetPointer(in.node);
 
   SYM_Expr res = Abs(in);
-  SWITCH(node->type){
+  SWITCH(GetType(node)){
   case SYM_Type_SUM:{
     SYM_Expr left = RemoveParenthesis(CondNegate(node->left,negate));
     SYM_Expr right = RemoveParenthesis(CondNegate(node->right,negate));
@@ -3771,7 +3766,7 @@ SYM_MultPartition GetMultPartition(SYM_Expr expr,Arena* out){
     bool negate = IsNegative(top.node);
     SYM_Node* node = GetPointer(top.node);
 
-    FULL_SWITCH(node->type){
+    FULL_SWITCH(GetType(node)){
     case SYM_Type_LITERAL: res.literal = res.literal * top; break;
 
     case SYM_Type_SUM: 
@@ -3817,7 +3812,7 @@ SYM_Expr ApplyDistributivity(SYM_Expr in){
   bool isMul = false;
   SYM_Expr res = Abs(in);
   
-  SWITCH(node->type){
+  SWITCH(GetType(node)){
   case SYM_Type_MUL:{
     SYM_Expr leftExpr = ApplyDistributivity(node->left);
     SYM_Expr rightExpr = ApplyDistributivity(node->right);
@@ -3833,14 +3828,14 @@ SYM_Expr ApplyDistributivity(SYM_Expr in){
 
     // (a+b)*(c*d) = (a*c + a*d + b*c + b*d)
 
-    if(left->type == SYM_Type_SUM && right->type == SYM_Type_SUM){
+    if(GetType(left) == SYM_Type_SUM && GetType(right) == SYM_Type_SUM){
 
       res = (left->left * right->left + left->left * right->right + left->right * right->left + left->right * right->right);
-    } else if(left->type == SYM_Type_SUM){
+    } else if(GetType(left) == SYM_Type_SUM){
       SYM_Expr other = rightExpr;
 
       res = left->left * other + left->right * other;
-    } else if(right->type == SYM_Type_SUM){
+    } else if(GetType(right) == SYM_Type_SUM){
       SYM_Expr other = leftExpr;
 
       res = right->left * other + right->right * other;
@@ -3886,7 +3881,7 @@ SYM_Partition SplitExpressionBasedOn(SYM_Expr expression,SYM_Expr base){
 
   SYM_Expr leftovers = SYM_One;
 
-  FULL_SWITCH(node->type){
+  FULL_SWITCH(GetType(node)){
   case SYM_Type_LITERAL:{
   } break;
   case SYM_Type_VARIABLE:{
@@ -3938,7 +3933,7 @@ SYM_Expr NormalizeLiterals(SYM_Expr in){
   SYM_Node* node = GetPointer(in.node);
 
   SYM_Expr res = Abs(in);
-  SWITCH(node->type){
+  SWITCH(GetType(node)){
   case SYM_Type_SUM:{
     Array<SYM_Expr> children = GetChildrenOfSum(res,temp);
 
@@ -4060,7 +4055,7 @@ SYM_Expr NormalizeLiterals(SYM_Expr in){
     // NOTE: Disabled and probably not worth it to enable. Need to fix negative related bugs to put this working
     //       and we do not really gain anything from this other that cleaning up some expressions.
     //       This stuff should be a separate function anyway
-    if(false && GetPointer(topValue)->type == SYM_Type_SUM){
+    if(false && GetType(GetPointer(topValue)) == SYM_Type_SUM){
       Array<SYM_Expr> sumTerms = GetChildrenOfSum(topValue,temp);
 
       Array<SYM_Expr> bottom = GetChildrenOfMul(bottomValue,temp);
@@ -4112,7 +4107,7 @@ SYM_Expr OrderTerms(SYM_Expr in){
   bool isMul = false;
   SYM_Expr res = Abs(in);
 
-  SWITCH(node->type){
+  FULL_SWITCH(GetType(node)){
   case SYM_Type_MUL: isMul = true; // fallthrough
   case SYM_Type_SUM:{
     Array<SYM_Expr> children = GetChildrenOfSum(res,temp);
@@ -4140,7 +4135,14 @@ SYM_Expr OrderTerms(SYM_Expr in){
 
     res = ptr;
   } break;
-  
+  case SYM_Type_DIV:{
+    res = OrderTerms(node->top) / OrderTerms(node->bottom);
+  } break;
+  case SYM_Type_FUNC:{
+    res = SYM_Func(node->name,OrderTerms(node->top),OrderTerms(node->bottom));
+  } break;
+  case SYM_Type_LITERAL:
+  case SYM_Type_VARIABLE: break;
 }
 
   res = CondNegate(res,negate);
@@ -4152,8 +4154,8 @@ SYM_Expr SYM_Derivate(SYM_Expr expr,String var){
   bool negate = IsNegative(expr.node);
   SYM_Node* node = GetPointer(expr.node);
 
-  SYM_Expr res = {};
-  FULL_SWITCH(node->type){
+  SYM_Expr res = SYM_Zero;
+  FULL_SWITCH(GetType(node)){
     case SYM_Type_LITERAL:{
       res = SYM_Zero;
     } break;
@@ -4178,7 +4180,8 @@ SYM_Expr SYM_Derivate(SYM_Expr expr,String var){
       NOT_IMPLEMENTED();
     } break;
     case SYM_Type_FUNC:{
-      NOT_IMPLEMENTED();
+      res = SYM_Zero;
+      //NOT_IMPLEMENTED();
     } break;
   }
 
@@ -4188,7 +4191,55 @@ SYM_Expr SYM_Derivate(SYM_Expr expr,String var){
 }
 
 SYM_Expr SYM_Factor(SYM_Expr expr,SYM_Expr commonFactor){
-  LEFT HERE - Need to finish this.
+  bool negate = IsNegative(expr.node);
+  SYM_Node* node = GetPointer(expr.node);
+
+  SYM_Expr res = Abs(expr);
+
+  FULL_SWITCH(GetType(node)){
+    case SYM_Type_LITERAL:{
+      if(res == Abs(commonFactor)){
+        res = commonFactor;
+      }
+    } break;
+    case SYM_Type_VARIABLE:{
+      if(res == Abs(commonFactor)){
+        res = SYM_One;
+      }
+    } break;
+    case SYM_Type_SUM:{
+      res = SYM_Factor(node->left,commonFactor) + SYM_Factor(node->right,commonFactor);
+    } break;
+    case SYM_Type_MUL:{
+      res = SYM_Factor(node->left,commonFactor) * SYM_Factor(node->right,commonFactor);
+    } break;
+    // NOTE: We do not actually want derivations to handle divs or custom functions.
+    //       In theory the address gen stuff already removed these from consideration before calling derivate.
+    //       So this is more likely an error than a missing feature. If we ever reach this point need to investigate
+    //       why
+    case SYM_Type_DIV:{
+      NOT_IMPLEMENTED();
+    } break;
+    case SYM_Type_FUNC:{
+      NOT_IMPLEMENTED();
+    } break;
+  }
+
+  res = CondNegate(res,negate);
+
+  return res;
+}
+
+bool SYM_IsZeroValue(SYM_Expr expr){
+  SYM_Expr normalized = SYM_Normalize(expr);
+  bool res = (normalized == SYM_Zero);
+  return res;
+}
+
+bool SYM_IsOneValue(SYM_Expr expr){
+  SYM_Expr normalized = SYM_Normalize(expr);
+  bool res = (normalized == SYM_One);
+  return res;
 }
 
 SYM_EvaluateResult SYM_DebugEvaluate(SYM_Expr top,TrieMap<String,SYM_Expr>* values,Arena* out){
@@ -4207,9 +4258,9 @@ SYM_EvaluateResult SYM_DebugEvaluate(SYM_Expr top,TrieMap<String,SYM_Expr>* valu
     SYM_Node* node = GetPointer(expr.node);
 
     float res = 0;
-    FULL_SWITCH(node->type){
+    FULL_SWITCH(GetType(node)){
     case SYM_Type_LITERAL:{
-      res = (float) node->literal;
+      res = (float) LiteralValue(node);
     } break;
     case SYM_Type_VARIABLE:{
       SYM_Expr* val = values->Get(node->variable);
@@ -4285,9 +4336,9 @@ SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top,Arena* out){
     SYM_Node* node = GetPointer(expr.node);
 
     int res = 0;
-    FULL_SWITCH(node->type){
+    FULL_SWITCH(GetType(node)){
     case SYM_Type_LITERAL:{
-      res = node->literal;
+      res = LiteralValue(node);
     } break;
     case SYM_Type_VARIABLE:{
       nonConstantValue = true;
@@ -4319,7 +4370,14 @@ SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top,Arena* out){
     case SYM_Type_FUNC:{
       res = 0;
       
-      NOT_IMPLEMENTED();
+      if(node->name == "Max"){
+        int first = Recurse(Recurse,node->first);
+        int second = Recurse(Recurse,node->second);
+
+        res = MAX(first,second);
+      } else {
+        NOT_IMPLEMENTED();
+      }
     } break;
     }
 
@@ -4348,7 +4406,7 @@ Array<String> SYM_GetAllVariables(SYM_Expr top,Arena* out){
   auto Recurse = [varSet](auto Recurse,SYM_Expr expr) -> void {
     SYM_Node* node = GetPointer(expr.node);
 
-    FULL_SWITCH(node->type){
+    FULL_SWITCH(GetType(node)){
     case SYM_Type_VARIABLE:{
       varSet->Insert(node->variable);
     } break;
@@ -4472,6 +4530,18 @@ NormalizeResult NormalizeWhileChecking(SYM_Expr in){
   return result;
 }
 
+SYM_Expr SYM_Normalize(SYM_Expr in){
+  SYM_Expr res = in;
+
+  res = RemoveParenthesis(res);
+  res = NormalizeLiterals(res);
+  res = RemoveParenthesis(res);
+  res = ApplyDistributivity(res);
+  res = NormalizeLiterals(res);
+  
+  return res;
+}
+
 SYM_Expr GenerateRandomExpression(int expectedAmountOfNodes){
   static String vars[16] = {"q","w","e","r","t","y","u","i","o","p","a","s","d","f","g","h"};
 
@@ -4523,19 +4593,19 @@ SYM_Expr Normalize(SYM_Expr in){
   if(print) printf("%.*s\n",UN(SYM_ReprHier(res,temp)));
   res = RemoveParenthesis(res);
   if(print) printf("%.*s\n",UN(SYM_ReprHier(res,temp)));
-  res = OrderTerms(res);
+  //res = OrderTerms(res);
   if(print) printf("%.*s\n",UN(SYM_ReprHier(res,temp)));
   res = NormalizeLiterals(res);
   if(print) printf("%.*s\n",UN(SYM_ReprHier(res,temp)));
   res = RemoveParenthesis(res);
   if(print) printf("%.*s\n",UN(SYM_ReprHier(res,temp)));
-  res = OrderTerms(res);
+  //res = OrderTerms(res);
   if(print) printf("%.*s\n",UN(SYM_ReprHier(res,temp)));
   res = ApplyDistributivity(res);
   if(print) printf("%.*s\n",UN(SYM_ReprHier(res,temp)));
   res = NormalizeLiterals(res);
   if(print) printf("%.*s\n",UN(SYM_ReprHier(res,temp)));
-  res = OrderTerms(res);
+  //res = OrderTerms(res);
   if(print) printf("%.*s\n",UN(SYM_ReprHier(res,temp)));
 
   return res;
@@ -4635,7 +4705,7 @@ void TestSym2(){
 #endif
 
     DEBUG_BREAK();
-    SYM_Expr expr = ParseSYM(test);
+    SYM_Expr expr = SYM_Parse(test);
     SYM_Print(expr);
     NormalizeResult normalize = NormalizeWhileChecking(expr);
     if(normalize.failedEvaluation && !normalize.failedFromDivZero){
@@ -4650,7 +4720,9 @@ void TestSym2(){
 
   TEMP_REGION(temp,nullptr);
 
-#if 1
+  SYM_Print(Normalize(SYM_Factor(SYM_Parse("x + x*y + x*y"),SYM_Variable("x"))));
+
+#if 0
   for(TestCase t : tests){
     SYM_Expr expr = SYM_Parse(t.input);
 
@@ -4674,7 +4746,7 @@ void TestSym2(){
   }
 #endif
 
-#if 1
+#if 0
   int checked = 0;
   for(int j = 3; j < 15; j++){
     printf("%d\n",j);

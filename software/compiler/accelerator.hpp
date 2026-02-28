@@ -414,7 +414,6 @@ FUInstance* GetOutputInstance(Pool<FUInstance>* nodes);
 // Params
 
 bool SetParameter(FUInstance* inst,String parameterName,SYM_Expr val); // False if param does not exist
-SYM_Expr GetParameterValue(FUInstance* inst,String name);
 
 //
 // Graph fixes and operations

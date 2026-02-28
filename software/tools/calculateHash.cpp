@@ -60,6 +60,7 @@ int main(int argc,const char* argv[]){
     String content = PushFile(arena,filepath);
     
     Parser* parser = StartParsing(content,TokenizeFunction,parsing);
+    parser->currentFile = filepath;
 
     while(!parser->Done()){
       NewToken token = parser->NextToken();

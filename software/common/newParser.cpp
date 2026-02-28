@@ -147,7 +147,17 @@ void Parser::EnsureTokens(int amount){
       this->ptr += bytesParsed;
       continue;
     }
-    
+
+    if(token.type == NewTokenType_INVALID){
+      if(currentFile){
+        printf("Invalid token: %s\n",currentFile);
+      }
+
+      if(bytesParsed == 0){
+        bytesParsed = 1;
+      }
+    }
+
     this->storedTokens[this->amountStored++] = token;
     this->ptr += bytesParsed;
 
@@ -357,11 +367,12 @@ TokenizeResult ParseComments(const char* start,const char* end){
       ptr += 1;
     }
 
-    if((*ptr) != '*' && (*(ptr + 1)) != '/'){
+    if(ptr + 1 >= end){
       unterminated = true;
+      ptr = end;
+    } else {
+      ptr += 2;
     }
-
-    ptr += 2;
   }
 
   String comment = {};

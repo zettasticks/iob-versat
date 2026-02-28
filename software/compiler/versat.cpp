@@ -171,7 +171,7 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
       SYM_Expr high = SymbolicExpressionFromVerilog(info->memoryMappedBits.high);
       SYM_Expr low = SymbolicExpressionFromVerilog(info->memoryMappedBits.low);
 
-      decl.info.memMapBitsSym = high - low + SYM_One;
+      decl.info.memMapBitsSym = SYM_Normalize(high - low + SYM_One);
     }
   }
 

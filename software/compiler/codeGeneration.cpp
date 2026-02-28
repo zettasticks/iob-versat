@@ -577,7 +577,7 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
       externalSeen += 1;
     }
 
-    if(Valid(unit->memMapSym)){
+    if(!SYM_IsZeroValue(unit->memMapSym)){
       if(unit->isComposite){
         for(int i = 0; i < unit->memSize; i++){
           m->PortConnectIndexed("unit_valid_%d",i,SF("unit_valid_%d",memMappedSeen++));
@@ -589,7 +589,7 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
 
     // Memory mapping
     DEBUG_BREAK();
-    if(Valid(unit->memMapSym)){
+    if(!SYM_IsZeroValue(unit->memMapSym)){
       //m->PortConnect("valid",SF("memoryMappedEnable[%d]",memoryMappedSeen));
       m->PortConnect("wstrb","wstrb");
       
@@ -685,7 +685,7 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
         m->InstanceParam(p.first,p.second);
       }
     }
-    if(Valid(unit->memMapSym)){
+    if(!SYM_IsZeroValue(unit->memMapSym)){
       // MARKX
 #if 1
       params->Insert("ADDR_W",unit->memMapSym);
@@ -777,7 +777,7 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
       externalSeen += 1;
     }
 
-    if(Valid(unit->memMapSym)){
+    if(!SYM_IsZeroValue(unit->memMapSym)){
       if(unit->isComposite){
         for(int i = 0; i < unit->memSize; i++){
           m->PortConnectIndexed("unit_valid_%d",i,SF("unit_valids[%d]",memMappedSeen++));
@@ -788,13 +788,13 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
     }
 
     // Memory mapping
-    if(Valid(unit->memMapSym)){
+    if(!SYM_IsZeroValue(unit->memMapSym)){
       //m->PortConnect("valid",SF("memoryMappedEnable[%d]",memoryMappedSeen));
       m->PortConnect("wstrb","data_wstrb");
 
       //GetLiteralValue(SymbolicExpression* expr);
 
-      if(Valid(unit->memMapSym)){
+      if(!SYM_IsZeroValue(unit->memMapSym)){
         // nocheckin : TODO: CHECK errors
         SYM_EvaluateResult eval = SYM_ConstantEvaluate(unit->memMapSym,temp);
         Opt<int> memMapBits = eval.result;
@@ -951,7 +951,7 @@ VerilogModuleInterface* GenerateModuleInterface(FUDeclaration* decl,Arena* out){
   }
   m->EndGroup();
 
-  if(Valid(decl->info.memMapBitsSym)){
+  if(!SYM_IsZeroValue(decl->info.memMapBitsSym)){
     m->StartGroup("MemoryMapped");
     m->AddPort("valid",SYM_One,WireDir_INPUT);
 
@@ -1127,7 +1127,7 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
 
   DEBUG_BREAK_IF(module->name == "API_Config");
 
-  if(Valid(module->info.memMapBitsSym)){
+  if(!SYM_IsZeroValue(module->info.memMapBitsSym)){
     // nocheckin : TODO: PROPER ERROR CHECKING
     SYM_EvaluateResult eval = SYM_ConstantEvaluate(module->info.memMapBitsSym,temp);
     Opt<int> p = eval.result;
@@ -1495,7 +1495,7 @@ static Array<TypeStructInfoElement> GenerateAddressStructFromType(FUDeclaration*
   for(FUInstance* node : decl->fixedDelayCircuit->allocated){
     FUDeclaration* decl = node->declaration;
 
-    if(!Valid(decl->info.memMapBitsSym)){
+    if(SYM_IsZeroValue(decl->info.memMapBitsSym)){
       continue;
     }
 
@@ -1508,7 +1508,7 @@ static Array<TypeStructInfoElement> GenerateAddressStructFromType(FUDeclaration*
   for(FUInstance* node : decl->fixedDelayCircuit->allocated){
     FUDeclaration* decl = node->declaration;
 
-    if(!Valid(decl->info.memMapBitsSym)){
+    if(SYM_IsZeroValue(decl->info.memMapBitsSym)){
       continue;
     }
 
@@ -3142,9 +3142,10 @@ Problem: If we want the address gen to take into account the limitations of spac
             Assert(info);
 
             // TODO: Currently this is hardcoded for the VUnits. Need to actually start modelling the concept of address interface size and do it right.
-            SYM_Expr val = GetParameterValue(info,"ADDR_W");
+            Opt<SYM_Expr> valOpt = GetParameterValue(info,"ADDR_W");
+            Assert(valOpt.has_value());
 
-            String symRepr = SYM_Repr(val,temp);
+            String symRepr = SYM_Repr(valOpt.value(),temp);
             String maxSize = PushString(temp,"(1 << %.*s)",UN(symRepr));
 
             AddressAccess* access = stuff.access.access;
@@ -3298,6 +3299,8 @@ Problem: If we want the address gen to take into account the limitations of spac
               }
             }
             
+            DEBUG_BREAK();
+
             FULL_SWITCH(transf.dir){
             case TransferDirection_NONE: Assert(false); break;
             case TransferDirection_READ: {
@@ -4272,7 +4275,7 @@ static iptr WRITE_@{0} = 0;)FOO";
   {
     CEmitter* c = StartCCode(temp);
 
-    if(Valid(info.memMapBitsSym)){
+    if(!SYM_IsZeroValue(info.memMapBitsSym)){
       c->Define("HAS_MEMORY_MAP");
 
       String repr = SYM_Repr(info.memMapBitsSym,temp);
@@ -4293,7 +4296,7 @@ static iptr WRITE_@{0} = 0;)FOO";
       if(unit->isComposite){
         continue;
       }
-      if(!Valid(unit->memMapSym)){
+      if(SYM_IsZeroValue(unit->memMapSym)){
         continue;
       }
 

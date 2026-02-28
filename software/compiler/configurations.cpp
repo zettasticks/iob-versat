@@ -221,7 +221,7 @@ String GetEntityMemName(InstanceInfo* info,Arena* out){
 Array<Pair<String,int>> ExtractMem(Array<InstanceInfo> info,Arena* out){
   int count = 0;
   for(InstanceInfo& in : info){
-    if(!in.isComposite && Valid(in.memMapSym)){
+    if(!in.isComposite && !SYM_IsZeroValue(in.memMapSym)){
       count += 1;
     }
   }
@@ -229,7 +229,7 @@ Array<Pair<String,int>> ExtractMem(Array<InstanceInfo> info,Arena* out){
   Array<Pair<String,int>> res = PushArray<Pair<String,int>>(out,count);
   int index = 0;
   for(InstanceInfo& in : info){
-    if(!in.isComposite && Valid(in.memMapSym)){
+    if(!in.isComposite && !SYM_IsZeroValue(in.memMapSym)){
       String name = GetEntityMemName(&in,out); 
       res[index++] = {name,(int) in.memMapped.value()};
     }
@@ -557,7 +557,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
       w.sizeExpr = SYM_Replace(w.sizeExpr,map);
     }
 
-    if(Valid(info->memMapSym)){
+    if(!SYM_IsZeroValue(info->memMapSym)){
       info->memMapSym = SYM_Replace(info->memMapSym,map);
     }
   }
@@ -589,7 +589,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
       w.sizeExpr = SYM_Replace(w.sizeExpr,map);
     }
 
-    if(Valid(info->memMapSym)){
+    if(!SYM_IsZeroValue(info->memMapSym)){
       info->memMapSym = SYM_Replace(info->memMapSym,map);
     }
   }
@@ -924,7 +924,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
     for(auto iter = initialIter; iter.IsValid(); iter = iter.Step()){
       InstanceInfo* info = iter.CurrentUnit();
 
-      if(Valid(info->memMapSym) && !info->isComposite){
+      if(!SYM_IsZeroValue(info->memMapSym) && !info->isComposite){
         info->memGlobalIndex = memGlobalIndex++;
         info->memSize = 1;
       }
@@ -991,7 +991,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
       for(AccelInfoIterator it = iter.StepInsideOnly(); it.IsValid(); it = it.Next()){
         InstanceInfo* unit = it.CurrentUnit();
 
-        if(Valid(unit->memMapSym)){
+        if(!SYM_IsZeroValue(unit->memMapSym)){
           maximum = SYM_Func("Max",maximum,unit->memMapSym);
         }
       }
@@ -1320,7 +1320,7 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
       seenShared[inst->sharedIndex] = true;
     }
     
-    if(Valid(type->info.memMapBitsSym)){
+    if(!SYM_IsZeroValue(type->info.memMapBitsSym)){
       info->isMemoryMapped = true;
 
       unitsMapped += 1;
@@ -1600,14 +1600,14 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
   return result;
 }
 
-SYM_Expr GetParameterValue(InstanceInfo* info,String name){
+Opt<SYM_Expr> GetParameterValue(InstanceInfo* info,String name){
   for(ParamAndValue val : info->params){
     if(val.name == name){
       return val.val;
     }
   }
 
-  return SYM_Nil;
+  return SYM_Zero;
 }
 
 bool IsUnitCombinatorialOperation(InstanceInfo* info){
@@ -1671,7 +1671,7 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
         w.sizeExpr = SYM_Replace(w.sizeExpr,map);
       }
 
-      if(Valid(info->memMapSym)){
+      if(!SYM_IsZeroValue(info->memMapSym)){
         info->memMapSym = SYM_Replace(info->memMapSym,map);
       }
     }
@@ -1704,7 +1704,7 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
       }
 #endif
 
-      if(Valid(info->memMapSym)){
+      if(!SYM_IsZeroValue(info->memMapSym)){
         info->memMapSym = SYM_Replace(info->memMapSym,map);
       }
     }    

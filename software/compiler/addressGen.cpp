@@ -53,7 +53,7 @@ void Print(AddressAccess* access){
   printf("\nInternal:\n");
   Print(access->internal);
   printf("\n");
-  if(Valid(access->dutyDivExpr)){
+  if(!SYM_IsOneValue(access->dutyDivExpr)){
     printf("Duty:\n");
     SYM_Print(access->dutyDivExpr);
     printf("\n");
@@ -196,7 +196,7 @@ static CompiledAccess CompileAccess(LoopLinearSum* access,SYM_Expr dutyDiv,Arena
     //       Overall, we need to push this stuff upwards, so that we can simplify the code. It is easier to check and handle address gens that are to big before starting to emit stuff and writing to files.
     // NOTE: The only thing that we need to do is to add +1 to the amount of loops if a unit contains a duty expression. The failure is exactly the same, "address gen contains more loops than the unit is capable of handling"
     SYM_Expr duty = dutyDiv;
-    if(Valid(duty)){
+    if(!SYM_IsOneValue(duty)){
       // In order to solve duty, we want to use two loops for the innermost loop. The first loop will have a period equal to the duty division expression and a duty of 1.
       // The second loop will have the expression of the original loop.
       Array<LoopLinearSumTerm> newLoops = PushArray<LoopLinearSumTerm>(temp,loops.size + 1);
@@ -231,7 +231,7 @@ static CompiledAccess CompileAccess(LoopLinearSum* access,SYM_Expr dutyDiv,Arena
       res.incrementExpression = SYM_Repr(firstDerived,out);
 
       if(i == 0){
-        if(Valid(duty)){
+        if(SYM_IsOneValue(duty)){
           result[0].dutyExpression = "1";
         } else {
           result[0].dutyExpression = PushString(out,SYM_Repr(loops[0].loopEnd,temp)); // For now, do not care too much about duty. Use a full duty
@@ -265,7 +265,7 @@ static CompiledAccess CompileAccess(LoopLinearSum* access,SYM_Expr dutyDiv,Arena
     CompiledAccess com = {};
     com.internalAccess = result;
 
-    if(Valid(duty)){
+    if(!SYM_IsOneValue(duty)){
       com.dutyDivExpression = SYM_Repr(duty,out);
     }
     
@@ -601,13 +601,10 @@ AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> lo
   SYM_Expr symbolicExpr = addr;
   SYM_Expr normalized = symbolicExpr;
 
-  SYM_Expr fullExpr = normalized;
-  SYM_Expr dutyDiv = SYM_Nil;
-
   Pair<SYM_Expr,SYM_Expr> pair = SYM_BreakDiv(normalized);
 
-  fullExpr = pair.first;
-  dutyDiv = pair.second;
+  SYM_Expr fullExpr = pair.first;
+  SYM_Expr dutyDiv = pair.second;
   
   // NOTE: Do not need to group stuff anymore, I think.
   //       The function that performs partition should work regardless

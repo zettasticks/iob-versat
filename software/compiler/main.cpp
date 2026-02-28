@@ -279,7 +279,7 @@ int main(int argc,char* argv[]){
   InitParser(perm);
   SYM_Init();
   
-#if 1
+#if 0
   TestSym2();
 
   return 0;
@@ -687,7 +687,7 @@ int main(int argc,char* argv[]){
         continue;
       }
     
-      if(!Valid(unit->memMapSym)){
+      if(SYM_IsZeroValue(unit->memMapSym)){
         continue;
       }
 

@@ -368,7 +368,7 @@ String GetEntityMemName(InstanceInfo* info,Arena* out);
 
 String ReprStaticConfig(StaticId id,Wire* wire,Arena* out);
 
-SYM_Expr GetParameterValue(InstanceInfo* info,String name);
+Opt<SYM_Expr> GetParameterValue(InstanceInfo* info,String name);
 
 bool IsUnitCombinatorialOperation(InstanceInfo* info);
 
