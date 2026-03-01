@@ -992,7 +992,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
         InstanceInfo* unit = it.CurrentUnit();
 
         if(!SYM_IsZeroValue(unit->memMapSym)){
-          maximum = SYM_Func("Max",maximum,unit->memMapSym);
+          maximum = SYM_Max(maximum,unit->memMapSym);
         }
       }
 

@@ -301,6 +301,7 @@ SYM_Expr operator-(SYM_Expr left,SYM_Expr right);
 SYM_Expr operator-(SYM_Expr right);
 SYM_Expr operator*(SYM_Expr left,SYM_Expr right);
 SYM_Expr operator/(SYM_Expr left,SYM_Expr right);
+SYM_Expr SYM_Max(SYM_Expr left,SYM_Expr right);
 
 SYM_Expr SYM_Variable(String name);
 SYM_Expr SYM_Func(String name,SYM_Expr first,SYM_Expr second);

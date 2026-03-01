@@ -800,6 +800,8 @@ TrieMap<String,SYM_Expr>* GetParametersOfUnit(FUInstance* inst,Arena* out){
     if(IsGlobalParameter(paramName)){
       map->Insert(paramName,SYM_Variable(paramName));
     } else {
+      // nocheckin 
+      // TODO: Do we actually need to represent a error value or can we just use 0 to represent no param?
       if(Valid(val)){
         map->Insert(paramName,val);
       } else {

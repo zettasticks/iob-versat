@@ -3333,6 +3333,24 @@ SYM_Expr operator/(SYM_Expr top,SYM_Expr bottom){
   return GetOrAllocateOp(SYM_Type_DIV,top,bottom);
 }
 
+SYM_Expr SYM_Max(SYM_Expr left,SYM_Expr right){
+  if(Abs(left) == Abs(right)){
+    if(IsNegative(left)){
+      return right;
+    }
+    if(IsNegative(right)){
+      return left;
+    }
+    return left;
+  }
+
+  if(IsLiteral(left) && IsLiteral(right)){
+    return SYM_Literal(MAX(LiteralValue(left),LiteralValue(right)));
+  }
+
+  return SYM_Func("Max",left,right);
+}
+
 SYM_Expr SYM_Variable(String name){
   return GetOrAllocateVariable(name);
 }
@@ -3445,9 +3463,7 @@ SYM_Expr ParseSYM_Expr(Parser* parser,int bindingPower = -1){
       SYM_Expr func = GetOrAllocateFunc(atom.identifier,first,second);
 
       res = func;
-    } 
-
-    if(!Valid(res)){
+    } else {
       res = GetOrAllocateVariable(atom.identifier);
     }
   } else {
@@ -3511,7 +3527,6 @@ SYM_Expr ParseSYM_Expr(Parser* parser,int bindingPower = -1){
     break;
   }
  
-  Assert(Valid(res));
   return res;
 }
 
@@ -4089,6 +4104,14 @@ SYM_Expr NormalizeLiterals(SYM_Expr in){
       res = NormalizeLiterals(topValue) / NormalizeLiterals(bottomValue);
     } else {
       res = (topValue / bottomValue);
+    }
+  } break;
+  case SYM_Type_FUNC:{
+    if(node->name == "Max"){
+      SYM_Expr first = NormalizeLiterals(node->first);
+      SYM_Expr second = NormalizeLiterals(node->second);
+
+      res = SYM_Max(first,second);
     }
   } break;
 }

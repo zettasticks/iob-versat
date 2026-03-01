@@ -151,7 +151,9 @@ String GenerateVerilogParameterization(FUInstance* inst,Arena* out){
   for(int i = 0; i < size; i++){
     ParameterValue v = inst->parameterValues[i];
     Parameter parameter = parameters[i];
-    
+
+    // nocheckin 
+    // TODO: Do we actually need to represent a error value or can we just use 0 to represent no param?
     if(!Valid(v.val)){
       continue;
     }
@@ -496,6 +498,9 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
     m->StartInstance(decl->name,SF("%.*s_%d",UN(unit->name),instIndex));
 
     for(ParamAndValue p : unit->params){
+      // nocheckin 
+      // TODO: Do we actually need to represent a error value or can we just use 0 to represent no param?
+
       if(Valid(p.val)){
         m->InstanceParam(p.name,p.val);
       }
@@ -681,6 +686,8 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
 
     auto params = GetParametersOfUnit(inst,temp);
     for(Pair<String,SYM_Expr> p : params){
+      // nocheckin 
+      // TODO: Do we actually need to represent a error value or can we just use 0 to represent no param?
       if(Valid(p.second)){
         m->InstanceParam(p.first,p.second);
       }
