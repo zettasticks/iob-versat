@@ -184,7 +184,7 @@ struct SYM_Partition{
   bool exists;
 };
 
-int64_t Hash(SYM_Expr expr);
+u64 Hash(SYM_Expr expr);
 
 inline u64 Hash(SYM_MultTerms terms){
   u64 res = 0;

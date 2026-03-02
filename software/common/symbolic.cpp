@@ -414,7 +414,7 @@ SYM_Expr GetOrAllocateLiteral(int input){
 }
 
 SYM_Expr GetOrAllocateVariable(String name){
-  int hash = Hash(name) % 1024;
+  u64 hash = Hash(name) % 1024;
 
   SYM_Node* ptr = SYM_State.hashTable[hash];
   SYM_Node* previous = ptr;
@@ -445,7 +445,7 @@ SYM_Expr GetOrAllocateVariable(String name){
 }
 
 SYM_Expr GetOrAllocateFunc(String name,SYM_Expr first,SYM_Expr second){
-  int hash = (Hash(name) + Hash(first) + Hash(second)) % 1024;
+  u64 hash = (Hash(name) + Hash(first) + Hash(second)) % 1024;
 
   SYM_Node* ptr = SYM_State.hashTable[hash];
   SYM_Node* previous = ptr;
@@ -488,7 +488,7 @@ SYM_Expr GetOrAllocateOp(SYM_Type type,SYM_Expr topIn,SYM_Expr bottomIn){
     SWAP(top,bottom);
   }
 
-  int hash = (Hash(top)+Hash(bottom)) % 1024;
+  u64 hash = (Hash(top)+Hash(bottom)) % 1024;
 
   SYM_Node* ptr = SYM_State.hashTable[hash];
   SYM_Node* previous = ptr;
@@ -595,7 +595,7 @@ bool operator>(SYM_Expr left,SYM_Expr right){
   return res;
 }
 
-int64_t Hash(SYM_Expr expr){
+u64 Hash(SYM_Expr expr){
   //bool negate = IsNegative(expr.node);
   SYM_Node* node = GetPointer(expr.node);
 
