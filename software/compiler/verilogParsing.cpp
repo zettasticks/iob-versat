@@ -856,7 +856,7 @@ SYM_Expr SymbolicExpressionFromVerilog(Expression* topExpr){
       res = left + right;
     } break;
     case '-':{
-      res = left + right;
+      res = left - right;
     } break;
     case '*':{
       res = left * right;

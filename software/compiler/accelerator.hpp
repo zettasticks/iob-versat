@@ -142,8 +142,7 @@ enum NodeType{
 };
 
 struct ParameterValue{
-  SYM_Expr val;
-  //String val; // Mostly a placeholder for now. Eventually want a better way of handling parameters and expression of parameters
+  Opt<SYM_Expr> val;
 };
 
 struct FUInstance{

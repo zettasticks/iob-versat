@@ -34,7 +34,7 @@ struct AddressAccess{
   LoopLinearSum* internal;
   LoopLinearSum* external;
 
-  SYM_Expr dutyDivExpr; // Any expression of the form (A/B) is broken up, this var saves B and the internal/external LoopLinearSum take the A part (otherwise this is nullptr). This simplifies a lot of things, since we only care about B at the very end. 
+  SYM_Expr dutyDivExpr; // Any expression of the form (A/B) is broken up, this var saves B and the internal/external LoopLinearSum take the A part. For a non div expression this stores '1'.
   
   Array<String> inputVariableNames;
 };
@@ -47,20 +47,20 @@ struct ExternalMemoryAccess{
 };
 
 struct InternalMemoryAccess{
-  String periodExpression;
-  String incrementExpression;
+  SYM_Expr periodExpression;
+  SYM_Expr incrementExpression;
 
-  String iterationExpression;
-  String shiftExpression;
+  SYM_Expr iterationExpression;
+  SYM_Expr shiftExpression;
 
-  String dutyExpression; // Non empty if it exists
+  SYM_Expr dutyExpression;
 
-  String shiftWithoutRemovingIncrement; // Shift as if period did not change addr. Useful for current implementation of VRead/VWrites
+  SYM_Expr shiftWithoutRemovingIncrement; // Shift as if period did not change addr. Useful for current implementation of VRead/VWrites
 };
 
 struct CompiledAccess{
   Array<InternalMemoryAccess> internalAccess;
-  String dutyDivExpression;
+  SYM_Expr dutyDivExpression; // The actual value of the division (For expression on the form A/B, store B)
 };
 
 struct AddressGenInst{

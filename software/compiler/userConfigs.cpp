@@ -584,7 +584,6 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
         SYM_Expr diff = end - start;
         sizeExpr = SYM_Repr(diff,out);
-        DEBUG_BREAK();
       }
 
       ConfigStuff* assign = list->PushElem();

@@ -116,7 +116,7 @@ AddressAccess* ConvertAccessTo2External(AddressAccess* access,int biggestLoopInd
   SYM_Expr val = EvaluateMaxLinearSumValue(&oneSort);
   SYM_Expr maxLoopValueExpr = val + SYM_One;
 
-  maxLoopValueExpr = SYM_Func("ALIGN",maxLoopValueExpr,SYM_Variable("VERSAT_DIFF_W"));
+  maxLoopValueExpr = SYM_Align(maxLoopValueExpr,SYM_Variable("VERSAT_DIFF_W"));
   
   result->internal = Copy(external,out);
   result->internal->terms[highestConstantIndex].term = maxLoopValueExpr; //PushLiteral(out,maxLoopValue);
@@ -137,7 +137,7 @@ SYM_Expr GetLoopHighestDecider(LoopLinearSumTerm* term){
   return term->term;
 }
 
-static SYM_Expr GetLoopSize(LoopLinearSumTerm def,bool removeOne = false){
+SYM_Expr GetLoopSize(LoopLinearSumTerm def,bool removeOne = false){
   SYM_Expr diff = def.loopEnd - def.loopStart;
     
   if(removeOne){
@@ -175,7 +175,7 @@ static ExternalMemoryAccess CompileExternalMemoryAccess(LoopLinearSum* access,SY
     SYM_Expr derived = SYM_Derivate(fullExpression,outer.var);
     result.addrShift = SYM_Repr(derived,out);
     
-    SYM_Expr outerLoopSize = GetLoopSize(outer,temp);
+    SYM_Expr outerLoopSize = GetLoopSize(outer);
     SYM_Expr all = GetLoopSize(inner) * outerLoopSize;
 
     result.totalTransferSize = SYM_Repr(all,out);
@@ -195,8 +195,7 @@ static CompiledAccess CompileAccess(LoopLinearSum* access,SYM_Expr dutyDiv,Arena
     // TODO: Because we are adding an extra loop, there is a possibility of failure since the unit might not support enough loops to implement this. For the SingleLoop VS DoubleLoop the problem does not occur because we know that Singleloop is possible and DoubleLoop is easier on the address gen of the internal loop which is the limitting factor.
     //       Overall, we need to push this stuff upwards, so that we can simplify the code. It is easier to check and handle address gens that are to big before starting to emit stuff and writing to files.
     // NOTE: The only thing that we need to do is to add +1 to the amount of loops if a unit contains a duty expression. The failure is exactly the same, "address gen contains more loops than the unit is capable of handling"
-    SYM_Expr duty = dutyDiv;
-    if(!SYM_IsOneValue(duty)){
+    if(!SYM_IsOneValue(dutyDiv)){
       // In order to solve duty, we want to use two loops for the innermost loop. The first loop will have a period equal to the duty division expression and a duty of 1.
       // The second loop will have the expression of the original loop.
       Array<LoopLinearSumTerm> newLoops = PushArray<LoopLinearSumTerm>(temp,loops.size + 1);
@@ -208,9 +207,7 @@ static CompiledAccess CompileAccess(LoopLinearSum* access,SYM_Expr dutyDiv,Arena
       newLoops[0].var = "NONE";
       newLoops[0].term = SYM_One;
       newLoops[0].loopStart = SYM_Zero;
-      newLoops[0].loopEnd = duty;
-
-      //newLoops[1].loopEnd = SymbolicDiv(newLoops[1].loopEnd,duty,temp);
+      newLoops[0].loopEnd = dutyDiv;
       
       loops = newLoops;
     }
@@ -227,53 +224,49 @@ static CompiledAccess CompileAccess(LoopLinearSum* access,SYM_Expr dutyDiv,Arena
       SYM_Expr derived = SYM_Derivate(expr,l0.var);
       SYM_Expr firstDerived = derived;
         
-      res.periodExpression = GetLoopSizeRepr(l0,out);
-      res.incrementExpression = SYM_Repr(firstDerived,out);
-
-      if(i == 0){
-        if(SYM_IsOneValue(duty)){
-          result[0].dutyExpression = "1";
-        } else {
-          result[0].dutyExpression = PushString(out,SYM_Repr(loops[0].loopEnd,temp)); // For now, do not care too much about duty. Use a full duty
-        }
-      }
+      res.periodExpression = GetLoopSize(l0);
+      DEBUG_BREAK();
+      res.incrementExpression = firstDerived;
       
       SYM_Expr firstEndSym = l0.loopEnd;
 
-      res.shiftWithoutRemovingIncrement = "0"; // By default
+      res.shiftWithoutRemovingIncrement = SYM_Zero; // By default
       if(i * 2 + 1 < loops.size){
         LoopLinearSumTerm l1 = loops[i*2 + 1];
 
-        res.iterationExpression = GetLoopSizeRepr(l1,out);
+        res.iterationExpression = GetLoopSize(l1);
         SYM_Expr derived = SYM_Derivate(expr,l1.var);
 
-        res.shiftWithoutRemovingIncrement = SYM_Repr(derived,out);
+        res.shiftWithoutRemovingIncrement = derived;
         
         // We handle shifts very easily. We just remove the effects of all the previous period increments and then apply the shift.
         // That way we just have to calculate the derivative in relation to the shift, instead of calculating the change from a period term to a iteration term.
         // We need to subtract 1 because the period increment is only applied (period - 1) times.
 
-        SYM_Expr replaced = -(firstDerived * (firstEndSym - SYM_One)) + derived;
-        
-        res.shiftExpression = SYM_Repr(replaced,out);
+        res.shiftExpression = -(firstDerived * (firstEndSym - SYM_One)) + derived;
       } else {
-        res.iterationExpression = "0";
-        res.shiftExpression = "0";
+        res.iterationExpression = SYM_Zero;
+        res.shiftExpression = SYM_Zero;
+      }
+
+      if(i == 0){
+        if(SYM_IsOneValue(dutyDiv)){
+          result[0].dutyExpression = result[0].periodExpression;
+        } else {
+          result[0].dutyExpression = result[0].periodExpression / dutyDiv; 
+        }
       }
     }
 
     CompiledAccess com = {};
     com.internalAccess = result;
-
-    if(!SYM_IsOneValue(duty)){
-      com.dutyDivExpression = SYM_Repr(duty,out);
-    }
+    com.dutyDivExpression = dutyDiv;
     
     return com;
   };
 
   SYM_Expr fullExpression = TransformIntoSymbolicExpression(access,temp);
-  
+  DEBUG_BREAK();
   CompiledAccess res = GenerateLoopExpressionPairSymbolic(access->terms,fullExpression,out);
   
   return res;
@@ -292,20 +285,20 @@ static Array<Pair<String,String>> InstantiateGen(AddressAccess* access,int maxLo
   {
     InternalMemoryAccess l = compiled[0]; 
 
-    *list->PushElem() = {"duty",PushString(out,l.dutyExpression)};
-    *list->PushElem() = {"per",PushString(out,l.periodExpression)};
-    *list->PushElem() = {"incr",PushString(out,l.incrementExpression)};
-    *list->PushElem() = {"iter",PushString(out,l.iterationExpression)};
-    *list->PushElem() = {"shift",PushString(out,l.shiftExpression)};
+    *list->PushElem() = {"duty",SYM_Repr(l.dutyExpression,out)};
+    *list->PushElem() = {"per",SYM_Repr(l.periodExpression,out)};
+    *list->PushElem() = {"incr",SYM_Repr(l.incrementExpression,out)};
+    *list->PushElem() = {"iter",SYM_Repr(l.iterationExpression,out)};
+    *list->PushElem() = {"shift",SYM_Repr(l.shiftExpression,out)};
   }
     
   // TODO: This is stupid. We can just put some loop logic in here. Do this when tests are stable and quick changes are easy to do.
   if(compiled.size > 1){
     InternalMemoryAccess l = compiled[1]; 
-    *list->PushElem() = {"per2",PushString(out,l.periodExpression)};
-    *list->PushElem() = {"incr2",PushString(out,l.incrementExpression)};
-    *list->PushElem() = {"iter2",PushString(out,l.iterationExpression)};
-    *list->PushElem() = {"shift2",PushString(out,l.shiftExpression)};
+    *list->PushElem() = {"per2",SYM_Repr(l.periodExpression,out)};
+    *list->PushElem() = {"incr2",SYM_Repr(l.incrementExpression,out)};
+    *list->PushElem() = {"iter2",SYM_Repr(l.iterationExpression,out)};
+    *list->PushElem() = {"shift2",SYM_Repr(l.shiftExpression,out)};
   } else if(maxLoops > 1){
     *list->PushElem() = {"per2","0"};
     *list->PushElem() = {"incr2","0"};
@@ -315,10 +308,10 @@ static Array<Pair<String,String>> InstantiateGen(AddressAccess* access,int maxLo
 
   if(compiled.size > 2){
     InternalMemoryAccess l = compiled[2]; 
-    *list->PushElem() = {"per3",PushString(out,l.periodExpression)};
-    *list->PushElem() = {"incr3",PushString(out,l.incrementExpression)};
-    *list->PushElem() = {"iter3",PushString(out,l.iterationExpression)};
-    *list->PushElem() = {"shift3",PushString(out,l.shiftExpression)};
+    *list->PushElem() = {"per3",SYM_Repr(l.periodExpression,out)};
+    *list->PushElem() = {"incr3",SYM_Repr(l.incrementExpression,out)};
+    *list->PushElem() = {"iter3",SYM_Repr(l.iterationExpression,out)};
+    *list->PushElem() = {"shift3",SYM_Repr(l.shiftExpression,out)};
   } else if(maxLoops > 2){
     *list->PushElem() = {"per3","0"};
     *list->PushElem() = {"incr3","0"};
@@ -369,11 +362,7 @@ Array<Pair<String,String>> InstantiateRead(AddressAccess* access,int highestExte
   // TODO: No need for a list, we already know all the memory that we are gonna need
   ArenaList<Pair<String,String>>* list = PushList<Pair<String,String>>(temp);
 
-  if(Empty(compiled.dutyDivExpression)){
-    *list->PushElem() = {"extra_delay","0"};
-  } else {
-    *list->PushElem() = {"extra_delay",PushString(out,"(%.*s) - 1",UN(compiled.dutyDivExpression))};
-  }
+  *list->PushElem() = {"extra_delay",SYM_Repr(compiled.dutyDivExpression - SYM_One,out)};
   
   *list->PushElem() = {"start","0"};
   *list->PushElem() = {"ext_addr",ext_addr};
@@ -390,19 +379,19 @@ Array<Pair<String,String>> InstantiateRead(AddressAccess* access,int highestExte
   {
     InternalMemoryAccess l = internal[0]; 
 
-    *list->PushElem() = {"duty",PushString(out,l.dutyExpression)};
-    *list->PushElem() = {"per",PushString(out,l.periodExpression)};
-    *list->PushElem() = {"incr",PushString(out,l.incrementExpression)};
-    *list->PushElem() = {"iter",PushString(out,l.iterationExpression)};
-    *list->PushElem() = {"shift",PushString(out,l.shiftExpression)};
+    *list->PushElem() = {"duty",SYM_Repr(l.dutyExpression,out)};
+    *list->PushElem() = {"per",SYM_Repr(l.periodExpression,out)};
+    *list->PushElem() = {"incr",SYM_Repr(l.incrementExpression,out)};
+    *list->PushElem() = {"iter",SYM_Repr(l.iterationExpression,out)};
+    *list->PushElem() = {"shift",SYM_Repr(l.shiftExpression,out)};
   }
     
   if(internal.size > 1){
     InternalMemoryAccess l = internal[1]; 
-    *list->PushElem() = {"per2",PushString(out,l.periodExpression)};
-    *list->PushElem() = {"incr2",PushString(out,l.incrementExpression)};
-    *list->PushElem() = {"iter2",PushString(out,l.iterationExpression)};
-    *list->PushElem() = {"shift2",PushString(out,l.shiftExpression)};
+    *list->PushElem() = {"per2",SYM_Repr(l.periodExpression,out)};
+    *list->PushElem() = {"incr2",SYM_Repr(l.incrementExpression,out)};
+    *list->PushElem() = {"iter2",SYM_Repr(l.iterationExpression,out)};
+    *list->PushElem() = {"shift2",SYM_Repr(l.shiftExpression,out)};
   } else if(maxLoops > 1) {
     *list->PushElem() = {"per2","0"};
     *list->PushElem() = {"incr2","0"};
@@ -413,10 +402,10 @@ Array<Pair<String,String>> InstantiateRead(AddressAccess* access,int highestExte
   // TODO: This is stupid. We can just put some loop logic in here. Do this when tests are stable and quick changes are easy to do.
   if(internal.size > 2){
     InternalMemoryAccess l = internal[2]; 
-    *list->PushElem() = {"per3",PushString(out,l.periodExpression)};
-    *list->PushElem() = {"incr3",PushString(out,l.incrementExpression)};
-    *list->PushElem() = {"iter3",PushString(out,l.iterationExpression)};
-    *list->PushElem() = {"shift3",PushString(out,l.shiftExpression)};
+    *list->PushElem() = {"per3",SYM_Repr(l.periodExpression,out)};
+    *list->PushElem() = {"incr3",SYM_Repr(l.incrementExpression,out)};
+    *list->PushElem() = {"iter3",SYM_Repr(l.iterationExpression,out)};
+    *list->PushElem() = {"shift3",SYM_Repr(l.shiftExpression,out)};
   } else if(maxLoops > 2){
     *list->PushElem() = {"per3","0"};
     *list->PushElem() = {"incr3","0"};
@@ -465,17 +454,17 @@ static Array<Pair<String,String>> InstantiateMem(AddressAccess* access,int port,
     InternalMemoryAccess l = compiled[0]; 
 
     if(port == 0){
-      *list->PushElem() = {"dutyA",PushString(out,l.dutyExpression)};
-      *list->PushElem() = {"perA",PushString(out,l.periodExpression)};
-      *list->PushElem() = {"incrA",PushString(out,l.incrementExpression)};
-      *list->PushElem() = {"iterA",PushString(out,l.iterationExpression)};
-      *list->PushElem() = {"shiftA",PushString(out,l.shiftExpression)};
+      *list->PushElem() = {"dutyA",SYM_Repr(l.dutyExpression,out)};
+      *list->PushElem() = {"perA",SYM_Repr(l.periodExpression,out)};
+      *list->PushElem() = {"incrA",SYM_Repr(l.incrementExpression,out)};
+      *list->PushElem() = {"iterA",SYM_Repr(l.iterationExpression,out)};
+      *list->PushElem() = {"shiftA",SYM_Repr(l.shiftExpression,out)};
     } else {
-      *list->PushElem() = {"dutyB",PushString(out,l.dutyExpression)};
-      *list->PushElem() = {"perB",PushString(out,l.periodExpression)};
-      *list->PushElem() = {"incrB",PushString(out,l.incrementExpression)};
-      *list->PushElem() = {"iterB",PushString(out,l.iterationExpression)};
-      *list->PushElem() = {"shiftB",PushString(out,l.shiftExpression)};
+      *list->PushElem() = {"dutyB",SYM_Repr(l.dutyExpression,out)};
+      *list->PushElem() = {"perB",SYM_Repr(l.periodExpression,out)};
+      *list->PushElem() = {"incrB",SYM_Repr(l.incrementExpression,out)};
+      *list->PushElem() = {"iterB",SYM_Repr(l.iterationExpression,out)};
+      *list->PushElem() = {"shiftB",SYM_Repr(l.shiftExpression,out)};
     }
   } else {
     // NOTE: Assume that the an empty loop is the same as a one iteration loop
@@ -499,15 +488,15 @@ static Array<Pair<String,String>> InstantiateMem(AddressAccess* access,int port,
     InternalMemoryAccess l = compiled[1]; 
 
     if(port == 0){
-      *list->PushElem() = {"per2A",PushString(out,l.periodExpression)};
-      *list->PushElem() = {"incr2A",PushString(out,l.incrementExpression)};
-      *list->PushElem() = {"iter2A",PushString(out,l.iterationExpression)};
-      *list->PushElem() = {"shift2A",PushString(out,l.shiftExpression)};
+      *list->PushElem() = {"per2A",SYM_Repr(l.periodExpression,out)};
+      *list->PushElem() = {"incr2A",SYM_Repr(l.incrementExpression,out)};
+      *list->PushElem() = {"iter2A",SYM_Repr(l.iterationExpression,out)};
+      *list->PushElem() = {"shift2A",SYM_Repr(l.shiftExpression,out)};
     } else {
-      *list->PushElem() = {"per2B",PushString(out,l.periodExpression)};
-      *list->PushElem() = {"incr2B",PushString(out,l.incrementExpression)};
-      *list->PushElem() = {"iter2B",PushString(out,l.iterationExpression)};
-      *list->PushElem() = {"shift2B",PushString(out,l.shiftExpression)};
+      *list->PushElem() = {"per2B",SYM_Repr(l.periodExpression,out)};
+      *list->PushElem() = {"incr2B",SYM_Repr(l.incrementExpression,out)};
+      *list->PushElem() = {"iter2B",SYM_Repr(l.iterationExpression,out)};
+      *list->PushElem() = {"shift2B",SYM_Repr(l.shiftExpression,out)};
     }
   } else if(maxLoops > 1){
     if(port == 0){
@@ -605,14 +594,6 @@ AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> lo
 
   SYM_Expr fullExpr = pair.first;
   SYM_Expr dutyDiv = pair.second;
-  
-  // NOTE: Do not need to group stuff anymore, I think.
-  //       The function that performs partition should work regardless
-#if 0
-  for(String str : loopVars){
-    fullExpr = Group(fullExpr,str,temp);
-  }
-#endif
         
   LoopLinearSum* expr = PushLoopLinearSumEmpty(temp);
   for(int i = 0; i < loopVars.size; i++){

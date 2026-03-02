@@ -154,7 +154,7 @@ String GenerateVerilogParameterization(FUInstance* inst,Arena* out){
 
     // nocheckin 
     // TODO: Do we actually need to represent a error value or can we just use 0 to represent no param?
-    if(!Valid(v.val)){
+    if(!v.val.has_value()){
       continue;
     }
 
@@ -163,7 +163,7 @@ String GenerateVerilogParameterization(FUInstance* inst,Arena* out){
     }
 
     builder->PushString(".%.*s(",UN(parameter.name));
-    SYM_Repr(builder,v.val);
+    SYM_Repr(builder,v.val.value());
     builder->PushString(")");
     insertedOnce = true;
   }
@@ -593,7 +593,6 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
     }
 
     // Memory mapping
-    DEBUG_BREAK();
     if(!SYM_IsZeroValue(unit->memMapSym)){
       //m->PortConnect("valid",SF("memoryMappedEnable[%d]",memoryMappedSeen));
       m->PortConnect("wstrb","wstrb");
@@ -1131,8 +1130,6 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
     }
   }
 #endif
-
-  DEBUG_BREAK_IF(module->name == "API_Config");
 
   if(!SYM_IsZeroValue(module->info.memMapBitsSym)){
     // nocheckin : TODO: PROPER ERROR CHECKING
@@ -2312,7 +2309,7 @@ void Output_VersatInstance(String typeName,AccelInfo info,FUDeclaration* topLeve
   }
 
   VEmitter* m = StartVCode(temp);
-    
+
   EmitIOUnpacking(m,val.nUnitsIO,INT_IOb,"m");
     
   VAST* ast = EndVCode(m);
@@ -2716,8 +2713,6 @@ assign data_wstrb = csr_wstrb;
   {
     VEmitter* m = StartVCode(temp);
 
-    // nocheckin
-    m->Comment("HERE");
     m->Reg("unit_valids",info.amountOfMemMappedInterfaces);
 
     m->CombBlock();
@@ -3306,8 +3301,6 @@ Problem: If we want the address gen to take into account the limitations of spac
               }
             }
             
-            DEBUG_BREAK();
-
             FULL_SWITCH(transf.dir){
             case TransferDirection_NONE: Assert(false); break;
             case TransferDirection_READ: {

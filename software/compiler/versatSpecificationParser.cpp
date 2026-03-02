@@ -72,7 +72,7 @@ SymbolicExpression* SymbolicFromSpecExpression(SpecExpression* spec,Arena* out){
 
 SYM_Expr SymbolicFromSpecExpression2(SpecExpression* spec){
   auto Recurse = [](auto Recurse,SpecExpression* top) -> SYM_Expr{
-    SYM_Expr res = {};
+    SYM_Expr res = SYM_Zero;
 
     switch(top->type){
     case SpecType_OPERATION:{
@@ -117,10 +117,6 @@ SYM_Expr SymbolicFromSpecExpression2(SpecExpression* spec){
   };
 
   SYM_Expr res = Recurse(Recurse,spec);
-  // nocheckin 
-  // TODO: Do we actually need to represent a error value or can we just use 0 to represent no param?
-  Assert(Valid(res));
-
   return res;
 }
 

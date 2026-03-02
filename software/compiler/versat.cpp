@@ -793,17 +793,15 @@ TrieMap<String,SYM_Expr>* GetParametersOfUnit(FUInstance* inst,Arena* out){
   
   for(int i = 0; i < decl->parameters.size; i++){
     Parameter param = decl->parameters[i];
-    SYM_Expr val = inst->parameterValues[i].val;
+    Opt<SYM_Expr> val = inst->parameterValues[i].val;
 
     String paramName = param.name;
 
     if(IsGlobalParameter(paramName)){
       map->Insert(paramName,SYM_Variable(paramName));
     } else {
-      // nocheckin 
-      // TODO: Do we actually need to represent a error value or can we just use 0 to represent no param?
-      if(Valid(val)){
-        map->Insert(paramName,val);
+      if(val.has_value()){
+        map->Insert(paramName,val.value());
       } else {
         map->Insert(paramName,param.defaultVal);
       }

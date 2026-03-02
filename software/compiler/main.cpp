@@ -248,6 +248,10 @@ void ReportFileCreation(bool allFiles = false){
 // TODO: Remove this
 void InitializeUserConfigs();
 
+void Test(SYM_Expr def = SYM_One){
+  SYM_Print(def);
+}
+
 int main(int argc,char* argv[]){
 #ifdef VERSAT_DEBUG
   printf("Running in debug mode\n");
@@ -272,12 +276,14 @@ int main(int argc,char* argv[]){
   
   Arena* perm = globalPermanent;
   
-  InitializeDefaultData(perm);
+  // Init common stuff before compiler stuff.
+  SYM_Init();
   TE_Init();
+
+  InitializeDefaultData(perm);
   InitializeSimpleDeclarations();
   InitializeUserConfigs();
   InitParser(perm);
-  SYM_Init();
   
 #if 0
   TestSym2();

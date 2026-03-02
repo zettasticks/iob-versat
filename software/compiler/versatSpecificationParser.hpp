@@ -349,15 +349,8 @@ struct GroupIterator{
 FUInstanceIterator StartIteration(Env* env,Entity* ent);
 
 // TODO
-// nocheckin - This needs to be moved to Env 
+// nocheckin - This needs to be moved to Env to properly handle error situations
 SYM_Expr SymbolicFromSpecExpression2(SpecExpression* spec);
-
-#if 0
-LEFT HERE - We are still removing old parser stuff and making the needed changes.
-            UserConfig is still broken and most tests are not working right now because of it.
-            A lot of stuff is kinda deorganized. Function declarations and structs that need to be moved.
-            Old structs and functions that might need to be removed and so on.
-#endif
 
 #if 0
 // nocheckin

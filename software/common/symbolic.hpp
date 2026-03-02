@@ -2,191 +2,66 @@
 
 #include "utils.hpp"
 
-// TODO: The logic in relation to negative is becoming a bit tiring. If we need to keep expanding this code, might need to find some pattern to simplify things. The main problem is when the structure is changed by any of the functions, in these cases the logic for how negativity is preserved is more complicated than simply copying what we already have.
-
-// TODO: We might have to implement a way of grouping variables, so we can group the loop variables for an address access. This might simplify things somewhat. Need to see further how the code turns out for the address access
-
-// TODO: A lot of places are normalizing when there is no need. The more normalizations we perform on the lower levels the worse performance and memory penalties we incur. Normalization only needs to be performed if needed, otherwise try to keep whatever format we have
-
-struct Arena;
+#if 0
+A SYM_Expr is always normalized.
+#endif
 
 #if 0
-// ============================================================================
-// Symbolic Expressions
+- LEFT HERE - I'm thinking if there is a way of 
+avoiding performing normalization all the time 
+and having to call the function everytime we want to
+do something. 
 
-enum SymbolicExpressionType{
-  SymbolicExpressionType_LITERAL,
-  SymbolicExpressionType_VARIABLE,
-  SymbolicExpressionType_SUM,
-  SymbolicExpressionType_MUL,
-  SymbolicExpressionType_DIV,
-  SymbolicExpressionType_FUNC
-};
+If we are already reusing nodes and such, I think that 
+one thing that we could try is to add a flag to each node
+that tells if the node has been normalized or not.
 
-enum SymbolicReprType{
-  SymbolicReprType_LITERAL,
-  SymbolicReprType_VARIABLE,
-  SymbolicReprType_OP
-};
+Every time we call a GetOrAllocate node we check the flag
+and if false then we Normalize the node.
 
-struct SymbolicReprAtom{
-  SymbolicReprType type;
-  
-  union{
-    String variable;
-    int literal;
-    char op;
-  };
-};
+We also change the normalization from being a set of 
+different step functions into a single step function.
 
-struct SymbolicExpression{
-  SymbolicExpressionType type;
-  bool negative;
+The only thing that we actually care about is the "top"
+level since that is the only point that can change and that 
+can affect the lower levels.
 
-  // All these should be inside a union. Not handling this for now
-  int literal;
+ALSO, VERY IMPORTANT:
 
-  union {
-    String variable;
-    String name;
-  };
-    
-  // For div, imagine a fraction expression
-  struct {
-    SymbolicExpression* top;
-    SymbolicExpression* bottom;
-  };
-  
-  Array<SymbolicExpression*> terms; // Terms of SUM and MUL. Function arguments for FUNC
-};
+- When you "normalize" a node by this method you can technically
+make it so the node becomes something else entirely. If we have the node
+'b + a' and then we add a new node '-a' then we obviously are gonna
+"normalize" into 'b'. In this case, what we could do, since we are gonna 
+allocate the 'b + a + -a' node anyway is to store inside the node a 
+bit indicating that the node was normalized as well as the pointer to the 
+normalized node.
 
-struct MultPartition{
-  SymbolicExpression* base;
-  SymbolicExpression* leftovers;
-}; 
+So the node 'b + a + -a' will contain a pointer to the node 'b' as well as
+a bit (probably stored inside the pointer) that tells that the node was normalized.
 
-// ======================================
-// Globals
+If in the future the same operation is repeated, the code can just check the 
+normalized bit, see that it is set and follow the pointer to the 'b' node.
 
-extern SymbolicExpression* SYM_zero;
-extern SymbolicExpression* SYM_one;
-extern SymbolicExpression* SYM_two;
-extern SymbolicExpression* SYM_eight;
-extern SymbolicExpression* SYM_thirtyTwo;
-extern SymbolicExpression* SYM_dataW;
-extern SymbolicExpression* SYM_addrW;
-extern SymbolicExpression* SYM_axiAddrW;
-extern SymbolicExpression* SYM_axiDataW;
-extern SymbolicExpression* SYM_delayW;
-extern SymbolicExpression* SYM_lenW;
-extern SymbolicExpression* SYM_axiStrobeW;
-extern SymbolicExpression* SYM_dataStrobeW;
+That means that we only ever "normalize" once. And the entire point of normalization
+is to handle things that the individual operators cannot handle alone (Adding a 
+minus term to a sum is not guaranteed to cancel out with another term simply for the fact
+that the terms might be below on the tree. "Ex: (+,-a,(+,b,(+,c,(+,d,a))))" the first -a 
+is not detected by the operator+ function since the positive a is way below the 
+sum tree.
 
-// ======================================
-// Representation
-
-void   Print(SymbolicExpression* expr,bool printNewLine = false);
-void   Repr(StringBuilder* builder,SymbolicExpression* expr);
-String PushRepr(Arena* out,SymbolicExpression* expr);
-char*  DebugRepr(SymbolicExpression* expr);
-
-// ======================================
-// High level representation compilation
-
-Array<SymbolicReprAtom> CompileRepresentation(SymbolicExpression* expr,Arena* out);
-
-// ======================================
-// Evaluation, mostly debugging purposes for now.
-
-int Evaluate(SymbolicExpression* expr,Hashmap<String,int>* values);
-Opt<int> ConstantEvaluate(SymbolicExpression* expr); // Only evaluates successfully if the expression can be evaluated directly (no variables).
-
-// ======================================
-// Low level symbolic building blocks
-
-SymbolicExpression* PushLiteral(Arena* out,int value,bool negate = false);
-SymbolicExpression* PushVariable(Arena* out,String name,bool negate = false);
-
-SymbolicExpression* SymbolicAdd(SymbolicExpression* left,SymbolicExpression* right,Arena* out);
-SymbolicExpression* SymbolicAdd(Array<SymbolicExpression*> terms,Arena* out);
-SymbolicExpression* SymbolicAdd(Array<SymbolicExpression*> terms,SymbolicExpression* extra,Arena* out);
-SymbolicExpression* SymbolicSub(SymbolicExpression* left,SymbolicExpression* right,Arena* out);
-SymbolicExpression* SymbolicMult(SymbolicExpression* left,SymbolicExpression* right,Arena* out);
-SymbolicExpression* SymbolicMult(Array<SymbolicExpression*> terms,Arena* out);
-SymbolicExpression* SymbolicMult(Array<SymbolicExpression*> terms,SymbolicExpression* extra,Arena* out);
-SymbolicExpression* SymbolicDiv(SymbolicExpression* top,SymbolicExpression* bottom,Arena* out);
-
-// nocheckin: Make this proper, not the hacky stuff that we did
-SymbolicExpression* SymbolicMax(ArenaList<SymbolicExpression*>* elems,Arena* out);
-
-// For the cases where we are dealing with ranges and want to calculate size([A,B] = B - A + 1)
-SymbolicExpression* SymbolicSubPlusOne(SymbolicExpression* higher,SymbolicExpression* lower,Arena* out);
-
-SymbolicExpression* SymbolicFunc(String functionName,Array<SymbolicExpression*> terms,Arena* out);
-
-// ======================================
-// Parsing
-
-// nocheckin: Either remove it or move it to new parser.
-SymbolicExpression* ParseSymbolicExpression(String content,Arena* out);
-
-// ======================================
-// Low level manipulation
-
-// Use this function to get the literal value of a literal type expression, takes into account negation.
-int GetLiteralValue(SymbolicExpression* expr);
-Array<String> GetAllSymbols(SymbolicExpression* expr,Arena* out);
-
-bool ExpressionEqual(SymbolicExpression* left,SymbolicExpression* right);
-bool IsZero(SymbolicExpression* expr);
-
-SymbolicExpression* SymbolicDeepCopy(SymbolicExpression* expr,Arena* out);
-
-// Must call normalizeLiteral before calling this.
-// Furthermore, the negative is removed from leftovers and pushed onto the literal (base)
-MultPartition CollectTermsWithLiteralMultiplier(SymbolicExpression* expr,Arena* out);
-
-MultPartition PartitionMultExpressionOnVariable(SymbolicExpression* expr,String variableToPartition,Arena* out);
-
-// ======================================
-// High level symbolic manipulations 
-
-SymbolicExpression* NormalizeLiterals(SymbolicExpression* expr,Arena* out);
-SymbolicExpression* RemoveParenthesis(SymbolicExpression* expr,Arena* out);
-// This function does not allocate new nodes unless it has to.
-// Meaning that memory associated to expr must be kept valid as well as the memory for the return of this function
-SymbolicExpression* CollectTerms(SymbolicExpression* expr,Arena* out);
-SymbolicExpression* ApplyDistributivity(SymbolicExpression* expr,Arena* out);
-SymbolicExpression* ApplySimilarTermsAddition(SymbolicExpression* expr,Arena* out);
-SymbolicExpression* MoveDivToTop(SymbolicExpression* base,Arena* out);
-SymbolicExpression* NormalizeLiterals(SymbolicExpression* expr,Arena* out);
-
-
-SymbolicExpression* SymbolicReplace(SymbolicExpression* base,String varToReplace,SymbolicExpression* replacingExpr,Arena* out);
-
-SymbolicExpression* ReplaceVariables(SymbolicExpression* expr,Hashmap<String,SymbolicExpression*>* values,Arena* out);
-SymbolicExpression* ReplaceVariables(SymbolicExpression* expr,TrieMap<String,SymbolicExpression*>* values,Arena* out);
-
-SymbolicExpression* Normalize(SymbolicExpression* expr,Arena* out,bool debugPrint = false);
-SymbolicExpression* Derivate(SymbolicExpression* expr,String base,Arena* out);
-
-// Are allowed to call normalize
-SymbolicExpression* Group(SymbolicExpression* expr,String variableToGroupWith,Arena* out);
-
-void TestSymbolic();
-
-// ============================================================================
-// LoopLinearSums
-
-// Expr must be a sum of mul. Assuming that variableName only appears once. TODO: Probably would be best to create a function that first groups everything so that variableName only appears once and then call this function. Or maybe do the grouping inside here if needed.
-// TODO: This function is kinda not needed. We only use it to break apart a symbolic expression into a LoopLinearSumTerm, but even then we can do it better because we know the format of the variables inside the symbolic expression and we could simplify this.
-Opt<SymbolicExpression*> GetMultExpressionAssociatedTo(SymbolicExpression* expr,String variableName,Arena* out);
+THE OBJECTIVE IS SO THAT USER CODE NEVER HAS TO CALL A NORMALIZATION FUNCTION EVER.
+We already know that we want to move divisions to the top and only have one total.
+We already know that we want to apply distributivity so that at the very end we can
+separate everything into groups cleanly.
+No point forcing user to call Normalize everywhere. We already know what we want.
 #endif
+
+struct Arena;
 
 void SYM_Init();
 
 enum SYM_Type{
-  // Order is important, it encodes the order of the way terms should be displayed (literals first, vars second and so on)
+  // Order is important, it encodes the order of the way terms should be displayed (literals first then variables and so on)
   SYM_Type_LITERAL,
   SYM_Type_VARIABLE,
   SYM_Type_SUM,
@@ -296,15 +171,18 @@ inline SYM_Node* GetPointer(SYM_Expr expr){return GetPointer(expr.node);}
 inline bool Valid(SYM_Expr expr){return true;}
 void SYM_Print(SYM_Expr expr);
 
+#if 1
 SYM_Expr operator+(SYM_Expr left,SYM_Expr right);
 SYM_Expr operator-(SYM_Expr left,SYM_Expr right);
 SYM_Expr operator-(SYM_Expr right);
 SYM_Expr operator*(SYM_Expr left,SYM_Expr right);
 SYM_Expr operator/(SYM_Expr left,SYM_Expr right);
-SYM_Expr SYM_Max(SYM_Expr left,SYM_Expr right);
+#endif
+
+SYM_Expr SYM_PosMax(SYM_Expr left,SYM_Expr right);
+SYM_Expr SYM_Align(SYM_Expr left,SYM_Expr right);
 
 SYM_Expr SYM_Variable(String name);
-SYM_Expr SYM_Func(String name,SYM_Expr first,SYM_Expr second);
 SYM_Expr SYM_Literal(int value);
 
 SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<String,SYM_Expr>* replacements);
@@ -319,6 +197,7 @@ bool SYM_IsZeroValue(SYM_Expr expr);
 bool SYM_IsOneValue(SYM_Expr expr);
 
 SYM_Expr SYM_Normalize(SYM_Expr in);
+SYM_Expr SYM_Normalize2(SYM_Expr in);
 
 void SYM_Repr(StringBuilder* b,SYM_Expr expr);
 String SYM_Repr(SYM_Expr expr,Arena* out);
@@ -341,6 +220,13 @@ struct SYM_EvaluateResult{
 SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr in,Arena* out);
 
 int Compare(SYM_Expr left,SYM_Expr right);
+
+SYM_Expr GetOrAllocateOp(SYM_Type type,SYM_Expr topIn,SYM_Expr bottomIn);
+SYM_Expr GetOrAllocateFunc(String name,SYM_Expr first,SYM_Expr second);
+SYM_Expr GetOrAllocateVariable(String name);
+SYM_Expr GetOrAllocateLiteral(int input);
+
+bool operator>(SYM_Expr left,SYM_Expr right);
 
 // For an expression of the form a*b*c*d*e, returns the members individually and the literal seperatly.
 struct SYM_MultTerms{

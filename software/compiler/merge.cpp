@@ -30,6 +30,8 @@ bool NodeConflict(FUInstance* inst){
 }
 
 bool NodeConflict(FUInstance* first,FUInstance* second){
+  TEMP_REGION(temp,nullptr);
+  
   // Only call this function if instances are the same decl.
   if(first->declaration != second->declaration){
     return true;
@@ -37,19 +39,25 @@ bool NodeConflict(FUInstance* first,FUInstance* second){
 
   FUDeclaration* decl = first->declaration;
 
+  TrieMap<String,SYM_Expr>* param1 = GetParametersOfUnit(first,temp);
+  TrieMap<String,SYM_Expr>* param2 = GetParametersOfUnit(second,temp);
+
   for(int i = 0; i <  decl->parameters.size; i++){
     Parameter param = decl->parameters[i];
 
-    ParameterValue val1 = first->parameterValues[i];
-    ParameterValue val2 = second->parameterValues[i];
+    if((param.flags & ParamFlags_Unique)){
+      SYM_Expr val1 = param1->GetOrFail(param.name);
+      SYM_Expr val2 = param2->GetOrFail(param.name);
 
-    if((param.flags & ParamFlags_Unique) && val1.val != val2.val){
-      DEBUG_BREAK();
-      return true;
+      if(val1 != val2){
+        return true;
+      }
     }
 
     // TODO: To handle order and reverse order, we need to store in the mapping the node that is supposed to be used.
     //       Basically, if we have a node that has ADDR_W = 10 and another that has ADDR_W = 12, then all else being equal we want to use the ADDR_W = 12 values instead of keeping the ADDR_W = 10.
+    // NOTE: This requires to move the logic a little bit higher. This function not only needs to report conflict but it also needs to be able to report which node preference. 
+    // NOTE2: Or we move the node preference to the merging function. Node conflict remains the same but we then add logic to the merging where we check if the node already present is preferred or if we want the "new" node (we only care about parameters since that is what separates nodes from each other [also static and config sharing but that needs to be resolved on node conflict anyway).
   }
 
   return false;

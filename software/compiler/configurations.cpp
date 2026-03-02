@@ -991,9 +991,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
       for(AccelInfoIterator it = iter.StepInsideOnly(); it.IsValid(); it = it.Next()){
         InstanceInfo* unit = it.CurrentUnit();
 
-        if(!SYM_IsZeroValue(unit->memMapSym)){
-          maximum = SYM_Max(maximum,unit->memMapSym);
-        }
+        maximum = SYM_PosMax(maximum,unit->memMapSym);
       }
 
       unit->memMapSym = maximum;
@@ -1288,9 +1286,8 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
   for(AccelInfoIterator it = StartIteration(info); it.IsValid(); it = it.Next()){
     InstanceInfo* unit = it.CurrentUnit();
 
-    maximum = SYM_Func("Max",maximum,unit->memMapSym);
+    maximum = SYM_PosMax(maximum,unit->memMapSym);
   }
-  // nocheckin
   info->memMapBitsSym = maximum;
 
   for(AccelInfoIterator iter = StartIteration(info) ;iter.IsValid(); iter = iter.Next()){
