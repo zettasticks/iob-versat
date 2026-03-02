@@ -61,7 +61,6 @@ struct FUDeclaration{
   Array<Parameter> parameters;
 
   // TODO: Eventually remove external expression and external memory and only keep externalMemorySymbol
-  Array<ExternalMemoryInterfaceExpression> externalExpressionMemory;
   Array<ExternalMemoryInterface> externalMemory;
   Array<ExternalMemorySymbolic> externalMemorySymbol;
   

@@ -4,6 +4,7 @@
 #include "embeddedData.hpp"
 #include "globals.hpp"
 #include "utils.hpp"
+#include "utilsCore.hpp"
 #include "versat.hpp"
 
 #include "symbolic.hpp"
@@ -455,7 +456,7 @@ void FixDelays(Accelerator* accel,Hashmap<Edge,DelayInfo>* edgeDelays){
       buffer = CreateFUInstance(accel,BasicDeclaration::fixedBuffer,bufferName);
       buffer->bufferAmount = delay - BasicDeclaration::fixedBuffer->info.infos[0].outputLatencies[0];
 
-      SetParameter(buffer,"AMOUNT",SYM_Literal(buffer->bufferAmount));
+      SetParameter(buffer,"AMOUNT",SYM_Lit(buffer->bufferAmount));
     } else {
       String bufferName = PushString(globalPermanent,"buffer%d",buffersInserted);
 
@@ -633,7 +634,6 @@ int ExternalMemoryByteSize(Array<ExternalMemoryInterface> interfaces){
   return size;
 }
 
-
 struct HuffmanNode{
   InstanceInfo* unit;
   int value;
@@ -646,13 +646,13 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
   TEMP_REGION(temp,out);
   VersatComputedValues res = {};
 
-  int delayBits = 0;
-  int configBits = 0;
   int numberUnits = 0;
   int numberDones = 0;
 
   int maxMemMapBits = 0;
 
+  // Calculate memory mapping bits
+  // Memory info needs to be instantiated. We cannot handle parameters in memory mapping interfaces at this point
   {
     for(int i = 0; i < info->infos.size; i++){
       auto builder = PushList<HuffmanNode*>(temp);
@@ -665,12 +665,11 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
           continue;
         }
 
-        SYM_EvaluateResult evaluation = SYM_ConstantEvaluate(unit->memMapSym,temp);
-        // nocheckin
-        // TODO: Proper check the evaluation results
-
+        SYM_EvaluateResult eval = SYM_ConstantEvaluate(unit->memMapSym);
+        Assert(!eval.Error());
+        
         HuffmanNode* n = PushStruct<HuffmanNode>(temp);
-        *n = {unit,evaluation.result};
+        *n = {unit,eval.result};
         *builder->PushElem() = n;
       }
 
@@ -725,13 +724,12 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
     }
   }
 
+  SYM_Expr defaultDelaySize = SYM_Var("DELAY_W");
   SYM_Expr configExpr = SYM_Zero;
+  SYM_Expr delayBits = SYM_Zero;
+  int externalMemoryInterfaces = 0; 
   
   auto builder = StartArray<ExternalMemoryInterface>(temp);
-
-  int defaultDelaySize = 7;
-  int externalMemoryInterfaces = 0; 
-
   for(AccelInfoIterator iter = StartIteration(info); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* unit = iter.CurrentUnit();
     
@@ -741,18 +739,16 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
 
     res.nConfigs += unit->configs.size;
     for(Wire& wire : unit->configs){
-      configBits += wire.bitSize;
-
-      configExpr = configExpr + wire.sizeExpr;
+      configExpr += wire.sizeExpr;
     }
 
     res.nStates += unit->states.size;
     for(Wire& wire : unit->states){
-      res.stateBits += wire.bitSize;
+      res.stateBits += wire.sizeExpr;
     }
 
     res.nDelays += unit->numberDelays;
-    delayBits += unit->numberDelays * defaultDelaySize;
+    delayBits += SYM_Lit(unit->numberDelays) * defaultDelaySize;
 
     externalMemoryInterfaces += unit->externalMemory.size;
 
@@ -772,31 +768,14 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
     }
   }    
 
-  SYM_Expr staticSize = info->staticExpr;
-  SYM_Expr delayStart = configExpr + staticSize;
-
-  res.configSizeExpr = configExpr;
-  res.delayStart = delayStart;
-  
   res.nDones = numberDones;
   
   Array<ExternalMemoryInterface> allExternalMemories = EndArray(builder);
   res.totalExternalMemory = ExternalMemoryByteSize(allExternalMemories);
   
-  int staticBits = 0;
   res.nStatics = info->statics;
-  staticBits = info->staticBits;
-
-  res.nUnits = numberUnits;
+  SYM_Expr staticBits = info->staticBits;
   
-  int staticBitsStart = configBits;
-  res.delayBitsStart = staticBitsStart + staticBits;
-
-  SYM_Expr total = configExpr + staticSize;
-  total = total + SYM_Literal(res.nDelays) * SYM_DelayW;
-  
-  res.configurationBitsExpr = total;
-
   // Versat specific registers are treated as a special maping (all 0's) of 1 configuration and 1 state register
   auto registerList = PushList<VersatRegister>(temp);
 
@@ -833,7 +812,10 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
   res.registers = PushArray(out,registerList);
   
   int nConfigurations = res.nConfigs + res.nStatics + res.nDelays;
-  res.configurationBits = configBits + staticBits + delayBits;
+  res.configurationBits = configExpr + staticBits + delayBits;
+  res.delayBitsStart = configExpr + staticBits;
+
+  DEBUG_BREAK();
 
   res.memoryAddressBits = maxMemMapBits;
 
@@ -845,6 +827,8 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
   res.memoryConfigDecisionBit = MAX(stateConfigurationAddressBits,res.memoryAddressBits) + 1;
   
   res.numberConnections = info->numberConnections;
+
+  res.nUnits = numberUnits;
 
   Array<ExternalMemoryInterface> external = PushArray<ExternalMemoryInterface>(out,externalMemoryInterfaces);
   int externalIndex = 0;

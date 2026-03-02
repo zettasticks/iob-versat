@@ -152,8 +152,6 @@ String GenerateVerilogParameterization(FUInstance* inst,Arena* out){
     ParameterValue v = inst->parameterValues[i];
     Parameter parameter = parameters[i];
 
-    // nocheckin 
-    // TODO: Do we actually need to represent a error value or can we just use 0 to represent no param?
     if(!v.val.has_value()){
       continue;
     }
@@ -498,12 +496,7 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
     m->StartInstance(decl->name,SF("%.*s_%d",UN(unit->name),instIndex));
 
     for(ParamAndValue p : unit->params){
-      // nocheckin 
-      // TODO: Do we actually need to represent a error value or can we just use 0 to represent no param?
-
-      if(Valid(p.val)){
-        m->InstanceParam(p.name,p.val);
-      }
+      m->InstanceParam(p.name,p.val);
     }
     
     for(int i = 0; i < unit->outputIsConnected.size; i++){
@@ -599,14 +592,10 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
       
       // nocheckin
       // TODO: Proper checking
-      SYM_EvaluateResult res = SYM_ConstantEvaluate(unit->memMapSym,temp);
-      Opt<int> p = res.result;
+      SYM_EvaluateResult res = SYM_ConstantEvaluate(unit->memMapSym);
+      int p = res.result;
 
-      //Opt<int> p = ConstantEvaluate(unit->memMapSym);
-      
-      // nocheckin: This check is kinda problematic.
-      //            First it means that we are not handling the 
-      if(p.has_value() && p.value() <= 2 && false){
+      if(p <= 2 && false){
         // Do nothing
       } else {
         String repr = SYM_Repr(unit->memMapSym,temp);
@@ -685,11 +674,7 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
 
     auto params = GetParametersOfUnit(inst,temp);
     for(Pair<String,SYM_Expr> p : params){
-      // nocheckin 
-      // TODO: Do we actually need to represent a error value or can we just use 0 to represent no param?
-      if(Valid(p.second)){
-        m->InstanceParam(p.first,p.second);
-      }
+      m->InstanceParam(p.first,p.second);
     }
     if(!SYM_IsZeroValue(unit->memMapSym)){
       // MARKX
@@ -719,16 +704,13 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
     }
 
     SYM_Expr configDataExpr = SYM_Zero;
-    
-    int configDataIndex = 0;
     for(Wire w : unit->configs){
       String repr = SYM_Repr(configDataExpr,temp);
       String size = SYM_Repr(w.sizeExpr,temp);
       
       m->PortConnect(w.name,PushString(temp,"configdata[(%.*s)+:%.*s]",UN(repr),UN(size)));
       
-      configDataExpr = configDataExpr + w.sizeExpr;
-      configDataIndex += w.bitSize;
+      configDataExpr += w.sizeExpr;
     }
 
     // Static configs
@@ -742,19 +724,22 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
     }
     
     // Delays
-    SYM_Expr delayExpr = val.delayStart;
+    SYM_Expr delayExpr = val.delayBitsStart;
     for(int i = 0; i < unit->numberDelays; i++){
       String repr = SYM_Repr(delayExpr,temp);
 
       m->PortConnectIndexed("delay%d",i,PushString(temp,"configdata[(%.*s)+:DELAY_W]",UN(repr)));
-      delayExpr = delayExpr + SYM_DelayW;
+      delayExpr += SYM_DelayW;
     }
     
     // State
-    int stateIndex = 0;
+    SYM_Expr stateIndex = SYM_Zero;
     for(Wire w : unit->states){
-      m->PortConnect(w.name,PushString(temp,"statedata[%d+:%d]",stateIndex,w.bitSize));
-      stateIndex += w.bitSize;
+      String repr = SYM_Repr(stateIndex,temp);
+      String size = SYM_Repr(w.sizeExpr,temp);
+
+      m->PortConnect(w.name,PushString(temp,"statedata[(%.*s)+:%.*s]",UN(repr),UN(size)));
+      stateIndex += w.sizeExpr;
     }
 
     // External memories
@@ -798,11 +783,9 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
       //m->PortConnect("valid",SF("memoryMappedEnable[%d]",memoryMappedSeen));
       m->PortConnect("wstrb","data_wstrb");
 
-      //GetLiteralValue(SymbolicExpression* expr);
-
       if(!SYM_IsZeroValue(unit->memMapSym)){
         // nocheckin : TODO: CHECK errors
-        SYM_EvaluateResult eval = SYM_ConstantEvaluate(unit->memMapSym,temp);
+        SYM_EvaluateResult eval = SYM_ConstantEvaluate(unit->memMapSym);
         Opt<int> memMapBits = eval.result;
 
         //Opt<int> memMapBits = ConstantEvaluate(unit->memMapSym);
@@ -962,7 +945,7 @@ VerilogModuleInterface* GenerateModuleInterface(FUDeclaration* decl,Arena* out){
     m->AddPort("valid",SYM_One,WireDir_INPUT);
 
     // nocheckin: TODO: PROPER ERROR REPORT
-    SYM_EvaluateResult eval = SYM_ConstantEvaluate(decl->info.memMapBitsSym,temp);
+    SYM_EvaluateResult eval = SYM_ConstantEvaluate(decl->info.memMapBitsSym);
     Opt<int> p = eval.result;
 
     //Opt<int> p = ConstantEvaluate(decl->info.memMapBitsSym);
@@ -1077,7 +1060,7 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
   }
 
   for(Wire w : module->states){
-    m->Output(w.name,w.bitSize);
+    m->Output(w.name,w.sizeExpr);
   }
 
   for(int i = 0; i < module->numberDelays; i++){
@@ -1133,7 +1116,7 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
 
   if(!SYM_IsZeroValue(module->info.memMapBitsSym)){
     // nocheckin : TODO: PROPER ERROR CHECKING
-    SYM_EvaluateResult eval = SYM_ConstantEvaluate(module->info.memMapBitsSym,temp);
+    SYM_EvaluateResult eval = SYM_ConstantEvaluate(module->info.memMapBitsSym);
     Opt<int> p = eval.result;
     //Opt<int> p = ConstantEvaluate(module->info.memMapBitsSym);
 
@@ -1153,8 +1136,6 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
     m->Wire("unitRValid",info.unitsMapped);
     m->Assign("rvalid","(|unitRValid)");
 
-    //m->Reg("memoryMappedEnable",memoryMasks.size);
-
     m->WireArray("unitRData",info.unitsMapped,"DATA_W");
     m->WireAndAssignJoinBlock("unitRDataFinal","|","DATA_W");
     for(int i = 0; i < info.unitsMapped; i++){
@@ -1162,27 +1143,6 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
     }
     m->EndBlock();
     m->Assign("rdata","unitRDataFinal");
-
-    // nocheckin
-#if 0
-    m->CombBlock();
-    {
-      m->Set("memoryMappedEnable",SF("%d'b0",info.unitsMapped));
-      m->If("valid");
-      for(int i = 0; i <  memoryMasks.size; i++){
-        String mask  =  memoryMasks[i];
-        if(!Empty(mask)){
-          m->If(SF("addr[(%d-1) -: %d] == %d'b%.*s",module->info.memMapBits.value(),mask.size,mask.size,UN(mask)));
-          m->Set(SF("memoryMappedEnable[%d]",i),"1'b1");
-          m->EndIf();
-        } else {
-          m->Set(SF("memoryMappedEnable[%d]",i),"1'b1");
-        }
-      }
-      m->EndIf();
-    }
-    m->EndBlock();
-#endif
   }
 
   if(info.nDones){
@@ -1228,7 +1188,7 @@ String EmitConfiguration(VersatComputedValues val,Arena* out){
   VEmitter* m = StartVCode(temp);
 
   // VARS
-  int configurationsBits = val.configurationBits;
+  SYM_Expr configurationsBits = val.configurationBits;
   int configurationAddressBits = val.configurationAddressBits;
   
   m->Timescale("1ns","1ps");
@@ -1245,12 +1205,12 @@ String EmitConfiguration(VersatComputedValues val,Arena* out){
     m->ModuleParam("LEN_W",20);
     m->ModuleParam("DELAY_W",7);
 
-    if(configurationsBits){
-      m->Output("config_data_o",val.configurationBitsExpr);
-      m->Reg("configdata",val.configurationBitsExpr);
+    if(!SYM_IsZeroValue(configurationsBits)){
+      m->Output("config_data_o",configurationsBits);
+      m->Reg("configdata",configurationsBits);
 
       if(globalOptions.shadowRegister){
-        m->Reg("shadow_configdata",val.configurationBitsExpr);
+        m->Reg("shadow_configdata",configurationsBits);
       }
     }
 
@@ -1298,7 +1258,7 @@ String EmitConfiguration(VersatComputedValues val,Arena* out){
       }
     };
     
-    if(configurationsBits){
+    if(!SYM_IsZeroValue(configurationsBits)){
       m->Comment("Data to store to shadow config");
       m->Integer("i");
       m->AlwaysBlock("clk_i","rst_i");
@@ -2263,7 +2223,7 @@ static void Output_Makefile(VersatComputedValues val,String typeName,String soft
     }
 
     // nocheckin : TODO: PROPER ERROR CHECK
-    SYM_EvaluateResult eval = SYM_ConstantEvaluate(info->memMapBitsSym,temp);
+    SYM_EvaluateResult eval = SYM_ConstantEvaluate(info->memMapBitsSym);
     Opt<int> p = eval.result;
     
     //Opt<int> p = ConstantEvaluate(info->memMapBitsSym);
@@ -2398,7 +2358,7 @@ void Output_VersatInstance(String typeName,AccelInfo info,FUDeclaration* topLeve
     m->Reg("profile_configurationsSet",doubleDataW);
     m->Reg("profile_configurationsSetWhileRunning",doubleDataW);
 
-    if(val.configurationBits){
+    if(!SYM_IsZeroValue(val.configurationBits)){
       m->Wire("configSet");
       m->Assign("configSet",SF("csr_valid && we && !memoryMappedAddr && data_address >= %d",(val.versatConfigs * 4)));
     }
@@ -2435,7 +2395,7 @@ void Output_VersatInstance(String typeName,AccelInfo info,FUDeclaration* topLeve
       m->EndIf();
     }
 
-    if(val.configurationBits){
+    if(!SYM_IsZeroValue(val.configurationBits)){
       m->If("configSet");
       m->Increment("profile_configurationsSet");
       m->EndIf();
@@ -2789,8 +2749,8 @@ assign data_wstrb = csr_wstrb;
   {
     VEmitter* m = StartVCode(temp);
       
-    if(val.configurationBits){
-      m->Wire("configdata",val.configurationBitsExpr);
+    if(!SYM_IsZeroValue(val.configurationBits)){
+      m->Wire("configdata",val.configurationBits);
 
       for(auto info : wireInfo){
         if(info.isStatic){
@@ -2840,7 +2800,7 @@ assign data_wstrb = csr_wstrb;
   {
     VEmitter* m = StartVCode(temp);
 
-    if(val.stateBits){
+    if(!SYM_IsZeroValue(val.stateBits)){
       m->Wire("statedata",val.stateBits);
     }
       
@@ -2849,13 +2809,17 @@ assign data_wstrb = csr_wstrb;
     m->Set("stateRead","32'h0");
     m->If("csr_valid & !we & !memoryMappedAddr");
 
-    int stateBitsSeen = 0;
+    SYM_Expr stateBitsSeen = SYM_Zero;
     int addr = val.versatStates;
     for(int i = 0; i < topLevelDecl->states.size; i++){
       Wire wire  = topLevelDecl->states[i];
       m->If(SF("csr_addr[%d:2] == %d",val.stateAddressBits + 1,addr));
-      m->Set("stateRead",SF("statedata[%d+:%d]",stateBitsSeen,wire.bitSize));
-      stateBitsSeen += wire.bitSize;
+
+      String repr = SYM_Repr(stateBitsSeen,temp);
+      String size = SYM_Repr(wire.sizeExpr,temp);
+
+      m->Set("stateRead",SF("statedata[(%.*s)+:%.*s]",UN(repr),UN(size)));
+      stateBitsSeen += wire.sizeExpr;
       addr += 1;
       m->EndIf();
     }
@@ -3155,9 +3119,9 @@ Problem: If we want the address gen to take into account the limitations of spac
 
             for(ConfigVariable var : func->variables){
               if(var.type == ConfigVarType_DYN){
-                SYM_Expr varSym = SYM_Variable(SF("%.*s->value",UN(var.name)));
+                SYM_Expr varSym = SYM_Var(SF("%.*s->value",UN(var.name)));
                 
-                symb = SYM_Replace(symb,SYM_Variable(var.name),varSym);
+                symb = SYM_Replace(symb,SYM_Var(var.name),varSym);
               }
             }
                 
@@ -3235,7 +3199,6 @@ Problem: If we want the address gen to take into account the limitations of spac
       }
     }
 
-  // MARK nocheckin
     for(MergePartition part : info.infos){
       String mergeName = part.name;
 
@@ -3777,7 +3740,7 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
   TE_SetBool("implementsDone",info.implementsDone);
 
   // nocheckin TODO: PROPER ERROR CHECK
-  SYM_EvaluateResult eval = SYM_ConstantEvaluate(info.memMapBitsSym,temp);
+  SYM_EvaluateResult eval = SYM_ConstantEvaluate(info.memMapBitsSym);
   Opt<int> p = eval.result;
   
   //Opt<int> p = ConstantEvaluate(info.memMapBitsSym);
@@ -4781,11 +4744,17 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topDecl,String hardwa
       return;
     }
 
+    SYM_EvaluateResult eval = SYM_ConstantEvaluate(val.configurationBits);
+    SYM_EvaluateResult eval2 = SYM_ConstantEvaluate(val.stateBits);
+
+    Assert(!eval.Error());
+    Assert(!eval2.Error());
+
     fprintf(c,"`define NUMBER_UNITS %d\n",accel->allocated.Size());
     fprintf(f,"`undef  NUMBER_UNITS\n");
-    fprintf(c,"`define CONFIG_W %d\n",val.configurationBits);
+    fprintf(c,"`define CONFIG_W %d\n",eval.result);
     fprintf(f,"`undef  CONFIG_W\n");
-    fprintf(c,"`define STATE_W %d\n",val.stateBits);
+    fprintf(c,"`define STATE_W %d\n",eval2.result);
     fprintf(f,"`undef  STATE_W\n");
     fprintf(c,"`define MAPPED_UNITS %d\n",val.unitsMapped);
     fprintf(f,"`undef  MAPPED_UNITS\n");
@@ -4871,7 +4840,7 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topDecl,String hardwa
 
   // Top configurations
   // NOTE: Versat instance does not instantiate configurations if not config bits and therefore we do not emit it (simplifies logic has otherwise we would have to worry about emitting something passable. This way we can just skip stuff).
-  if(val.configurationBits){
+  if(!SYM_IsZeroValue(val.configurationBits)){
     FILE* s = OpenFileAndCreateDirectories(PushString(temp,"%.*s/versat_configurations.v",UN(hardwarePath)),"w",FilePurpose_VERILOG_CODE);
     DEFER_CLOSE_FILE(s);
 

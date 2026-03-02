@@ -20,57 +20,7 @@
 
 static SpecExpression SPEC_LITERAL_0 = {.val = 0,.type = SpecType_LITERAL};
 
-// nocheckin
-#if 0
-// TODO: Need to take an Env to properly check stuff.
-SymbolicExpression* SymbolicFromSpecExpression(SpecExpression* spec,Arena* out){
-  TEMP_REGION(temp,out);  
-
-  auto Recurse = [temp](auto Recurse,SpecExpression* top) -> SymbolicExpression*{
-    SymbolicExpression* res = nullptr;
-
-    switch(top->type){
-    case SpecType_OPERATION:{
-      SymbolicExpression* left  = Recurse(Recurse,top->expressions[0]);
-      SymbolicExpression* right = Recurse(Recurse,top->expressions[1]);
-
-      if(top->op[0] == '+'){
-        res = SymbolicAdd(left,right,temp);
-      }
-      if(top->op[0] == '-'){
-        res = SymbolicSub(left,right,temp);
-      }
-      if(top->op[0] == '*'){
-        res = SymbolicMult(left,right,temp);
-      }
-      if(top->op[0] == '/'){
-        res = SymbolicDiv(left,right,temp);
-      }
-
-      Assert(res);
-    } break;
-    case SpecType_NAME:
-    case SpecType_VAR:{
-      res = PushVariable(temp,top->name);
-    } break;
-    case SpecType_LITERAL:{
-      res = PushLiteral(temp,top->val);
-    } break;
-    case SpecType_SINGLE_ACCESS:
-    case SpecType_ARRAY_ACCESS:
-    case SpecType_FUNCTION_CALL: Assert(false);
-    }
-
-    return res;
-  };
-
-  SymbolicExpression* res = Recurse(Recurse,spec);
-
-  return Normalize(res,out);
-}
-#endif
-
-SYM_Expr SymbolicFromSpecExpression2(SpecExpression* spec){
+SYM_Expr SymbolicFromSpecExpression(SpecExpression* spec){
   auto Recurse = [](auto Recurse,SpecExpression* top) -> SYM_Expr{
     SYM_Expr res = SYM_Zero;
 
@@ -103,10 +53,10 @@ SYM_Expr SymbolicFromSpecExpression2(SpecExpression* spec){
     } break;
     case SpecType_NAME:
     case SpecType_VAR:{
-      res = SYM_Variable(top->name);
+      res = SYM_Var(top->name);
     } break;
     case SpecType_LITERAL:{
-      res = SYM_Literal(top->val);
+      res = SYM_Lit(top->val);
     } break;
     case SpecType_SINGLE_ACCESS:
     case SpecType_ARRAY_ACCESS:
@@ -350,7 +300,7 @@ FUInstance* CreateFUInstanceWithParameters(Accelerator* accel,FUDeclaration* typ
   FUInstance* inst = CreateFUInstance(accel,type,name);
   
   for(auto pair : decl.parameters){
-    SYM_Expr expr = SymbolicFromSpecExpression2(pair.second);
+    SYM_Expr expr = SymbolicFromSpecExpression(pair.second);
     bool result = SetParameter(inst,pair.first,expr);
 
     if(!result){
@@ -415,7 +365,7 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
     ParameterDef* def = paramList->PushElem();
     
     def->name = param.name;
-    def->defaultValue = SymbolicFromSpecExpression2(param.defaultValue);
+    def->defaultValue = SymbolicFromSpecExpression(param.defaultValue);
   }
   auto params = PushArray(temp,paramList);
   
@@ -762,9 +712,10 @@ int Env::CalculateConstantExpression(SpecExpression* top){
   TEMP_REGION(temp,nullptr);
 
   // TODO: We do not want to call this, we want to put the logic inside here.
-  SYM_Expr expr = SymbolicFromSpecExpression2(top);
+  //       Need to be inside the Environment to properly report errors
+  SYM_Expr expr = SymbolicFromSpecExpression(top);
 
-  SYM_EvaluateResult eval = SYM_ConstantEvaluate(expr,nullptr);
+  SYM_EvaluateResult eval = SYM_ConstantEvaluate(expr);
 
   // nocheckin
   // TODO: Properly check and reports errors from this evaluation.
@@ -1518,10 +1469,6 @@ VarGroup ParseVarGroup(Parser* parser,Arena* out){
   }
 }
 
-// nocheckin 
-// TODO: We do actually want to separate the parsing from a connection expression and the expressions used by the address gen stuff.
-//       The problem that we had before is that we parsed symbolic directly instead of parsing into an ExpressionStruct and then we tried to check the semantic.
-//       Basically, in the past, instead of doing Text -> Tokens -> Symbolic we where doing Text -> Symbolic which is the problem.
 SpecExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower = 99);
 
 SpecExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){

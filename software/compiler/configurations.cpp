@@ -479,7 +479,6 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
   Function(Function,build,accel,0,partitions,out);
   Array<InstanceInfo> res = EndArray(build);
 
-  // MARK1
   // nocheckin - Look at this code and the InstantiateParameters functions and reorganize/cleanup this part.
   //             A lot of "duplicated" code could potentially be removed.
 #if 1
@@ -503,7 +502,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
         continue;
       }
 
-      map->Insert(SYM_Variable(p.name),p.val);
+      map->Insert(SYM_Var(p.name),p.val);
     }
 
     for(ParamAndValue& p : info->params){
@@ -533,13 +532,6 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
   iter = StartIteration(&info);
   for(; iter.IsValid(); iter = iter.Step()){
     InstanceInfo* info = iter.CurrentUnit();
-    InstanceInfo* parent = iter.GetParentUnit();
-
-#if 0
-    if(!parent){
-      continue;
-    }
-#endif
 
     auto map = PushTrieMap<SYM_Expr,SYM_Expr>(temp);
     for(ParamAndValue p : info->params){
@@ -547,7 +539,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
         continue;
       }
 
-      map->Insert(SYM_Variable(p.name),p.val);
+      map->Insert(SYM_Var(p.name),p.val);
     }
 
     for(Wire& w : info->configs){
@@ -579,7 +571,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
         continue;
       }
 
-      map->Insert(SYM_Variable(p.name),p.val);
+      map->Insert(SYM_Var(p.name),p.val);
     }
 
     for(Wire& w : info->configs){
@@ -959,14 +951,6 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
     }
   }
 
-  // MARK1 
-
-  // Handle memory mapping
-
-  // For the modules, memory mapping is just calculating the maximum
-  // 
-
-#if 1
   auto CalculateMemory = [](auto Recurse,AccelInfoIterator& iter,iptr currentMem,Arena* out) -> void{
     TEMP_REGION(temp,out);
     InstanceInfo* parent = iter.GetParentUnit();
@@ -999,101 +983,6 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
   };
 
   CalculateMemory(CalculateMemory,initialIter,0,out);
-#else
-  auto CalculateMemory = [](auto Recurse,AccelInfoIterator& iter,iptr currentMem,Arena* out) -> void{
-    TEMP_REGION(temp,out);
-    
-    InstanceInfo* parent = iter.GetParentUnit();
-    if(parent){
-      AccelInfoIterator parentIter = StartIteration(&parent->decl->info,parent->partitionIndex);
-
-      for(AccelInfoIterator it = iter; it.IsValid(); it = it.Next(),parentIter = parentIter.Next()){
-        InstanceInfo* unit = it.CurrentUnit();
-        InstanceInfo* memUnit = parentIter.CurrentUnit();
-        
-        if(memUnit->memMapValid){
-          unit->memMapped = memUnit->memMapped.value() + currentMem;
-          
-          AccelInfoIterator inside = it.StepInsideOnly();
-          if(inside.IsValid()){
-            Recurse(Recurse,inside,unit->memMapped.value(),out);
-          }
-        }
-      }
-    } else {
-      auto builder = StartArray<Node*>(temp);
-      for(AccelInfoIterator it = iter; it.IsValid(); it = it.Next()){
-        InstanceInfo* unit = it.CurrentUnit();
-
-        if(unit->memMapValid){
-          Node* n = PushStruct<Node>(temp);
-          *n = (Node){unit,unit->memMapBits.value()};
-          *builder.PushElem() = n;
-        }
-      }
-      Array<Node*> baseNodes = EndArray(builder);
-    
-      if(baseNodes.size == 0){
-        return;
-      }
-
-      auto Sort = [](Array<Node*>& toSort){
-        for(int i = 0; i < toSort.size; i++){
-          for(int j = i + 1; j < toSort.size; j++){
-            if(toSort[i]->value < toSort[j]->value){
-              SWAP(toSort[i],toSort[j]);
-            }
-          }
-        }
-      };
-
-      Sort(baseNodes);
-
-      while(baseNodes.size > 1){
-        Node* left = baseNodes[baseNodes.size - 2];
-        Node* right = baseNodes[baseNodes.size - 1];
-      
-        Node* n = PushStruct<Node>(temp);
-        n->value = MAX(left->value,right->value) + 1;
-        n->left = left;
-        n->right = right;
-        baseNodes[baseNodes.size - 2] = n;
-        baseNodes.size -= 1;
-
-        Sort(baseNodes);
-      }
-    
-      Node* top = baseNodes[0];
-      
-      auto NodeRecurse = [](auto Recurse,Node* top,int max,int bitAccum,Arena* out) -> void{
-        if(top->left == nullptr){
-          TEMP_REGION(temp,out);
-          Assert(top->right == nullptr);
-
-          InstanceInfo* info = top->unit;
-
-          info->memMapped = bitAccum;
-        } else {
-          Recurse(Recurse,top->left,max,SET_BIT(bitAccum,top->left->value),out);
-          Recurse(Recurse,top->right,max,bitAccum,out);
-        }
-      };
-
-      NodeRecurse(NodeRecurse,top,top->value,0,out);
-
-      for(AccelInfoIterator it = iter; it.IsValid(); it = it.Next()){
-        InstanceInfo* unit = it.CurrentUnit();
-
-        if(unit->memMapValid){
-          AccelInfoIterator inside = it.StepInsideOnly();
-          Recurse(Recurse,inside,unit->memMapped.value(),out);
-        }
-      }
-    }
-  };
-
-  CalculateMemory(CalculateMemory,initialIter,0,out);
-#endif
   
   // Delay pos is just basically State position without anything different, right?
   auto CalculateDelayPos = [](auto Recurse,AccelInfoIterator& iter,int startIndex) -> void{
@@ -1378,9 +1267,7 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
       info->statics += inst->declaration->configs.size;
 
       for(Wire& wire : inst->declaration->configs){
-        info->staticBits += wire.bitSize;
-
-        staticExpr = staticExpr + wire.sizeExpr;
+        staticExpr += wire.sizeExpr;
       }
     }
 
@@ -1393,16 +1280,14 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
           info->statics += pair.second->configs.size;
 
           for(Wire& wire : pair.second->configs){
-            info->staticBits += wire.bitSize;
-
-            staticExpr = staticExpr + wire.sizeExpr;
+            staticExpr += wire.sizeExpr;
           }
         }
       }
     }
   }
 
-  info->staticExpr = staticExpr;
+  info->staticBits = staticExpr;
   
   for(FUInstance* ptr : accel->allocated){
     info->numberConnections += Size(ptr->allOutputs);
@@ -1491,9 +1376,6 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
 
   FillAccelInfoFromCalculatedInstanceInfo(&result,accel);
 
-  // nocheckin - Maybe slower than needed and 
-
-
   // User configs are declaration level.
   if(size > 1){
     PartitionInfoIterator* iter = StartPartitionIteration(accel,temp);
@@ -1528,14 +1410,13 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
   result.configWires = PushArray<Wire>(out,result.configs);
   result.stateWires = PushArray<Wire>(out,result.states);
 
-  // nocheckin: revise this and check if correct.
-  int memMappedSize = 0;
+  int amountOfMemMapped = 0;
   for(AccelInfoIterator iter = StartIteration(&result); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* unit = iter.CurrentUnit();
 
-    memMappedSize += unit->memSize;
+    amountOfMemMapped += unit->memSize;
   }
-  result.amountOfMemMappedInterfaces = memMappedSize;
+  result.amountOfMemMappedInterfaces = amountOfMemMapped;
 
   int configIndex = 0;
   for(AccelInfoIterator iter = StartIteration(&result); iter.IsValid(); iter = iter.Step()){
@@ -1650,7 +1531,6 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
     // We start by instantiating the default values of the top units.
     for(auto iter = StartIteration(info,i); iter.IsValid(); iter = iter.Next()){
       InstanceInfo* info = iter.CurrentUnit();
-      Array<Parameter> params = info->decl->parameters;
 
       auto map = PushTrieMap<String,SYM_Expr>(temp);
       for(ParamAndValue p : info->params){

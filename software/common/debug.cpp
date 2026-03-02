@@ -513,7 +513,7 @@ void PrintStacktrace(int offset = 2){
     
     fprintf(stderr,"#%-2d %.*s",i,UN(str));
 
-    for(u32 j = 0; j < maxSize - str.size; j++){
+    for(int j = 0; j < maxSize - str.size; j++){
       fprintf(stderr," ");
     }
 

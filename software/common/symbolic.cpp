@@ -80,7 +80,7 @@ LoopLinearSum* AddLoopLinearSum(LoopLinearSum* inner,LoopLinearSum* outer,Arena*
     res->terms[i + innerSize].loopEnd = outer->terms[i].loopEnd;
   }
 
-  res->freeTerm = inner->freeTerm + outer->freeTerm;
+  res->freeTerm += outer->freeTerm;
 
   return res;
 }
@@ -97,13 +97,10 @@ SYM_Expr TransformIntoSymbolicExpression(LoopLinearSum* sum,Arena* out){
   TEMP_REGION(temp,out);
 
   SYM_Expr res = SYM_Zero;
-
-  int inserted = 0;
   for(LoopLinearSumTerm term : sum->terms){
-    res = res + term.term * SYM_Variable(term.var);
+    res += term.term * SYM_Var(term.var);
   }
-
-  res = res + sum->freeTerm;
+  res += sum->freeTerm;
   
   return res;
 }
@@ -314,8 +311,6 @@ Array<SYM_Expr> GetChildrenOfMul(SYM_Expr top,Arena* out){
   auto Recurse = [list,&negateFinal](auto Recurse,SYM_Expr ptr) -> void{
     SYM_Node* node = GetPointer(ptr.node);
 
-    bool negateThis = IsNegative(ptr);
-
     if(GetType(node) == SYM_Type_MUL){
       if(IsNegative(ptr)){
         negateFinal = !negateFinal;
@@ -327,9 +322,6 @@ Array<SYM_Expr> GetChildrenOfMul(SYM_Expr top,Arena* out){
       *list->PushElem() = ptr;
     }
   };
-
-  SYM_Node* node = GetPointer(top.node);
-  //Assert(node->type == SYM_Type_MUL);
 
   Recurse(Recurse,top);
 
@@ -351,9 +343,7 @@ Array<SYM_Expr> GetChildrenOfSum(SYM_Expr top,Arena* out){
   auto Recurse = [list](auto Recurse,SYM_Expr ptr,bool negate) -> void{
     SYM_Node* node = GetPointer(ptr.node);
 
-    bool negateThis = IsNegative(ptr);
-
-    negate = (negate != negateThis);
+    negate = (negate != IsNegative(ptr));
 
     if(GetType(node) == SYM_Type_SUM){
       Recurse(Recurse,node->left,negate);
@@ -606,7 +596,7 @@ bool operator>(SYM_Expr left,SYM_Expr right){
 }
 
 int64_t Hash(SYM_Expr expr){
-  bool negate = IsNegative(expr.node);
+  //bool negate = IsNegative(expr.node);
   SYM_Node* node = GetPointer(expr.node);
 
   int64_t res = 0;
@@ -836,6 +826,11 @@ SYM_Expr operator+(SYM_Expr left,SYM_Expr right){
   return res;
 }
 
+SYM_Expr& operator+=(SYM_Expr& left,SYM_Expr right){
+  left = left + right;
+  return left;
+}
+
 SYM_Expr operator-(SYM_Expr left,SYM_Expr right){
   SYM_Expr res = DoSub(left,right);
   res = SYM_Normalize(res);
@@ -890,7 +885,7 @@ SYM_Expr SYM_PosMax(SYM_Expr leftIn,SYM_Expr rightIn){
   }
 
   if(IsLiteral(left) && IsLiteral(right)){
-    return SYM_Literal(MAX(LiteralValue(left),LiteralValue(right)));
+    return SYM_Lit(MAX(LiteralValue(left),LiteralValue(right)));
   }
 
   return SYM_Func("PosMax",left,right);
@@ -901,7 +896,7 @@ SYM_Expr SYM_Align(SYM_Expr left,SYM_Expr right){
   return SYM_Func("ALIGN",left,right);
 }
 
-SYM_Expr SYM_Variable(String name){
+SYM_Expr SYM_Var(String name){
   return GetOrAllocateVariable(name);
 }
 
@@ -909,7 +904,7 @@ SYM_Expr SYM_Func(String name,SYM_Expr first,SYM_Expr second){
   return GetOrAllocateFunc(name,first,second);
 }
 
-SYM_Expr SYM_Literal(int value){
+SYM_Expr SYM_Lit(int value){
   return GetOrAllocateLiteral(value);
 }
 
@@ -958,7 +953,7 @@ SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<String,SYM_Expr>* replacements){
   auto map = PushTrieMap<SYM_Expr,SYM_Expr>(temp);
 
   for(Pair<String,SYM_Expr> p : replacements){
-    map->Insert(SYM_Variable(p.first),p.second);
+    map->Insert(SYM_Var(p.first),p.second);
   }
 
   return SYM_Replace(expr,map);
@@ -1110,7 +1105,6 @@ int TypeToBindingStrength(SYM_Type type){
 }
 
 SYM_Expr GetLeftmostExprOfAddition(SYM_Expr top){
-  bool negate = IsNegative(top.node);
   SYM_Node* node = GetPointer(top.node);
 
   // NOTE: Do we want to apply negation in this conditions?
@@ -1135,8 +1129,6 @@ String SYM_ReprHier(SYM_Expr expr,Arena* out){
   auto Recurse = [b](auto Recurse,SYM_Expr top) -> void{
     bool negate = IsNegative(top.node);
     SYM_Node* node = GetPointer(top.node);
-
-    String typeRepr = META_Repr(GetType(node));
 
     if(negate){
       b->PushString("-");
@@ -1362,70 +1354,6 @@ SYM_MultPartition GetMultPartition(SYM_Expr expr,Arena* out){
   res.literal = CondNegate(res.literal,negateLiteral);
 
   res.mults.terms = result;
-
-  return res;
-}
-
-SYM_Expr ApplyDistributivity(SYM_Expr in){
-  TEMP_REGION(temp,nullptr);
-
-  bool negate = IsNegative(in.node);
-  SYM_Node* node = GetPointer(in.node);
-
-  bool isMul = false;
-  SYM_Expr res = Abs(in);
-  
-  SWITCH(GetType(node)){
-  case SYM_Type_MUL:{
-    SYM_Expr leftExpr = ApplyDistributivity(node->left);
-    SYM_Expr rightExpr = ApplyDistributivity(node->right);
-
-    // Pushes negations downwards
-    leftExpr = RemoveParenthesis(leftExpr);
-    rightExpr = RemoveParenthesis(rightExpr);
-
-    SYM_Node* left =  GetPointer(leftExpr);
-    SYM_Node* right = GetPointer(rightExpr);
-
-    bool foundOne = true;
-
-    // (a+b)*(c*d) = (a*c + a*d + b*c + b*d)
-
-    if(GetType(left) == SYM_Type_SUM && GetType(right) == SYM_Type_SUM){
-
-      res = (left->left * right->left + left->left * right->right + left->right * right->left + left->right * right->right);
-    } else if(GetType(left) == SYM_Type_SUM){
-      SYM_Expr other = rightExpr;
-
-      res = left->left * other + left->right * other;
-    } else if(GetType(right) == SYM_Type_SUM){
-      SYM_Expr other = leftExpr;
-
-      res = right->left * other + right->right * other;
-    } else {
-      foundOne = false;
-    }
-    
-    if(foundOne){
-      res = ApplyDistributivity(res);
-    }
-  } break;
-  case SYM_Type_SUM:{
-    // TODO: Need to simplify these situations where we just call the function on the terms and just move on.
-    SYM_Expr left = ApplyDistributivity(node->left);
-    SYM_Expr right = ApplyDistributivity(node->right);
-
-    res = left + right;
-  } break;
-  case SYM_Type_DIV:{
-    SYM_Expr left = ApplyDistributivity(node->left);
-    SYM_Expr right = ApplyDistributivity(node->right);
-
-    res = left / right;
-  } break;
-}
-
-  res = CondNegate(res,negate);
 
   return res;
 }
@@ -1669,13 +1597,10 @@ SYM_Expr NormalizeLiterals(SYM_Expr in){
       }
     }
 
-    // Top value and bottom value are multiplications.
-    topValue = ApplyDistributivity(topValue);
-
     // Try to find expressions of the form (a*b + b) / b
     // NOTE: Disabled and probably not worth it to enable. Need to fix negative related bugs to put this working
     //       and we do not really gain anything from this other that cleaning up some expressions.
-    //       This stuff should be a separate function anyway
+    //       This stuff should be a separate function anyway if we actually care about 
     if(false && GetType(GetPointer(topValue)) == SYM_Type_SUM){
       Array<SYM_Expr> sumTerms = GetChildrenOfSum(topValue,temp);
 
@@ -1975,16 +1900,14 @@ SYM_EvaluateResult SYM_DebugEvaluate(SYM_Expr top,TrieMap<String,SYM_Expr>* valu
 
   SYM_EvaluateResult res = {};
   res.result = (int) result;
-  res.errors = PushArray(out,errorList);
   res.divByZero = divByZero;
   
   return res;
 }
 
-SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top,Arena* out){
-  TEMP_REGION(temp,out);
+SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top){
+  TEMP_REGION(temp,nullptr);
 
-  auto errorList = PushList<String>(temp);
   bool divByZero = false;
   bool nonConstantValue = false;
 
@@ -1993,7 +1916,7 @@ SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top,Arena* out){
   //       it becomes 9 / 4 = 2 and the final result is 8
   //       Also remember that this is used for debugging purposes. A proper evaluator would just do things in integers
   //       because it would start from a normalized expression.
-  auto Recurse = [errorList,out,&divByZero,&nonConstantValue](auto Recurse,SYM_Expr expr) -> int {
+  auto Recurse = [&divByZero,&nonConstantValue](auto Recurse,SYM_Expr expr) -> int {
     bool negate = IsNegative(expr.node);
     SYM_Node* node = GetPointer(expr.node);
 
@@ -2022,7 +1945,6 @@ SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top,Arena* out){
       int bottom = Recurse(Recurse,node->bottom);
       
       if(bottom == 0){
-        *errorList->PushElem() = PushString(out,"Div by zero detected. Assuming result is one and proceeding");
         divByZero = true;
         res = 1;
       } else {
@@ -2054,7 +1976,6 @@ SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top,Arena* out){
 
   SYM_EvaluateResult res = {};
   res.result = (int) result;
-  res.errors = PushArray(out,errorList);
   res.divByZero = divByZero;
   
   return res;
@@ -2240,7 +2161,6 @@ SYM_Expr GenerateRandomExpression(int expectedAmountOfNodes){
 
 void TestSym2(){
   TestCase tests[] = {
-    {"a+b","a+b"},
 #if 0
     // NOTE: Disabled since division by common mult is not currently implemented 
     //       ex : (x + xy) / x will not simplify to 1 + y  
@@ -2249,6 +2169,7 @@ void TestSym2(){
     {"1+8+7+a*6*4/(a*p/(7+8*8/(e+5+g+9*5)))","(9936+e*16*p+g*16*p+800*p+168*e+168*g)/(e*p+g*p+50*p)"},
 #endif
 #if 1
+    {"a+b","a+b"},
     {"a / b + c / d","(b*c+a*d)/(b*d)"},
     {"(0+2*x)+(2*a-1)*y","-y+2*x+2*a*y"},
     {"1/x * y","y/x"},
@@ -2326,23 +2247,6 @@ void TestSym2(){
 #endif
   };
 
-#if 0
-  {
-    String test = "4/3/-r";
-
-    SYM_Expr expr = SYM_Parse(test);
-    SYM_Print(expr);
-    NormalizeResult normalize = NormalizeWhileChecking(expr);
-    if(normalize.failedEvaluation && !normalize.failedFromDivZero){
-      printf("Failed normalization evaluation (%.*s:%d): %d vs %d\n",UN(normalize.problematicFunction),normalize.functionLine,normalize.expected,normalize.gotOnError);
-      SYM_Print(normalize.res);
-    } else {
-      printf("OK\n");
-      SYM_Print(normalize.res);
-    }
-  }
-#endif
-
   TEMP_REGION(temp,nullptr);
 
 #if 0
@@ -2359,8 +2263,7 @@ void TestSym2(){
   SYM_Print(SYM_Normalize(SYM_Factor(SYM_Parse("-x - x*y"),Negate(SYM_Variable("x")))));
 #endif
 
-#if 0
-  DEBUG_BREAK();
+#if 1
   for(TestCase t : tests){
     SYM_Expr expr = SYM_Parse(t.input);
 

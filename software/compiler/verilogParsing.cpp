@@ -784,62 +784,6 @@ Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths
   return PushArray(out,modules);
 }
 
-// nocheckin
-#if 0
-SymbolicExpression* SymbolicExpressionFromVerilog(Expression* topExpr,Arena* out){
-  FULL_SWITCH(topExpr->type){
-  case Expression::UNDEFINED: {
-    Assert(false);
-  } break;
-  case Expression::OPERATION: {
-    SymbolicExpression* left = SymbolicExpressionFromVerilog(topExpr->expressions[0],out);
-    SymbolicExpression* right = SymbolicExpressionFromVerilog(topExpr->expressions[1],out);
-    
-    switch(topExpr->op[0]){
-    case '+':{
-      return SymbolicAdd(left,right,out);
-    } break;
-    case '-':{
-      return SymbolicSub(left,right,out);
-    } break;
-    case '*':{
-      return SymbolicMult(left,right,out);
-    } break;
-    case '/':{
-      return SymbolicDiv(left,right,out);
-    } break;
-    default:{
-      // TODO: Better error message
-      NOT_IMPLEMENTED("");
-    } break;
-    } 
-  } break;
-  case Expression::IDENTIFIER: {
-    return PushVariable(out,topExpr->id);
-  } break;
-  case Expression::FUNCTION: {
-    // TODO: Better error message and we probably can do more stuff here
-    NOT_IMPLEMENTED("");
-  } break;
-  case Expression::LITERAL: {
-    return PushLiteral(out,topExpr->val.number);
-  } break;
-}
-  
-  return {};
-}
-
-SymbolicExpression* SymbolicExpressionFromVerilog(ExpressionRange range,Arena* out){
-  TEMP_REGION(temp,out);
-  
-  SymbolicExpression* top = SymbolicExpressionFromVerilog(range.top,temp);
-  SymbolicExpression* bottom = SymbolicExpressionFromVerilog(range.bottom,temp);
-  SymbolicExpression* res = Normalize(SymbolicAdd(SymbolicSub(top,bottom,temp),SYM_one,temp),out);
-
-  return res;
-}
-#endif
-
 SYM_Expr SymbolicExpressionFromVerilog(Expression* topExpr){
   SYM_Expr res = SYM_Zero;
 
@@ -871,14 +815,14 @@ SYM_Expr SymbolicExpressionFromVerilog(Expression* topExpr){
     } 
   } break;
   case Expression::IDENTIFIER: {
-    res = SYM_Variable(topExpr->id);
+    res = SYM_Var(topExpr->id);
   } break;
   case Expression::FUNCTION: {
     // TODO: Better error message and we probably can do more stuff here
     NOT_IMPLEMENTED("");
   } break;
   case Expression::LITERAL: {
-    res = SYM_Literal(topExpr->val.number);
+    res = SYM_Lit(topExpr->val.number);
   } break;
 }
   

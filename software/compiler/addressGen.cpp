@@ -69,7 +69,7 @@ SYM_Expr EvaluateMaxLinearSumValue(LoopLinearSum* sum){
     SYM_Expr maxLoopValue = LoopMaximumValue(term);
     SYM_Expr maxTermValue = term.term * maxLoopValue;
     
-    val = val + maxTermValue;
+    val += maxTermValue;
   }
 
   return val;
@@ -87,7 +87,7 @@ AddressAccess* ConvertAccessTo1External(AddressAccess* access,Arena* out){
   result->external = PushLoopLinearSumEmpty(out);
   
   SYM_Expr maxLoopValue = EvaluateMaxLinearSumValue(result->internal);
-  maxLoopValue = maxLoopValue + SYM_One;
+  maxLoopValue += SYM_One;
 
   result->external = PushLoopLinearSumSimpleVar("x",SYM_One,SYM_Zero,maxLoopValue,out);
   result->external->freeTerm = freeTerm;
@@ -116,7 +116,7 @@ AddressAccess* ConvertAccessTo2External(AddressAccess* access,int biggestLoopInd
   SYM_Expr val = EvaluateMaxLinearSumValue(&oneSort);
   SYM_Expr maxLoopValueExpr = val + SYM_One;
 
-  maxLoopValueExpr = SYM_Align(maxLoopValueExpr,SYM_Variable("VERSAT_DIFF_W"));
+  maxLoopValueExpr = SYM_Align(maxLoopValueExpr,SYM_Var("VERSAT_DIFF_W"));
   
   result->internal = Copy(external,out);
   result->internal->terms[highestConstantIndex].term = maxLoopValueExpr; //PushLiteral(out,maxLoopValue);
@@ -225,7 +225,6 @@ static CompiledAccess CompileAccess(LoopLinearSum* access,SYM_Expr dutyDiv,Arena
       SYM_Expr firstDerived = derived;
         
       res.periodExpression = GetLoopSize(l0);
-      DEBUG_BREAK();
       res.incrementExpression = firstDerived;
       
       SYM_Expr firstEndSym = l0.loopEnd;
@@ -266,7 +265,6 @@ static CompiledAccess CompileAccess(LoopLinearSum* access,SYM_Expr dutyDiv,Arena
   };
 
   SYM_Expr fullExpression = TransformIntoSymbolicExpression(access,temp);
-  DEBUG_BREAK();
   CompiledAccess res = GenerateLoopExpressionPairSymbolic(access->terms,fullExpression,out);
   
   return res;
@@ -576,8 +574,8 @@ AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> lo
     // TODO: Handle parsing errors
     // TODO: Performance, we are parsing this twice, there is another below. Maybe we can join the loops into a single one
 
-    SYM_Expr start = SymbolicFromSpecExpression2(loop.startSym);
-    SYM_Expr end = SymbolicFromSpecExpression2(loop.endSym);
+    SYM_Expr start = SymbolicFromSpecExpression(loop.startSym);
+    SYM_Expr end = SymbolicFromSpecExpression(loop.endSym);
 
     SYM_Expr diff = end - start;
 
@@ -599,13 +597,13 @@ AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> lo
   for(int i = 0; i < loopVars.size; i++){
     String var = loopVars[i];
 
-    SYM_Expr term = SYM_Factor(fullExpr,SYM_Variable(var));
+    SYM_Expr term = SYM_Factor(fullExpr,SYM_Var(var));
 
     AddressGenForDef2 loop = loops[i];
     
     // TODO: Performance, we are parsing the start and end stuff twice. This is the second, the first is above.
-    SYM_Expr start = SymbolicFromSpecExpression2(loop.startSym);
-    SYM_Expr end = SymbolicFromSpecExpression2(loop.endSym);
+    SYM_Expr start = SymbolicFromSpecExpression(loop.startSym);
+    SYM_Expr end = SymbolicFromSpecExpression(loop.endSym);
     
     LoopLinearSum* sum = PushLoopLinearSumSimpleVar(loop.loopVariable,term,start,end,temp);
     expr = AddLoopLinearSum(sum,expr,temp);
@@ -616,7 +614,7 @@ AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> lo
 
   // TODO: Currently we are not dealing with loops that do not start at zero
   for(String str : loopVars){
-    toCalcConst = SYM_Replace(toCalcConst,SYM_Variable(str),SYM_Zero);
+    toCalcConst = SYM_Replace(toCalcConst,SYM_Var(str),SYM_Zero);
   }
   toCalcConst = toCalcConst;
 

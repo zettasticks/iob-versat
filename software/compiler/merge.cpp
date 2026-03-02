@@ -1857,12 +1857,12 @@ FUDeclaration* Merge(Array<FUDeclaration*> types,
   declInst.name = name;
   declInst.parameters = PushArray<Parameter>(globalPermanent,6);
 
-  declInst.parameters[0] = {"ADDR_W",SYM_Literal(32)};
-  declInst.parameters[1] = {"DATA_W",SYM_Literal(32)};
-  declInst.parameters[2] = {"DELAY_W",SYM_Literal(7)};
-  declInst.parameters[3] = {"AXI_ADDR_W",SYM_Literal(32)};
-  declInst.parameters[4] = {"AXI_DATA_W",SYM_Literal(32)};
-  declInst.parameters[5] = {"LEN_W",SYM_Literal(20)};
+  declInst.parameters[0] = {"ADDR_W",SYM_Lit(32)};
+  declInst.parameters[1] = {"DATA_W",SYM_Lit(32)};
+  declInst.parameters[2] = {"DELAY_W",SYM_Lit(7)};
+  declInst.parameters[3] = {"AXI_ADDR_W",SYM_Lit(32)};
+  declInst.parameters[4] = {"AXI_DATA_W",SYM_Lit(32)};
+  declInst.parameters[5] = {"LEN_W",SYM_Lit(20)};
 
   Pair<Accelerator*,AcceleratorMapping*> baseCopy = CopyAcceleratorWithMapping(mergedAccel,AcceleratorPurpose_BASE,true,globalPermanent);
 
@@ -2839,12 +2839,12 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
   // TODO: Kinda hacked approach to this
   declInst.parameters = PushArray<Parameter>(globalPermanent,6);
 
-  declInst.parameters[0] = {"ADDR_W",SYM_Literal(32)};
-  declInst.parameters[1] = {"DATA_W",SYM_Literal(32)};
-  declInst.parameters[2] = {"DELAY_W",SYM_Literal(7)};
-  declInst.parameters[3] = {"AXI_ADDR_W",SYM_Literal(32)};
-  declInst.parameters[4] = {"AXI_DATA_W",SYM_Literal(32)};
-  declInst.parameters[5] = {"LEN_W",SYM_Literal(20)};
+  declInst.parameters[0] = {"ADDR_W",SYM_Lit(32)};
+  declInst.parameters[1] = {"DATA_W",SYM_Lit(32)};
+  declInst.parameters[2] = {"DELAY_W",SYM_Lit(7)};
+  declInst.parameters[3] = {"AXI_ADDR_W",SYM_Lit(32)};
+  declInst.parameters[4] = {"AXI_DATA_W",SYM_Lit(32)};
+  declInst.parameters[5] = {"LEN_W",SYM_Lit(20)};
 
   declInst.name = PushString(globalPermanent,name);
 

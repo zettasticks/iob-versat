@@ -180,7 +180,7 @@ ParseResult ParseRHS(Env* env,SpecExpression* top,Arena* out){
   ParseResult res = {};
   if(top->type == SpecType_ARRAY_ACCESS){
     res.isArray = true;
-    res.expr = SymbolicFromSpecExpression2(top->expressions[0]);
+    res.expr = SymbolicFromSpecExpression(top->expressions[0]);
     res.entityName = top->name;
   } else if(top->type == SpecType_SINGLE_ACCESS){
     res.containsAccess = true;
@@ -192,7 +192,7 @@ ParseResult ParseRHS(Env* env,SpecExpression* top,Arena* out){
     res.functionName = top->name;
   } else {    
     res.isExpr = true;
-    res.expr = SymbolicFromSpecExpression2(top);
+    res.expr = SymbolicFromSpecExpression(top);
   }
 
   return res;
@@ -332,7 +332,6 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     type = ConfigFunctionType_CONFIG;
 
     for(Array<ConfigStatement*> stmts : individualStatements){
-      ConfigStatement* stmt = stmts[0];
       ConfigStatement* simple = stmts[stmts.size - 1];
       // TODO: Call entity function to make sure that the entity exists and it is a config wire
 
@@ -380,8 +379,6 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           
         Array<SpecExpression*> args = parsedRhs.args;
 
-        //FunctionInvocation* functionInvoc = stmt->func;
-
         ConfigFunction* function = nameToFunction->Get(functionName);
         if(!function){
           // TODO: Error
@@ -403,7 +400,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
           //SymbolicExpression* var = PushVariable(temp,functionInvoc->arguments[i]);
             
-          SYM_Expr var = SymbolicFromSpecExpression2(args[i]);
+          SYM_Expr var = SymbolicFromSpecExpression(args[i]);
           argToVar->Insert(arg.name,var);
         }
 
@@ -579,8 +576,8 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
       String sizeExpr = "1";
       if(!singleStatement){
-        SYM_Expr start = SymbolicFromSpecExpression2(stmt->def2.startSym);
-        SYM_Expr end = SymbolicFromSpecExpression2(stmt->def2.endSym);
+        SYM_Expr start = SymbolicFromSpecExpression(stmt->def2.startSym);
+        SYM_Expr end = SymbolicFromSpecExpression(stmt->def2.endSym);
 
         SYM_Expr diff = end - start;
         sizeExpr = SYM_Repr(diff,out);

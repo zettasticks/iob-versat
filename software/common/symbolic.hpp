@@ -2,60 +2,6 @@
 
 #include "utils.hpp"
 
-#if 0
-A SYM_Expr is always normalized.
-#endif
-
-#if 0
-- LEFT HERE - I'm thinking if there is a way of 
-avoiding performing normalization all the time 
-and having to call the function everytime we want to
-do something. 
-
-If we are already reusing nodes and such, I think that 
-one thing that we could try is to add a flag to each node
-that tells if the node has been normalized or not.
-
-Every time we call a GetOrAllocate node we check the flag
-and if false then we Normalize the node.
-
-We also change the normalization from being a set of 
-different step functions into a single step function.
-
-The only thing that we actually care about is the "top"
-level since that is the only point that can change and that 
-can affect the lower levels.
-
-ALSO, VERY IMPORTANT:
-
-- When you "normalize" a node by this method you can technically
-make it so the node becomes something else entirely. If we have the node
-'b + a' and then we add a new node '-a' then we obviously are gonna
-"normalize" into 'b'. In this case, what we could do, since we are gonna 
-allocate the 'b + a + -a' node anyway is to store inside the node a 
-bit indicating that the node was normalized as well as the pointer to the 
-normalized node.
-
-So the node 'b + a + -a' will contain a pointer to the node 'b' as well as
-a bit (probably stored inside the pointer) that tells that the node was normalized.
-
-If in the future the same operation is repeated, the code can just check the 
-normalized bit, see that it is set and follow the pointer to the 'b' node.
-
-That means that we only ever "normalize" once. And the entire point of normalization
-is to handle things that the individual operators cannot handle alone (Adding a 
-minus term to a sum is not guaranteed to cancel out with another term simply for the fact
-that the terms might be below on the tree. "Ex: (+,-a,(+,b,(+,c,(+,d,a))))" the first -a 
-is not detected by the operator+ function since the positive a is way below the 
-sum tree.
-
-THE OBJECTIVE IS SO THAT USER CODE NEVER HAS TO CALL A NORMALIZATION FUNCTION EVER.
-We already know that we want to move divisions to the top and only have one total.
-We already know that we want to apply distributivity so that at the very end we can
-separate everything into groups cleanly.
-No point forcing user to call Normalize everywhere. We already know what we want.
-#endif
-
 struct Arena;
 
 void SYM_Init();
@@ -167,23 +113,20 @@ inline SYM_Node* GetPointer(SYM_Node* ptr){return (SYM_Node*) (((iptr) ptr) & ~0
 
 inline SYM_Node* GetPointer(SYM_Expr expr){return GetPointer(expr.node);}
 
-// nocheckin (REMOVE THIS SINCE EVERY SYM_EXPR IS NOW VALID)
-inline bool Valid(SYM_Expr expr){return true;}
 void SYM_Print(SYM_Expr expr);
 
-#if 1
 SYM_Expr operator+(SYM_Expr left,SYM_Expr right);
+SYM_Expr& operator+=(SYM_Expr& left,SYM_Expr right);
 SYM_Expr operator-(SYM_Expr left,SYM_Expr right);
 SYM_Expr operator-(SYM_Expr right);
 SYM_Expr operator*(SYM_Expr left,SYM_Expr right);
 SYM_Expr operator/(SYM_Expr left,SYM_Expr right);
-#endif
 
 SYM_Expr SYM_PosMax(SYM_Expr left,SYM_Expr right);
 SYM_Expr SYM_Align(SYM_Expr left,SYM_Expr right);
 
-SYM_Expr SYM_Variable(String name);
-SYM_Expr SYM_Literal(int value);
+SYM_Expr SYM_Var(String name);
+SYM_Expr SYM_Lit(int value);
 
 SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<String,SYM_Expr>* replacements);
 SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<SYM_Expr,SYM_Expr>* replacements);
@@ -197,7 +140,6 @@ bool SYM_IsZeroValue(SYM_Expr expr);
 bool SYM_IsOneValue(SYM_Expr expr);
 
 SYM_Expr SYM_Normalize(SYM_Expr in);
-SYM_Expr SYM_Normalize2(SYM_Expr in);
 
 void SYM_Repr(StringBuilder* b,SYM_Expr expr);
 String SYM_Repr(SYM_Expr expr,Arena* out);
@@ -208,16 +150,15 @@ bool operator<(SYM_Expr left,SYM_Expr right);
 
 struct SYM_EvaluateResult{
   int result;
-  Array<String> errors;
 
   // TODO: Replace with a big flag approach
   bool divByZero;
   bool nonConstantValue;
 
-  bool Error(){return errors.size > 0;}
+  bool Error(){return (divByZero || nonConstantValue);}
 };
 
-SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr in,Arena* out);
+SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr in);
 
 int Compare(SYM_Expr left,SYM_Expr right);
 

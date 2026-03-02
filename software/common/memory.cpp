@@ -33,12 +33,11 @@ struct FunctionAllocationInfo{
   size_t memoryUsed;
 };
 
+#if 0
 static Arena debugMemoryArena;
 static Array<ArenaInfo> debugArenaStack;
 static int debugArenaIndex;
-
-
-//static ArenaList<FunctionAllocationInfo>* debugInfo;
+#endif
 
 static void InitMemoryDebug(){
 #if 0

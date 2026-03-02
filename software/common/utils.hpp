@@ -211,7 +211,7 @@ template<typename T>
 Array<T> Reverse(Array<T> arr,Arena* out){
   Array<T> res = PushArray<T>(out,arr.size);
   
-  for(u32 i = 0; i < arr.size; i++){
+  for(int i = 0; i < arr.size; i++){
     res[arr.size - i - 1] = arr[i];
   }
 

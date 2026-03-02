@@ -333,7 +333,6 @@ int main(int argc,char* argv[]){
   FREE_ARENA(moduleAccum);
   TrieMap<String,ModuleInfo>* allModules = PushTrieMap<String,ModuleInfo>(moduleAccum);
 
-  bool anyError = false;
   for(FileContent file : defaultVerilogUnits){
     String content = file.content;
     
@@ -699,7 +698,7 @@ int main(int argc,char* argv[]){
 
       // This is after parameter instantiation which means that we can actually calculate this.
       
-      SYM_EvaluateResult eval = SYM_ConstantEvaluate(unit->memMapSym,temp);
+      SYM_EvaluateResult eval = SYM_ConstantEvaluate(unit->memMapSym);
       
       // nocheckin
       // TODO: Properly check the result 
@@ -739,14 +738,17 @@ int main(int argc,char* argv[]){
                       globalOptions.softwareOutputFilepath,
                       val);
 
-  DEBUG_BREAK();
-
   // NOTE: This data is printed so it can be captured by the IOB python setup.
   // TODO: Probably want a more robust way of doing this. Eventually want to printout some stats so we can
   //       actually visualize what we are producing in terms of resources/performance.
+  SYM_EvaluateResult eval = SYM_ConstantEvaluate(val.configurationBits);
+  SYM_EvaluateResult eval2 = SYM_ConstantEvaluate(val.stateBits);
+  Assert(!eval.Error());
+  Assert(!eval2.Error());
+
   printf("Some stats\n");
-  printf("CONFIG_BITS: %d\n",val.configurationBits);
-  printf("STATE_BITS: %d\n",val.stateBits);
+  printf("CONFIG_BITS: %d\n",eval.result);
+  printf("STATE_BITS: %d\n",eval2.result);
 
   printf("MEM_USED: ");
   String content = ReprMemorySize(val.totalExternalMemory,temp);

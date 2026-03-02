@@ -87,24 +87,16 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
   for(int i = 0; i < info->configs.size; i++){
     WireExpression& wire = info->configs[i];
 
-    int size = EvalRange(wire.bitSize,instantiated);
-
     configs[i].name = info->configs[i].name;
-    configs[i].bitSize = size;
     configs[i].stage = info->configs[i].stage;
-
     configs[i].sizeExpr = SymbolicExpressionFromVerilog(wire.bitSize);
   }
 
   for(int i = 0; i < info->states.size; i++){
     WireExpression& wire = info->states[i];
 
-    int size = EvalRange(wire.bitSize,instantiated);
-
     states[i].name = info->states[i].name;
-    states[i].bitSize = size;
     states[i].stage = info->states[i].stage;
-
     states[i].sizeExpr = SymbolicExpressionFromVerilog(wire.bitSize);
   }
 
@@ -463,12 +455,12 @@ FUDeclaration* RegisterSubUnit(Accelerator* circuit,Array<ParameterDef> params,S
   // Default parameters given to all modules. Parameters need a proper revision, but need to handle parameters going up in the hierarchy
 
   res->parameters = PushArray<Parameter>(permanent,6 + params.size);
-  res->parameters[0] = {"ADDR_W",SYM_Literal(32)};
-  res->parameters[1] = {"DATA_W",SYM_Literal(32)};
-  res->parameters[2] = {"DELAY_W",SYM_Literal(7)};
-  res->parameters[3] = {"AXI_ADDR_W",SYM_Literal(32)};
-  res->parameters[4] = {"AXI_DATA_W",SYM_Literal(32)};
-  res->parameters[5] = {"LEN_W",SYM_Literal(20)};
+  res->parameters[0] = {"ADDR_W",SYM_Lit(32)};
+  res->parameters[1] = {"DATA_W",SYM_Lit(32)};
+  res->parameters[2] = {"DELAY_W",SYM_Lit(7)};
+  res->parameters[3] = {"AXI_ADDR_W",SYM_Lit(32)};
+  res->parameters[4] = {"AXI_DATA_W",SYM_Lit(32)};
+  res->parameters[5] = {"LEN_W",SYM_Lit(20)};
 
   for(int i = 0; i < params.size; i++){
     ParameterDef def = params[i];
@@ -798,7 +790,7 @@ TrieMap<String,SYM_Expr>* GetParametersOfUnit(FUInstance* inst,Arena* out){
     String paramName = param.name;
 
     if(IsGlobalParameter(paramName)){
-      map->Insert(paramName,SYM_Variable(paramName));
+      map->Insert(paramName,SYM_Var(paramName));
     } else {
       if(val.has_value()){
         map->Insert(paramName,val.value());
@@ -837,9 +829,9 @@ Array<WireInformation> CalculateWireInformation(Pool<FUInstance> nodes,Hashmap<S
 
     for(Parameter p : decl->parameters){
       if(IsGlobalParameter(p.name)){
-        defaultParams->Insert(SYM_Variable(p.name),SYM_Variable(p.name));
+        defaultParams->Insert(SYM_Var(p.name),SYM_Var(p.name));
       } else {
-        defaultParams->Insert(SYM_Variable(p.name),p.defaultVal);
+        defaultParams->Insert(SYM_Var(p.name),p.defaultVal);
       }
     }
     
@@ -860,12 +852,10 @@ Array<WireInformation> CalculateWireInformation(Pool<FUInstance> nodes,Hashmap<S
     }
   }
 
-  int defaultDelaySize = 7;
   int delaysInserted = 0;
   for(auto n : nodes){
     for(int i = 0; i < n->declaration->NumberDelays(); i++){
       Wire wire = {};
-      wire.bitSize = defaultDelaySize;
       wire.name = PushString(out,"Delay%d",delaysInserted++);
       wire.stage = VersatStage_COMPUTE;
 

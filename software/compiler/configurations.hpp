@@ -129,19 +129,8 @@ struct InstanceInfo{
   Array<bool> isSpecificConfigShared;
   
   Opt<int> statePos;
-  
-  // Some of these could be removed and be computed from the others
-  // The value of the start and the memory mask.
-  // If we just have memMapped and the total size of the mem mapped 
-  // address then we could generate the memDecisionMask.
-  //Opt<iptr> memMapped; // Used on Code Gen, to create the addresses for the memories.
-
-  // nocheckin
-  //bool memMapValid;
-  //Opt<int> memMapBits;
 
   SYM_Expr memMapSym;
-
   Opt<iptr> memMapped; // After parameter instantiation and this only makes sense for the top level.
 
   int memGlobalIndex;
@@ -273,7 +262,6 @@ struct AccelInfo{
   int delays;
   int nIOs;
   int statics;
-  int staticBits;
   int sharedUnits;
   int externalMemoryInterfaces;
   int numberConnections;
@@ -281,11 +269,9 @@ struct AccelInfo{
 
   Array<Wire> configWires;
   Array<Wire> stateWires;
-
   Array<Wire> allStaticWires;
 
-  SYM_Expr staticExpr; // nocheckin: Check this 
-  SYM_Expr delayStart; // nocheckin: Check this. Why string? Why not an actual expression
+  SYM_Expr staticBits;
 
   // This value is now the MAXIMUM of the units addresses.
   SYM_Expr memMapBitsSym;

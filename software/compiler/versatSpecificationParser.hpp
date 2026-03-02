@@ -60,7 +60,7 @@ struct SpecExpression{
   SpecType type;
 };
 
-//nocheckin
+//nocheckin - TODO: We probably want to remove this after we move more logic to Env
 Array<Token> AccumTokens(SpecExpression* top,Arena* out);
 
 struct VarDeclaration{
@@ -350,19 +350,4 @@ FUInstanceIterator StartIteration(Env* env,Entity* ent);
 
 // TODO
 // nocheckin - This needs to be moved to Env to properly handle error situations
-SYM_Expr SymbolicFromSpecExpression2(SpecExpression* spec);
-
-#if 0
-// nocheckin
-// TODO: We are actually dealing with 2 types of expressions. 
-//       Connection expressions can have a '{' and '}' after a variable.
-//       UserConfig expressions cannot (otherwise cannot differentiate on expr like 'for 0..1 {' )
-
-
-LEFT HERE - Since we are simplifying this part of the codebase, might
-as well go all out and finish the job. Parser stuff needs to be
-simplified. 
-- Afterwards a small cleanup of anything that is left, any unused function, maybe 
-improve the error messages and start making better error message generation support.
-- Finally, move on to versat-ai and figure out why the convolution is giving out that bug.
-#endif
+SYM_Expr SymbolicFromSpecExpression(SpecExpression* spec);

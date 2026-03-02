@@ -256,17 +256,17 @@ struct VersatComputedValues{
   int nStatics;
 
   int nDelays;
-  int delayBitsStart;
+  SYM_Expr delayBitsStart;
 
   int nUnits;
   int nDones;
   
   // Configurations = config + static + delays
-  int configurationBits;
+  SYM_Expr configurationBits;
   int configurationAddressBits;
 
   int nStates;
-  int stateBits;
+  SYM_Expr stateBits;
   int stateAddressBits;
 
   int unitsMapped;
@@ -280,10 +280,6 @@ struct VersatComputedValues{
   // External memories, not memory mapped.
   //int externalMemoryInterfaces;
   int totalExternalMemory;  
-
-  SYM_Expr configSizeExpr;
-  SYM_Expr delayStart;
-  SYM_Expr configurationBitsExpr;
 };
 
 struct DAGOrderNodes{
