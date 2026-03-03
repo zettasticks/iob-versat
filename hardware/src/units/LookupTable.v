@@ -1,9 +1,9 @@
 `timescale 1ns / 1ps
 
 module LookupTable #(
-   parameter DATA_W        = 32,
-   parameter SIZE_W        = 32,
-   parameter ADDR_W        = 8
+   parameter DATA_W     = 32,
+   parameter SIZE_W     = 32,
+   parameter ADDR_W     = 8
 ) (
    //databus interface
    input      [DATA_W/8-1:0] wstrb,
@@ -35,6 +35,7 @@ module LookupTable #(
    input clk,
    input rst
 );
+   localparam OFFSET_W = $clog2(DATA_W / 8);
 
    assign rdata = 0;
 
@@ -82,9 +83,9 @@ module LookupTable #(
          if (valid && |wstrb) begin
             addr_0_reg <= addr;
          end else begin
-            addr_0_reg <= in0[ADDR_W-1:0];
+            addr_0_reg <= in0[ADDR_W-1:0] << OFFSET_W;
          end
-         addr_1_reg <= in1[ADDR_W-1:0];
+         addr_1_reg <= in1[ADDR_W-1:0] << OFFSET_W;
       end
    end
 

@@ -2059,7 +2059,7 @@ NormalizeResult NormalizeWhileChecking(SYM_Expr in){
   bool failedEvaluation = false;
   bool failedFromDivZero = false;
   int gotOnError = 0;
-  String functionName;
+  String functionName = {};
   int functionLine = 0;
 
   SYM_Expr finalRes = res;
