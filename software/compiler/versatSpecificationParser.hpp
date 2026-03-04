@@ -142,8 +142,6 @@ struct MergeDef : public DefBase{
   Array<Token> mergeModifiers;
 };
 
-struct AddressGenForDef;
-
 struct ConstructDef{
   ConstructType type;
   union {
@@ -178,7 +176,8 @@ FUDeclaration* InstantiateSpecifications(String content,ConstructDef def);
 enum ConfigAccessType{
   ConfigAccessType_BASE,
   ConfigAccessType_ACCESS,
-  ConfigAccessType_ARRAY
+  ConfigAccessType_ARRAY,
+  ConfigAccessType_FUNC_CALL
 };
 
 // TODO: Probably rename this.
@@ -187,11 +186,12 @@ struct ConfigIdentifier{
   ConfigAccessType type;
 
   ConfigIdentifier* parent;
-  union{
-    Token name;
-    SpecExpression* trueExpr;
-  };
 
+  // TODO: Union
+  Token name;
+  SpecExpression* trueExpr;
+  Token functionName;
+  Array<SpecExpression*> arguments;
 };
 
 inline ConfigIdentifier* GetBase(ConfigIdentifier* top){

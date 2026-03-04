@@ -815,8 +815,6 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
   res.configurationBits = configExpr + staticBits + delayBits;
   res.delayBitsStart = configExpr + staticBits;
 
-  DEBUG_BREAK();
-
   res.memoryAddressBits = maxMemMapBits;
 
   res.configurationAddressBits = log2i(nConfigurations) + 2;

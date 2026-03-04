@@ -3044,7 +3044,8 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
       NOT_POSSIBLE();
     };
 
-    for(MergePartition part : info.infos){
+    for(int mergeIndex = 0; mergeIndex <  info.infos.size; mergeIndex++){
+      MergePartition part = info.infos[mergeIndex];
       for(ConfigFunction* func : part.userFunctions){
         if(func->type != ConfigFunctionType_CONFIG){
           continue;
@@ -3064,18 +3065,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
           c->Member("int","value");
           c->EndStruct();
         };
-
-
-/*
-Problem: If we want the address gen to take into account the limitations of space, we need to know the amount of memory at software compile time, which means that we need to know the size of things at compile time even though we also allow it to be an hardware value.
-
-         We want the hardware and the software side to match and we want the hardware to preserve the hardware parameters as much as possible but we also want the software to match the hardware to the letter.
-
-         If we add the freedom for Versat hardware to be parameterizable then the software must get the parameters from somewhere, otherwise there is no point in making the hardware changeable.
-         
-         It might be possible that we are too tied in the generation of software and hardware to allow user to change Verilog parameters without having the user pass through Versat.
-*/
-      
+     
         String fullFunctionName = PushString(temp,"%.*s_Size",UN(func->fullName));
         c->FunctionBlock("static inline int",fullFunctionName);
       
@@ -3098,12 +3088,8 @@ Problem: If we want the address gen to take into account the limitations of spac
 
         for(ConfigStuff stuff : func->stuff){
           if(stuff.type == ConfigStuffType_ADDRESS_GEN){
-            InstanceInfo* info = nullptr;
-            for(InstanceInfo& in : part.info){
-              if(in.baseName == stuff.lhs){
-                info = &in;
-              }
-            }
+            AccelInfoIterator iter = StartIteration(&info,mergeIndex);
+            InstanceInfo* info = Find(iter.StepInsideOnly(),stuff.hierLhs);
 
             Assert(info);
 
@@ -3255,7 +3241,7 @@ Problem: If we want the address gen to take into account the limitations of spac
             FunctionMemoryTransfer transf = assign.transfer;
 
             String varName = transf.variable;
-            String sizeExpr = transf.sizeExpr;
+            String sizeExpr = SYM_Repr(transf.size,temp);
 
             String entityMemName = {};
             for(InstanceInfo& info : part.info){
@@ -3305,17 +3291,19 @@ Problem: If we want the address gen to take into account the limitations of spac
               AccessAndType access = assign.access;
               AddressGenInst inst = access.inst;
               
+              String fullLhs = JoinStrings(assign.hierLhs,".",temp);
+
               FULL_SWITCH(inst.type){
               case AddressGenType_GEN: {
-                String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(assign.lhs));
+                String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(fullLhs));
                 EmitGenStatements(c,access,lhs);
               } break;
               case AddressGenType_MEM: {
-                String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(assign.lhs));
+                String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(fullLhs));
                 EmitMemStatements(c,access,lhs);
               } break;
               case AddressGenType_READ: {
-                String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(assign.lhs));
+                String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(fullLhs));
                 EmitReadStatements(c,access,lhs,assign.accessVariableName);
               } break;
             }

@@ -519,7 +519,7 @@ static Array<Pair<String,String>> InstantiateMem(AddressAccess* access,int port,
   return PushArray(out,list);
 }
 
-AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> loops,SYM_Expr addr,String content){
+AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef> loops,SYM_Expr addr,String content){
   Arena* out = globalPermanent;
   
   TEMP_REGION(temp,out);
@@ -527,7 +527,7 @@ AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> lo
   // TODO: Issue a warning if a variable is declared but not used.
   // TODO: Better error reporting by allowing code to call the ReportError from the spec parser 
   bool anyError = false;
-  for(AddressGenForDef2 loop : loops){
+  for(AddressGenForDef loop : loops){
     Opt<Token> sameNameAsInput = Find(inputs,loop.loopVariable);
 
     if(sameNameAsInput.has_value()){
@@ -562,7 +562,7 @@ AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> lo
   
   auto loopVarBuilder = StartArray<String>(temp);
   for(int i = 0; i < loops.size; i++){
-    AddressGenForDef2 loop = loops[i];
+    AddressGenForDef loop = loops[i];
 
     *loopVarBuilder.PushElem() = PushString(temp,loop.loopVariable);
   }
@@ -570,7 +570,7 @@ AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> lo
       
   // Builds expression for the internal address which is basically just a multiplication of all the loops sizes
   SYM_Expr loopExpression = SYM_One;
-  for(AddressGenForDef2 loop : loops){
+  for(AddressGenForDef loop : loops){
     // TODO: Handle parsing errors
     // TODO: Performance, we are parsing this twice, there is another below. Maybe we can join the loops into a single one
 
@@ -599,7 +599,7 @@ AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef2> lo
 
     SYM_Expr term = SYM_Factor(fullExpr,SYM_Var(var));
 
-    AddressGenForDef2 loop = loops[i];
+    AddressGenForDef loop = loops[i];
     
     // TODO: Performance, we are parsing the start and end stuff twice. This is the second, the first is above.
     SYM_Expr start = SymbolicFromSpecExpression(loop.startSym);

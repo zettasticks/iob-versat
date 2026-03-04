@@ -605,6 +605,24 @@ Entity* Env::GetEntity(ConfigIdentifier* id,Arena* out){
 
         nextEnt = ent;
       } break;
+      case ConfigAccessType_FUNC_CALL:{
+        Token funcName = ptr->functionName;
+        FUDeclaration* decl = ent->instance->declaration;
+
+        for(MergePartition part : decl->info.infos){
+          for(ConfigFunction* func : part.userFunctions){
+            if(func->individualName == funcName){
+              Entity* userFunc = PushStruct<Entity>(out);
+
+              userFunc->func = func;
+              userFunc->type = EntityType_CONFIG_FUNCTION;
+
+              if(nextEnt) ReportError({},"Name collision");
+              nextEnt = userFunc;
+            }
+          }
+        }
+      } break;
       case ConfigAccessType_ACCESS:{
         Token access = ptr->name;
 
@@ -666,20 +684,6 @@ Entity* Env::GetEntity(ConfigIdentifier* id,Arena* out){
               break;
             }
           }
- 
-          for(MergePartition part : decl->info.infos){
-            for(ConfigFunction* func : part.userFunctions){
-              if(func->individualName == access){
-                Entity* userFunc = PushStruct<Entity>(out);
-
-                userFunc->func = func;
-                userFunc->type = EntityType_CONFIG_FUNCTION;
-
-                if(nextEnt) ReportError({},"Name collision");
-                nextEnt = userFunc;
-              }
-            }
-          }
         } break;
         case EntityType_NODE:{
           Assert(false); // We do not have nodes since Env is only used currently to store FUInstances and other parseed data stuff. Nothing concrete exists at this point in the code.
@@ -688,6 +692,7 @@ Entity* Env::GetEntity(ConfigIdentifier* id,Arena* out){
         case EntityType_CONFIG_FUNCTION:
         case EntityType_FU_ARRAY:
         case EntityType_MEM_PORT:
+        case EntityType_PARAM:
         case EntityType_CONFIG_WIRE:
         case EntityType_STATE_WIRE:
         case EntityType_VARIABLE_INPUT:
@@ -2222,6 +2227,8 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
 }
 
 static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
+  TEMP_REGION(temp,out);
+  
   NewToken id = parser->ExpectNext(NewTokenType_IDENTIFIER);
   
   ConfigIdentifier* base = PushStruct<ConfigIdentifier>(out);
@@ -2236,9 +2243,32 @@ static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
     if(!parsed && parser->IfNextToken('.')){
       Token access = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
 
-      parsed = PushStruct<ConfigIdentifier>(out);
-      parsed->type = ConfigAccessType_ACCESS;
-      parsed->name = access;
+      if(parser->IfNextToken('(')){
+        auto args = PushList<SpecExpression*>(temp);       
+      
+        while(!parser->Done()){
+          SpecExpression* arg = ParseMathExpression(parser,out);
+
+          *args->PushElem() = arg;
+        
+          if(parser->IfNextToken(',')){
+            continue;
+          }
+        
+          break;
+        }
+
+        parser->ExpectNext(')');
+
+        parsed = PushStruct<ConfigIdentifier>(out);
+        parsed->type = ConfigAccessType_FUNC_CALL;
+        parsed->functionName = access;
+        parsed->arguments = PushArray(out,args);
+      } else {
+        parsed = PushStruct<ConfigIdentifier>(out);
+        parsed->type = ConfigAccessType_ACCESS;
+        parsed->name = access;
+      }
     }
 
     if(!parsed && parser->IfNextToken('[')){
@@ -2288,17 +2318,22 @@ static ConfigStatement* ParseConfigStatement(Parser* parser,Arena* out){
 
     parser->ExpectNext('}');
     
-    stmt->def2.loopVariable = C(loopVariable);
-    stmt->def2.startSym = start;
-    stmt->def2.endSym = end;
+    stmt->def.loopVariable = C(loopVariable);
+    stmt->def.startSym = start;
+    stmt->def.endSym = end;
     stmt->childs = PushArray(out,list);
     stmt->type = ConfigStatementType_FOR_LOOP;
   } else if(parser->IfPeekToken(NewTokenType_IDENTIFIER)) {
     stmt->lhs = ParseConfigIdentifier(parser,out);
-    parser->ExpectNext('=');
-    stmt->trueRhs = ParseMathExpression(parser,out);
-    parser->ExpectNext(';');
-    stmt->type = ConfigStatementType_STATEMENT;
+
+    if(parser->IfNextToken('=')){
+      stmt->rhs = ParseMathExpression(parser,out);
+      parser->ExpectNext(';');
+      stmt->type = ConfigStatementType_EQUALITY;
+    } else {
+      parser->ExpectNext(';');
+      stmt->type = ConfigStatementType_FUNCTION_CALL;
+    }
   } else {
     parser->ReportUnexpectedToken(parser->NextToken(),{});
     // TODO: stmt = EmptyStmt (Return something so that code does not have to worry about null statements).

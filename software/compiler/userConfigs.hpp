@@ -52,19 +52,19 @@ struct FunctionInvocation{
 
 enum ConfigStatementType{
   ConfigStatementType_FOR_LOOP,
-  ConfigStatementType_STATEMENT
+  ConfigStatementType_EQUALITY,
+  ConfigStatementType_FUNCTION_CALL
 };
+
+inline bool IsLeaf(ConfigStatementType type){ return (type == ConfigStatementType_EQUALITY || type == ConfigStatementType_FUNCTION_CALL);}
 
 struct ConfigStatement{
   ConfigStatementType type;
 
   // TODO: Union
-  ConfigIdentifier* lhs; // We currently only support <name>.<wire> assignments. NOTE: But I think that we eventually need to support N names and one wire.
-
-  SpecExpression* trueRhs;
-
-  //AddressGenForDef def;
-  AddressGenForDef2 def2;
+  ConfigIdentifier* lhs;
+  SpecExpression* rhs;
+  AddressGenForDef def;
   Array<ConfigStatement*> childs; // Only for loops contains these right now.
 };
 
@@ -117,7 +117,7 @@ enum TransferDirection{
 struct FunctionMemoryTransfer{
   TransferDirection dir;
 
-  String sizeExpr;
+  SYM_Expr size;
   String variable;
   String entityName;
 };
@@ -137,13 +137,35 @@ struct ConfigAssignment{
   String special;
 };
 
+// nocheckin: 
+inline Array<String> Add(Array<String> in,String toAdd,Arena* out){
+  Array<String> res = PushArray<String>(out,in.size + 1);
+  for(int i = 0; i < in.size; i++){
+    res[i] = in[i];
+  }
+  res[in.size] = toAdd;
+  return res;
+}
+
+inline Array<String> Add(String toAdd,Array<String> in,Arena* out){
+  Array<String> res = PushArray<String>(out,in.size + 1);
+  res[0] = toAdd;
+  for(int i = 0; i < in.size; i++){
+    res[i+1] = in[i];
+  }
+  return res;
+}
+
 struct ConfigStuff{
   ConfigStuffType type;
 
   // TODO: This lhs is only for access. Need to join stuff with assign and access if we eventually cleanup the code.
+  Array<String> hierLhs;
+  
+  // nocheckin: We probably gonna remove this if we keep using the hierLhs approach
   String lhs;
-  String accessVariableName;
 
+  String accessVariableName;
   String nameOfLeftEntity;
 
   union{
@@ -162,7 +184,7 @@ struct ConfigVariable{
 struct ConfigFunction{
   ConfigFunctionType type;
 
-  FunctionMemoryTransfer transfer;
+  //FunctionMemoryTransfer transfer;
 
   String individualName;
   String fullName;
