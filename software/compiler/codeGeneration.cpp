@@ -484,6 +484,7 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
   int ioSeen = 0;
   int memoryMappedSeen = 0;
   int externalSeen = 0;
+  int memoryRDataSeen = 0;
   
   for(auto iter = StartIteration(&accelInfo); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* unit = iter.CurrentUnit();
@@ -593,10 +594,12 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
         String repr = SYM_Repr(unit->memMapSym,temp);
         m->PortConnect("addr",SF("addr[%.*s-1:0]",UN(repr)));
       }
-      m->PortConnect("rdata",SF("unitRData[%d]",memoryMappedSeen));
-      m->PortConnect("rvalid",SF("unitRValid[%d]",memoryMappedSeen));
+      m->PortConnect("rdata",SF("unitRData[%d]",memoryRDataSeen));
+      m->PortConnect("rvalid",SF("unitRValid[%d]",memoryRDataSeen));
       m->PortConnect("wdata","wdata");
         
+      memoryRDataSeen += 1;
+
       if(unit->isComposite){
         for(int i = 0; i < unit->memSize; i++){
           m->PortConnectIndexed("unit_valid_%d",i,SF("unit_valid_%d",memoryMappedSeen++));
@@ -654,6 +657,7 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
   int ioSeen = 0;
   int memoryMappedSeen = 0;
   int externalSeen = 0;
+  int memoryRDataSeen = 0;
 
   for(auto iter = StartIteration(accelInfo); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* unit = iter.CurrentUnit();
@@ -783,9 +787,11 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
           m->PortConnect("addr",SF("csr_addr[(%.*s)-1:0]",UN(repr)));
         }
       }
-      m->PortConnect("rdata",SF("unitRData[%d]",memoryMappedSeen));
-      m->PortConnect("rvalid",SF("unitRValid[%d]",memoryMappedSeen));
+      m->PortConnect("rdata",SF("unitRData[%d]",memoryRDataSeen));
+      m->PortConnect("rvalid",SF("unitRValid[%d]",memoryRDataSeen));
       m->PortConnect("wdata","data_data");
+
+      memoryRDataSeen += 1;
         
       if(unit->isComposite){
         for(int i = 0; i < unit->memSize; i++){
