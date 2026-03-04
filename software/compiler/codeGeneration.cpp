@@ -474,13 +474,16 @@ void EmitCombOperations(AccelInfo info,VEmitter* m){
 void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,Array<Array<int>> wireIndexByInstanceGood,Array<Wire> configs){
   TEMP_REGION(temp,m->arena);
   
+  // nocheckin: TODO: This is stupid. We do not want to use the "Seen" pattern anymore.
+  //                  All this data needs to be represented inside the AccelInfo and 
+  //                  the code in here only does data access. We do not want to keep using this form of 
+  //                  implicit logic.
   int delaySeen = 0;
   int statesSeen = 0;
   int doneSeen = 0;
   int ioSeen = 0;
   int memoryMappedSeen = 0;
   int externalSeen = 0;
-  int memMappedSeen = 0;
   
   for(auto iter = StartIteration(&accelInfo); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* unit = iter.CurrentUnit();
@@ -575,19 +578,8 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
       externalSeen += 1;
     }
 
-    if(!SYM_IsZeroValue(unit->memMapSym)){
-      if(unit->isComposite){
-        for(int i = 0; i < unit->memSize; i++){
-          m->PortConnectIndexed("unit_valid_%d",i,SF("unit_valid_%d",memMappedSeen++));
-        }
-      } else {
-        m->PortConnect("valid",SF("unit_valid_%d",memoryMappedSeen));
-      }
-    }
-
     // Memory mapping
     if(!SYM_IsZeroValue(unit->memMapSym)){
-      //m->PortConnect("valid",SF("memoryMappedEnable[%d]",memoryMappedSeen));
       m->PortConnect("wstrb","wstrb");
       
       // nocheckin
@@ -605,7 +597,13 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
       m->PortConnect("rvalid",SF("unitRValid[%d]",memoryMappedSeen));
       m->PortConnect("wdata","wdata");
         
-      memoryMappedSeen += 1;
+      if(unit->isComposite){
+        for(int i = 0; i < unit->memSize; i++){
+          m->PortConnectIndexed("unit_valid_%d",i,SF("unit_valid_%d",memoryMappedSeen++));
+        }
+      } else {
+        m->PortConnect("valid",SF("unit_valid_%d",memoryMappedSeen++));
+      }
     }
 
     // Databus
@@ -656,7 +654,6 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
   int ioSeen = 0;
   int memoryMappedSeen = 0;
   int externalSeen = 0;
-  int memMappedSeen = 0;
 
   for(auto iter = StartIteration(accelInfo); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* unit = iter.CurrentUnit();
@@ -768,19 +765,8 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
       externalSeen += 1;
     }
 
-    if(!SYM_IsZeroValue(unit->memMapSym)){
-      if(unit->isComposite){
-        for(int i = 0; i < unit->memSize; i++){
-          m->PortConnectIndexed("unit_valid_%d",i,SF("unit_valids[%d]",memMappedSeen++));
-        }
-      } else {
-        m->PortConnect("valid",SF("unit_valids[%d]",memoryMappedSeen++));
-      }
-    }
-
     // Memory mapping
     if(!SYM_IsZeroValue(unit->memMapSym)){
-      //m->PortConnect("valid",SF("memoryMappedEnable[%d]",memoryMappedSeen));
       m->PortConnect("wstrb","data_wstrb");
 
       if(!SYM_IsZeroValue(unit->memMapSym)){
@@ -801,7 +787,13 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
       m->PortConnect("rvalid",SF("unitRValid[%d]",memoryMappedSeen));
       m->PortConnect("wdata","data_data");
         
-      memoryMappedSeen += 1;
+      if(unit->isComposite){
+        for(int i = 0; i < unit->memSize; i++){
+          m->PortConnectIndexed("unit_valid_%d",i,SF("unit_valids[%d]",memoryMappedSeen++));
+        }
+      } else {
+        m->PortConnect("valid",SF("unit_valids[%d]",memoryMappedSeen++));
+      }
     }
 
     // Databus
