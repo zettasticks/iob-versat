@@ -184,8 +184,6 @@ struct ConfigVariable{
 struct ConfigFunction{
   ConfigFunctionType type;
 
-  //FunctionMemoryTransfer transfer;
-
   String individualName;
   String fullName;
   FUDeclaration* decl; // Every config function is associated to one declaration only.

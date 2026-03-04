@@ -743,3 +743,16 @@ Array<Pair<T,Array<T>>> AssociateOneToOthers(Array<T> arr,Arena* out){
 
   return res;
 }
+
+template<typename K,typename D>
+Array<D> Replace(Array<K> in,TrieMap<K,D>* map,Arena* out){
+  int size = in.size;
+  
+  Array<D> res = PushArray<D>(out,size);
+
+  for(int i = 0; i < size; i++){
+    res[i] = map->GetOrFail(in[i]);
+  }
+  
+  return res;
+}

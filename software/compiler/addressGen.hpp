@@ -21,6 +21,9 @@ struct AddressGenForDef{
   SpecExpression* endSym;
 };
 
+// nocheckin: TODO: Is there a point to separating the internal and external stuff at this point?
+//                  We could just store a single loop and only do the separating afterwards.
+//                  We would probably simplify a bunch of things
 struct AddressAccess{
   String name;
   LoopLinearSum* internal;
@@ -29,6 +32,7 @@ struct AddressAccess{
   SYM_Expr dutyDivExpr; // Any expression of the form (A/B) is broken up, this var saves B and the internal/external LoopLinearSum take the A part. For a non div expression this stores '1'.
   
   Array<String> inputVariableNames;
+  Array<String> loopVars;
 };
 
 struct ExternalMemoryAccess{
@@ -92,6 +96,11 @@ AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef> loo
 
 AddressAccess* ConvertAccessTo1External(AddressAccess* access,Arena* out);
 AddressAccess* ConvertAccessTo2External(AddressAccess* access,int biggestLoopIndex,Arena* out);
+
+// ======================================
+// 
+
+AddressAccess* ReplaceVariables(AddressAccess* in,TrieMap<String,SYM_Expr>* varReplace,Array<String> newInputVariableNames,Arena* out);
 
 // ======================================
 // Code emission

@@ -133,6 +133,19 @@ AddressAccess* ConvertAccessTo2External(AddressAccess* access,int biggestLoopInd
   return result;
 }
 
+AddressAccess* ReplaceVariables(AddressAccess* in,TrieMap<String,SYM_Expr>* varReplace,Array<String> newInputVariableNames,Arena* out){
+  AddressAccess* res = PushStruct<AddressAccess>(out);
+  
+  res->name = PushString(out,in->name);
+  res->internal = ReplaceVariables(in->internal,varReplace,out);
+  res->external = ReplaceVariables(in->external,varReplace,out);
+  res->dutyDivExpr = SYM_Replace(in->dutyDivExpr,varReplace);
+  res->inputVariableNames = CopyArray(newInputVariableNames,out);
+  res->loopVars = CopyArray(in->loopVars,out);
+  
+  return res;
+}
+
 SYM_Expr GetLoopHighestDecider(LoopLinearSumTerm* term){
   return term->term;
 }
@@ -560,13 +573,13 @@ AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef> loo
     return nullptr;
   }
   
-  auto loopVarBuilder = StartArray<String>(temp);
+  auto loopVarBuilder = PushList<String>(temp);
   for(int i = 0; i < loops.size; i++){
     AddressGenForDef loop = loops[i];
 
-    *loopVarBuilder.PushElem() = PushString(temp,loop.loopVariable);
+    *loopVarBuilder->PushElem() = PushString(temp,loop.loopVariable);
   }
-  Array<String> loopVars = EndArray(loopVarBuilder);
+  Array<String> loopVars = PushArray(out,loopVarBuilder);
       
   // Builds expression for the internal address which is basically just a multiplication of all the loops sizes
   SYM_Expr loopExpression = SYM_One;
@@ -625,6 +638,7 @@ AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef> loo
   result->internal = PushLoopLinearSumSimpleVar("x",SYM_One,SYM_Zero,finalExpression,out);
   result->external = AddLoopLinearSum(expr,freeTerm,out);
   result->dutyDivExpr = dutyDiv;
+  result->loopVars = loopVars;
   
   return result;
 };

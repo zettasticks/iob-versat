@@ -128,6 +128,7 @@ SYM_Expr SYM_Align(SYM_Expr left,SYM_Expr right);
 SYM_Expr SYM_Var(String name);
 SYM_Expr SYM_Lit(int value);
 
+SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<String,String>* replacements);
 SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<String,SYM_Expr>* replacements);
 SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<SYM_Expr,SYM_Expr>* replacements);
 SYM_Expr SYM_Replace(SYM_Expr expr,SYM_Expr toReplace,SYM_Expr replacement);
@@ -135,6 +136,7 @@ SYM_Expr SYM_Replace(SYM_Expr expr,SYM_Expr toReplace,SYM_Expr replacement);
 SYM_Expr SYM_Derivate(SYM_Expr expr,String var);
 
 SYM_Expr SYM_Factor(SYM_Expr expr,SYM_Expr commonFactor);
+Array<String> SYM_GetAllVariables(SYM_Expr top,Arena* out);
 
 bool SYM_IsZeroValue(SYM_Expr expr);
 bool SYM_IsOneValue(SYM_Expr expr);
@@ -297,6 +299,8 @@ LoopLinearSum* RemoveLoop(LoopLinearSum* in,int index,Arena* out);
 SYM_Expr TransformIntoSymbolicExpression(LoopLinearSum* sum,Arena* out);
 
 SYM_Expr GetLoopLinearSumTotalSize(LoopLinearSum* in,Arena* out);
+
+LoopLinearSum* ReplaceVariables(LoopLinearSum* in,TrieMap<String,SYM_Expr>* varReplace,Arena* out);
 
 // ======================================
 // Representation

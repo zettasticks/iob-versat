@@ -122,6 +122,23 @@ SYM_Expr GetLoopLinearSumTotalSize(LoopLinearSum* in,Arena* out){
   return expr;
 }
 
+LoopLinearSum* ReplaceVariables(LoopLinearSum* in,TrieMap<String,SYM_Expr>* varReplace,Arena* out){
+  LoopLinearSum* res = PushStruct<LoopLinearSum>(out);
+
+  int size = in->terms.size;
+
+  res->freeTerm = SYM_Replace(in->freeTerm,varReplace);
+  res->terms = PushArray<LoopLinearSumTerm>(out,size);
+
+  for(int i = 0; i < size; i++){
+    res->terms[i].term = SYM_Replace(in->terms[i].term,varReplace);
+    res->terms[i].loopStart = SYM_Replace(in->terms[i].loopStart,varReplace);
+    res->terms[i].loopEnd = SYM_Replace(in->terms[i].loopEnd,varReplace);
+  }
+
+  return res;
+}
+
 void Print(LoopLinearSum* sum,bool printNewLine){
   TEMP_REGION(temp,nullptr);
 
@@ -945,6 +962,18 @@ SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<SYM_Expr,SYM_Expr>* replacements){
   
   SYM_Expr replaced = Recurse(Recurse,expr);
   return replaced;
+}
+
+SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<String,String>* replacements){
+  TEMP_REGION(temp,nullptr);
+
+  auto map = PushTrieMap<SYM_Expr,SYM_Expr>(temp);
+
+  for(Pair<String,String> p : replacements){
+    map->Insert(SYM_Var(p.first),SYM_Var(p.second));
+  }
+
+  return SYM_Replace(expr,map);
 }
 
 SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<String,SYM_Expr>* replacements){

@@ -323,7 +323,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           }
         }
       }
-        
+
       {
         auto tokens = AccumTokens(def.endSym,temp);
 
@@ -337,6 +337,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   }
 
   Array<ConfigVariable> varInfo = PushArray<ConfigVariable>(out,def->variables.size);
+  Array<String> varNames = PushArray<String>(out,def->variables.size); 
   for(int i = 0; i < variables.size; i++){
     ConfigVarDeclaration decl = variables[i];
     Token typeTok = decl.type;
@@ -355,7 +356,8 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     
     varInfo[i].type = type;
     varInfo[i].name = PushString(out,decl.name);
-    varInfo[i].usedOnLoopExpressions = variablesUsedOnLoopExpressions->Exists(decl.name);
+
+    varNames[i] = varInfo[i].name;
   }
 
   bool supportsSizeCalc = true;
@@ -409,6 +411,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         Array<SpecExpression*> args = decomp.args;
 
         ConfigFunction* function = decomp.func;
+
         // TODO: Not an assert, should be a proper error
         Assert(function->type == ConfigFunctionType_CONFIG);
 
@@ -428,12 +431,22 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         // Invocation var to function argument
         TrieMap<String,SYM_Expr>* argToVar = PushTrieMap<String,SYM_Expr>(temp);
         for(int i = 0; i <  args.size; i++){
+          // Arg is in the function space
           ConfigVariable arg = function->variables[i];
-            
+
           SYM_Expr var = SymbolicFromSpecExpression(args[i]);
+
+          // TODO: Kinda stupid.
+          Array<String> vars = SYM_GetAllVariables(var,temp);
+          if(arg.usedOnLoopExpressions){
+            for(String s : vars){
+              variablesUsedOnLoopExpressions->Insert(s);
+            }
+          }
+
           argToVar->Insert(arg.name,var);
         }
-
+        
         String name = GetBase(simple->lhs)->name;
       
         for(ConfigStuff stuff : function->stuff){
@@ -453,11 +466,11 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           case ConfigStuffType_ADDRESS_GEN:{
             AccessAndType access = stuff.access;
 
-            // TODO: We might need to do variable replacement so that names align correctly.
-            
             ConfigStuff* newAccess = list->PushElem();
             newAccess->type = ConfigStuffType_ADDRESS_GEN;
+
             newAccess->access = access;
+            newAccess->access.access = ReplaceVariables(access.access,argToVar,varNames,out);
 
             String lhs = PushString(out,"%.*s.%.*s",UN(name),UN(stuff.lhs));
 
@@ -674,6 +687,10 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         assign->transfer.variable = PushString(out,addrVar->varName);
       }
     }
+  }
+
+  for(int i = 0; i < variables.size; i++){
+    varInfo[i].usedOnLoopExpressions = variablesUsedOnLoopExpressions->Exists(varInfo[i].name);
   }
 
   ConfigFunction func = {};
