@@ -644,6 +644,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           // nocheckin: This probably only currently works because variable have the same names
           // TODO: Need to create more complex tests to force the issue
           assign->transfer = stuff.transfer;
+          assign->transfer.hierEntity = Add(simple->lhs->name,assign->transfer.hierEntity,out);
         }
       } else {
         ParseResult parsedRhs = ParseRHS(env,simple->rhs,temp);
@@ -682,8 +683,9 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         ConfigStuff* assign = list->PushElem();
         assign->type = ConfigStuffType_MEMORY_TRANSFER;
         assign->transfer.dir = dir;
-        assign->transfer.entityName = PushString(out,unit->instance->name);
         assign->transfer.size = size;
+        assign->transfer.hierEntity = Add(assign->transfer.hierEntity,unit->instance->name,out);
+
         assign->transfer.variable = PushString(out,addrVar->varName);
       }
     }

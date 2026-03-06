@@ -119,7 +119,7 @@ struct FunctionMemoryTransfer{
 
   SYM_Expr size;
   String variable;
-  String entityName;
+  Array<String> hierEntity;
 };
 
 enum ConfigStuffType{

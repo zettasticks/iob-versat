@@ -835,9 +835,10 @@ int main(int argc,char* argv[]){
 We should move graph stuff to a separate file (or keep it in accelerator.hpp and make it the proper place for it).
 Remove the dynamic arena and just share memory between the nodes.
 
-Symbolic expressions removal:
+TODO:
 
--- We removed a bunch of stuff and a lot of weirdness appears. Multiple places we store strings for no reason when we can just store the expression themselves. Need to check these cases and actually handle them.
+We should implement a layer to store hierarchical names and start using it instead of converting stuff into 
+Strings or carrying around Array<String> everywhere.
 
 */
 

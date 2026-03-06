@@ -3277,13 +3277,13 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
 
             String varName = transf.variable;
             String sizeExpr = SYM_Repr(transf.size,temp);
+            
+            AccelInfoIterator iter = StartIteration(&info,0);
+            InstanceInfo* info = Find(iter.StepInsideOnly(),transf.hierEntity);
 
-            String entityMemName = {};
-            for(InstanceInfo& info : part.info){
-              if(info.baseName == transf.entityName){
-                entityMemName = GetEntityMemName(&info,temp);
-              }
-            }
+            Assert(info);
+
+            String entityMemName = GetEntityMemName(info,temp);
             
             FULL_SWITCH(transf.dir){
             case TransferDirection_NONE: Assert(false); break;
