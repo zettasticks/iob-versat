@@ -131,6 +131,8 @@ struct InstanceInfo{
   Opt<int> statePos;
 
   SYM_Expr memMapSym;
+
+  // TODO: See if this is still useful. Need to reorganize stuff asap.
   Opt<iptr> memMapped; // After parameter instantiation and this only makes sense for the top level.
 
   int memGlobalIndex;
@@ -357,6 +359,8 @@ String ReprStaticConfig(StaticId id,Wire* wire,Arena* out);
 Opt<SYM_Expr> GetParameterValue(InstanceInfo* info,String name);
 
 bool IsUnitCombinatorialOperation(InstanceInfo* info);
+
+Opt<Wire*> CONF_GetEnableWire(InstanceInfo* info); // Memory accessing units might implement a "enable" wire.
 
 // ======================================
 // Static naming conventions

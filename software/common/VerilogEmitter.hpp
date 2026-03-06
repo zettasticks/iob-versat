@@ -329,7 +329,7 @@ struct VEmitter{
   void Reg(String name,int bitsize);
   void Reg(String name,String expr);
   void Reg(String name,SYM_Expr expr = SYM_One);
-  void Assign(String name,String expr);
+  void Assign(String name,String expr); // Uses the actual "assign" operation. Do not use inside a comb/seq block.
   void Integer(String name);
   void LocalParam(String name,String defaultValue = {});
   

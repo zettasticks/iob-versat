@@ -443,6 +443,10 @@ extern "C" void VersatLoadDelay(volatile const unsigned int* delayBuffer){
 @{setDelays}
 }
 
+void VERSAT_DisableReadsAndWrites(){
+@{disableReadsAndWrites}
+}
+
 iptr SimulateAddressPosition(iptr start_address,iptr amount_minus_one,iptr length,iptr addr_shift,int index){
   iptr address = start_address;
   iptr lengthAsTransfers = length / 4; // size of AXI_DATA_W;

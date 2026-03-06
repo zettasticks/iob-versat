@@ -678,13 +678,7 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
       m->InstanceParam(p.first,p.second);
     }
     if(!SYM_IsZeroValue(unit->memMapSym)){
-      // MARKX
-#if 1
       params->Insert("ADDR_W",unit->memMapSym);
-#else
-      SymbolicExpression* expr = PushLiteral(temp,info->memMapBits.value());
-      params->Insert("ADDR_W",expr);
-#endif
     }
     
     for(int i = 0; i < inst->outputs.size; i++){
@@ -860,6 +854,41 @@ void EmitConnectOutputsToOut(AccelInfo info,VEmitter* v){
         v->Assign(PushString(temp,"out%d",i),GetOutputName(other,outInfo->inputsDirectly[i].port,temp));
       }
     }
+  }
+}
+
+String GEN_GetStructMemberName(InstanceInfo* info,Wire wire,Arena* out){
+  String res = PushString(out,"%.*s_%.*s",UN(info->fullName),UN(wire.name));
+  return res;
+}
+
+// TODO: The basePointerName is stupid. Need to normalize between wrapper and firmware names
+void EmitDisableReadsAndWrites(CEmitter* c,String basePointerName,AccelInfo* info){
+  TEMP_REGION(temp,nullptr);
+
+  // MARK1
+  for(auto iter = StartIteration(info); iter.IsValid(); iter = iter.Step()){
+    InstanceInfo* info = iter.CurrentUnit();
+
+    if(info->isComposite){
+      continue;
+    }
+    if(info->decl->info.nIOs == 0){
+      continue;
+    }
+
+    Opt<Wire*> wire = CONF_GetEnableWire(info);
+    
+    // TODO: We do not currently have any unit that we might want to be able to disable this way.
+    //       This is why this is a bit hardcoded at the moment.
+    if(!wire.has_value()){
+      continue;
+    }
+
+    String memberName = GEN_GetStructMemberName(info,*wire.value(),temp);
+    String fullMemberAccessExpr = PushString(temp,"%.*s->%.*s",UN(basePointerName),UN(memberName));
+    
+    c->Assignment(fullMemberAccessExpr,"0");
   }
 }
 
@@ -1103,14 +1132,11 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
     }
   }
   
-  // MARK1
-#if 1
   if(module->info.amountOfMemMappedInterfaces){
     for(int i = 0; i < module->info.amountOfMemMappedInterfaces; i++){
       m->InputIndexed("unit_valid_%d",i);
     }
   }
-#endif
 
   if(!SYM_IsZeroValue(module->info.memMapBitsSym)){
     // nocheckin : TODO: PROPER ERROR CHECKING
@@ -2668,14 +2694,14 @@ assign data_wstrb = csr_wstrb;
   }
 
 
-  {
+  if(info.amountOfMemMappedInterfaces > 0){
     VEmitter* m = StartVCode(temp);
 
     m->Reg("unit_valids",info.amountOfMemMappedInterfaces);
 
     m->CombBlock();
     
-    m->Assign("unit_valids","0");
+    m->Set("unit_valids","0");
 
     if(info.amountOfMemMappedInterfaces == 1){
       m->If("data_valid & memoryMappedAddr");
@@ -2720,6 +2746,8 @@ assign data_wstrb = csr_wstrb;
     String content = EndString(temp,b);
       
     TE_SetString("unitsMappedDecl",content);
+  } else {
+    TE_SetString("unitsMappedDecl",{});
   }
 
   {
@@ -2892,6 +2920,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
 
   // NOTE: This function also fills the instance info member of the acceleratorInfo. This function only fills the first partition, but I think that it is fine because that is the only one we use. We generate the same structs either way.
   StructInfo* structInfo = GenerateConfigStruct(iter,temp);
+
   Array<TypeStructInfo> structs = {};
   // If we only contain static configs, this will appear empty.
   if(!Empty(structInfo->memberList)){
@@ -3728,14 +3757,24 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
   // nocheckin TODO: PROPER ERROR CHECK
   SYM_EvaluateResult eval = SYM_ConstantEvaluate(info.memMapBitsSym);
   Opt<int> p = eval.result;
-  
-  //Opt<int> p = ConstantEvaluate(info.memMapBitsSym);
 
   TE_SetNumber("memoryMapBits",p.value_or(0));
   TE_SetNumber("nIOs",info.nIOs);
   TE_SetBool("trace",globalDebug.outputVCD);
   TE_SetBool("signalLoop",info.signalLoop);
   TE_SetNumber("numberDelays",info.delays);
+
+  {
+    CEmitter* c = StartCCode(temp);
+
+    // TODO: BAD
+    c->RawLine("AcceleratorConfig* config = (AcceleratorConfig*) &configBuffer;\n");
+
+    EmitDisableReadsAndWrites(c,"config",&info);
+
+    String content = PushASTRepr(c,temp);
+    TE_SetString("disableReadsAndWrites",content);
+  }
 
   {
     CEmitter* c = StartCCode(temp);
@@ -4489,6 +4528,17 @@ void Output_IobVersatFirmware(String softwarePath,VersatComputedValues val){
     if(index.has_value()){
       c->Define(name,SF("%d",index.value() / 4));
     }
+  }
+
+  {
+    CEmitter* c = StartCCode(temp);
+
+    // TODO: BAD
+    c->RawLine("AcceleratorConfig* config = (AcceleratorConfig*) accelConfig;\n");
+    EmitDisableReadsAndWrites(c,"config",val.info);
+
+    String content = PushASTRepr(c,temp);
+    TE_SetString("disableReadsAndWrites",content);
   }
   
   String content = PushASTRepr(c,temp);

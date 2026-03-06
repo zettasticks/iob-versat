@@ -1497,6 +1497,18 @@ bool IsUnitCombinatorialOperation(InstanceInfo* info){
   return info->specialType == SpecialUnitType_OPERATION;
 }
 
+Opt<Wire*> CONF_GetEnableWire(InstanceInfo* info){
+  // TODO: We do not want to do this based on naming. Ideally we should allow the user to define certain attributes
+  //       to the wires and then 
+  for(Wire& w : info->configs){
+    if(w.name == "enabled"){
+      return &w;
+    }
+  }
+
+  return {};
+}
+
 String GetStaticFullName(InstanceInfo* info,Arena* out){
   String fullName = PushString(out,"%.*s_%.*s",UN(info->parentTypeName),UN(info->name));
   return fullName;
