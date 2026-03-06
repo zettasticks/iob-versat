@@ -860,8 +860,6 @@ What I need to do is:
 
 -- Potentially remove the Pool from Accelerator. Make the accelerator a proper layer and everything is just stored on that side.
 
--- Potentially simplify Symbolic expresssion by allocating stuff on that side using an hashed based approach.
-
 After this "organizational" cleanup, finish cleaning up the code, mainly the parser part. I want to remove the old parser completely. The new parser is the way to go.
 
 This should be enough for a good workday.

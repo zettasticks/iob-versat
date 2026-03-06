@@ -2693,7 +2693,6 @@ assign data_wstrb = csr_wstrb;
     }
   }
 
-
   if(info.amountOfMemMappedInterfaces > 0){
     VEmitter* m = StartVCode(temp);
 
@@ -2725,6 +2724,13 @@ assign data_wstrb = csr_wstrb;
     }
     m->EndBlock();
 
+    TE_SetString("unitsMappedDecl",content);
+  } else {
+    TE_SetString("unitsMappedDecl",{});
+  }
+
+  {
+    VEmitter* m = StartVCode(temp);
     if(info.unitsMapped >= 1){
       m->Wire("unitRValid",info.unitsMapped);
       m->Assign("csr_rvalid","versat_rvalid | (|unitRValid)");
@@ -2745,9 +2751,7 @@ assign data_wstrb = csr_wstrb;
     Repr(EndVCode(m),b);
     String content = EndString(temp,b);
       
-    TE_SetString("unitsMappedDecl",content);
-  } else {
-    TE_SetString("unitsMappedDecl",{});
+    TE_SetString("unitsRData",content);
   }
 
   {
