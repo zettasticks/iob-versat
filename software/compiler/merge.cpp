@@ -12,6 +12,9 @@
 #include "symbolic.hpp"
 #include "utilsCore.hpp"
 
+// TODO: Bad approach to muxing stuff.
+String muxTypeName = "Mux8";
+
 bool NodeConflict(FUInstance* inst){
   // For now, do not even try to map nodes that contain any config modifiers.
   if(inst->isStatic){
@@ -1275,7 +1278,7 @@ ReconstituteResult ReconstituteGraph(Accelerator* merged,TrieSet<PortInstance>* 
 
   TrieMap<FUInstance*,FUInstance*>* mergedToRecon = PushTrieMap<FUInstance*,FUInstance*>(temp);
 
-  FUDeclaration* muxType = GetTypeByName("CombMux8"); // TODO: Kind of an hack
+  FUDeclaration* muxType = GetTypeByName(muxTypeName); // TODO: Kind of an hack
 
   Set<PortInstance>* seen = PushSet<PortInstance>(temp,merged->allocated.Size());
   
@@ -1727,7 +1730,7 @@ FUDeclaration* Merge(Array<FUDeclaration*> types,
 
   // TODO: We eventually must be able to handle generic units instantiation.
   // NOTE: We could currently reduce resource usage by, after doing the merge, replacing every mux added with the smallest version that we can. Only changing the decl of an instance is easy.
-  FUDeclaration* muxType = GetTypeByName("CombMux8");
+  FUDeclaration* muxType = GetTypeByName(muxTypeName);
 
   for(TrieSet<PortInstance>*& s : mergeMultiplexers){
     s = PushTrieSet<PortInstance>(temp); // TODO: Correct size or change to TrieSet. NOTE: Temp because later on the function we replace this maps from fixedCircuit to flattened circuit
@@ -2286,7 +2289,7 @@ ReconstituteResult ReconstituteGraphFromStruct(Accelerator* merged,TrieSet<PortI
 
   TrieMap<FUInstance*,FUInstance*>* instancesAdded = PushTrieMap<FUInstance*,FUInstance*>(temp);
 
-  FUDeclaration* muxType = GetTypeByName("CombMux8"); // TODO: Kind of an hack
+  FUDeclaration* muxType = GetTypeByName(muxTypeName); // TODO: Kind of an hack
 
   FUInstance* mergedInstance = nullptr;
   for(FUInstance* inst : parentType->fixedDelayCircuit->allocated){
@@ -2736,7 +2739,7 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
 
   // TODO: We have the full information needed to only use the minimum amount of ports needed.
   //       We are not forced to use a fixed amount of ports.
-  FUDeclaration* muxType = GetTypeByName("CombMux8");
+  FUDeclaration* muxType = GetTypeByName(muxTypeName);
 
   DebugOutputGraphs(merged,"BeforeInsertingMux");
   

@@ -2296,14 +2296,15 @@ void Output_VersatInstance(String typeName,AccelInfo info,FUDeclaration* topLeve
 
   EmitIOUnpacking(m,val.nUnitsIO,INT_IOb,"m");
     
-  VAST* ast = EndVCode(m);
+  {
+    VAST* ast = EndVCode(m);
 
-  auto b = StartString(temp);
-  Repr(ast,b);
-  String content = EndString(temp,b);
+    auto b = StartString(temp);
+    Repr(ast,b);
+    String content = EndString(temp,b);
+    TE_SetString("emitIO",content);
+  }
     
-  TE_SetString("emitIO",content);
-
   {
     VEmitter* m = StartVCode(temp);
     EmitConnectOutputsToOut(info,m);
@@ -2724,6 +2725,9 @@ assign data_wstrb = csr_wstrb;
     }
     m->EndBlock();
 
+    auto b = StartString(temp);
+    Repr(EndVCode(m),b);
+    String content = EndString(temp,b);
     TE_SetString("unitsMappedDecl",content);
   } else {
     TE_SetString("unitsMappedDecl",{});
