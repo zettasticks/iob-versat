@@ -1292,8 +1292,9 @@ String EmitConfiguration(VersatComputedValues val,Arena* out){
         m->ElseIf("data_write & !memoryMappedAddr");
         
         for(WireInformation info : wireInfo){
+          m->Comment(info.wire.name);
           m->If(SF("address[%d:0] == %d",configurationAddressBits + 1,info.addr));
-
+          
           String configStartExpr = SYM_Repr(info.startBitExpr,temp);
           SYM_Expr size = info.wire.sizeExpr;
           

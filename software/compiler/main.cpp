@@ -840,6 +840,8 @@ TODO:
 We should implement a layer to store hierarchical names and start using it instead of converting stuff into 
 Strings or carrying around Array<String> everywhere.
 
+Memory mapped transfers do not check for sizes and report errors if too big.
+
 */
 
 #if 0
