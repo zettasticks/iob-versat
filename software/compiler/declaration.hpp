@@ -61,7 +61,7 @@ struct FUDeclaration{
   Array<Parameter> parameters;
 
   // TODO: Eventually remove external expression and external memory and only keep externalMemorySymbol
-  Array<ExternalMemoryInterface> externalMemory;
+  //Array<ExternalMemoryInterface> externalMemory;
   Array<ExternalMemorySymbolic> externalMemorySymbol;
   
   // Stores different accelerators depending on properties we want. Mostly in relation to merge, because we want to use baseCircuit when doing a merge operation.

@@ -681,7 +681,7 @@ int main(int argc,char* argv[]){
   FillStaticInfo(&info,temp);
 
   VersatComputedValues val = ComputeVersatValues(accel,&info,temp);
-  Array<ExternalMemoryInterface> external = val.externalMemoryInterfaces;
+  Array<ExternalMemorySymbolic> external = val.externalMemoryInterfaces;
 
   int maxMemoryBit = val.memoryConfigDecisionBit - 1;
   for(int i = 0; i < info.infos.size; i++){
@@ -749,11 +749,14 @@ int main(int argc,char* argv[]){
   printf("Some stats\n");
   printf("CONFIG_BITS: %d\n",eval.result);
   printf("STATE_BITS: %d\n",eval2.result);
-
+  
+  // nocheckin: We might just remove the mem used otherwise need to reimplement all the stuff needed to calculate this.
+#if 0
   printf("MEM_USED: ");
   String content = ReprMemorySize(val.totalExternalMemory,temp);
   printf("%.*s",UN(content));
   printf("\n");
+#endif
 
   printf("UNITS: %d\n",val.nUnits);
   printf("ADDR_W:%d\n",val.memoryConfigDecisionBit + 1);
@@ -763,23 +766,23 @@ int main(int argc,char* argv[]){
   
   if(globalOptions.exportInternalMemories){
     int index = 0;
-    for(ExternalMemoryInterface inter : external){
+    for(ExternalMemorySymbolic inter : external){
       switch(inter.type){
       case ExternalMemoryType::ExternalMemoryType_DP:{
         printf("DP - %d",index++);
         for(int i = 0; i < 2; i++){
-          printf(",%d",inter.dp[i].bitSize);
-          printf(",%d",inter.dp[i].dataSizeOut);
-          printf(",%d",inter.dp[i].dataSizeIn);
+          printf(",%.*s",UN(SYM_Repr(inter.dp[i].bitSize,temp)));
+          printf(",%.*s",UN(SYM_Repr(inter.dp[i].dataSizeOut,temp)));
+          printf(",%.*s",UN(SYM_Repr(inter.dp[i].dataSizeIn,temp)));
         }
         printf("\n");
       }break;
       case ExternalMemoryType::ExternalMemoryType_2P:{
         printf("2P - %d",index++);
-        printf(",%d",inter.tp.bitSizeOut);
-        printf(",%d",inter.tp.bitSizeIn);
-        printf(",%d",inter.tp.dataSizeOut);
-        printf(",%d",inter.tp.dataSizeIn);
+        printf(",%.*s",UN(SYM_Repr(inter.tp.bitSizeOut,temp)));
+        printf(",%.*s",UN(SYM_Repr(inter.tp.bitSizeIn,temp)));
+        printf(",%.*s",UN(SYM_Repr(inter.tp.dataSizeOut,temp)));
+        printf(",%.*s",UN(SYM_Repr(inter.tp.dataSizeIn,temp)));
         printf("\n");
       }break;
       }

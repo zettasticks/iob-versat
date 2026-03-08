@@ -241,7 +241,7 @@ struct VersatComputedValues{
   
   Array<VersatRegister> registers; // The index of the register is the same index on the accelerator. registers[0] is associated to pos 0 on the accelerator, registers[1] to pos 1 and so on.
 
-  Array<ExternalMemoryInterface> externalMemoryInterfaces;
+  Array<ExternalMemorySymbolic> externalMemoryInterfaces;
   Hashmap<StaticId,StaticData>* staticUnits;
 
   // All configuration (including static and delays) wires

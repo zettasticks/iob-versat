@@ -3,6 +3,7 @@
 #include "memory.hpp"
 #include "accelerator.hpp"
 #include "addressGen.hpp"
+#include "verilogParsing.hpp"
 
 struct SimplePortInstance{
   int inst;
@@ -87,7 +88,7 @@ struct InstanceInfo{
   Array<Wire> configs;
   Array<Wire> states;
 
-  Array<ExternalMemoryInterface> externalMemory;
+  Array<ExternalMemorySymbolic> externalMemory;
   SingleInterfaces singleInterfaces;
   
   Opt<int> globalStaticPos; // Separating static from global makes stuff simpler. If mixing together, do not forget that struct generation cares about source of configPos.

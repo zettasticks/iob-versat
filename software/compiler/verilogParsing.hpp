@@ -117,6 +117,8 @@ typedef ExternalMemoryInterfaceTemplate<int> ExternalMemoryInterface;
 typedef ExternalMemoryInterfaceTemplate<ExpressionRange> ExternalMemoryInterfaceExpression;
 typedef ExternalMemoryInterfaceTemplate<SYM_Expr> ExternalMemorySymbolic;
 
+ExternalMemorySymbolic Replace(ExternalMemorySymbolic in,TrieMap<String,SYM_Expr>* replacements);
+
 struct ExternalMemoryID{
   int interface;
   ExternalMemoryType type;

@@ -175,13 +175,13 @@ String GenerateVerilogParameterization(FUInstance* inst,Arena* out){
   return EndString(out,builder);
 }
 
-String EmitExternalMemoryInstances(Array<ExternalMemoryInterface> external,Arena* out){
+String EmitExternalMemoryInstances(Array<ExternalMemorySymbolic> external,Arena* out){
   TEMP_REGION(temp,out);
 
   VEmitter* m = StartVCode(temp);
 
   for(int i = 0; i < external.size; i++){
-    ExternalMemoryInterface ext = external[i];
+    ExternalMemorySymbolic ext = external[i];
 
     FULL_SWITCH(ext.type){
     case ExternalMemoryType::ExternalMemoryType_DP:{
@@ -236,7 +236,7 @@ String EmitExternalMemoryInstances(Array<ExternalMemoryInterface> external,Arena
   return content;
 }
 
-String EmitExternalMemoryPort(Array<ExternalMemoryInterface> external,Arena* out){
+String EmitExternalMemoryPort(Array<ExternalMemorySymbolic> external,Arena* out){
   TEMP_REGION(temp,out);
 
   VEmitter* m = StartVCode(temp);
@@ -244,7 +244,7 @@ String EmitExternalMemoryPort(Array<ExternalMemoryInterface> external,Arena* out
   m->StartPortGroup();
   
   for(int i = 0; i < external.size; i++){
-    ExternalMemoryInterface ext = external[i];
+    ExternalMemorySymbolic ext = external[i];
 
     FULL_SWITCH(ext.type){
     case ExternalMemoryType::ExternalMemoryType_DP:{
@@ -278,13 +278,13 @@ String EmitExternalMemoryPort(Array<ExternalMemoryInterface> external,Arena* out
   return content;
 }
 
-String EmitExternalMemoryInternalPortmap(Array<ExternalMemoryInterface> external,Arena* out){
+String EmitExternalMemoryInternalPortmap(Array<ExternalMemorySymbolic> external,Arena* out){
   TEMP_REGION(temp,out);
 
   VEmitter* m = StartVCode(temp);
 
   for(int i = 0; i < external.size; i++){
-    ExternalMemoryInterface ext = external[i];
+    ExternalMemorySymbolic ext = external[i];
 
     FULL_SWITCH(ext.type){
     case ExternalMemoryType::ExternalMemoryType_DP:{
@@ -315,13 +315,13 @@ String EmitExternalMemoryInternalPortmap(Array<ExternalMemoryInterface> external
   return content;
 }
 
-String EmitInternalMemoryWires(Array<ExternalMemoryInterface> external,Arena* out){
+String EmitInternalMemoryWires(Array<ExternalMemorySymbolic> external,Arena* out){
   TEMP_REGION(temp,out);
 
   VEmitter* m = StartVCode(temp);
 
   for(int i = 0; i < external.size; i++){
-    ExternalMemoryInterface ext = external[i];
+    ExternalMemorySymbolic ext = external[i];
 
     FULL_SWITCH(ext.type){
     case ExternalMemoryType::ExternalMemoryType_DP:{
@@ -557,7 +557,7 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
 
     // External memories
     for(int i = 0; i <  unit->externalMemory.size; i++){
-      ExternalMemoryInterface ext = unit->externalMemory[i];
+      ExternalMemorySymbolic ext = unit->externalMemory[i];
       if(ext.type == ExternalMemoryType::ExternalMemoryType_DP){
         m->PortConnectIndexed("ext_dp_addr_%d_port_0",i,"ext_dp_addr_%d_port_0",externalSeen);
         m->PortConnectIndexed("ext_dp_out_%d_port_0",i,"ext_dp_out_%d_port_0",externalSeen);
@@ -735,7 +735,7 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
 
     // External memories
     for(int i = 0; i <  unit->externalMemory.size; i++){
-      ExternalMemoryInterface ext = unit->externalMemory[i];
+      ExternalMemorySymbolic ext = unit->externalMemory[i];
       if(ext.type == ExternalMemoryType::ExternalMemoryType_DP){
         m->PortConnectIndexed("ext_dp_addr_%d_port_0",i,"ext_dp_addr_%d_port_0_o",externalSeen);
         m->PortConnectIndexed("ext_dp_out_%d_port_0",i,"ext_dp_out_%d_port_0_o",externalSeen);
@@ -1103,7 +1103,7 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
   }
   
   // External Memory interface
-  for(int i = 0; i <  module->externalMemory.size; i++){
+  for(int i = 0; i <  module->externalMemorySymbol.size; i++){
     ExternalMemorySymbolic sym_ext = module->externalMemorySymbol[i];
 
     if(sym_ext.type == ExternalMemoryType::ExternalMemoryType_DP){
@@ -2276,7 +2276,7 @@ void Output_VersatInstance(String typeName,AccelInfo info,FUDeclaration* topLeve
   FILE* s = OpenFileAndCreateDirectories(PushString(temp,"%.*s/versat_instance.v",UN(hardwarePath)),"w",FilePurpose_VERILOG_CODE);
   DEFER_CLOSE_FILE(s);
 
-  Array<ExternalMemoryInterface> external = val.externalMemoryInterfaces;
+  Array<ExternalMemorySymbolic> external = val.externalMemoryInterfaces;
   Array<WireInformation> wireInfo = val.allWiresInfo; 
 
   auto AddrIf = [&val](VEmitter* m,VersatRegister r){
@@ -3745,9 +3745,9 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
 
   Array<WireExtra> allConfigsVerilatorSide = PushArray(temp,build);
 
-  auto builder = StartArray<ExternalMemoryInterface>(temp);
+  auto builder = StartArray<ExternalMemorySymbolic>(temp);
   for(AccelInfoIterator iter = StartIteration(&info); iter.IsValid(); iter = iter.Next()){
-    for(ExternalMemoryInterface& inter : iter.CurrentUnit()->externalMemory){
+    for(ExternalMemorySymbolic& inter : iter.CurrentUnit()->externalMemory){
       *builder.PushElem() = inter;
     }
   }
@@ -4832,7 +4832,7 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topDecl,String hardwa
     }
   }
   
-  Array<ExternalMemoryInterface> external = val.externalMemoryInterfaces;
+  Array<ExternalMemorySymbolic> external = val.externalMemoryInterfaces;
 
   // All memory external instantiation and port mapping
   {
@@ -5160,7 +5160,7 @@ void OutputTestbench(FUDeclaration* decl,FILE* file){
   }
 
   if(containsMemories){
-    for(int i = 0; i <  decl->externalMemory.size; i++){
+    for(int i = 0; i <  decl->externalMemorySymbol.size; i++){
       ExternalMemorySymbolic ext  =  decl->externalMemorySymbol[i];
       FULL_SWITCH(ext.type){
       case ExternalMemoryType_DP: {

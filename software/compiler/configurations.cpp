@@ -414,10 +414,8 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     // Can depend on parameters
     elem->configs = CopyArray(decl->configs,out);
     elem->states = CopyArray(decl->states,out);
-    elem->externalMemory = CopyArray(decl->externalMemory,out);
+    elem->externalMemory = CopyArray(decl->externalMemorySymbol,out);
 
-    //elem->memMapBits = decl->info.memMapBits;
-    //elem->memMapValid = decl->info.memMapBits.has_value();
     elem->memMapSym = decl->info.memMapBitsSym;
 
     // nocheckin
@@ -461,7 +459,6 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
   auto Function = [SetBaseInfo,&instanceToIndex](auto Recurse,GrowableArray<InstanceInfo>& array,Accelerator* accel,int level,Array<Partition> partitions,Arena* out) -> void{
     int partitionIndex = 0;
     for(FUInstance* inst : accel->allocated){
-      // MARK
       instanceToIndex->Insert(inst,array.size);
 
       InstanceInfo* elem = array.PushElem();
@@ -498,7 +495,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
 
   // nocheckin - Look at this code and the InstantiateParameters functions and reorganize/cleanup this part.
   //             A lot of "duplicated" code could potentially be removed.
-#if 1
+
   // We instantiate parameters in here.
   AccelInfo info;
   info.infos = PushArray<MergePartition>(temp,1);
@@ -513,13 +510,13 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
       continue;
     }
 
-    auto map = PushTrieMap<SYM_Expr,SYM_Expr>(temp);
+    auto map = PushTrieMap<String,SYM_Expr>(temp);
     for(ParamAndValue p : parent->params){
       if(IsGlobalParameter(p.name)){
         continue;
       }
 
-      map->Insert(SYM_Var(p.name),p.val);
+      map->Insert(p.name,p.val);
     }
 
     for(ParamAndValue& p : info->params){
@@ -528,7 +525,6 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
       p.val = replaced;
     }
   }
-#endif
 
   // NOTE: Parameters are partially instantiated in here. Only units that contain parents 
   //       have their parameters instantiated. The reason is that for the last step, (the top units)
@@ -545,18 +541,19 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
   We want parameter to be the default (a.Y = Default).
 */
 
-  // Stuff that depends on parameters is instantiated here.
+  // We first start by replacing parameters values based on the parameters of the FUInstance.
+  // If a FUInstance was instantiated with a terminal value than this step fixes that value in place.
   iter = StartIteration(&info);
   for(; iter.IsValid(); iter = iter.Step()){
     InstanceInfo* info = iter.CurrentUnit();
 
-    auto map = PushTrieMap<SYM_Expr,SYM_Expr>(temp);
+    auto map = PushTrieMap<String,SYM_Expr>(temp);
     for(ParamAndValue p : info->params){
       if(IsGlobalParameter(p.name)){
         continue;
       }
 
-      map->Insert(SYM_Var(p.name),p.val);
+      map->Insert(p.name,p.val);
     }
 
     for(Wire& w : info->configs){
@@ -565,30 +562,33 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     for(Wire& w : info->states){
       w.sizeExpr = SYM_Replace(w.sizeExpr,map);
     }
-
     if(!SYM_IsZeroValue(info->memMapSym)){
       info->memMapSym = SYM_Replace(info->memMapSym,map);
     }
+    for(int i = 0; i < info->externalMemory.size; i++){
+      info->externalMemory[i] = Replace(info->externalMemory[i],map);
+    }
   }
 
+  // We then replace the parameters with the values of the parents.
+  // This causes all the parameters of a design to be "global" in the sense that units that contain the same parent
+  // will have the same parameter values. They inherit their values from the parent values.
   iter = StartIteration(&info);
   for(; iter.IsValid(); iter = iter.Step()){
     InstanceInfo* info = iter.CurrentUnit();
     InstanceInfo* parent = iter.GetParentUnit();
 
-#if 1
     if(!parent){
       continue;
     }
-#endif
 
-    auto map = PushTrieMap<SYM_Expr,SYM_Expr>(temp);
+    auto map = PushTrieMap<String,SYM_Expr>(temp);
     for(ParamAndValue p : parent->params){
       if(IsGlobalParameter(p.name)){
         continue;
       }
 
-      map->Insert(SYM_Var(p.name),p.val);
+      map->Insert(p.name,p.val);
     }
 
     for(Wire& w : info->configs){
@@ -597,9 +597,11 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     for(Wire& w : info->states){
       w.sizeExpr = SYM_Replace(w.sizeExpr,map);
     }
-
     if(!SYM_IsZeroValue(info->memMapSym)){
       info->memMapSym = SYM_Replace(info->memMapSym,map);
+    }
+    for(int i = 0; i < info->externalMemory.size; i++){
+      info->externalMemory[i] = Replace(info->externalMemory[i],map);
     }
   }
 
@@ -1237,8 +1239,8 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
     info->delays += type->NumberDelays();
     info->nIOs += type->info.nIOs;
 
-    if(type->externalMemory.size){
-      info->externalMemoryInterfaces += type->externalMemory.size;
+    if(type->externalMemorySymbol.size){
+      info->externalMemoryInterfaces += type->externalMemorySymbol.size;
     }
 
     if(type->singleInterfaces & SingleInterfaces_SIGNAL_LOOP){
@@ -1485,6 +1487,72 @@ String GetStaticWireFullName(InstanceInfo* info,Wire wire,Arena* out){
 void InstantiateParameters(AccelInfo* info,Arena* out){
   TEMP_REGION(temp,out);
 
+#if 1
+  for(int i = 0; i < info->infos.size; i++){
+    // Replace params with default values for the top units.
+    for(auto iter = StartIteration(info,i); iter.IsValid(); iter = iter.Next()){
+      InstanceInfo* topUnit = iter.CurrentUnit();
+      Array<Parameter> params = topUnit->decl->parameters;
+
+      auto map = PushTrieMap<String,SYM_Expr>(temp);
+      for(Parameter p : params){
+        // TODO: Need a proper flow for parameters that we want vs not want to instantiate.
+        if(p.name == "AXI_DATA_W" || p.name == "DELAY_W"){
+          continue;
+        }
+
+        map->Insert(p.name,p.defaultVal);
+      }
+
+      for(ParamAndValue& p : topUnit->params){
+        SYM_Expr replaced = SYM_Replace(p.val,map);
+
+        p.val = replaced;
+      }
+
+      // Replace top level values
+      for(Wire& w : topUnit->configs){
+        w.sizeExpr = SYM_Replace(w.sizeExpr,map);
+      }
+      for(Wire& w : topUnit->states){
+        w.sizeExpr = SYM_Replace(w.sizeExpr,map);
+      }
+      if(!SYM_IsZeroValue(topUnit->memMapSym)){
+        topUnit->memMapSym = SYM_Replace(topUnit->memMapSym,map);
+      }
+      for(int i = 0; i <  topUnit->externalMemory.size; i++){
+        topUnit->externalMemory[i] = Replace(topUnit->externalMemory[i],map);
+      }
+
+      // Replace its children
+      for(auto subIter = iter.StepInsideOnly(); subIter.IsValid(); subIter = subIter.Step()){
+        InstanceInfo* subUnit = subIter.CurrentUnit();
+
+        for(ParamAndValue& p : subUnit->params){
+          SYM_Expr replaced = SYM_Replace(p.val,map);
+
+          p.val = replaced;
+        }
+        for(Wire& w : subUnit->configs){
+          w.sizeExpr = SYM_Replace(w.sizeExpr,map);
+        }
+        for(Wire& w : subUnit->states){
+          w.sizeExpr = SYM_Replace(w.sizeExpr,map);
+        }
+
+        if(!SYM_IsZeroValue(subUnit->memMapSym)){
+          subUnit->memMapSym = SYM_Replace(subUnit->memMapSym,map);
+        }
+
+        for(int i = 0; i <  subUnit->externalMemory.size; i++){
+          subUnit->externalMemory[i] = Replace(subUnit->externalMemory[i],map);
+        }
+      }
+    }
+  }
+#endif
+
+#if 0
   for(int i = 0; i < info->infos.size; i++){
     // Replace params with default values for the top units.
     for(auto iter = StartIteration(info,i); iter.IsValid(); iter = iter.Next()){
@@ -1526,9 +1594,11 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
       for(Wire& w : info->states){
         w.sizeExpr = SYM_Replace(w.sizeExpr,map);
       }
-
       if(!SYM_IsZeroValue(info->memMapSym)){
         info->memMapSym = SYM_Replace(info->memMapSym,map);
+      }
+      for(int i = 0; i < info->externalMemory.size; i++){
+        info->externalMemory[i] = Replace(info->externalMemory[i],map);
       }
     }
 
@@ -1565,6 +1635,8 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
       }
     }    
   }
+
+#endif
 }
 
 InstanceInfo* Find(AccelInfoIterator iter,Array<String> hierarchicalNames){

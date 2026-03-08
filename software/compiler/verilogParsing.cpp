@@ -1103,3 +1103,27 @@ Value Eval(Expression* expr,Array<ParameterExpression> parameters){
 
   return ret;
 }
+
+ExternalMemorySymbolic Replace(ExternalMemorySymbolic in,TrieMap<String,SYM_Expr>* replacements){
+  ExternalMemorySymbolic res = in;
+  
+  FULL_SWITCH(res.type){
+  case ExternalMemoryType_2P:{
+    res.tp.bitSizeIn = SYM_Replace(res.tp.bitSizeIn,replacements);
+    res.tp.bitSizeOut = SYM_Replace(res.tp.bitSizeOut,replacements);
+    res.tp.dataSizeIn = SYM_Replace(res.tp.dataSizeIn,replacements);
+    res.tp.dataSizeOut = SYM_Replace(res.tp.dataSizeOut,replacements);
+  } break;
+  case ExternalMemoryType_DP:{
+    res.dp[0].bitSize = SYM_Replace(res.dp[0].bitSize,replacements);
+    res.dp[0].dataSizeIn = SYM_Replace(res.dp[0].dataSizeIn,replacements);
+    res.dp[0].dataSizeOut = SYM_Replace(res.dp[0].dataSizeOut,replacements);
+
+    res.dp[1].bitSize = SYM_Replace(res.dp[1].bitSize,replacements);
+    res.dp[1].dataSizeIn = SYM_Replace(res.dp[1].dataSizeIn,replacements);
+    res.dp[1].dataSizeOut = SYM_Replace(res.dp[1].dataSizeOut,replacements);
+  } break;
+}
+
+  return res;
+}

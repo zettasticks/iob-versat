@@ -44,7 +44,6 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
 
   Array<Wire> configs = PushArray<Wire>(perm,info->configs.size);
   Array<Wire> states = PushArray<Wire>(perm,info->states.size);
-  Array<ExternalMemoryInterface> external = PushArray<ExternalMemoryInterface>(perm,info->externalInterfaces.size);
   Array<ExternalMemorySymbolic> extSym = PushArray<ExternalMemorySymbolic>(perm,info->externalInterfaces.size);
   
   Array<ParameterExpression> instantiated = PushArray<ParameterExpression>(perm,info->defaultParameters.size);
@@ -103,27 +102,8 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
   for(int i = 0; i < info->externalInterfaces.size; i++){
     ExternalMemoryInterfaceExpression& expr = info->externalInterfaces[i];
 
-    external[i].interface = expr.interface;
-    external[i].type = expr.type;
-
     extSym[i].interface = expr.interface;
     extSym[i].type = expr.type;
-    
-    switch(expr.type){
-    case ExternalMemoryType::ExternalMemoryType_2P:{
-      external[i].tp.bitSizeIn = EvalRange(expr.tp.bitSizeIn,instantiated);
-      external[i].tp.bitSizeOut = EvalRange(expr.tp.bitSizeOut,instantiated);
-      external[i].tp.dataSizeIn = EvalRange(expr.tp.dataSizeIn,instantiated);
-      external[i].tp.dataSizeOut = EvalRange(expr.tp.dataSizeOut,instantiated);
-    }break;
-    case ExternalMemoryType::ExternalMemoryType_DP:{
-      for(int ii = 0; ii < 2; ii++){
-        external[i].dp[ii].bitSize = EvalRange(expr.dp[ii].bitSize,instantiated);
-        external[i].dp[ii].dataSizeIn = EvalRange(expr.dp[ii].dataSizeIn,instantiated);
-        external[i].dp[ii].dataSizeOut = EvalRange(expr.dp[ii].dataSizeOut,instantiated);
-      }
-    }break;
-    }
 
     switch(expr.type){
     case ExternalMemoryType::ExternalMemoryType_2P:{
@@ -151,7 +131,6 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
   
   decl.configs = configs;
   decl.states = states;
-  decl.externalMemory = external;
   decl.externalMemorySymbol = extSym;
   decl.numberDelays = info->nDelays;
   decl.info.nIOs = info->nIO;
@@ -275,56 +254,21 @@ void FillDeclarationWithAcceleratorValues(FUDeclaration* decl,Accelerator* accel
   decl->singleInterfaces |= SingleInterfaces_RUNNING;
   decl->singleInterfaces |= SingleInterfaces_CLK;
   decl->singleInterfaces |= SingleInterfaces_RESET;
-
-  // NOTE: We are "instantiating" the memories in here since we need to know the actual size of the wires in response to the actual values 
+  
   decl->externalMemorySymbol = PushArray<ExternalMemorySymbolic>(out,val.externalMemoryInterfaces);
-  {
-    int externalIndex = 0;
-    for(FUInstance* ptr : accel->allocated){
-      Array<ExternalMemorySymbolic> arr = ptr->declaration->externalMemorySymbol;
+  int externalIndex = 0;
+  for(AccelInfoIterator iter = StartIteration(&val); iter.IsValid(); iter = iter.Step()){
+    InstanceInfo* unit = iter.CurrentUnit();
 
-      TrieMap<String,SYM_Expr>* params = GetParametersOfUnit(ptr,temp);
-
-      for(int i = 0; i < arr.size; i++){
-        ExternalMemorySymbolic sym = {};
-
-        sym.interface = arr[i].interface;
-        sym.type = arr[i].type;
-          
-        switch(arr[i].type){
-        case ExternalMemoryType_2P:{
-          sym.tp.bitSizeIn = SYM_Replace(arr[i].tp.bitSizeIn,params);
-          sym.tp.dataSizeIn = SYM_Replace(arr[i].tp.dataSizeIn,params);
-          sym.tp.bitSizeOut = SYM_Replace(arr[i].tp.bitSizeOut,params);
-          sym.tp.dataSizeOut = SYM_Replace(arr[i].tp.dataSizeOut,params);
-        } break;
-        case ExternalMemoryType_DP:{
-          sym.dp[0].bitSize = SYM_Replace(arr[i].dp[0].bitSize,params);
-          sym.dp[0].dataSizeIn = SYM_Replace(arr[i].dp[0].dataSizeIn,params);
-          sym.dp[0].dataSizeOut = SYM_Replace(arr[i].dp[0].dataSizeOut,params);
-          sym.dp[1].bitSize = SYM_Replace(arr[i].dp[1].bitSize,params);
-          sym.dp[1].dataSizeIn = SYM_Replace(arr[i].dp[1].dataSizeIn,params);
-          sym.dp[1].dataSizeOut = SYM_Replace(arr[i].dp[1].dataSizeOut,params);
-        } break;
-        }
-
-        decl->externalMemorySymbol[externalIndex] = sym;
-        decl->externalMemorySymbol[externalIndex].interface = externalIndex;
-        externalIndex += 1;
-      }
+    if(unit->isComposite){
+      continue;
     }
-  }
-
-  decl->externalMemory = PushArray<ExternalMemoryInterface>(out,val.externalMemoryInterfaces);
-  {
-    int externalIndex = 0;
-    for(FUInstance* ptr : accel->allocated){
-      Array<ExternalMemoryInterface> arr = ptr->declaration->externalMemory;
-      for(int i = 0; i < arr.size; i++){
-        decl->externalMemory[externalIndex] = arr[i];
-        decl->externalMemory[externalIndex].interface = externalIndex;
-        externalIndex += 1;
-      }
+    
+    auto arr = unit->externalMemory;
+    for(int i = 0; i < arr.size; i++){
+      decl->externalMemorySymbol[externalIndex] = arr[i];
+      decl->externalMemorySymbol[externalIndex].interface = externalIndex;
+      externalIndex += 1;
     }
   }
     

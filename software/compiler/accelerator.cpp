@@ -5,6 +5,7 @@
 #include "globals.hpp"
 #include "utils.hpp"
 #include "utilsCore.hpp"
+#include "verilogParsing.hpp"
 #include "versat.hpp"
 
 #include "symbolic.hpp"
@@ -594,6 +595,8 @@ int DataWidthToByteOffset(int dataWidth){
   return res;
 }
 
+// nocheckin: We appear to only use this for displaying the size of memories just to inform the user. It is not mandatory to have this working, it was just nice to have.
+#if 0
 int ExternalMemoryByteSize(ExternalMemoryInterface* inter){
   Assert(VerifyExternalMemory(inter));
 
@@ -633,6 +636,7 @@ int ExternalMemoryByteSize(Array<ExternalMemoryInterface> interfaces){
 
   return size;
 }
+#endif
 
 struct HuffmanNode{
   InstanceInfo* unit;
@@ -729,7 +733,7 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
   SYM_Expr delayBits = SYM_Zero;
   int externalMemoryInterfaces = 0; 
   
-  auto builder = StartArray<ExternalMemoryInterface>(temp);
+  auto builder = StartArray<ExternalMemorySymbolic>(temp);
   for(AccelInfoIterator iter = StartIteration(info); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* unit = iter.CurrentUnit();
     
@@ -770,8 +774,8 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
 
   res.nDones = numberDones;
   
-  Array<ExternalMemoryInterface> allExternalMemories = EndArray(builder);
-  res.totalExternalMemory = ExternalMemoryByteSize(allExternalMemories);
+  Array<ExternalMemorySymbolic> allExternalMemories = EndArray(builder);
+  //res.totalExternalMemory = ExternalMemoryByteSize(allExternalMemories);
   
   res.nStatics = info->statics;
   SYM_Expr staticBits = info->staticBits;
@@ -828,11 +832,11 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
 
   res.nUnits = numberUnits;
 
-  Array<ExternalMemoryInterface> external = PushArray<ExternalMemoryInterface>(out,externalMemoryInterfaces);
+  Array<ExternalMemorySymbolic> external = PushArray<ExternalMemorySymbolic>(out,externalMemoryInterfaces);
   int externalIndex = 0;
   for(InstanceInfo& in : info->infos[0].info){
     if(!in.isComposite){
-      for(ExternalMemoryInterface& inter : in.externalMemory){
+      for(ExternalMemorySymbolic& inter : in.externalMemory){
         external[externalIndex++] = inter;
       }
     }
