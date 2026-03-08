@@ -1422,9 +1422,6 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
     result.infos[0].userFunctions = PushArray(out,list);
   }
 
-  result.configWires = PushArray<Wire>(out,result.configs);
-  result.stateWires = PushArray<Wire>(out,result.states);
-
   int amountOfMemMapped = 0;
   for(AccelInfoIterator iter = StartIteration(&result); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* unit = iter.CurrentUnit();
@@ -1432,55 +1429,6 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
     amountOfMemMapped += unit->memSize;
   }
   result.amountOfMemMappedInterfaces = amountOfMemMapped;
-
-  int configIndex = 0;
-  for(AccelInfoIterator iter = StartIteration(&result); iter.IsValid(); iter = iter.Step()){
-    InstanceInfo* unit = iter.CurrentUnit();
-
-    auto params = PushTrieMap<String,SYM_Expr>(temp);
-
-    for(ParamAndValue p : unit->params){
-      params->Insert(p.name,p.val);
-    }
-    
-    if(unit->isGloballyStatic){
-      continue;
-    }
-
-    for(int i = 0; i < unit->individualWiresGlobalConfigPos.size; i++){
-      int globalPos = unit->individualWiresGlobalConfigPos[i];
-
-      if(globalPos < 0){
-        continue;
-      }
-      
-      if(!Empty(result.configWires[globalPos].name)){
-        continue;
-      }
-
-      Wire wire = unit->configs[i];
-      result.configWires[configIndex] = wire;
-
-      // TODO: We need to do this for state as well. And we probably want to make this more explicit.
-      result.configWires[configIndex].sizeExpr = SYM_Replace(wire.sizeExpr,params);
-      result.configWires[configIndex++].name = PushString(out,"%.*s_%.*s",UN(unit->name),UN(wire.name));
-    }
-  }
-  
-  // TODO: This could be done based on the config offsets.
-  //       Otherwise we are still basing code around static and shared logic when calculating offsets already does that for us.
-  int stateIndex = 0;
-  for(FUInstance* ptr : accel->allocated){
-    FUInstance* inst = ptr;
-    FUDeclaration* d = inst->declaration;
-
-    for(Wire& wire : d->states){
-      result.stateWires[stateIndex] = wire;
-
-      result.stateWires[stateIndex].name = PushString(out,"%.*s_%.2d",UN(wire.name),stateIndex);
-      stateIndex += 1;
-    }
-  }
 
   for(int i = 0; i < result.infos.size; i++){
     int id = 0;

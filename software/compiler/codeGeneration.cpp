@@ -662,7 +662,6 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
 
   for(auto iter = StartIteration(accelInfo); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* unit = iter.CurrentUnit();
-    //FUInstance* inst = unit->inst;
     int instIndex = unit->localIndex;
 
     // TODO: REMOVE DEPENDENCY ON FUDECLARATION.
@@ -674,16 +673,9 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
 
     m->StartInstance(unit->typeName,SF("%.*s_%d",UN(unit->name),instIndex));
 
-#if 1
     for(ParamAndValue p : unit->params){
       m->InstanceParam(p.name,p.val);
     }
-#else
-    auto params = GetParametersOfUnit(inst,temp);
-    for(Pair<String,SYM_Expr> p : params){
-      m->InstanceParam(p.first,p.second);
-    }
-#endif
     
     for(int i = 0; i < unit->outputIsConnected.size; i++){
       if(unit->outputIsConnected[i]){

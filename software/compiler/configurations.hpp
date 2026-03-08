@@ -253,8 +253,6 @@ struct AccelInfo{
   int numberConnections;
   int nDones;
 
-  Array<Wire> configWires;
-  Array<Wire> stateWires;
   Array<Wire> allStaticWires;
 
   SYM_Expr staticBits;
