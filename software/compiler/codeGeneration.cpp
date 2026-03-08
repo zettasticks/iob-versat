@@ -490,12 +490,13 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
     InstanceInfo* unit = iter.CurrentUnit();
     int instIndex = iter.GetIndex();
 
-    // nocheckin 
-    // TODO: REMOVE THE DECLARATION FROM HERE. WE NEED TO LOOK AT THE INSTANCE INFO.
-    FUDeclaration* decl = unit->decl;
-    if(decl == BasicDeclaration::input || decl == BasicDeclaration::output || decl->IsCombinatorialOperation()){
+    if(unit->specialType == SpecialUnitType_INPUT ||
+       unit->specialType == SpecialUnitType_OUTPUT ||
+       unit->specialType == SpecialUnitType_OPERATION){
       continue;
     }
+
+    FUDeclaration* decl = unit->decl;
 
     m->StartInstance(decl->name,SF("%.*s_%d",UN(unit->name),instIndex));
 
@@ -522,18 +523,19 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
 
     // Configs and dealing with static configs if the unit is static
     if(unit->isStatic){
-      for(Wire w : decl->configs){
+      for(Wire w : unit->configs){
         String repr = GetStaticWireFullName(unit,w,temp);
         m->PortConnect(w.name,repr);
       }
     } else {
       Array<int> ind = unit->individualWiresGlobalConfigPos;
       for(int i = 0; i < ind.size; i++){
-        m->PortConnect(PushString(temp,"%.*s",UN(decl->configs[i].name)),configs[ind[i]].name);
+        m->PortConnect(PushString(temp,"%.*s",UN(unit->configs[i].name)),configs[ind[i]].name);
       }
     }
 
     // Static configs
+    // TODO: We do not want to iterate the static units. We only care about the wire names.
     for(Pair<StaticId,StaticData*> p : decl->staticUnits){
       StaticId id = p.first;
       for(Wire w : p.second->configs){
@@ -544,18 +546,18 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
     }
 
     // State
-    for(Wire w : decl->states){
+    for(Wire w : unit->states){
       m->PortConnect(w.name,module->states[statesSeen++].name);
     }
       
     // Delays
-    for(int i = 0; i < decl->numberDelays; i++){
+    for(int i = 0; i < unit->numberDelays; i++){
       m->PortConnectIndexed("delay%d",i,SF("delay%d",delaySeen++));
     }
 
     // External memories
-    for(int i = 0; i <  decl->externalMemory.size; i++){
-      ExternalMemoryInterface ext = decl->externalMemory[i];
+    for(int i = 0; i <  unit->externalMemory.size; i++){
+      ExternalMemoryInterface ext = unit->externalMemory[i];
       if(ext.type == ExternalMemoryType::ExternalMemoryType_DP){
         m->PortConnectIndexed("ext_dp_addr_%d_port_0",i,"ext_dp_addr_%d_port_0",externalSeen);
         m->PortConnectIndexed("ext_dp_out_%d_port_0",i,"ext_dp_out_%d_port_0",externalSeen);
@@ -610,7 +612,7 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
     }
 
     // Databus
-    for(int i = 0; i < decl->info.nIOs; i++){
+    for(int i = 0; i < unit->nIOs; i++){
       m->PortConnectIndexed("databus_ready_%d",i,"databus_ready_%d",ioSeen);
       m->PortConnectIndexed("databus_valid_%d",i,"databus_valid_%d",ioSeen);
       m->PortConnectIndexed("databus_addr_%d",i,"databus_addr_%d",ioSeen);
@@ -623,23 +625,22 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
       ioSeen += 1;
     }
 
-    if(decl->singleInterfaces & SingleInterfaces_SIGNAL_LOOP){
+    if(unit->singleInterfaces & SingleInterfaces_SIGNAL_LOOP){
       m->PortConnect("signal_loop","signal_loop");
     }
-
-    if(decl->singleInterfaces & SingleInterfaces_RUNNING){
+    if(unit->singleInterfaces & SingleInterfaces_RUNNING){
       m->PortConnect("running","running");
     }
-    if(decl->singleInterfaces & SingleInterfaces_RUN){
+    if(unit->singleInterfaces & SingleInterfaces_RUN){
       m->PortConnect("run","run");
     }
-    if(decl->singleInterfaces & SingleInterfaces_DONE){
+    if(unit->singleInterfaces & SingleInterfaces_DONE){
       m->PortConnect("done",SF("unitDone[%d]",doneSeen++));
     }
-    if(decl->singleInterfaces & SingleInterfaces_CLK){
+    if(unit->singleInterfaces & SingleInterfaces_CLK){
       m->PortConnect("clk","clk");
     }
-    if(decl->singleInterfaces & SingleInterfaces_RESET){
+    if(unit->singleInterfaces & SingleInterfaces_RESET){
       m->PortConnect("rst","rst");
     }
       
@@ -661,29 +662,32 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
 
   for(auto iter = StartIteration(accelInfo); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* unit = iter.CurrentUnit();
-    FUInstance* inst = unit->inst;
+    //FUInstance* inst = unit->inst;
     int instIndex = unit->localIndex;
 
     // TODO: REMOVE DEPENDENCY ON FUDECLARATION.
-    FUDeclaration* decl = inst->declaration;
+    FUDeclaration* decl = unit->decl;
 
     if(unit->specialType == SpecialUnitType_INPUT || unit->specialType == SpecialUnitType_OUTPUT || IsUnitCombinatorialOperation(unit)){
       continue;
     }
 
-    m->StartInstance(unit->typeName,SF("%.*s_%d",UN(inst->name),instIndex));
+    m->StartInstance(unit->typeName,SF("%.*s_%d",UN(unit->name),instIndex));
 
+#if 1
+    for(ParamAndValue p : unit->params){
+      m->InstanceParam(p.name,p.val);
+    }
+#else
     auto params = GetParametersOfUnit(inst,temp);
     for(Pair<String,SYM_Expr> p : params){
       m->InstanceParam(p.first,p.second);
     }
-    if(!SYM_IsZeroValue(unit->memMapSym)){
-      params->Insert("ADDR_W",unit->memMapSym);
-    }
+#endif
     
-    for(int i = 0; i < inst->outputs.size; i++){
-      if(inst->outputs[i]){
-        m->PortConnectIndexed("out%d",i,SF("output_%d_%d",instIndex,i));
+    for(int i = 0; i < unit->outputIsConnected.size; i++){
+      if(unit->outputIsConnected[i]){
+        m->PortConnectIndexed("out%d",i,SF("output_%d_%d",unit->id,i));
       } else {
         m->PortConnectIndexed("out%d",i,"");
       }

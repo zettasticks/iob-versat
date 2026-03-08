@@ -47,7 +47,7 @@ int AccelInfoIterator::GetIndex(){
 // TODO: Might not work with merge indexes
 int AccelInfoIterator::GetIndex(InstanceInfo* instance){
   int i = (instance - &GetCurrentMerge()[0]);
-  Assert(i < GetCurrentMerge().size);
+  Assert(i < iterSize);
   return i;
 }
 
@@ -96,7 +96,7 @@ AccelInfoIterator AccelInfoIterator::Next(){
   }
 
   int currentLevel = GetCurrentMerge()[index].level;
-  for(int i = index + 1; i < GetCurrentMerge().size; i++){
+  for(int i = index + 1; i < iterSize; i++){
     int level = GetCurrentMerge()[i].level; 
     if(level == currentLevel){
       AccelInfoIterator toReturn = *this;
@@ -116,7 +116,7 @@ AccelInfoIterator AccelInfoIterator::Step(){
     return {};
   }
 
-  if(this->index + 1 >= GetCurrentMerge().size){
+  if(this->index + 1 >= iterSize){
     return {};
   }
   
@@ -131,9 +131,18 @@ AccelInfoIterator AccelInfoIterator::StepInsideOnly(){
   }
 
   int currentLevel = GetCurrentMerge()[index].level;
-  if(index + 1 < GetCurrentMerge().size && GetCurrentMerge()[index + 1].level > currentLevel){
+  int insideIndex = index + 1;
+  if(insideIndex < iterSize && GetCurrentMerge()[index + 1].level > currentLevel){
     AccelInfoIterator toReturn = *this;
-    toReturn.index = index + 1;
+    toReturn.index = insideIndex;
+
+    int newSize = insideIndex + 1;
+    while(newSize < iterSize && GetCurrentMerge()[newSize].level > currentLevel){
+      newSize += 1;
+    }
+
+    toReturn.iterSize = newSize;
+
     return toReturn;
   }
 
@@ -168,6 +177,18 @@ int AccelInfoIterator::CurrentLevelSize(){
   return size;
 }
 
+AccelInfoIterator StartIteration(AccelInfo* info,int mergeIndex){
+  AccelInfoIterator iter = {};
+  iter.info = info;
+  iter.SetMergeIndex(mergeIndex);
+
+  if(info->infos.size){
+    iter.iterSize = info->infos[0].info.size;
+  }
+
+  return iter;
+}
+
 Array<InstanceInfo*> GetAllSameLevelUnits(AccelInfo* info,int level,int mergeIndex,Arena* out){
   auto builder = StartArray<InstanceInfo*>(out);
 
@@ -183,13 +204,6 @@ Array<InstanceInfo*> GetAllSameLevelUnits(AccelInfo* info,int level,int mergeInd
 
   Array<InstanceInfo*> res = EndArray(builder);
   return res;
-}
-
-AccelInfoIterator StartIteration(AccelInfo* info,int mergeIndex){
-  AccelInfoIterator iter = {};
-  iter.info = info;
-  iter.SetMergeIndex(mergeIndex);
-  return iter;
 }
 
 Array<String> ExtractStates(Array<InstanceInfo> info,Arena* out){
@@ -364,17 +378,19 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
   int index = 0;
   auto SetBaseInfo = [&index](InstanceInfo* elem,FUInstance* inst,int level,Arena* out){
     TEMP_REGION(temp,out);
+
+    FUDeclaration* decl = inst->declaration;
     
     *elem = {};
     elem->inst = inst;
     elem->localIndex = index++;
     elem->name = inst->name;
     elem->baseName = inst->name; // Remember this function only sets basic units, so the baseName is just the name.
-    elem->decl = inst->declaration;
-    elem->typeName = inst->declaration->name;
+    elem->decl = decl;
+    elem->typeName = decl->name;
     elem->level = level;
-    elem->isComposite = IsTypeHierarchical(inst->declaration);
-    elem->isMerge = inst->declaration->type == FUDeclarationType_MERGED;
+    elem->isComposite = IsTypeHierarchical(decl);
+    elem->isMerge = decl->type == FUDeclarationType_MERGED;
     elem->isStatic = inst->isStatic;
     elem->debug = inst->debug;
     elem->isGloballyStatic = inst->isStatic;
@@ -385,40 +401,41 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     elem->special = inst->literal;
     elem->muxGroup = inst->muxGroup;
     elem->id = inst->id;
-    elem->inputDelays = inst->declaration->GetInputDelays();
-    elem->outputLatencies = inst->declaration->GetOutputLatencies();
+    elem->inputDelays = decl->GetInputDelays();
+    elem->outputLatencies = decl->GetOutputLatencies();
     elem->connectionType = inst->type;
     elem->partitionIndex = 0;
     elem->individualWiresShared = inst->isSpecificConfigShared;
-    elem->numberDelays = inst->declaration->NumberDelays();
-    elem->singleInterfaces = inst->declaration->singleInterfaces;
-    elem->supportedAddressGen = inst->declaration->supportedAddressGen;
+    elem->numberDelays = decl->NumberDelays();
+    elem->singleInterfaces = decl->singleInterfaces;
+    elem->supportedAddressGen = decl->supportedAddressGen;
+    elem->nIOs = decl->info.nIOs;
 
     // Can depend on parameters
-    elem->configs = CopyArray(inst->declaration->configs,out);
-    elem->states = CopyArray(inst->declaration->states,out);
-    elem->externalMemory = CopyArray(inst->declaration->externalMemory,out);
+    elem->configs = CopyArray(decl->configs,out);
+    elem->states = CopyArray(decl->states,out);
+    elem->externalMemory = CopyArray(decl->externalMemory,out);
 
-    //elem->memMapBits = inst->declaration->info.memMapBits;
-    //elem->memMapValid = inst->declaration->info.memMapBits.has_value();
-    elem->memMapSym = inst->declaration->info.memMapBitsSym;
+    //elem->memMapBits = decl->info.memMapBits;
+    //elem->memMapValid = decl->info.memMapBits.has_value();
+    elem->memMapSym = decl->info.memMapBitsSym;
 
     // nocheckin
-    elem->memSize = inst->declaration->info.amountOfMemMappedInterfaces;
+    elem->memSize = decl->info.amountOfMemMappedInterfaces;
 
-    if(inst->declaration == BasicDeclaration::input){
+    if(decl == BasicDeclaration::input){
       elem->specialType = SpecialUnitType_INPUT;
     }
-    if(inst->declaration == BasicDeclaration::output){
+    if(decl == BasicDeclaration::output){
       elem->specialType = SpecialUnitType_OUTPUT;
     }
-    if(inst->declaration == BasicDeclaration::fixedBuffer){
+    if(decl == BasicDeclaration::fixedBuffer){
       elem->specialType = SpecialUnitType_FIXED_BUFFER;
     }
-    if(inst->declaration == BasicDeclaration::variableBuffer){
+    if(decl == BasicDeclaration::variableBuffer){
       elem->specialType = SpecialUnitType_VARIABLE_BUFFER;
     }
-    if(inst->declaration->isOperation){
+    if(decl->isOperation){
       elem->specialType = SpecialUnitType_OPERATION;
     }
 
@@ -434,9 +451,9 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     // NOTE: Care when using arrays, these must be copied individually for each subunit (check below)
     // TODO: I do not remember if number configs is correct at this stage or not.
     //       Check and write some comment here if so
-    elem->individualWiresGlobalStaticPos = PushArray<int>(out,inst->declaration->NumberConfigs());
-    elem->individualWiresGlobalConfigPos = PushArray<int>(out,inst->declaration->NumberConfigs());
-    elem->individualWiresLocalConfigPos = PushArray<int>(out,inst->declaration->NumberConfigs());
+    elem->individualWiresGlobalStaticPos = PushArray<int>(out,decl->NumberConfigs());
+    elem->individualWiresGlobalConfigPos = PushArray<int>(out,decl->NumberConfigs());
+    elem->individualWiresLocalConfigPos = PushArray<int>(out,decl->NumberConfigs());
   };
   
   // NOTE: This function fills all the subunits that belong to composite units.
@@ -1344,43 +1361,41 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
   // TODO: Still need to check if partitions are removed or if we still need them
   //       We can also embed partitions inside the AccelInfo.
   Array<Partition> partitions = GenerateInitialPartitions(accel,temp);
-  int size = PartitionSize(partitions);
+  int partSize = PartitionSize(partitions);
 
-  Assert(size != 0);
-  result.infos = PushArray<MergePartition>(out,size);
+  Assert(partSize != 0);
+  result.infos = PushArray<MergePartition>(out,partSize);
 
+  for(int i = 0; i < partSize; i++,Next(partitions)){
+    result.infos[i].info = GenerateInitialInstanceInfo(accel,out,partitions,calculateOrder);
+    result.infos[i].name = GetName(partitions,out);
+  }
+  
   AccelInfoIterator iter = StartIteration(&result);
   iter.accelName = accel->name;
-  
-  if(size > 1){
-    for(int i = 0; i < iter.MergeSize(); i++,Next(partitions)){
+
+  if(partSize > 1){
+    for(int i = 0; i < partSize; i++,Next(partitions)){
       iter.SetMergeIndex(i);
 
-      // We do need partitions here, I think
-      result.infos[i].info = GenerateInitialInstanceInfo(accel,out,partitions,calculateOrder);
-
       FillInstanceInfo(iter,out);
-
-      result.infos[i].inputDelays = ExtractInputDelays(iter,out);
-      result.infos[i].outputLatencies = ExtractOutputLatencies(iter,out);
- 
-      result.infos[i].name = GetName(partitions,out);
     }
   } else {
-    result.infos[0].info = GenerateInitialInstanceInfo(accel,out,{},calculateOrder);
     FillInstanceInfo(iter,out);
+  }
 
-    result.infos[0].inputDelays = ExtractInputDelays(iter,out);
-    result.infos[0].outputLatencies = ExtractOutputLatencies(iter,out);
+  for(int i = 0; i < partSize; i++){
+    result.infos[i].inputDelays = ExtractInputDelays(iter,out);
+    result.infos[i].outputLatencies = ExtractOutputLatencies(iter,out);
   }
 
   FillAccelInfoFromCalculatedInstanceInfo(&result,accel);
 
   // User configs are declaration level.
-  if(size > 1){
+  if(partSize > 1){
     PartitionInfoIterator* iter = StartPartitionIteration(accel,temp);
 
-    for(int i = 0; i < size; i++,iter->Next()){
+    for(int i = 0; i < partSize; i++,iter->Next()){
       auto list = PushList<ConfigFunction*>(temp);
     
       Array<MergePartition*> parts = iter->GetInfos(temp);
@@ -1530,6 +1545,10 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
 
       auto map = PushTrieMap<String,SYM_Expr>(temp);
       for(Parameter p : params){
+        if(p.name == "AXI_DATA_W" || p.name == "DELAY_W"){
+          continue;
+        }
+
         map->Insert(p.name,p.defaultVal);
       }
 

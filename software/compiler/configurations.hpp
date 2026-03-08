@@ -63,24 +63,6 @@ enum SpecialUnitType{
 //                  3) All the codeGeneration data is provided from InstanceInfo meaning that if something is 
 //                     miss calculated the problem is in here not in codeGeneration.cpp.
 
-#if 0
-LEFT HERE - We changed parameters but we are going too far. Parameters like DATA_W should not be changed,
-            they should remain global parameters that every module has access to but cannot change their meaning
-            and the generated verilog depends on DATA_W.
-
-            Global parameters are: DATA_W, ADDR_W, LEN_W, AXI_DATA_W, AXI_ADDR_W, DELAY_W
-
-            If we eventually find that we do actually care about the value of any of these at versat time we can 
-            just instantiate them.
-
-            This also means that the user cannot define parameters whose name coincide with it but this is something
-            that we can do later.
-
-            Priority is to now test the changes, potentially change the codeGeneration code to use 
-            data from AccelInfo and check if we solved the memMapped problem.
-#endif
-
-
 // nocheckin - A bunch of members have different purposes and we are not keeping track of it.
 //             Some members are extracted directly from the inst so not important.
 //             Some members are symbolic expressions because they might depend on parameters and such.
@@ -152,6 +134,8 @@ struct InstanceInfo{
 
   bool isComposite;
   bool isMerge;
+
+  int nIOs;
 
   // Sepcific to merge muxs
   bool isMergeMultiplexer;
@@ -291,6 +275,7 @@ struct AccelInfoIterator{
   AccelInfo* info;
   int index;
   int mergeIndex;
+  int iterSize;
 
   void SetMergeIndex(int index){mergeIndex = index;};
   Array<InstanceInfo>& GetCurrentMerge();
