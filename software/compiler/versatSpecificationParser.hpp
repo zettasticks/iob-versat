@@ -159,7 +159,7 @@ struct HierarchicalName{
 typedef Pair<HierarchicalName,HierarchicalName> SpecNode;
 
 void ReportError(String content,Token faultyToken,String error);
-void ReportError2(String content,Token faultyToken,Token goodToken,String faultyError,String good);
+void ReportErrorGoodTokenExists(String content,Token faultyToken,Token goodToken,String faultyError,String good);
 
 bool IsModuleLike(ConstructDef def);
 Array<Token> TypesUsed(ConstructDef def,Arena* out);
@@ -298,6 +298,7 @@ struct Env{
   void PopScope();
 
   FUInstance* CreateInstance(FUDeclaration* type,String name);
+  FUInstance* CreateFUInstanceWithDeclaration(FUDeclaration* type,String name,InstanceDeclaration decl);
 
   // TODO: The arrayIndexIfArray does not tell us if we are trying to access an array or not.
   //       We probably need to encode such info so that we can properly error report
@@ -309,6 +310,7 @@ struct Env{
   Entity* PushNewEntity(Token name);
   Entity* GetEntity(Token name);
 
+  void CheckIfEntityExists(Token name);
   Entity* GetEntity(ConfigIdentifier* id,Arena* out);
   Entity* GetEntity(SpecExpression* id,Arena* out);
 
@@ -324,6 +326,8 @@ struct Env{
   void AddVariable(Token name);
 
   PortExpression InstantiateSpecExpression(SpecExpression* root);
+
+  SYM_Expr SymbolicFromSpecExpression(SpecExpression* spec);
 };
 
 Env* StartEnvironment(Arena* freeUse,Arena* freeUse2);
@@ -347,7 +351,3 @@ struct GroupIterator{
 };
 
 FUInstanceIterator StartIteration(Env* env,Entity* ent);
-
-// TODO
-// nocheckin - This needs to be moved to Env to properly handle error situations
-SYM_Expr SymbolicFromSpecExpression(SpecExpression* spec);

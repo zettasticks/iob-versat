@@ -20,56 +20,6 @@
 
 static SpecExpression SPEC_LITERAL_0 = {.val = 0,.type = SpecType_LITERAL};
 
-SYM_Expr SymbolicFromSpecExpression(SpecExpression* spec){
-  auto Recurse = [](auto Recurse,SpecExpression* top) -> SYM_Expr{
-    SYM_Expr res = SYM_Zero;
-
-    switch(top->type){
-    case SpecType_OPERATION:{
-      if(top->expressions.size == 1){
-        if(top->op[0] == '-' || top->op[0] == '~'){
-          SYM_Expr left  = Recurse(Recurse,top->expressions[0]);
-          res = -left;
-        } else {
-          NOT_IMPLEMENTED();
-        }
-      } else {
-        SYM_Expr left  = Recurse(Recurse,top->expressions[0]);
-        SYM_Expr right = Recurse(Recurse,top->expressions[1]);
-
-        if(top->op[0] == '+'){
-          res = left + right;
-        }
-        if(top->op[0] == '-'){
-          res = left - right;
-        }
-        if(top->op[0] == '*'){
-          res = left * right;
-        }
-        if(top->op[0] == '/'){
-          res = left / right;
-        }
-      }
-    } break;
-    case SpecType_NAME:
-    case SpecType_VAR:{
-      res = SYM_Var(top->name);
-    } break;
-    case SpecType_LITERAL:{
-      res = SYM_Lit(top->val);
-    } break;
-    case SpecType_SINGLE_ACCESS:
-    case SpecType_ARRAY_ACCESS:
-    case SpecType_FUNCTION_CALL: Assert(false);
-    }
-
-    return res;
-  };
-
-  SYM_Expr res = Recurse(Recurse,spec);
-  return res;
-}
-
 // TODO: Rework expression parsing to support error reporting similar to module diff.
 //       A simple form of synchronization after detecting an error would vastly improve error reporting
 //       Change iterative and merge to follow module def.
@@ -92,7 +42,7 @@ void ReportError(String content,Token faultyToken,String error){
   printf("\n");
 }
 
-void ReportError2(String content,Token faultyToken,Token goodToken,String faultyError,String good){
+void ReportErrorGoodTokenExists(String content,Token faultyToken,Token goodToken,String faultyError,String good){
   TEMP_REGION(temp,nullptr);
 
   String loc = GetRichLocationError(content,faultyToken,temp);
@@ -296,21 +246,6 @@ ConnectionStartInfo Next(GroupIterator& iter){
   return res;
 }
 
-FUInstance* CreateFUInstanceWithParameters(Accelerator* accel,FUDeclaration* type,String name,InstanceDeclaration decl){
-  FUInstance* inst = CreateFUInstance(accel,type,name);
-  
-  for(auto pair : decl.parameters){
-    SYM_Expr expr = SymbolicFromSpecExpression(pair.second);
-    bool result = SetParameter(inst,pair.first,expr);
-
-    if(!result){
-      printf("Warning: Parameter %.*s for instance %.*s in module %.*s does not exist\n",UN(pair.first),UN(inst->name),UN(accel->name));
-    }
-  }
-
-  return inst;
-}
-
 // TODO: Merge this function with the RegisterSubUnit function. There is not purpose to having this be separated.
 FUDeclaration* InstantiateModule(String content,ModuleDef def){
   Arena* perm = globalPermanent;
@@ -321,6 +256,17 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
   FREE_ARENA(envArena);
   FREE_ARENA(envArena2);
   Env* env = StartEnvironment(envArena,envArena2);
+
+  auto paramList = PushList<ParameterDef>(temp);
+  for(ParameterDeclaration param : def.params){
+    env->AddParam(param.name);
+
+    ParameterDef* def = paramList->PushElem();
+    
+    def->name = param.name;
+    def->defaultValue = env->SymbolicFromSpecExpression(param.defaultValue);
+  }
+  auto params = PushArray(temp,paramList);
 
   env->circuit = circuit;
 
@@ -357,17 +303,6 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
     
     exit(-1);
   }
-
-  auto paramList = PushList<ParameterDef>(temp);
-  for(ParameterDeclaration param : def.params){
-    env->AddParam(param.name);
-
-    ParameterDef* def = paramList->PushElem();
-    
-    def->name = param.name;
-    def->defaultValue = SymbolicFromSpecExpression(param.defaultValue);
-  }
-  auto params = PushArray(temp,paramList);
   
   FUDeclaration* res = RegisterSubUnit(circuit,params,SubUnitOptions_BAREBONES);
   
@@ -496,6 +431,21 @@ FUInstance* Env::CreateInstance(FUDeclaration* type,String name){
   return inst;
 }
 
+FUInstance* Env::CreateFUInstanceWithDeclaration(FUDeclaration* type,String name,InstanceDeclaration decl){
+  FUInstance* inst = CreateFUInstance(circuit,type,name);
+  
+  for(auto pair : decl.parameters){
+    SYM_Expr expr = SymbolicFromSpecExpression(pair.second);
+    bool result = SetParameter(inst,pair.first,expr);
+
+    if(!result){
+      printf("Warning: Parameter %.*s for instance %.*s in module %.*s does not exist\n",UN(pair.first),UN(inst->name),UN(circuit->name));
+    }
+  }
+
+  return inst;
+}
+
 FUInstance* Env::GetFUInstance(Token name,int arrayIndexIfArray){
   TEMP_REGION(temp,nullptr);
 
@@ -563,6 +513,15 @@ Entity* Env::PushNewEntity(Token name){
   }
 
   return res.data;
+}
+
+void Env::CheckIfEntityExists(Token name){
+  Entity* ent = GetEntity(name);
+
+  if(!ent){
+    ReportError(name,"Entity does not exist");
+    DEBUG_BREAK();
+  }
 }
 
 Entity* Env::GetEntity(Token name){
@@ -716,15 +675,9 @@ Entity* Env::GetEntity(ConfigIdentifier* id,Arena* out){
 int Env::CalculateConstantExpression(SpecExpression* top){
   TEMP_REGION(temp,nullptr);
 
-  // TODO: We do not want to call this, we want to put the logic inside here.
-  //       Need to be inside the Environment to properly report errors
+  // TODO: Need to report error if we find a non constant value in here.
   SYM_Expr expr = SymbolicFromSpecExpression(top);
-
   SYM_EvaluateResult eval = SYM_ConstantEvaluate(expr);
-
-  // nocheckin
-  // TODO: Properly check and reports errors from this evaluation.
-
   return eval.result;
 }
 
@@ -873,11 +826,11 @@ void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
 
     for(int i = 0; i < var.arraySize; i++){
       String actualName = GetActualArrayName(var.name,i,temp);
-      FUInstance* inst = CreateFUInstanceWithParameters(circuit,type,actualName,decl);
+      FUInstance* inst = CreateFUInstanceWithDeclaration(type,actualName,decl);
       table->Insert(inst->name,inst);
     }
   } else {
-    FUInstance* inst = CreateFUInstanceWithParameters(circuit,type,var.name,decl);
+    FUInstance* inst = CreateFUInstanceWithDeclaration(type,var.name,decl);
     table->Insert(inst->name,inst);
 
     ent->type = EntityType_FU;
@@ -1185,6 +1138,57 @@ PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
   }
 
   Assert(res.inst);
+  return res;
+}
+
+SYM_Expr Env::SymbolicFromSpecExpression(SpecExpression* spec){
+  auto Recurse = [this](auto Recurse,SpecExpression* top) -> SYM_Expr{
+    SYM_Expr res = SYM_Zero;
+
+    switch(top->type){
+    case SpecType_OPERATION:{
+      if(top->expressions.size == 1){
+        if(top->op[0] == '-' || top->op[0] == '~'){
+          SYM_Expr left  = Recurse(Recurse,top->expressions[0]);
+          res = -left;
+        } else {
+          NOT_IMPLEMENTED();
+        }
+      } else {
+        SYM_Expr left  = Recurse(Recurse,top->expressions[0]);
+        SYM_Expr right = Recurse(Recurse,top->expressions[1]);
+
+        if(top->op[0] == '+'){
+          res = left + right;
+        }
+        if(top->op[0] == '-'){
+          res = left - right;
+        }
+        if(top->op[0] == '*'){
+          res = left * right;
+        }
+        if(top->op[0] == '/'){
+          res = left / right;
+        }
+      }
+    } break;
+    case SpecType_NAME:
+    case SpecType_VAR:{
+      CheckIfEntityExists(top->name);
+      res = SYM_Var(top->name);
+    } break;
+    case SpecType_LITERAL:{
+      res = SYM_Lit(top->val);
+    } break;
+    case SpecType_SINGLE_ACCESS:
+    case SpecType_ARRAY_ACCESS:
+    case SpecType_FUNCTION_CALL: Assert(false);
+    }
+
+    return res;
+  };
+
+  SYM_Expr res = Recurse(Recurse,spec);
   return res;
 }
 
@@ -1869,7 +1873,6 @@ ConnectionDef ParseConnection(Parser* parser,Arena* out){
 
 // TODO: nocheckin - remove forward decl
 ConfigFunctionDef* ParseConfigFunction(Parser* parser,Arena* out);
-
 
 ParameterDeclaration ParseParameterDeclaration(Parser* parser,Arena* out){
   ParameterDeclaration res = {};

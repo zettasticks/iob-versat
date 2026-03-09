@@ -10,6 +10,7 @@
 
 struct CEmitter;
 struct SpecExpression;
+struct Env;
 
 // TODO: We currently do not support loops that start at non zero values. The fix is simple, we can always shift loops from N..M to 0..(M-N) by adding more logic to the expression. Kinda not doing this for now since still have not found an example where this is needed.
 
@@ -89,7 +90,7 @@ void   Print(AddressAccess* access);
 // Compilation 
 
 // TODO: We probably want to take in an Env* so that we can check stuff and we probably want to move this to the spec parser. No reason for other code to have token and to depend on parser stuff.
-AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef> loops,SYM_Expr addr,String content);
+AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenForDef> loops,SYM_Expr addr,String content);
 
 // ======================================
 // Conversion

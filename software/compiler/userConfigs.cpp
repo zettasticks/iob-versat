@@ -136,7 +136,7 @@ DecompConfigStatement DecomposeConfigStatement(Env* env,ConfigStatement* stmt,Ar
 
     if(top->type == SpecType_ARRAY_ACCESS){
       res.isArray = true;
-      res.expr = SymbolicFromSpecExpression(top->expressions[0]);
+      res.expr = env->SymbolicFromSpecExpression(top->expressions[0]);
       res.entityName = top->name;
     } else if(top->type == SpecType_SINGLE_ACCESS){
       res.containsAccess = true;
@@ -144,7 +144,7 @@ DecompConfigStatement DecomposeConfigStatement(Env* env,ConfigStatement* stmt,Ar
       res.wireName = top->expressions[0]->name;
     } else {    
       res.isExpr = true;
-      res.expr = SymbolicFromSpecExpression(top);
+      res.expr = env->SymbolicFromSpecExpression(top);
     }
   }
   
@@ -167,7 +167,7 @@ ParseResult ParseRHS(Env* env,SpecExpression* top,Arena* out){
   ParseResult res = {};
   if(top->type == SpecType_ARRAY_ACCESS){
     res.isArray = true;
-    res.expr = SymbolicFromSpecExpression(top->expressions[0]);
+    res.expr = env->SymbolicFromSpecExpression(top->expressions[0]);
     res.entityName = top->name;
   } else if(top->type == SpecType_SINGLE_ACCESS){
     res.containsAccess = true;
@@ -175,7 +175,7 @@ ParseResult ParseRHS(Env* env,SpecExpression* top,Arena* out){
     res.wireName = top->expressions[0]->name;
   } else {    
     res.isExpr = true;
-    res.expr = SymbolicFromSpecExpression(top);
+    res.expr = env->SymbolicFromSpecExpression(top);
   }
 
   return res;
@@ -375,7 +375,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           // Arg is in the function space
           ConfigVariable arg = function->variables[i];
 
-          SYM_Expr var = SymbolicFromSpecExpression(args[i]);
+          SYM_Expr var = env->SymbolicFromSpecExpression(args[i]);
 
           // TODO: Kinda stupid.
           Array<String> vars = SYM_GetAllVariables(var,temp);
@@ -430,7 +430,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         AddressAccess* access = nullptr;
 
         if(parsedRhs.isExpr || parsedRhs.isArray){
-          access = CompileAddressGen(variableNames,loops,parsedRhs.expr,content);
+          access = CompileAddressGen(env,variableNames,loops,parsedRhs.expr,content);
         }
         AddressGenInst supported = ent->instance->declaration->supportedAddressGen;
 
@@ -615,8 +615,8 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
         SYM_Expr size = SYM_One;
         if(!singleStatement){
-          SYM_Expr start = SymbolicFromSpecExpression(stmt->def.startSym);
-          SYM_Expr end = SymbolicFromSpecExpression(stmt->def.endSym);
+          SYM_Expr start = env->SymbolicFromSpecExpression(stmt->def.startSym);
+          SYM_Expr end = env->SymbolicFromSpecExpression(stmt->def.endSym);
 
           size = end - start;
         }

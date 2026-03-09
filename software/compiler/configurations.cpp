@@ -417,8 +417,6 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     elem->externalMemory = CopyArray(decl->externalMemorySymbol,out);
 
     elem->memMapSym = decl->info.memMapBitsSym;
-
-    // nocheckin
     elem->memSize = decl->info.amountOfMemMappedInterfaces;
 
     if(decl == BasicDeclaration::input){

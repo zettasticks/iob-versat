@@ -532,7 +532,7 @@ static Array<Pair<String,String>> InstantiateMem(AddressAccess* access,int port,
   return PushArray(out,list);
 }
 
-AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef> loops,SYM_Expr addr,String content){
+AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenForDef> loops,SYM_Expr addr,String content){
   Arena* out = globalPermanent;
   
   TEMP_REGION(temp,out);
@@ -544,7 +544,7 @@ AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef> loo
     Opt<Token> sameNameAsInput = Find(inputs,loop.loopVariable);
 
     if(sameNameAsInput.has_value()){
-      ReportError2(content,loop.loopVariable,sameNameAsInput.value(),"Loop variable","Overshadows input variable");
+      ReportErrorGoodTokenExists(content,loop.loopVariable,sameNameAsInput.value(),"Loop variable","Overshadows input variable");
       anyError = true;
     }
 
@@ -587,8 +587,8 @@ AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef> loo
     // TODO: Handle parsing errors
     // TODO: Performance, we are parsing this twice, there is another below. Maybe we can join the loops into a single one
 
-    SYM_Expr start = SymbolicFromSpecExpression(loop.startSym);
-    SYM_Expr end = SymbolicFromSpecExpression(loop.endSym);
+    SYM_Expr start = env->SymbolicFromSpecExpression(loop.startSym);
+    SYM_Expr end = env->SymbolicFromSpecExpression(loop.endSym);
 
     SYM_Expr diff = end - start;
 
@@ -615,8 +615,8 @@ AddressAccess* CompileAddressGen(Array<Token> inputs,Array<AddressGenForDef> loo
     AddressGenForDef loop = loops[i];
     
     // TODO: Performance, we are parsing the start and end stuff twice. This is the second, the first is above.
-    SYM_Expr start = SymbolicFromSpecExpression(loop.startSym);
-    SYM_Expr end = SymbolicFromSpecExpression(loop.endSym);
+    SYM_Expr start = env->SymbolicFromSpecExpression(loop.startSym);
+    SYM_Expr end = env->SymbolicFromSpecExpression(loop.endSym);
     
     LoopLinearSum* sum = PushLoopLinearSumSimpleVar(loop.loopVariable,term,start,end,temp);
     expr = AddLoopLinearSum(sum,expr,temp);
