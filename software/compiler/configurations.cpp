@@ -530,7 +530,6 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
   //       have their parameters instantiated. The reason is that for the last step, (the top units)
   //       the parameters must be instantiated by using their default values before instantiating the lower units.
 
-
 /*
   If module A contains parameter X
   And module A instantiates unit a with parameter Y = X.

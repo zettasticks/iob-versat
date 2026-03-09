@@ -357,21 +357,14 @@ int main(int argc,char* argv[]){
     }
     
     for(String& path : globalOptions.unitFolderPaths){
-      String dirPaths = path;
-      Tokenizer pathSplitter(dirPaths,"",{});
-
-      while(!pathSplitter.Done()){
-        Token path = pathSplitter.NextToken();
-
-        Opt<Array<String>> res = GetAllFilesInsideDirectory(path,temp);
-        if(!res){
-          error = true;
-          printf("\n\nCannot open dir: %.*s\n\n",UN(path));
-        } else {
-          for(String& str : res.value()){
-            String fullPath = PushString(perm,"%.*s/%.*s",UN(path),UN(str));
-            allVerilogFilesSet->Insert(fullPath);
-          }
+      Opt<Array<String>> res = GetAllFilesInsideDirectory(path,temp);
+      if(!res){
+        error = true;
+        printf("\n\nCannot open dir: %.*s\n\n",UN(path));
+      } else {
+        for(String& str : res.value()){
+          String fullPath = PushString(perm,"%.*s/%.*s",UN(path),UN(str));
+          allVerilogFilesSet->Insert(fullPath);
         }
       }
     }

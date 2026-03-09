@@ -391,6 +391,65 @@ static String GetOutputName(InstanceInfo* other,int port,Arena* out){
   return PushString(out,"output_%d_%d",other->id,port);
 }
 
+struct FormatContent{
+  bool isText;
+
+  union{
+    String text;
+    int index;
+  };
+};
+
+Array<FormatContent> ParseFormat(String format,Arena* out){
+  TEMP_REGION(temp,out);
+
+  int size = format.size;
+  if(size <= 0){
+    return {};
+  }
+
+  auto list = PushList<FormatContent>(temp);
+
+  int STATE_PARSING_TEXT = 0;
+  int STATE_PARSING_INDEX = 1;
+
+  int index = 0;
+  int state = (format[0] == '{' ? STATE_PARSING_INDEX : STATE_PARSING_TEXT);
+  while(index < size){
+    switch(state){
+      case 0:{
+        int start = index;
+        while(index < size && format[index] != '{'){
+          index += 1;
+        }
+
+        FormatContent* form = list->PushElem();
+        form->isText = true;
+        form->text = String(&format[start],index - start);
+      } break;
+      case 1:{
+        int start = index;
+
+        Assert(format[index] == '{');
+        // Only supporting 10 numbers but should be enough. 
+        // Do not use format enough to warrant more complexity for now.
+        char number = format[index + 1];
+        Assert(format[index + 2] == '}');
+        
+        index += 3;
+
+        FormatContent* form = list->PushElem();
+        form->isText = false;
+        form->index = number - '0';
+      } break;
+    }
+    
+    state = 1 - state;
+  }
+
+  return PushArray(out,list);
+}
+
 void EmitCombOperations(AccelInfo info,VEmitter* m){
   TEMP_REGION(temp,m->arena);
 
@@ -398,31 +457,14 @@ void EmitCombOperations(AccelInfo info,VEmitter* m){
     TEMP_REGION(temp,out);
     StringBuilder* b = StartString(temp);
     
-    Tokenizer tok(format,"{}",{});
-    while(!tok.Done()){
-      Opt<Token> simpleText = tok.PeekFindUntil("{");
-
-      if(!simpleText.has_value()){
-        simpleText = tok.Finish();
+    Array<FormatContent> content = ParseFormat(format,temp);
+    for(FormatContent form : content){
+      if(form.isText){
+        b->PushString(form.text);
+      } else {
+        int index = form.index;
+        b->PushString(args[index]);
       }
-
-      tok.AdvancePeekBad(simpleText.value());
-
-      b->PushString(simpleText.value());
-
-      if(tok.Done()){
-        break;
-      }
-
-      tok.AssertNextToken("{");
-      Token indexText = tok.NextToken();
-      tok.AssertNextToken("}");
-
-      int index = ParseInt(indexText);
-      
-      Assert(index < args.size);
-      
-      b->PushString(args[index]);
     }
 
     return EndString(out,b);

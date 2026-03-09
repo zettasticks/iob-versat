@@ -12,65 +12,6 @@
 #include "CEmitter.hpp"
 #include "versatSpecificationParser.hpp"
 
-// TODO: Copied from spec parser, we probably want to move this somewhere and reconciliate everything.
-// We probably want a common parsing file (different from parser.hpp) that contains all this logic instead of repeating or separating over multiple files.
-static void ReportError3(String content,Token faultyToken,String error){
-  TEMP_REGION(temp,nullptr);
-
-  String loc = GetRichLocationError(content,faultyToken,temp);
-
-  printf("[Error]\n");
-  printf("%.*s:\n",UN(error));
-  printf("%.*s\n",UN(loc));
-  printf("\n");
-}
-
-static void ReportError(Tokenizer* tok,Token faultyToken,String error){
-  String content = tok->GetContent();
-  ReportError3(content,faultyToken,error);
-}
-
-static void ReportErrorIf(bool cond,String error){
-  // TODO Proper error storage and report later handling.
-  if(cond){
-    printf("%.*s\n",UN(error));
-  }
-}
-
-static bool _ExpectError(Tokenizer* tok,String expected){
-  TEMP_REGION(temp,nullptr);
-
-  Token got = tok->NextToken();
-  if(!CompareString(got,expected)){
-    
-    auto builder = StartString(temp);
-    builder->PushString("Parser Error.\n Expected to find:  '");
-    builder->PushString(PushEscapedString(temp,expected,' '));
-    builder->PushString("'\n");
-    builder->PushString("  Got:");
-    builder->PushString(PushEscapedString(temp,got,' '));
-    builder->PushString("\n");
-    String text = EndString(temp,builder);
-    ReportError(tok,got,StaticFormat("%*s",UN(text))); \
-    return true;
-  }
-  return false;
-}
-
-// Macro because we want to return as well
-#define EXPECT(TOKENIZER,STR) \
-  do{ \
-    if(_ExpectError(TOKENIZER,STR)){ \
-      return {}; \
-    } \
-  } while(0)
-
-#define CHECK_IDENTIFIER(ID) \
-  if(!IsIdentifier(ID)){ \
-    ReportError(tok,ID,StaticFormat("type name '%.*s' is not a valid name",UN(ID))); \
-    return {}; \
-  }
-
 bool IsNextTokenConfigFunctionStart(Parser* parser){
   bool res = false;
 

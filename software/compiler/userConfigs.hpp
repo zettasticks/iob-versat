@@ -96,7 +96,6 @@ struct ConfigFunctionDef{
 };
 
 bool IsNextTokenConfigFunctionStart(Parser* parser);
-bool IsNextTokenConfigFunctionStart(Tokenizer* tok);
 
 // ============================================================================
 // Instantiation and manipulation
