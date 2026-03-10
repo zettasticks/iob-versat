@@ -8,7 +8,7 @@ struct HIER_Node{
   String name;
   u32 hash;
 
-  HIER_Node* parent;
+  HIER_Node* child;
   HIER_Node* nextChain;
 };
 
@@ -25,6 +25,6 @@ void HIER_Init();
 bool HIER_IsValid(HIER_Name name);
 
 String HIER_GetFullName(HIER_Name name,String separator,Arena* out);
-HIER_Name HIER_GetParent(HIER_Name base);
+HIER_Name HIER_GetChild(HIER_Name base);
 
 HIER_Name operator+(HIER_Name parent,HIER_Name bottom);

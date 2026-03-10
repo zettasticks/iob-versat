@@ -7,23 +7,23 @@ static struct {
   HIER_Node* hashTable[512];
 } HIER_State;
 
-static HIER_Name GetOrAllocate(HIER_Name parent,String name){
+static HIER_Name GetOrAllocate(HIER_Name child,String name){
   if(Empty(name)){
-    return parent;
+    return child;
   }
 
-  u32 parentHash = 0;
-  if(parent.node){
-    parentHash = parent.node->hash;
+  u32 childHash = 0;
+  if(child.node){
+    childHash = child.node->hash;
   }
 
-  u32 hash = Hash(name) + parentHash;
+  u32 hash = Hash(name) + childHash;
   u32 index = hash % 512;
 
   HIER_Node* before = nullptr;
   HIER_Node* ptr = HIER_State.hashTable[index];
   for(; ptr != nullptr; ptr = ptr->nextChain){
-    if(ptr->name == name && ptr->parent == parent.node){
+    if(ptr->name == name && ptr->child == child.node){
       return ptr;
     }
     before = ptr;
@@ -31,7 +31,7 @@ static HIER_Name GetOrAllocate(HIER_Name parent,String name){
 
   HIER_Node* newNode = PushStruct<HIER_Node>(HIER_State.arena);
   newNode->name = PushString(HIER_State.arena,name);
-  newNode->parent = parent.node;
+  newNode->child = child.node;
   
   if(before){
     before->nextChain = newNode;
@@ -46,13 +46,19 @@ static Array<HIER_Name> ParentToChildNodes(HIER_Name start,Arena* out){
   TEMP_REGION(temp,out);
 
   auto list = PushList<HIER_Name>(temp);
-  for(HIER_Name ptr = start; HIER_IsValid(ptr); ptr = HIER_GetParent(ptr)){
+  for(HIER_Name ptr = start; HIER_IsValid(ptr); ptr = HIER_GetChild(ptr)){
     *list->PushElem() = ptr;
   }
   Array<HIER_Name> asArray = PushArray(out,list);
-  ReverseInPlace(asArray);
   
   return asArray;
+}
+
+static Array<HIER_Name> ChildToParentNodes(HIER_Name start,Arena* out){
+  Array<HIER_Name> array = ParentToChildNodes(start,out);
+  ReverseInPlace(array);
+  
+  return array;
 }
 
 HIER_Name::HIER_Name(String str){
@@ -70,9 +76,9 @@ bool HIER_IsValid(HIER_Name name){
   return res;
 }
 
-HIER_Name HIER_GetParent(HIER_Name base){
+HIER_Name HIER_GetChild(HIER_Name base){
   if(base.node){
-    HIER_Name parent = {base.node->parent};
+    HIER_Name parent = {base.node->child};
     return parent;
   }
 
@@ -96,9 +102,9 @@ String HIER_GetFullName(HIER_Name name,String separator,Arena* out){
 HIER_Name operator+(HIER_Name parent,HIER_Name bottom){
   TEMP_REGION(temp,nullptr);
 
-  Array<HIER_Name> nodes = ParentToChildNodes(bottom,temp);
+  Array<HIER_Name> nodes = ChildToParentNodes(parent,temp);
   
-  HIER_Name ptr = parent;
+  HIER_Name ptr = bottom;
   for(HIER_Name name : nodes){
     ptr = GetOrAllocate(ptr,name.node->name);
   }

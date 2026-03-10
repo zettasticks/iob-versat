@@ -1664,10 +1664,11 @@ InstanceInfo* Find(AccelInfoIterator iter,HIER_Name name){
   for(; iter.IsValid(); ){
     InstanceInfo* info = iter.CurrentUnit();
 
-    String nameToSearch = name.node->name;
+    String nameToSearch = ptr.node->name;
     if(info->baseName == nameToSearch){
       if(info->isComposite){
         iter = iter.StepInsideOnly();
+        ptr = HIER_GetChild(ptr.node);
       } else {
         break;
       }
