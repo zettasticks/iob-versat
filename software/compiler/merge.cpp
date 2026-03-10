@@ -48,7 +48,13 @@ bool NodeConflict(FUInstance* first,FUInstance* second){
   for(int i = 0; i <  decl->parameters.size; i++){
     Parameter param = decl->parameters[i];
 
-    if((param.flags & ParamFlags_Unique)){
+    // NOTE: 
+    // How do we know that the params are different? They could be anything and there is a 
+    // possability that instantiation could make these equal.
+    // If we have parameters with value X and value Y then it might fail but it could turn out
+    // later that X == Y. At the same time we cannot assume this unless we know that the merged 
+    // unit is the top unit.
+    if(param.flags & ParamFlags_Unique){
       SYM_Expr val1 = param1->GetOrFail(param.name);
       SYM_Expr val2 = param2->GetOrFail(param.name);
 
@@ -2703,6 +2709,28 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
       FUInstance* mergedInst = *mapped.second;
 
       FUInstance* reconInst = MapOrCreateNode(recon,inputToRecon,flattenInst);
+
+      FUDeclaration* decl = flattenInst->declaration;
+      
+      for(int i = 0; i < decl->parameters.size; i++){
+        Parameter param = decl->parameters[i];
+
+        // nocheckin: TODO: Need to finish this and do it properly. 
+        //                  Also we might need to rethink our approach to merge and the best way of making sure that 
+        //                  parameters are properly handled.
+        if(param.flags & ParamFlags_Order){
+          Opt<SYM_Expr> flatValOpt = flattenInst->parameterValues[i].val;
+          Opt<SYM_Expr> mergeValOpt = mergedInst->parameterValues[i].val;
+
+          if(flatValOpt.has_value() || mergeValOpt.has_value()){
+            SYM_Expr flatVal = flatValOpt.value_or(param.defaultVal);
+            SYM_Expr mergeVal = mergeValOpt.value_or(param.defaultVal);
+
+            mergedInst->parameterValues[i].val = SYM_PosMax(flatVal,mergeVal);
+            reconInst->parameterValues[i].val = SYM_PosMax(flatVal,mergeVal);
+          }
+        }
+      }
 
       if(mergedInst){
         if(!(mergedInst->name == flattenInst->name)){

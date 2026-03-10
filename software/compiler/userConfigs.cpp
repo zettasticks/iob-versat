@@ -290,7 +290,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       type = ConfigVarType_FIXED;
     } else if(CompareString(typeTok,"Dyn")){
       type = ConfigVarType_DYN;
-    } else {
+    } else if(!Empty(typeTok)){
       // TODO: Proper error report, can only be one of three
       env->ReportError(typeTok,"Not a valid variable type");
     }

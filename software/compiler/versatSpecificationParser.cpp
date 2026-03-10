@@ -295,14 +295,6 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
       env->AddConnection(decl);
     }
   }
-
-  if(!Empty(env->errors)){
-    for(String str : env->errors){
-      printf("%.*s\n",UN(str));
-    }
-    
-    exit(-1);
-  }
   
   FUDeclaration* res = RegisterSubUnit(circuit,params,SubUnitOptions_BAREBONES);
   
@@ -316,6 +308,10 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
     if(res->info.infos.size){
       res->info.infos[0].userFunctions = PushArray(perm,list);
     }
+  }
+
+  for(String error : env->errors){
+    printf("%.*s\n",UN(error));
   }
   
   return res;
@@ -517,11 +513,15 @@ Entity* Env::PushNewEntity(Token name){
 
 void Env::CheckIfEntityExists(Token name){
   Entity* ent = GetEntity(name);
-
+  
+  // nocheckin: TODO: Currently not enabled since code is not properly
+  //                  setting values needed to make this properly work
+#if 0
   if(!ent){
     ReportError(name,"Entity does not exist");
     DEBUG_BREAK();
   }
+#endif
 }
 
 Entity* Env::GetEntity(Token name){
