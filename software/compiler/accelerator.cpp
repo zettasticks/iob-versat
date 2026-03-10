@@ -774,7 +774,7 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
 
   res.nDones = numberDones;
   
-  Array<ExternalMemorySymbolic> allExternalMemories = EndArray(builder);
+  //Array<ExternalMemorySymbolic> allExternalMemories = EndArray(builder);
   //res.totalExternalMemory = ExternalMemoryByteSize(allExternalMemories);
   
   res.nStatics = info->statics;

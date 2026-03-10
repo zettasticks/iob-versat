@@ -20,6 +20,7 @@
 #include "templateEngine.hpp"
 #include "codeGeneration.hpp"
 #include "addressGen.hpp"
+#include "hierName.hpp"
 
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -279,6 +280,7 @@ int main(int argc,char* argv[]){
   // Init common stuff before compiler stuff.
   SYM_Init();
   TE_Init();
+  HIER_Init();
 
   InitializeDefaultData(perm);
   InitializeSimpleDeclarations();

@@ -4,6 +4,7 @@
 #include "accelerator.hpp"
 #include "addressGen.hpp"
 #include "verilogParsing.hpp"
+#include "hierName.hpp"
 
 struct SimplePortInstance{
   int inst;
@@ -357,3 +358,4 @@ void InstantiateParameters(AccelInfo* info,Arena* temp);
 
 // nocheckin: Reorganize
 InstanceInfo* Find(AccelInfoIterator iter,Array<String> hierarchicalNames);
+InstanceInfo* Find(AccelInfoIterator iter,HIER_Name hierarchicalNames);

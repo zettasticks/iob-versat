@@ -7,6 +7,7 @@
 #include "declaration.hpp"
 #include "embeddedData.hpp"
 #include "filesystem.hpp"
+#include "hierName.hpp"
 #include "memory.hpp"
 #include "symbolic.hpp"
 #include "addressGen.hpp"
@@ -428,8 +429,6 @@ Array<FormatContent> ParseFormat(String format,Arena* out){
         form->text = String(&format[start],index - start);
       } break;
       case 1:{
-        int start = index;
-
         Assert(format[index] == '{');
         // Only supporting 10 numbers but should be enough. 
         // Do not use format enough to warrant more complexity for now.
@@ -3163,8 +3162,8 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
         for(ConfigStuff stuff : func->stuff){
           if(stuff.type == ConfigStuffType_ADDRESS_GEN){
             AccelInfoIterator iter = StartIteration(&info,mergeIndex);
-            InstanceInfo* info = Find(iter.StepInsideOnly(),stuff.hierLhs);
-
+            InstanceInfo* info = Find(iter.StepInsideOnly(),stuff.lhs);
+            
             Assert(info);
 
             // TODO: Currently this is hardcoded for the VUnits. Need to actually start modelling the concept of address interface size and do it right.
@@ -3318,7 +3317,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
             String sizeExpr = SYM_Repr(transf.size,temp);
             
             AccelInfoIterator iter = StartIteration(&info,0);
-            InstanceInfo* info = Find(iter.StepInsideOnly(),transf.hierEntity);
+            InstanceInfo* info = Find(iter.StepInsideOnly(),transf.name);
 
             Assert(info);
 
@@ -3365,7 +3364,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
               AccessAndType access = assign.access;
               AddressGenInst inst = access.inst;
               
-              String fullLhs = JoinStrings(assign.hierLhs,".",temp);
+              String fullLhs = HIER_GetFullName(assign.lhs,".",temp);
 
               FULL_SWITCH(inst.type){
               case AddressGenType_GEN: {

@@ -6,6 +6,7 @@ void HIER_Init();
 
 struct HIER_Node{
   String name;
+  u32 hash;
 
   HIER_Node* parent;
   HIER_Node* nextChain;
@@ -13,14 +14,17 @@ struct HIER_Node{
 
 struct HIER_Name{
   HIER_Node* node;
-};
 
-static HIER_Name HIER_Nil = {};
+  HIER_Name() = default;
+  HIER_Name(HIER_Node* node):node(node){};
+  HIER_Name(String str);
+};
 
 void HIER_Init();
 
-String HIER_GetFullName(HIER_Name name,String separator,Arena* out);
+bool HIER_IsValid(HIER_Name name);
 
-HIER_Name HIER_BaseName(String name);
+String HIER_GetFullName(HIER_Name name,String separator,Arena* out);
+HIER_Name HIER_GetParent(HIER_Name base);
 
 HIER_Name operator+(HIER_Name parent,HIER_Name bottom);

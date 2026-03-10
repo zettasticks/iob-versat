@@ -2343,7 +2343,7 @@ void TestSym2(){
 }
 
 void SYM_Init(){
-  static Arena arenaInst = InitArena(Megabyte(64));
+  static Arena arenaInst = InitArena(Megabyte(4));
   SYM_State.arena = &arenaInst;
 
   SYM_Zero = GetOrAllocateLiteral(0);

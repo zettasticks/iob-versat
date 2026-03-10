@@ -273,23 +273,6 @@ NewToken Parser::ExpectNext(char singleChar){
   return ExpectNext(TOK_TYPE(singleChar));
 }
 
-ParserMark Parser::Mark(){
-  NewToken tok = PeekToken();
-  
-  ParserMark res = {};
-  res.ptr = tok.originalData.data;
-  return res;
-}
-
-String Parser::Point(ParserMark mark){
-  ParserMark current = Mark();
-
-  String res = {};
-  res.data = mark.ptr;
-  res.size = current.ptr - mark.ptr;
-  return res;
-}
-
 void Parser::Synch(BracketList<NewTokenType> possibleTypes){
   while(!Done()){
     NewToken peek = PeekToken();

@@ -2,6 +2,7 @@
 
 #include "parser.hpp"
 #include "addressGen.hpp"
+#include "hierName.hpp"
 
 // TODO: Remove this.
 #include "versatSpecificationParser.hpp"
@@ -118,7 +119,7 @@ struct FunctionMemoryTransfer{
 
   SYM_Expr size;
   String variable;
-  Array<String> hierEntity;
+  HIER_Name name;
 };
 
 enum ConfigStuffType{
@@ -159,10 +160,7 @@ struct ConfigStuff{
   ConfigStuffType type;
 
   // TODO: This lhs is only for access. Need to join stuff with assign and access if we eventually cleanup the code.
-  Array<String> hierLhs;
-  
-  // nocheckin: We probably gonna remove this if we keep using the hierLhs approach
-  String lhs;
+  HIER_Name lhs;
 
   String accessVariableName;
   String nameOfLeftEntity;

@@ -412,11 +412,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
             newAccess->access = access;
             newAccess->access.access = ReplaceVariables(access.access,argToVar,varNames,out);
-
-            String lhs = PushString(out,"%.*s.%.*s",UN(name),UN(stuff.lhs));
-
-            newAccess->lhs = lhs;
-            newAccess->hierLhs = Add(name,stuff.hierLhs,out);
+            newAccess->lhs = name + stuff.lhs;
           } break;
           case ConfigStuffType_MEMORY_TRANSFER:{
             // We should never have memory transfers at config functions, right?
@@ -452,8 +448,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           newAssign->access.access = access;
           newAssign->access.inst = supported;
 
-          newAssign->lhs = PushString(out,name);
-          newAssign->hierLhs = Add(newAssign->hierLhs,name,out);
+          newAssign->lhs = newAssign->lhs + name;
         } else if(parsedRhs.isExpr || parsedRhs.isArray){
           // NOTE: Memories and Generator do not follow the addr[expr]. They just have <instance> = <expr>.
           ConfigStuff* newAssign = list->PushElem();
@@ -468,8 +463,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           }
 
           newAssign->accessVariableName = PushString(out,parsedRhs.entityName);
-          newAssign->lhs = PushString(out,name);
-          newAssign->hierLhs = Add(newAssign->hierLhs,name,out);
+          newAssign->lhs = newAssign->lhs + name;
         } else {
           ConfigStuff* newAssign = list->PushElem();
 
@@ -477,8 +471,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           newAssign->access.access = access;
           newAssign->access.inst = supported;
           newAssign->accessVariableName = PushString(out,parsedRhs.entityName);
-          newAssign->lhs = PushString(out,name);
-          newAssign->hierLhs = Add(newAssign->hierLhs,name,out);
+          newAssign->lhs = newAssign->lhs + name;
         }
       }
     }
@@ -582,10 +575,10 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           ConfigStuff* assign = list->PushElem();
           assign->type = ConfigStuffType_MEMORY_TRANSFER;
 
-          // nocheckin: This probably only currently works because variable have the same names
+          //nocheckin: This probably only currently works because variable have the same names
           // TODO: Need to create more complex tests to force the issue
           assign->transfer = stuff.transfer;
-          assign->transfer.hierEntity = Add(simple->lhs->name,assign->transfer.hierEntity,out);
+          assign->transfer.name = simple->lhs->name + assign->transfer.name;
         }
       } else {
         ParseResult parsedRhs = ParseRHS(env,simple->rhs,temp);
@@ -625,7 +618,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         assign->type = ConfigStuffType_MEMORY_TRANSFER;
         assign->transfer.dir = dir;
         assign->transfer.size = size;
-        assign->transfer.hierEntity = Add(assign->transfer.hierEntity,unit->instance->name,out);
+        assign->transfer.name = assign->transfer.name + unit->instance->name;
 
         assign->transfer.variable = PushString(out,addrVar->varName);
       }

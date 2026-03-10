@@ -174,10 +174,6 @@ struct Parser{
   NewToken ExpectNext(NewTokenType type);
   NewToken ExpectNext(char singleChar);
 
-  // TODO: Hopefully remove this.
-  ParserMark Mark();
-  String Point(ParserMark mark);
-
   void Synch(BracketList<NewTokenType> possibleTypes);
 
   bool Done();

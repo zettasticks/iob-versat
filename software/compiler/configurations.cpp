@@ -1658,3 +1658,24 @@ InstanceInfo* Find(AccelInfoIterator iter,Array<String> hierarchicalNames){
   InstanceInfo* res = iter.IsValid() ? iter.CurrentUnit() : nullptr;
   return res;
 }
+
+InstanceInfo* Find(AccelInfoIterator iter,HIER_Name name){
+  HIER_Name ptr = name;
+  for(; iter.IsValid(); ){
+    InstanceInfo* info = iter.CurrentUnit();
+
+    String nameToSearch = name.node->name;
+    if(info->baseName == nameToSearch){
+      if(info->isComposite){
+        iter = iter.StepInsideOnly();
+      } else {
+        break;
+      }
+    } else {
+      iter = iter.Next();
+    }
+  }
+
+  InstanceInfo* res = iter.IsValid() ? iter.CurrentUnit() : nullptr;
+  return res;
+}
