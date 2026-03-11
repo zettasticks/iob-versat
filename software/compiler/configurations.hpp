@@ -357,5 +357,4 @@ String GetStaticWireFullName(InstanceInfo* info,Wire wire,Arena* out);
 void InstantiateParameters(AccelInfo* info,Arena* temp);
 
 // nocheckin: Reorganize
-InstanceInfo* Find(AccelInfoIterator iter,Array<String> hierarchicalNames);
 InstanceInfo* Find(AccelInfoIterator iter,HIER_Name hierarchicalNames);

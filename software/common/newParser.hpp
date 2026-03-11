@@ -5,9 +5,10 @@
 enum NewTokenType : u16{
   NewTokenType_INVALID = 0,
   NewTokenType_EOF,
+  NewTokenType_NEWLINE,
   NewTokenType_WHITESPACE,
   NewTokenType_COMMENT,
-  NewTokenType_UNTERMINATED_MULTILNE_COMMENT,
+  NewTokenType_UNTERMINATED_MULTILINE_COMMENT,
 
   // Single characters are equal to their ASCII value.
   NewTokenType_CHAR_GROUP_0_START = '!', // Start characters
@@ -49,6 +50,12 @@ enum NewTokenType : u16{
   NewTokenType_KEYWORD_MEM,
   NewTokenType_KEYWORD_FOR,    // End keywords
 
+  // Verilog preprocessing directives 
+  NewTokenType_VERILOG_DEFINE, // Start VERILOG_PREPROCESS
+
+  // Any token that starts with an ` but is not a 
+  NewTokenType_VERILOG_PREPROCESS, // End VERILOG_PREPROCESS
+
   // TODO: While this is something that is kinda cool to have, it
   //       might also be fundamentally wrong.  Because of arrays and
   //       stuff like that, it is possible to have certain units have
@@ -57,7 +64,7 @@ enum NewTokenType : u16{
   //       const_1 and so on, which do not cause problems from c or
   //       verilog POV.  We probably want to move this check to
   //       someplace else instead of pushing this responsibility to
-  //       the parser itself. Just because we parse a c keyword does
+  //       the parser itself. Just because we parse a C keyword does
   //       not mean that we produce a C keyword.
   // NOTE: We probably just want to check if any FU instance has a C
   //       keyword name just before we finish registering the module.
@@ -78,6 +85,9 @@ enum NewTokenType : u16{
 
 #define NewTokenType_START_OF_KEYWORDS   (NewTokenType_KEYWORD_MODULE)
 #define NewTokenType_END_OF_KEYWORDS     (NewTokenType_KEYWORD_FOR + 1)
+
+#define NewTokenType_START_OF_VERILOG_PREPROCESS   (NewTokenType_VERILOG_DEFINE)
+#define NewTokenType_END_OF_VERILOG_PREPROCESS     (NewTokenType_VERILOG_PREPROCESS + 1)
 
 #define TOK_TYPE(IN) ((NewTokenType) IN)
 
@@ -109,8 +119,15 @@ inline TokenizeResult& operator|=(TokenizeResult& lhs,TokenizeResult rhs){
   return lhs;
 }
 
-// start < end
-typedef TokenizeResult (*TokenizeFunction)(const char* start,const char* end);
+struct DefaultTokenizerState{
+  const char* start;
+  const char* ptr;
+  const char* end;
+  u32 line;
+  u32 column;
+};
+
+typedef NewToken (*TokenizeFunction)(void* tokenizerState);
 
 #define MAX_STORED_TOKENS 4
 
@@ -138,12 +155,7 @@ inline ParsingOptions operator|(ParsingOptions lhs,ParsingOptions rhs){
 }
 
 struct Parser{
-  const char* start;
-  const char* ptr;
-  const char* end;
-  u32 line;
-  u32 column;
-
+  void* tokenizerState;
   Arena* arena;
 
   u8 amountStored;
@@ -179,20 +191,32 @@ struct Parser{
   bool Done();
 };
 
-Parser* StartParsing(String content,TokenizeFunction tokenizer,Arena* freeArena,ParsingOptions = ParsingOptions_DEFAULT);
+Parser* StartParsing(TokenizeFunction tokenizer,String content,Arena* freeArena,ParsingOptions = ParsingOptions_DEFAULT);
+Parser* StartParsing(TokenizeFunction tokenizer,void* tokenizerState,Arena* freeArena,ParsingOptions = ParsingOptions_DEFAULT);
 
 // ============================================================================
 // Tokenizer function helpers
 
+enum ParseWhitespaceOptions{
+  ParseWhitespaceOptions_NONE = 0,
+  ParseWhitespaceOptions_INCLUDE_NEWLINES = (1 << 1),
+
+  ParseWhitespaceOptions_DEFAULT = ParseWhitespaceOptions_INCLUDE_NEWLINES
+};
+
 // TODO: We might add another parameter so that we can pass config parameters into the functions.
-TokenizeResult ParseWhitespace(const char* start,const char* end);
+TokenizeResult ParseWhitespace(const char* start,const char* end,ParseWhitespaceOptions options = ParseWhitespaceOptions_DEFAULT);
+TokenizeResult ParseNewline(const char* start,const char* end);
 TokenizeResult ParseComments(const char* start,const char* end);
 TokenizeResult ParseSymbols(const char* start,const char* end);
 TokenizeResult ParseNumber(const char* start,const char* end);
 TokenizeResult ParseIdentifier(const char* start,const char* end);
 TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,NewTokenType result);
 
+TokenizeResult ParseVerilogPreprocess(const char* start,const char* end);
+
 //TODO: Create a parse remaining so that any other symbol does not cause problems further down the line.
+
 
 // ======================================
 // Check if identifier is a keyword in another language.

@@ -208,3 +208,5 @@ Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths
 ModuleInfo ExtractModuleInfo(Module& module,Arena* out);
 
 Value Eval(Expression* expr,Array<ParameterExpression> parameters);
+
+void ParseVerilogFileTest();

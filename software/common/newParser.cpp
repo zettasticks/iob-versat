@@ -1,5 +1,15 @@
 #include "newParser.hpp"
 
+static bool IsAlpha(char ch){
+  bool res = ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_'); 
+  return res;
+};
+
+static bool IsNumeric(char ch){
+  bool res = (ch >= '0' && ch <= '9');
+  return res;
+};
+
 static bool IsCharSingleToken(char ch){
   bool res = false;
 
@@ -26,6 +36,9 @@ String PushRepr(Arena* out,NewTokenType type){
   }
   if(type == NewTokenType_WHITESPACE){
     res = "Whitespace";
+  }
+  if(type == NewTokenType_NEWLINE){
+    res = "Newline";
   }
   if(type == NewTokenType_COMMENT){
     res = "Comment";
@@ -97,22 +110,30 @@ String PARSE_PushDebugRepr(Arena* out,NewToken token){
   SIMPLE(NewTokenType_KEYWORD_STATE,"Keyword","state");
   SIMPLE(NewTokenType_KEYWORD_MEM,"Keyword","mem");
   SIMPLE(NewTokenType_KEYWORD_FOR,"Keyword","for");
+
+  SIMPLE(NewTokenType_VERILOG_DEFINE,"Verilog","define");
+  SIMPLE(NewTokenType_VERILOG_PREPROCESS,"Verilog","preprocess");
 #undef SIMPLE 
 
-
-  Assert(!Empty(res) && "Missing representation for token type");
+  if(Empty(res)){
+    printf("Token type: %d\n",(int) token.type);
+    Assert(false);
+  }  
 
   return res;
 }
 
-Parser* StartParsing(String content,TokenizeFunction tokenizer,Arena* freeArena,ParsingOptions options){
+Parser* StartParsing(TokenizeFunction tokenizer,String content,Arena* freeArena,ParsingOptions options){
   Parser* res = PushStruct<Parser>(freeArena);
 
-  res->line = 1;
-  res->column = 1;
-  res->start = content.data;
-  res->ptr = content.data;
-  res->end = content.data + content.size;
+  DefaultTokenizerState* tokenizerState = PushStruct<DefaultTokenizerState>(freeArena);
+  tokenizerState->line = 1;
+  tokenizerState->column = 1;
+  tokenizerState->start = content.data;
+  tokenizerState->ptr = content.data;
+  tokenizerState->end = content.data + content.size;
+
+  res->tokenizerState = (void*) tokenizerState;
   res->tokenizer = tokenizer;
   res->arena = freeArena;
   res->options = options;
@@ -120,31 +141,30 @@ Parser* StartParsing(String content,TokenizeFunction tokenizer,Arena* freeArena,
   return res;
 }
 
+Parser* StartParsing(TokenizeFunction tokenizer,void* tokenizerState,Arena* freeArena,ParsingOptions options){
+  Parser* res = PushStruct<Parser>(freeArena);
+
+  res->tokenizerState = (void*) tokenizerState;
+  res->tokenizer = tokenizer;
+  res->arena = freeArena;
+  res->options = options;
+  
+  return res;
+
+}
+
 void Parser::EnsureTokens(int amount){
   while(this->amountStored < amount){
-    NewToken token = {NewTokenType_EOF};
-    int bytesParsed = 0;
-
-    if(this->ptr < this->end){
-      TokenizeResult res = this->tokenizer(this->ptr,this->end);
-      token = res.token;
-      token.originalData.size = res.bytesParsed;
-
-      bytesParsed = res.bytesParsed;
-    }
-
+    NewToken token = this->tokenizer(this->tokenizerState);
     if(options & ParsingOptions_SKIP_WHITESPACE && token.type == NewTokenType_WHITESPACE){
-      this->ptr += bytesParsed;
       continue;
     }
     if(options & ParsingOptions_SKIP_COMMENTS && token.type == NewTokenType_COMMENT){
-      this->ptr += bytesParsed;
       continue;
     }
-    if(options & ParsingOptions_SKIP_COMMENTS && token.type == NewTokenType_UNTERMINATED_MULTILNE_COMMENT){
+    if(options & ParsingOptions_SKIP_COMMENTS && token.type == NewTokenType_UNTERMINATED_MULTILINE_COMMENT){
       // TODO: Improve error messages, We can show user the start of the multiline comment
       ReportError("Unterminated multiline comment");
-      this->ptr += bytesParsed;
       continue;
     }
 
@@ -152,18 +172,10 @@ void Parser::EnsureTokens(int amount){
       if(currentFile){
         printf("Invalid token: %s\n",currentFile);
       }
-
-      if(bytesParsed == 0){
-        bytesParsed = 1;
-      }
+      token.type = NewTokenType_EOF;
     }
 
     this->storedTokens[this->amountStored++] = token;
-    this->ptr += bytesParsed;
-
-    if(token.type != NewTokenType_EOF){
-      Assert(bytesParsed > 0);
-    }
   } 
 }
 
@@ -298,17 +310,20 @@ bool Parser::Done(){
 // ============================================================================
 // Tokenizer function helpers
 
-TokenizeResult ParseWhitespace(const char* start,const char* end){
+TokenizeResult ParseWhitespace(const char* start,const char* end,ParseWhitespaceOptions options){
   TokenizeResult res = {};
 
   const char* ptr = start;
   res.token.originalData.data = start;
   
-  auto IsWhitespace = [](char ch){
+  auto IsWhitespace = [options](char ch){
     bool res = (ch == ' ' || 
                 ch == '\r' || 
-                ch == '\t' || 
-                ch == '\n'); 
+                ch == '\t');
+
+    if(options & ParseWhitespaceOptions_INCLUDE_NEWLINES){
+      res |= (ch == '\n');
+    }
     return res;
   };
 
@@ -327,6 +342,23 @@ TokenizeResult ParseWhitespace(const char* start,const char* end){
     res.token.whitespace = allWhitespace;
   }
 
+  return res;
+}
+
+TokenizeResult ParseNewline(const char* start,const char* end){
+  TokenizeResult res = {};
+
+  const char* ptr = start;
+  res.token.originalData.data = start;
+  char ch = *ptr;
+
+  NewTokenType type = NewTokenType_INVALID;
+  if(ch == '\n'){
+    type = NewTokenType_NEWLINE;
+  }
+
+  res.bytesParsed = (type == NewTokenType_INVALID ? 0 : 1);
+  res.token.type = type;
   return res;
 }
 
@@ -366,7 +398,7 @@ TokenizeResult ParseComments(const char* start,const char* end){
   
   if(res.bytesParsed > 0){
     if(unterminated){
-      res.token.type = NewTokenType_UNTERMINATED_MULTILNE_COMMENT;
+      res.token.type = NewTokenType_UNTERMINATED_MULTILINE_COMMENT;
     } else {
       res.token.type = NewTokenType_COMMENT;
     }
@@ -438,23 +470,13 @@ TokenizeResult ParseIdentifier(const char* start,const char* end){
   res.token.originalData.data = start;
   char ch = *ptr;
 
-  auto isAlpha = [](char ch) -> bool{
-    bool res = ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_'); 
-    return res;
-  };
-
-  auto isNumeric = [](char ch) -> bool{
-    bool res = (ch >= '0' && ch <= '9');
-    return res;
-  };
-
-  if(!isAlpha(ch)){
+  if(!IsAlpha(ch)){
     return res;
   }
 
   ptr += 1;
   for(; ptr < end; ptr += 1){
-    if(!isAlpha(*ptr) && !isNumeric(*ptr)){
+    if(!IsAlpha(*ptr) && !IsNumeric(*ptr)){
       break;
     } 
   }
@@ -487,6 +509,42 @@ TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,
 
   res.bytesParsed = format.size;
   res.token.type = result;  
+
+  return res;
+}
+
+TokenizeResult ParseVerilogPreprocess(const char* start,const char* end){
+  TokenizeResult res = {};
+
+  const char* ptr = start;
+  res.token.originalData.data = start;
+  char ch = *ptr;
+
+  if(ch != '`'){
+    return res;
+  }
+
+  ptr += 1;
+  const char* startIdentifierPart = ptr;
+
+  for(; ptr < end; ptr += 1){
+    if(!IsAlpha(*ptr) && !IsNumeric(*ptr)){
+      break;
+    } 
+  }
+
+  String identifier = {};
+  identifier.data = startIdentifierPart;
+  identifier.size = ptr - startIdentifierPart;
+
+  if(identifier == "define"){
+    res.token.type = NewTokenType_VERILOG_DEFINE;  
+  } else {
+    res.token.type = NewTokenType_VERILOG_PREPROCESS;
+  }
+
+  res.bytesParsed = ptr - start;
+  res.token.identifier = identifier;
 
   return res;
 }

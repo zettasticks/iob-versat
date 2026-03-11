@@ -1106,16 +1106,25 @@ SYM_Expr ParseSYM_Expr(Parser* parser,int bindingPower = -1){
 SYM_Expr SYM_Parse(String content){
   FREE_ARENA(parseArena);
 
-  auto tokenizer = [](const char* start,const char* end) -> TokenizeResult {
+  auto tokenizer = [](void* tokenizerState) -> NewToken {
+    DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
+    
+    const char* start = state->ptr;
+    const char* end = state->end;
+
     TokenizeResult result = ParseWhitespace(start,end);
     result |= ParseComments(start,end);
     result |= ParseSymbols(start,end);
     result |= ParseNumber(start,end);
     result |= ParseIdentifier(start,end);
-    return result;
+
+    state->ptr += result.bytesParsed;
+    result.token.originalData.size = result.bytesParsed;
+
+    return result.token;
   };
   
-  Parser* parser = StartParsing(content,tokenizer,parseArena);
+  Parser* parser = StartParsing(tokenizer,content,parseArena);
   SYM_Expr expr = ParseSYM_Expr(parser);
 
   return expr;
@@ -2188,7 +2197,7 @@ SYM_Expr GenerateRandomExpression(int expectedAmountOfNodes){
   return expr;
 }
 
-void TestSym2(){
+void SYM_Test(){
   TestCase tests[] = {
 #if 0
     // NOTE: Disabled since division by common mult is not currently implemented 

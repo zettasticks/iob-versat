@@ -22,6 +22,7 @@
 #include "addressGen.hpp"
 #include "hierName.hpp"
 
+// TODO: See [0]
 #include <filesystem>
 namespace fs = std::filesystem;
 
@@ -281,15 +282,20 @@ int main(int argc,char* argv[]){
   SYM_Init();
   TE_Init();
   HIER_Init();
+  FILE_Init();
 
   InitializeDefaultData(perm);
   InitializeSimpleDeclarations();
   InitializeUserConfigs();
   InitParser(perm);
-  
-#if 0
-  TestSym2();
 
+#if 0
+  SYM_Test();
+  return 0;
+#endif
+  
+#if 1
+  ParseVerilogFileTest();
   return 0;
 #endif
 
@@ -332,8 +338,7 @@ int main(int argc,char* argv[]){
     exit(-1);
   }
 
-  FREE_ARENA(moduleAccum);
-  TrieMap<String,ModuleInfo>* allModules = PushTrieMap<String,ModuleInfo>(moduleAccum);
+  TrieMap<String,ModuleInfo>* allModules = PushTrieMap<String,ModuleInfo>(temp);
 
   for(FileContent file : defaultVerilogUnits){
     String content = file.content;
@@ -829,6 +834,8 @@ int main(int argc,char* argv[]){
 }
 
 /*
+
+[0] - We need to start moving filesystem stuff into the filesystem files. It should be easier to do now since we moved the filesystem to the compiler folder instead of having it inside the common folder.
 
 We should move graph stuff to a separate file (or keep it in accelerator.hpp and make it the proper place for it).
 Remove the dynamic arena and just share memory between the nodes.

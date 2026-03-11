@@ -801,6 +801,31 @@ String EscapeCString(String content,Arena* out){
   return EndString(out,b);
 }
 
+
+static String PushFile(Arena* arena,String path){
+  // Care since this is stored on a static buffer
+  const char* asCStr = StaticFormat("%.*s",UN(path));
+  FILE* file = fopen(asCStr,"r");
+
+  long int size = GetFileSize(file);
+
+  AlignArena(arena,alignof(void*));
+
+  Byte* mem = PushBytes(arena,size);
+  int amountRead = fread(mem,sizeof(Byte),size,file);
+
+  if(amountRead != size){
+    fprintf(stderr,"Memory PushFile failed to read entire file\n");
+    exit(-1);
+  }
+
+  String res = {};
+  res.size = size;
+  res.data = (const char*) mem;
+
+  return res;
+}
+
 // 0 - exe name
 // 1 - definition file
 // 2 - output name
@@ -1021,15 +1046,8 @@ int main(int argc,const char* argv[]){
       h->Extern("String",SF("META_%.*s_Content",UN(def->name)));
     }
 
-    h->Struct("FileContent");
-    h->Member("String","fileName");
-    h->Comment("Without filename");
-    h->Member("String","originalRelativePath");
-    h->Member("String","commonFolder"); // TODO: We could push this outwards, since right now this is common to all the files.
-    h->Member("String","content");
-    h->EndStruct();
-
     for(FileGroupDef* def : fileGroups){
+      h->RawLine(SF("\n#define DEFINED_%.*s 1",UN(def->name)));
       h->Extern("Array<FileContent>",def->name);
     }
     

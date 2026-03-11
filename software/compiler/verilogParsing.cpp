@@ -1127,3 +1127,242 @@ ExternalMemorySymbolic Replace(ExternalMemorySymbolic in,TrieMap<String,SYM_Expr
 
   return res;
 }
+
+#include "newParser.hpp"
+
+struct ContentState{
+  FileContent content;
+  
+  const char* start;
+  const char* ptr;
+  const char* end;
+  u32 line;
+  u32 column;
+};
+
+enum DefineType{
+  DefineType_FUNCTION,
+  DefineType_SIMPLE_REPLACE
+};
+
+struct DefineInfo{
+  DefineType type;
+
+  Array<NewToken> tokens;
+};
+
+enum VerilogTokenizerStageType{
+  VerilogTokenizerStageType_FILE,
+  VerilogTokenizerStageType_DEFINE
+};
+
+struct VerilogTokenizerStage{
+  VerilogTokenizerStageType type; 
+ 
+  // TODO: Union
+  DefineInfo* define;
+  int currentDefineToken;
+
+  ContentState state;
+};
+
+struct VerilogTokenizerState{
+  Arena* arena;
+
+  Array<VerilogTokenizerStage> stageBuffer;
+  int currentStage;
+
+  TrieMap<String,DefineInfo>* definesMap;
+
+  bool IsInsideDefine(){
+    bool res = (stageBuffer[currentStage].type == VerilogTokenizerStageType_DEFINE);
+    return res;
+  }
+
+  NewToken GetNextDefineToken(){}
+
+  int ParseDefine(){
+    ContentState* file = GetCurrentFileState();
+
+    const char* start = file->ptr;
+    const char* end = file->end;
+    
+    String asString = {start,(int) (end-start)};
+    
+    auto TokenizeFunction = [](void* tokenizerState) -> NewToken{
+      DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
+      const char* start = state->ptr;
+      const char* end = state->end;
+
+      TokenizeResult res = ParseNewline(start,end);
+      res |= ParseWhitespace(start,end,ParseWhitespaceOptions_NONE);
+      res |= ParseComments(start,end);
+      res |= ParseVerilogPreprocess(start,end);
+      res |= ParseSymbols(start,end);
+      res |= ParseNumber(start,end);
+      res |= ParseIdentifier(start,end);
+
+      int size = res.bytesParsed;
+      if(size <= 0){
+        size = 1;
+      }
+      state->ptr += size;
+      return res.token;
+    };
+
+    FREE_ARENA(parsing);
+    Parser* parser = StartParsing(TokenizeFunction,asString,parsing,ParsingOptions_SKIP_COMMENTS);
+
+    TEMP_REGION(temp,nullptr);
+
+    parser->IfNextToken(NewTokenType_WHITESPACE);
+    parser->IfNextToken(NewTokenType_VERILOG_DEFINE);
+    parser->IfNextToken(NewTokenType_WHITESPACE);
+    NewToken id = parser->ExpectNext(NewTokenType_IDENTIFIER);
+
+    parser->IfNextToken(NewTokenType_WHITESPACE);
+    if(parser->IfPeekToken('(')){
+      NOT_IMPLEMENTED();
+    }
+    parser->IfNextToken(NewTokenType_WHITESPACE);
+
+    auto list = PushList<NewToken>(temp);
+      
+    NewToken newLineToken = {};
+    bool foundNewLine = false;
+    while(!parser->Done()){
+      NewToken token = parser->NextToken();
+
+      if(token.type == NewTokenType_NEWLINE){
+        foundNewLine = true;
+        newLineToken = token;
+        break;
+      }
+
+      *list->PushElem() = token;
+    }
+    
+    DefineInfo info = {};
+    info.type = DefineType_SIMPLE_REPLACE;
+    info.tokens = PushArray(arena,list);
+    definesMap->Insert(id.identifier,info);
+
+    int size = newLineToken.originalData.data - start;
+    if(!foundNewLine){
+      size = end - start;
+    }
+
+    return size;
+  }
+
+  void StepInsideDefine(String defineName);
+
+  ContentState* GetCurrentFileState(){
+    VerilogTokenizerStage* stage = &stageBuffer[currentStage];
+    
+    Assert(stage->type == VerilogTokenizerStageType_FILE);
+
+    return &stage->state;
+  }
+};
+
+void VerilogTokenizerState::StepInsideDefine(String defineName){
+  DefineInfo* res = definesMap->Get(defineName);
+  
+  printf("%.*s\n",UN(defineName));
+}
+
+void ParseVerilogFileTest(){
+  String test = R"FOO(
+`define TEST A
+TEST B TEST C
+)FOO";
+
+  FileContent fileLike = {};
+  fileLike.content = test;
+  fileLike.fileName = "";
+  fileLike.state = FileContentState_OK;
+
+  TEMP_REGION(temp,nullptr);
+
+#if 1
+  auto TokenizeFunction = [](void* tokenizerState) -> NewToken{
+    VerilogTokenizerState* state = (VerilogTokenizerState*) tokenizerState;
+
+    TokenizeResult res = {};
+    while(1){
+      if(state->IsInsideDefine()){
+        return state->GetNextDefineToken();
+      }
+    
+      ContentState* file = state->GetCurrentFileState();
+
+      const char* start = file->ptr;
+      const char* end = file->end;
+
+      res = ParseWhitespace(start,end);
+      res |= ParseComments(start,end);
+      res |= ParseVerilogPreprocess(start,end);
+      res |= ParseSymbols(start,end);
+      res |= ParseNumber(start,end);
+      res |= ParseIdentifier(start,end);
+
+      NewTokenType t = res.token.type;
+
+      bool validToken = true;
+      int bytesToAdvance = res.bytesParsed;
+      if(t == NewTokenType_VERILOG_DEFINE){
+        validToken = false;
+
+        bytesToAdvance = state->ParseDefine();
+      } 
+      if(t == NewTokenType_VERILOG_PREPROCESS){
+        validToken = false;
+
+        String defineIdentifier = res.token.identifier;
+        
+        state->StepInsideDefine(defineIdentifier);
+      }
+
+      file->ptr += bytesToAdvance;
+      
+      if(validToken){
+        break;
+      }
+    }
+
+    return res.token;
+  };
+  
+  FREE_ARENA(tokenizer);
+  FREE_ARENA(parsing);
+
+  VerilogTokenizerState* state = PushStruct<VerilogTokenizerState>(tokenizer);
+
+  state->arena = tokenizer;
+  state->definesMap = PushTrieMap<String,DefineInfo>(parsing);
+  state->stageBuffer = PushArray<VerilogTokenizerStage>(parsing,16);
+  state->currentStage = 0;
+
+  state->stageBuffer[0].type = VerilogTokenizerStageType_FILE;
+
+  ContentState* first = &state->stageBuffer[0].state;
+
+  String content = fileLike.content;
+
+  first->line = 1;
+  first->column = 1;
+  first->content = fileLike;
+  first->start = content.data;
+  first->ptr = first->start;
+  first->end = content.data + content.size;
+
+  Parser* p = StartParsing(TokenizeFunction,state,parsing);
+
+  while(!p->Done()){
+    NewToken t = p->NextToken();
+    String res = PARSE_PushDebugRepr(temp,t);
+    printf("%.*s\n",UN(res));
+  }
+#endif
+}

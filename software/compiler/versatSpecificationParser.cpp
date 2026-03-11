@@ -2141,7 +2141,12 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
 Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
   TEMP_REGION(temp,out);
 
-  auto TokenizeFunction = [](const char* start,const char* end) -> TokenizeResult{
+  auto TokenizeFunction = [](void* tokenizerState) -> NewToken{
+    DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
+    
+    const char* start = state->ptr;
+    const char* end = state->end;
+
     TokenizeResult res = ParseWhitespace(start,end);
     res |= ParseComments(start,end);
 
@@ -2191,11 +2196,17 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
       }
     }
 
-    return res;
+    int size = res.bytesParsed;
+    if(size <= 0){
+      size = 1;
+    }
+    state->ptr += size;
+
+    return res.token;
   };
 
   FREE_ARENA(parseArena);
-  Parser* parser = StartParsing(content,TokenizeFunction,parseArena,ParsingOptions_DEFAULT);
+  Parser* parser = StartParsing(TokenizeFunction,content,parseArena,ParsingOptions_DEFAULT);
 
   ArenaList<ConstructDef>* typeList = PushList<ConstructDef>(temp);
 

@@ -1,4 +1,4 @@
-#include "filesystem.hpp"
+//#include "filesystem.hpp"
 #include "parser.hpp"
 #include "utils.hpp"
 #include "utilsCore.hpp"
@@ -113,6 +113,26 @@ const char* GetFilename(const char* fullpath){
   }
 
   return lastGood;
+}
+
+String GetFilename(String fullpath){
+  const char* lastGood = fullpath.data;
+  const char* ptr = fullpath.data;
+
+  int size = fullpath.size;
+  int index = 0;
+
+  for(int index = 0; index < size; index += 1){
+    if(ptr[index] == '/'){
+      lastGood = &ptr[index] + 1;
+    }
+  }
+
+  String res = {};
+  res.data = lastGood;
+  res.size = fullpath.data + fullpath.size - lastGood;
+
+  return res;
 }
 
 void FlushStdout(){
@@ -734,18 +754,5 @@ unsigned char* GetHexadecimal(const unsigned char* text, int str_size){
   buffer[(i)*2] = '\0';
 
   return buffer;
-}
-
-bool IsAlpha(char ch){
-  if(ch >= 'a' && ch < 'z')
-    return true;
-
-  if(ch >= 'A' && ch <= 'Z')
-    return true;
-
-  if(ch >= '0' && ch <= '9')
-    return true;
-
-  return false;
 }
 

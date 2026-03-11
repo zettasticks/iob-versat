@@ -34,5 +34,15 @@ struct FileInfo{
   bool wasOpenSucessful;
 };
 
+void FILE_Init();
+
+String PushFile(Arena* arena,FILE* file);
+String PushFile(Arena* arena,String filepath);
+String PushFile(Arena* arena,const char* filepath);
+
+FILE* OpenFileAndCreateDirectories(String path,const char* format,FilePurpose purpose);
+
 FILE* OpenFile(String filepath,const char* mode,FilePurpose purpose);
 Array<FileInfo> CollectAllFilesInfo(Arena* out);
+
+FileContent GetContentsOfFile(String filepath,FilePurpose purpose);

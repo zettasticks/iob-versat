@@ -18,6 +18,30 @@ inline u64 HashString(String data,u64 hash){
 
 #include "newParser.hpp"
 
+String PushFile(Arena* arena,String path){
+  // Care since this is stored on a static buffer
+  const char* asCStr = StaticFormat("%.*s",UN(path));
+  FILE* file = fopen(asCStr,"r");
+
+  long int size = GetFileSize(file);
+
+  AlignArena(arena,alignof(void*));
+
+  Byte* mem = PushBytes(arena,size);
+  int amountRead = fread(mem,sizeof(Byte),size,file);
+
+  if(amountRead != size){
+    fprintf(stderr,"Memory PushFile failed to read entire file\n");
+    exit(-1);
+  }
+
+  String res = {};
+  res.size = size;
+  res.data = (const char*) mem;
+
+  return res;
+}
+
 // 0 - exe name
 // 1+ - pair of files to calculate the hash
 int main(int argc,const char* argv[]){
@@ -58,19 +82,33 @@ int main(int argc,const char* argv[]){
     BLOCK_REGION(arena);
 
     String content = PushFile(arena,filepath);
-    
-    Parser* parser = StartParsing(content,TokenizeFunction,parsing);
-    parser->currentFile = filepath;
 
-    while(!parser->Done()){
-      NewToken token = parser->NextToken();
+    const char* ptr = content.data;
+    const char* end = content.data + content.size;
 
-      String repr = token.originalData;
-      for(int i = 0; i < repr.size; i++){
-        hash = ((hash << 5) + hash) + repr[i];
+    while(ptr < end){
+      TokenizeResult res = TokenizeFunction(ptr,end);
+      NewTokenType type = res.token.type;
+
+      bool hash = true;
+      if(type == NewTokenType_WHITESPACE || type == NewTokenType_COMMENT || type == NewTokenType_EOF){
+        hash = false;
       }
 
-      amountOfTokens += 1;
+      int size = res.bytesParsed;
+      if(size == 0){
+        size = 1;
+      }
+
+      if(hash){
+        String asStr = String(ptr,size);
+      
+        for(int i = 0; i < asStr.size; i++){
+          hash = ((hash << 5) + hash) + asStr[i];
+        }
+      }
+
+      ptr += size;
     }
   }
 

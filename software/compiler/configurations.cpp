@@ -1636,29 +1636,6 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
 #endif
 }
 
-InstanceInfo* Find(AccelInfoIterator iter,Array<String> hierarchicalNames){
-  int size = hierarchicalNames.size;
-  int index = 0;
-  for(; iter.IsValid(); ){
-    InstanceInfo* info = iter.CurrentUnit();
-
-    String nameToSearch = hierarchicalNames[index];
-    if(info->baseName == nameToSearch){
-      if(info->isComposite && index + 1 < size){
-        iter = iter.StepInsideOnly();
-        index += 1;
-      } else {
-        break;
-      }
-    } else {
-      iter = iter.Next();
-    }
-  }
-
-  InstanceInfo* res = iter.IsValid() ? iter.CurrentUnit() : nullptr;
-  return res;
-}
-
 InstanceInfo* Find(AccelInfoIterator iter,HIER_Name name){
   HIER_Name ptr = name;
   for(; iter.IsValid(); ){

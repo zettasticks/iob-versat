@@ -556,6 +556,24 @@ static bool operator==(const Pair<F,S>& p1,const Pair<F,S>& p2){
    return res;
 }
 
+enum FileContentState{
+  FileContentState_OK,
+  FileContentState_FAILED_TO_LOAD
+};
+
+// Meta depends on this. Careful when changing stuff.
+struct FileContent{
+  String fileName;
+  // Without filename
+  String originalRelativePath;
+  String commonFolder;
+  String content;
+
+  FileContentState state;
+};
+
+String GetFilename(String fullpath);
+
 #define BIT_MASK(BIT) (1 << (BIT))
 #define GET_BIT(VAL,INDEX) (VAL & (BIT_MASK(INDEX)))
 #define SET_BIT(VAL,INDEX) (VAL | (BIT_MASK(INDEX)))
@@ -653,8 +671,6 @@ bool Empty(String str);
 
 char GetHexadecimalChar(int value);
 unsigned char* GetHexadecimal(const unsigned char* text, int str_size); // Helper function to display result
-
-bool IsAlpha(char ch);
 
 template<typename T>
 inline void Memset(T* buffer,T elem,int bufferSize){
