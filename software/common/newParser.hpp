@@ -52,7 +52,16 @@ enum NewTokenType : u16{
 
   // Verilog preprocessing directives 
   NewTokenType_VERILOG_DEFINE, // Start VERILOG_PREPROCESS
+  NewTokenType_VERILOG_UNDEF,
 
+  NewTokenType_VERILOG_INCLUDE,
+  
+  NewTokenType_VERILOG_IFDEF,
+  NewTokenType_VERILOG_IFNDEF,
+  NewTokenType_VERILOG_ELSE,
+  NewTokenType_VERILOG_ELSIF,
+  NewTokenType_VERILOG_ENDIF,
+  
   // Any token that starts with an ` but is not a 
   NewTokenType_VERILOG_PREPROCESS, // End VERILOG_PREPROCESS
 
@@ -78,6 +87,8 @@ enum NewTokenType : u16{
   // problems when generating the C structs and so on).
   NewTokenType_C_KEYWORD,
 
+  NewTokenType_C_STRING,
+
   // We solve this by adding a number at the end of every instance
   // so for now this is mostly unused
   NewTokenType_VERILOG_KEYWORD
@@ -100,6 +111,7 @@ struct NewToken{
     String identifier;
     String whitespace;
     String comment;
+    String cString;
     i64 number;
   };
 };
@@ -171,6 +183,12 @@ struct Parser{
   // Helpers
   void EnsureTokens(int amount);
   void ReportError(String error);
+  
+  // NOTE: Options does not currently reset the stored tokens. This means that if we peek a bunch of tokens ahead
+  //       and then change options it might be possible that we ignore or return more tokens than we expected.
+  //       Regardless, the parsing process never peeks ahead more than it needs so it might be fine.
+  //       If calling Next and such then we can change options easily. If we are peeking then need to be careful.
+  ParsingOptions SetOptions(ParsingOptions options);
 
   void ReportUnexpectedToken(NewToken token,BracketList<NewTokenType> expectedList);
 
@@ -215,8 +233,9 @@ TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,
 
 TokenizeResult ParseVerilogPreprocess(const char* start,const char* end);
 
-//TODO: Create a parse remaining so that any other symbol does not cause problems further down the line.
+TokenizeResult ParseCString(const char* start,const char* end);
 
+//TODO: Create a parse remaining so that any other symbol does not cause problems further down the line.
 
 // ======================================
 // Check if identifier is a keyword in another language.

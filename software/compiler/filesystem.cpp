@@ -5,6 +5,7 @@
 #include <dirent.h>
 
 #include "embeddedData.hpp"
+#include "utilsCore.hpp"
 
 static Arena storeFileInfoArena = {};
 static ArenaList<FileInfo>* storeFileInfo;
@@ -176,17 +177,22 @@ FileContent GetContentsOfFile(String filepath,FilePurpose purpose){
     return *alreadyOpened;
   }
 
-  FILE* file = OpenFile(filepath,"r", purpose);
-  String content = PushFile(FILE_State.arena,file);
-
   String savedPath = PushString(FILE_State.arena,filepath);
 
   FileContent toInsert = {};
   toInsert.fileName = GetFilename(savedPath);
   toInsert.originalRelativePath = "";
   toInsert.commonFolder = "";
-  toInsert.content = content;
   toInsert.state = FileContentState_OK;
+
+  FILE* file = OpenFile(filepath,"r", purpose);
+  if(!file){
+    toInsert.content = "";
+    toInsert.state = FileContentState_FAILED_TO_LOAD;
+  } else {
+    String content = PushFile(FILE_State.arena,file);
+    toInsert.content = content;
+  }
 
   FILE_State.fileContents->Insert(savedPath,toInsert);
   

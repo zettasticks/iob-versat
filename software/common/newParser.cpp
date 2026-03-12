@@ -61,7 +61,6 @@ String PushRepr(Arena* out,NewTokenType type){
   }
 
 #define SIMPLE(TYPE,TYPENAME,RET) if(type == TYPE) res = PushString(out,"[%s] '%s'",TYPENAME,RET)
-
   SIMPLE(NewTokenType_DOUBLE_DOT,"DoubleChar","..");
   SIMPLE(NewTokenType_DOUBLE_HASHTAG,"DoubleChar","##");
   SIMPLE(NewTokenType_ARROW,"DoubleChar","->");
@@ -80,7 +79,6 @@ String PushRepr(Arena* out,NewTokenType type){
   SIMPLE(NewTokenType_KEYWORD_STATE,"Keyword","state");
   SIMPLE(NewTokenType_KEYWORD_MEM,"Keyword","mem");
   SIMPLE(NewTokenType_KEYWORD_FOR,"Keyword","for");
-
 #undef SIMPLE 
 
   return res;
@@ -94,6 +92,9 @@ String PARSE_PushDebugRepr(Arena* out,NewToken token){
   }
   if(token.type == NewTokenType_NUMBER){
     res = PushString(out,"[Number] '%ld'",token.number);
+  }
+  if(token.type == NewTokenType_C_STRING){
+    PushString(out,"\"%.*s\"",UN(token.cString));
   }
 
   if(Empty(res)){
@@ -112,7 +113,16 @@ String PARSE_PushDebugRepr(Arena* out,NewToken token){
   SIMPLE(NewTokenType_KEYWORD_FOR,"Keyword","for");
 
   SIMPLE(NewTokenType_VERILOG_DEFINE,"Verilog","define");
+  SIMPLE(NewTokenType_VERILOG_UNDEF,"Verilog","undef");
+  SIMPLE(NewTokenType_VERILOG_INCLUDE,"Verilog","include");
+
   SIMPLE(NewTokenType_VERILOG_PREPROCESS,"Verilog","preprocess");
+
+  SIMPLE(NewTokenType_VERILOG_IFDEF,"Verilog","ifdef");
+  SIMPLE(NewTokenType_VERILOG_IFNDEF,"Verilog","ifndef");
+  SIMPLE(NewTokenType_VERILOG_ELSE,"Verilog","else");
+  SIMPLE(NewTokenType_VERILOG_ELSIF,"Verilog","elsif");
+  SIMPLE(NewTokenType_VERILOG_ENDIF,"Verilog","endif");
 #undef SIMPLE 
 
   if(Empty(res)){
@@ -159,6 +169,9 @@ void Parser::EnsureTokens(int amount){
     if(options & ParsingOptions_SKIP_WHITESPACE && token.type == NewTokenType_WHITESPACE){
       continue;
     }
+    if(options & ParsingOptions_SKIP_WHITESPACE && token.type == NewTokenType_NEWLINE){
+      continue;
+    }
     if(options & ParsingOptions_SKIP_COMMENTS && token.type == NewTokenType_COMMENT){
       continue;
     }
@@ -185,6 +198,12 @@ void Parser::ReportError(String error){
   }
   
   *errors->PushElem() = PushString(arena,error);
+}
+
+ParsingOptions Parser::SetOptions(ParsingOptions options){
+  ParsingOptions old = this->options;
+  this->options = options;
+  return old;
 }
 
 void Parser::ReportUnexpectedToken(NewToken token,BracketList<NewTokenType> expectedList){
@@ -537,14 +556,120 @@ TokenizeResult ParseVerilogPreprocess(const char* start,const char* end){
   identifier.data = startIdentifierPart;
   identifier.size = ptr - startIdentifierPart;
 
-  if(identifier == "define"){
-    res.token.type = NewTokenType_VERILOG_DEFINE;  
-  } else {
-    res.token.type = NewTokenType_VERILOG_PREPROCESS;
+  NewTokenType type = NewTokenType_VERILOG_PREPROCESS; 
+
+  if(identifier.size == 0){
+    type = NewTokenType_INVALID;
   }
 
+  if(identifier == "define" ){ type = NewTokenType_VERILOG_DEFINE; }
+  if(identifier == "undef"  ){ type = NewTokenType_VERILOG_UNDEF; }
+  if(identifier == "include"){ type = NewTokenType_VERILOG_INCLUDE;}
+  if(identifier == "ifdef"  ){ type = NewTokenType_VERILOG_IFDEF; }
+  if(identifier == "ifndef" ){ type = NewTokenType_VERILOG_IFNDEF; }
+  if(identifier == "else"   ){ type = NewTokenType_VERILOG_ELSE; }
+  if(identifier == "elsif"  ){ type = NewTokenType_VERILOG_ELSIF; }
+  if(identifier == "endif"  ){ type = NewTokenType_VERILOG_ENDIF; }
+
+  res.token.type = type;
   res.bytesParsed = ptr - start;
   res.token.identifier = identifier;
+
+  return res;
+}
+
+TokenizeResult ParseCString(const char* start,const char* end){
+  TokenizeResult res = {};
+
+  const char* ptr = start;
+  res.token.originalData.data = start;
+  char ch = *ptr;
+
+  if(ch != '\"'){
+    return res;
+  }
+
+  auto IsHex = [](char ch){
+    bool res = (ch >= '0' && ch <= '9');
+    res |= (ch == 'a' || ch == 'A');
+    res |= (ch == 'b' || ch == 'B');
+    res |= (ch == 'c' || ch == 'C');
+    res |= (ch == 'd' || ch == 'D');
+    res |= (ch == 'e' || ch == 'E');
+    res |= (ch == 'f' || ch == 'F');
+    
+    return res;
+  };
+
+  // TODO: Not doing anything with this but we could report as error if we define a token type for unterminated escape sequences (like we do with unterminated comments).
+  bool unterminatedEscapeSequence = false;
+  bool foundString = false;
+  for(; ptr < end; ){
+    const char* loopStart = ptr;
+
+    if(*ptr == '\\'){
+      if(ptr + 1 >= end){
+        unterminatedEscapeSequence = true;
+        break;
+      }
+
+      char nextCh = *(ptr + 1);
+      String allowedChars = "abefnrtv\\`\"\?";
+      for(char form : allowedChars){
+        if(nextCh == form){
+          ptr += 2;
+        }
+      }
+      
+      String octal = "01234567";
+      for(char form : octal){
+        if(nextCh == form){
+          ptr += 4;
+        }
+      }
+
+      if(nextCh == 'x'){
+        ptr += 2;
+
+        while(ptr + 1 < end){
+          if(IsHex(*ptr) && IsHex(*(ptr + 1))){
+            ptr += 2;
+          }
+        }
+      }
+
+      if(nextCh == 'u'){
+        ptr += 6;
+      }
+
+      if(nextCh == 'U'){
+        ptr += 10;
+      }
+
+      if(ptr == loopStart){
+        ptr += 1;
+        // Found an unrecognized escape sequence, ignoring it.
+      }
+      
+      continue;
+    }
+
+    if(*ptr == '\"'){
+      foundString = true;
+    }
+
+    ptr += 1;
+  }
+
+  String total = String(start,ptr - start);
+
+  // Remove the first '"' and the last '"' from the content
+  String cStringContent = Offset(total,1);
+  cStringContent.size -= 1;
+  
+  res.token.type = NewTokenType_C_STRING;
+  res.bytesParsed = ptr - start;
+  res.token.identifier = cStringContent;
 
   return res;
 }

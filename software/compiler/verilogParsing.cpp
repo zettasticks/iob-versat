@@ -1149,11 +1149,14 @@ struct DefineInfo{
   DefineType type;
 
   Array<NewToken> tokens;
+  Array<String> args;
+  bool disabled;
 };
 
 enum VerilogTokenizerStageType{
   VerilogTokenizerStageType_FILE,
-  VerilogTokenizerStageType_DEFINE
+  VerilogTokenizerStageType_DEFINE,
+  VerilogTokenizerStageType_COND
 };
 
 struct VerilogTokenizerStage{
@@ -1162,6 +1165,9 @@ struct VerilogTokenizerStage{
   // TODO: Union
   DefineInfo* define;
   int currentDefineToken;
+
+  bool condActive;
+  bool condDone;
 
   ContentState state;
 };
@@ -1172,16 +1178,133 @@ struct VerilogTokenizerState{
   Array<VerilogTokenizerStage> stageBuffer;
   int currentStage;
 
+  ArenaList<String>* errors;
   TrieMap<String,DefineInfo>* definesMap;
+
+  VerilogTokenizerStage* CurrentStage(){
+    return &stageBuffer[currentStage];
+  }
+  
+  VerilogTokenizerStage* PushStage(VerilogTokenizerStageType type){
+    currentStage += 1;
+    VerilogTokenizerStage* res = &stageBuffer[currentStage];
+    *res = {};
+    res->type = type;
+    return res;
+  }
+
+  void ReportError(String err){
+    *errors->PushElem() = err;
+  }
+
+  void AccumulateErrors(ArenaList<String>* errors){
+    for(String str : errors){
+      ReportError(str);
+    }
+  }
+
+  void PopStage(){
+    currentStage -= 1;
+  }
 
   bool IsInsideDefine(){
     bool res = (stageBuffer[currentStage].type == VerilogTokenizerStageType_DEFINE);
     return res;
   }
 
-  NewToken GetNextDefineToken(){}
+  NewToken GetNextDefineToken(){
+    auto* stage = CurrentStage();
+    Assert(stage->type == VerilogTokenizerStageType_DEFINE);
 
-  int ParseDefine(){
+    DefineInfo* def = stage->define;
+    NewToken toReturn = {};
+    if(def->type == DefineType_SIMPLE_REPLACE){
+      toReturn = def->tokens[stage->currentDefineToken];
+      stage->currentDefineToken += 1;
+
+      if(stage->currentDefineToken >= def->tokens.size){
+        PopStage();
+      } 
+    }
+
+    return toReturn;
+  }
+  
+  String ParseString(){
+    ContentState* file = GetCurrentFileState();
+
+    const char* start = file->ptr;
+    const char* end = file->end;
+    
+    String asString = {start,(int) (end-start)};
+    auto TokenizeFunction = [](void* tokenizerState) -> NewToken{
+      DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
+      const char* start = state->ptr;
+      const char* end = state->end;
+
+      TokenizeResult res = ParseWhitespace(start,end);
+      res |= ParseComments(start,end);
+      res |= ParseIdentifier(start,end);
+      DEBUG_BREAK();
+      res |= ParseCString(start,end);
+
+      int size = res.bytesParsed;
+      if(size <= 0){
+        size = 1;
+      }
+      state->ptr += size;
+      return res.token;
+    };
+
+    FREE_ARENA(parsing);
+    Parser* parser = StartParsing(TokenizeFunction,asString,parsing);
+    
+    NewToken result = parser->ExpectNext(NewTokenType_C_STRING);
+    
+    AccumulateErrors(parser->errors);
+
+    file->ptr = result.cString.data + result.cString.size + 1;
+
+    return result.cString;
+  }
+  
+  String ParseOneIdentifier(){
+    ContentState* file = GetCurrentFileState();
+
+    const char* start = file->ptr;
+    const char* end = file->end;
+    
+    String asString = {start,(int) (end-start)};
+    auto TokenizeFunction = [](void* tokenizerState) -> NewToken{
+      DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
+      const char* start = state->ptr;
+      const char* end = state->end;
+
+      TokenizeResult res = ParseWhitespace(start,end);
+      res |= ParseComments(start,end);
+      res |= ParseIdentifier(start,end);
+
+      int size = res.bytesParsed;
+      if(size <= 0){
+        size = 1;
+      }
+      state->ptr += size;
+      return res.token;
+    };
+    
+    FREE_ARENA(parsing);
+    Parser* parser = StartParsing(TokenizeFunction,asString,parsing);
+    
+    NewToken result = parser->ExpectNext(NewTokenType_IDENTIFIER);
+    
+    AccumulateErrors(parser->errors);
+
+    file->ptr = result.identifier.data + result.identifier.size;
+
+    return result.identifier;
+  };
+
+  void ParseDefine(){
     ContentState* file = GetCurrentFileState();
 
     const char* start = file->ptr;
@@ -1211,18 +1334,31 @@ struct VerilogTokenizerState{
     };
 
     FREE_ARENA(parsing);
-    Parser* parser = StartParsing(TokenizeFunction,asString,parsing,ParsingOptions_SKIP_COMMENTS);
+    Parser* parser = StartParsing(TokenizeFunction,asString,parsing);
 
     TEMP_REGION(temp,nullptr);
 
-    parser->IfNextToken(NewTokenType_WHITESPACE);
     parser->IfNextToken(NewTokenType_VERILOG_DEFINE);
-    parser->IfNextToken(NewTokenType_WHITESPACE);
     NewToken id = parser->ExpectNext(NewTokenType_IDENTIFIER);
-
+    
+    parser->SetOptions(ParsingOptions_SKIP_COMMENTS);
     parser->IfNextToken(NewTokenType_WHITESPACE);
+    Array<String> funcArgs = {};
     if(parser->IfPeekToken('(')){
-      NOT_IMPLEMENTED();
+      auto argList = PushList<String>(temp);
+      
+      while(!parser->Done()){
+        NewToken t = parser->ExpectNext(NewTokenType_IDENTIFIER);
+
+        *argList->PushElem() = t.identifier;
+        
+        if(parser->IfNextToken(',')){
+          continue;
+        }
+      }
+      
+      parser->ExpectNext(')');
+      funcArgs = PushArray(arena,argList);
     }
     parser->IfNextToken(NewTokenType_WHITESPACE);
 
@@ -1230,13 +1366,28 @@ struct VerilogTokenizerState{
       
     NewToken newLineToken = {};
     bool foundNewLine = false;
+    bool foundBackslash = false;
     while(!parser->Done()){
       NewToken token = parser->NextToken();
 
+      if(token.type == '\\'){
+        foundBackslash = true;
+        continue;
+      }
+
       if(token.type == NewTokenType_NEWLINE){
+        if(foundBackslash){
+          foundBackslash= false;
+          continue;
+        }
+
         foundNewLine = true;
         newLineToken = token;
         break;
+      }
+
+      if(foundBackslash){
+        // TODO: How to handle any other type of token after a backslash?
       }
 
       *list->PushElem() = token;
@@ -1245,6 +1396,7 @@ struct VerilogTokenizerState{
     DefineInfo info = {};
     info.type = DefineType_SIMPLE_REPLACE;
     info.tokens = PushArray(arena,list);
+    info.args = funcArgs;
     definesMap->Insert(id.identifier,info);
 
     int size = newLineToken.originalData.data - start;
@@ -1252,40 +1404,61 @@ struct VerilogTokenizerState{
       size = end - start;
     }
 
-    return size;
+    AccumulateErrors(parser->errors);
+
+    file->ptr += size;
   }
 
-  void StepInsideDefine(String defineName);
+  void DisableDefine(String defineName){
+    DefineInfo* res = definesMap->Get(defineName);
+
+    if(!res){
+      return;
+    }
+
+    res->disabled = true;
+  }
+
+  void StepInsideDefine(String defineName){
+    DefineInfo* res = definesMap->Get(defineName);
+
+    if(!res){
+      ReportError(SF("Unknown define encountered: %.*s\n",UN(defineName)));
+      return;
+    }
+    
+    VerilogTokenizerStage* stage = PushStage(VerilogTokenizerStageType_DEFINE);
+    stage->define = res;
+  }
+
+  bool DefineNameExists(String defineName){
+    DefineInfo* res = definesMap->Get(defineName);
+
+    if(!res){
+      return false;
+    }
+    
+    return res->disabled;
+  }
 
   ContentState* GetCurrentFileState(){
-    VerilogTokenizerStage* stage = &stageBuffer[currentStage];
-    
-    Assert(stage->type == VerilogTokenizerStageType_FILE);
+    for(int i = currentStage; i >= 0; i--){
+      VerilogTokenizerStage* stage = &stageBuffer[i];
 
-    return &stage->state;
+      if(stage->type == VerilogTokenizerStageType_FILE){
+        return &stage->state;
+      }
+    }
+
+    // Stage 0 should always be a file so we should never reach this point ever.
+    Assert(false);
+    return nullptr;
   }
 };
 
-void VerilogTokenizerState::StepInsideDefine(String defineName){
-  DefineInfo* res = definesMap->Get(defineName);
-  
-  printf("%.*s\n",UN(defineName));
-}
-
 void ParseVerilogFileTest(){
-  String test = R"FOO(
-`define TEST A
-TEST B TEST C
-)FOO";
-
-  FileContent fileLike = {};
-  fileLike.content = test;
-  fileLike.fileName = "";
-  fileLike.state = FileContentState_OK;
-
   TEMP_REGION(temp,nullptr);
 
-#if 1
   auto TokenizeFunction = [](void* tokenizerState) -> NewToken{
     VerilogTokenizerState* state = (VerilogTokenizerState*) tokenizerState;
 
@@ -1296,11 +1469,22 @@ TEST B TEST C
       }
     
       ContentState* file = state->GetCurrentFileState();
-
+      
       const char* start = file->ptr;
       const char* end = file->end;
 
-      res = ParseWhitespace(start,end);
+      res = {};
+      if(start >= end){
+        res.token.type = NewTokenType_EOF;
+        if(state->currentStage == 0){
+          break;
+        } else {
+          state->PopStage();
+          continue;
+        }
+      }
+
+      res |= ParseWhitespace(start,end);
       res |= ParseComments(start,end);
       res |= ParseVerilogPreprocess(start,end);
       res |= ParseSymbols(start,end);
@@ -1309,19 +1493,103 @@ TEST B TEST C
 
       NewTokenType t = res.token.type;
 
-      bool validToken = true;
+      bool isTokenPreprocess = (t >= NewTokenType_START_OF_VERILOG_PREPROCESS && 
+                          t <= NewTokenType_END_OF_VERILOG_PREPROCESS);
+      bool validToken = !isTokenPreprocess;
+      
       int bytesToAdvance = res.bytesParsed;
-      if(t == NewTokenType_VERILOG_DEFINE){
-        validToken = false;
 
-        bytesToAdvance = state->ParseDefine();
+      if(isTokenPreprocess){
+        file->ptr += bytesToAdvance;
+        bytesToAdvance = 0;
+      }
+
+      if(t == NewTokenType_VERILOG_DEFINE){
+        state->ParseDefine();
+      } 
+      if(t == NewTokenType_VERILOG_UNDEF){
+        String id = state->ParseOneIdentifier();
+
+        state->DisableDefine(id);
+      }
+      if(t == NewTokenType_VERILOG_INCLUDE){
+        String filename = state->ParseString();
+
+        FileContent content = GetContentsOfFile(filename,FilePurpose_VERILOG_INCLUDE);
+
+        if(content.state == FileContentState_FAILED_TO_LOAD){
+          state->ReportError(SF("Cannot find include file '%.*s'",UN(filename)));
+        } else {
+          VerilogTokenizerStage* newStage = state->PushStage(VerilogTokenizerStageType_FILE);
+        
+          newStage->state.content = content;
+          newStage->state.start = content.content.data;
+          newStage->state.ptr = content.content.data;
+          newStage->state.end = content.content.data + content.content.size;
+          newStage->state.line = 1;
+          newStage->state.column = 1;
+        }
       } 
       if(t == NewTokenType_VERILOG_PREPROCESS){
-        validToken = false;
-
         String defineIdentifier = res.token.identifier;
         
         state->StepInsideDefine(defineIdentifier);
+      }
+      if(t == NewTokenType_VERILOG_IFDEF || t == NewTokenType_VERILOG_IFNDEF){
+        bool checkIfExists = (t == NewTokenType_VERILOG_IFDEF);
+        
+        String identifierToCheck = state->ParseOneIdentifier();
+
+        VerilogTokenizerStage* stage = state->PushStage(VerilogTokenizerStageType_COND);
+
+        bool exists = state->DefineNameExists(identifierToCheck);
+        stage->type = VerilogTokenizerStageType_COND;
+        stage->condActive = (checkIfExists == exists);
+      }
+      if(t == NewTokenType_VERILOG_ELSE){
+        VerilogTokenizerStage* stage = state->CurrentStage();
+
+        if(stage->type != VerilogTokenizerStageType_COND){
+          state->ReportError("Else preprocessing found without associated if");
+        } else {
+          if(stage->condActive){
+            stage->condDone = true;
+          }
+
+          if(stage->condDone){
+            stage->condActive = false;
+          }
+        }
+      }
+      if(t == NewTokenType_VERILOG_ELSIF){
+        VerilogTokenizerStage* stage = state->CurrentStage();
+
+        if(stage->type != VerilogTokenizerStageType_COND){
+          state->ReportError("Else preprocessing found without associated if");
+        } else {
+          String identifierToCheck = state->ParseOneIdentifier();
+
+          if(stage->condActive){
+            stage->condDone = true;
+          }
+
+          if(stage->condDone){
+            stage->condActive = false;
+          } else {
+            bool exists = state->DefineNameExists(identifierToCheck);
+            
+            stage->condActive = exists;
+          }
+        }
+      }
+      if(t == NewTokenType_VERILOG_ENDIF){
+        VerilogTokenizerStage* stage = state->CurrentStage();
+        
+        if(stage->type != VerilogTokenizerStageType_COND){
+          state->ReportError("Endif found not associated to any if.");
+        } else {
+          state->PopStage();
+        }
       }
 
       file->ptr += bytesToAdvance;
@@ -1342,27 +1610,63 @@ TEST B TEST C
   state->arena = tokenizer;
   state->definesMap = PushTrieMap<String,DefineInfo>(parsing);
   state->stageBuffer = PushArray<VerilogTokenizerStage>(parsing,16);
+  state->errors = PushList<String>(parsing);
   state->currentStage = 0;
 
   state->stageBuffer[0].type = VerilogTokenizerStageType_FILE;
 
   ContentState* first = &state->stageBuffer[0].state;
 
-  String content = fileLike.content;
-
-  first->line = 1;
-  first->column = 1;
-  first->content = fileLike;
-  first->start = content.data;
-  first->ptr = first->start;
-  first->end = content.data + content.size;
-
-  Parser* p = StartParsing(TokenizeFunction,state,parsing);
-
-  while(!p->Done()){
-    NewToken t = p->NextToken();
-    String res = PARSE_PushDebugRepr(temp,t);
-    printf("%.*s\n",UN(res));
-  }
+  String tests[] = {
+#if 1
+{R"FOO(`define A B
+`A
+)FOO"},
+{R"FOO(`define A \
+B
+`A
+)FOO"},
 #endif
+#if 0
+{R"FOO(`ifdef TEST
+`define A B
+`else
+`define A C
+`endif
+`A
+`ifdef A
+`define D 0
+`else
+`define D 1
+`endif
+`D
+)FOO"},
+#endif
+{"`include \"Buffer.v\""}
+  };
+
+  for(String test : tests){
+    FileContent fileLike = {};
+    fileLike.content = test;
+    fileLike.fileName = "";
+    fileLike.state = FileContentState_OK;
+
+    String content = fileLike.content;
+
+    first->line = 1;
+    first->column = 1;
+    first->content = fileLike;
+    first->start = content.data;
+    first->ptr = first->start;
+    first->end = content.data + content.size;
+
+    Parser* p = StartParsing(TokenizeFunction,state,parsing);
+
+    while(!p->Done()){
+      NewToken t = p->NextToken();
+      String res = PARSE_PushDebugRepr(temp,t);
+      printf("%.*s\n",UN(res));
+    }
+
+  }
 }
