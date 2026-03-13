@@ -1,86 +1,87 @@
 #pragma once
 
 #include "utils.hpp"
+#include "utilsCore.hpp"
 
-enum NewTokenType : u16{
-  NewTokenType_INVALID = 0,
-  NewTokenType_EOF,
-  NewTokenType_NEWLINE,
-  NewTokenType_WHITESPACE,
-  NewTokenType_COMMENT,
-  NewTokenType_UNTERMINATED_MULTILINE_COMMENT,
+enum TokenType : u16{
+  TokenType_INVALID = 0,
+  TokenType_EOF,
+  TokenType_NEWLINE,
+  TokenType_WHITESPACE,
+  TokenType_COMMENT,
+  TokenType_UNTERMINATED_MULTILINE_COMMENT,
 
   // Single characters are equal to their ASCII value.
   // { Start characters
-  NewTokenType_CHAR_GROUP_0_START = '!',
-  NewTokenType_CHAR_GROUP_0_LAST = '/',
-  NewTokenType_CHAR_GROUP_1_START = ':',
-  NewTokenType_CHAR_GROUP_1_LAST = '@',
-  NewTokenType_CHAR_GROUP_2_START = '[',
-  NewTokenType_CHAR_GROUP_2_LAST = '`',
-  NewTokenType_CHAR_GROUP_3_START = '{',
-  NewTokenType_CHAR_GROUP_3_LAST = '~',
+  TokenType_CHAR_GROUP_0_START = '!',
+  TokenType_CHAR_GROUP_0_LAST = '/',
+  TokenType_CHAR_GROUP_1_START = ':',
+  TokenType_CHAR_GROUP_1_LAST = '@',
+  TokenType_CHAR_GROUP_2_START = '[',
+  TokenType_CHAR_GROUP_2_LAST = '`',
+  TokenType_CHAR_GROUP_3_START = '{',
+  TokenType_CHAR_GROUP_3_LAST = '~',
   // } End characters
 
   // Normal types commonly used
-  NewTokenType_IDENTIFIER = 128,
-  NewTokenType_NUMBER,
-  NewTokenType_FILEPATH,
+  TokenType_IDENTIFIER = 128,
+  TokenType_NUMBER,
+  TokenType_FILEPATH,
   
   // Double digit symbols
-  NewTokenType_DOUBLE_DOT,     // ..
-  NewTokenType_DOUBLE_HASHTAG, // ##
-  NewTokenType_ARROW,          // ->
-  NewTokenType_SHIFT_RIGHT,    // >>
-  NewTokenType_SHIFT_LEFT,     // <<
-  NewTokenType_XOR_EQUAL,      // ^=
+  TokenType_DOUBLE_DOT,     // ..
+  TokenType_DOUBLE_HASHTAG, // ##
+  TokenType_ARROW,          // ->
+  TokenType_SHIFT_RIGHT,    // >>
+  TokenType_SHIFT_LEFT,     // <<
+  TokenType_XOR_EQUAL,      // ^=
   
   // Triple digit symbols
-  NewTokenType_ROTATE_RIGHT,   // >><
-  NewTokenType_ROTATE_LEFT ,   // ><<
+  TokenType_ROTATE_RIGHT,   // >><
+  TokenType_ROTATE_LEFT,   // ><<
 
-  NewTokenType_VERILOG_ATTRIBUTE_START, // (*
-  NewTokenType_VERILOG_ATTRIBUTE_END,   // *)
+  TokenType_VERILOG_ATTRIBUTE_START, // (*
+  TokenType_VERILOG_ATTRIBUTE_END,   // *)
   
   // Keywords
   // { Start keywords
-  NewTokenType_KEYWORD_MODULE,
-  NewTokenType_KEYWORD_MERGE,
-  NewTokenType_KEYWORD_SHARE,
-  NewTokenType_KEYWORD_STATIC,
-  NewTokenType_KEYWORD_DEBUG,
-  NewTokenType_KEYWORD_CONFIG,
-  NewTokenType_KEYWORD_STATE,
-  NewTokenType_KEYWORD_MEM,
-  NewTokenType_KEYWORD_FOR,
+  TokenType_KEYWORD_MODULE,
+  TokenType_KEYWORD_MERGE,
+  TokenType_KEYWORD_SHARE,
+  TokenType_KEYWORD_STATIC,
+  TokenType_KEYWORD_DEBUG,
+  TokenType_KEYWORD_CONFIG,
+  TokenType_KEYWORD_STATE,
+  TokenType_KEYWORD_MEM,
+  TokenType_KEYWORD_FOR,
   // } End keywords
 
   // Verilog preprocessing directives 
   // { Start VERILOG_PREPROCESS
-  NewTokenType_VERILOG_DEFINE,
-  NewTokenType_VERILOG_UNDEF,
-  NewTokenType_VERILOG_TIMESCALE,
-  NewTokenType_VERILOG_INCLUDE,
+  TokenType_VERILOG_DEFINE,
+  TokenType_VERILOG_UNDEF,
+  TokenType_VERILOG_TIMESCALE,
+  TokenType_VERILOG_INCLUDE,
   // nocheckin: Missing (timescale, resetall, undefineall)
-  NewTokenType_VERILOG_IFDEF,
-  NewTokenType_VERILOG_IFNDEF,
-  NewTokenType_VERILOG_ELSE,
-  NewTokenType_VERILOG_ELSIF,
-  NewTokenType_VERILOG_ENDIF,
+  TokenType_VERILOG_IFDEF,
+  TokenType_VERILOG_IFNDEF,
+  TokenType_VERILOG_ELSE,
+  TokenType_VERILOG_ELSIF,
+  TokenType_VERILOG_ENDIF,
   // Any token that starts with an ` but is not a define
-  NewTokenType_VERILOG_PREPROCESS, 
+  TokenType_VERILOG_PREPROCESS, 
   // } End VERILOG_PREPROCESS
 
   // { Start Verilog Keywords
-  NewTokenType_VERILOG_KEYWORD_MODULE,
-  NewTokenType_VERILOG_KEYWORD_ENDMODULE,
-  NewTokenType_VERILOG_KEYWORD_PARAMETER,
-  NewTokenType_VERILOG_KEYWORD_SIGNED,
-  NewTokenType_VERILOG_KEYWORD_INPUT,
-  NewTokenType_VERILOG_KEYWORD_OUTPUT,
-  NewTokenType_VERILOG_KEYWORD_INOUT,
-  NewTokenType_VERILOG_KEYWORD_REG,
-  NewTokenType_VERILOG_KEYWORD_WIRE,
+  TokenType_VERILOG_KEYWORD_MODULE,
+  TokenType_VERILOG_KEYWORD_ENDMODULE,
+  TokenType_VERILOG_KEYWORD_PARAMETER,
+  TokenType_VERILOG_KEYWORD_SIGNED,
+  TokenType_VERILOG_KEYWORD_INPUT,
+  TokenType_VERILOG_KEYWORD_OUTPUT,
+  TokenType_VERILOG_KEYWORD_INOUT,
+  TokenType_VERILOG_KEYWORD_REG,
+  TokenType_VERILOG_KEYWORD_WIRE,
   // } End Verilog Keywords
 
   // TODO: While this is something that is kinda cool to have, it
@@ -103,28 +104,33 @@ enum NewTokenType : u16{
   // a name and cause problems later on (Ex: 'const' is a valid name
   // from the POV of Versat but its a keyword in C which causes
   // problems when generating the C structs and so on).
-  NewTokenType_C_KEYWORD,
+  TokenType_C_KEYWORD,
 
-  NewTokenType_C_STRING,
+  TokenType_C_STRING,
 
   // We solve this by adding a number at the end of every instance
   // so for now this is mostly unused
-  NewTokenType_VERILOG_KEYWORD
+  TokenType_VERILOG_KEYWORD
 };
 
-#define NewTokenType_START_OF_KEYWORDS   (NewTokenType_KEYWORD_MODULE)
-#define NewTokenType_END_OF_KEYWORDS     (NewTokenType_KEYWORD_FOR + 1)
+#define TokenType_START_OF_KEYWORDS   (TokenType_KEYWORD_MODULE)
+#define TokenType_END_OF_KEYWORDS     (TokenType_KEYWORD_FOR + 1)
 
-#define NewTokenType_START_OF_VERILOG_PREPROCESS   (NewTokenType_VERILOG_DEFINE)
-#define NewTokenType_END_OF_VERILOG_PREPROCESS     (NewTokenType_VERILOG_PREPROCESS + 1)
+#define TokenType_START_OF_VERILOG_PREPROCESS   (TokenType_VERILOG_DEFINE)
+#define TokenType_END_OF_VERILOG_PREPROCESS     (TokenType_VERILOG_PREPROCESS + 1)
 
-#define NewTokenType_START_OF_VERILOG_KEYWORDS   (NewTokenType_VERILOG_KEYWORD_MODULE)
-#define NewTokenType_END_OF_VERILOG_KEYWORDS   (NewTokenType_VERILOG_KEYWORD_WIRE + 1)
+#define TokenType_START_OF_VERILOG_KEYWORDS   (TokenType_VERILOG_KEYWORD_MODULE)
+#define TokenType_END_OF_VERILOG_KEYWORDS   (TokenType_VERILOG_KEYWORD_WIRE + 1)
 
-#define TOK_TYPE(IN) ((NewTokenType) IN)
+#define TOK_TYPE(IN) ((TokenType) IN)
 
-struct NewToken{
-  NewTokenType type;
+struct TokenLocation{
+  int line;
+  int column;
+};
+
+struct Token{
+  TokenType type;
 
   String originalData;
 
@@ -138,15 +144,15 @@ struct NewToken{
   };
 };
 
-String PARSE_PushDebugRepr(Arena* out,NewToken token);
+String PARSE_PushDebugRepr(Arena* out,Token token);
 
 struct TokenizeResult{
-  NewToken token;
+  Token token;
   u32 bytesParsed;
 };
 
 inline TokenizeResult& operator|=(TokenizeResult& lhs,TokenizeResult rhs){
-  if(lhs.token.type == NewTokenType_INVALID){
+  if(lhs.token.type == TokenType_INVALID){
     lhs = rhs;
   }
 
@@ -157,11 +163,9 @@ struct DefaultTokenizerState{
   const char* start;
   const char* ptr;
   const char* end;
-  u32 line;
-  u32 column;
 };
 
-typedef NewToken (*TokenizeFunction)(void* tokenizerState);
+typedef Token (*TokenizeFunction)(void* tokenizerState);
 
 #define MAX_STORED_TOKENS 4
 
@@ -193,7 +197,7 @@ struct Parser{
   Arena* arena;
 
   u8 amountStored;
-  NewToken storedTokens[MAX_STORED_TOKENS];
+  Token storedTokens[MAX_STORED_TOKENS];
 
   TokenizeFunction tokenizer;
 
@@ -212,23 +216,23 @@ struct Parser{
   //       If calling Next and such then we can change options easily. If we are peeking then need to be careful.
   ParsingOptions SetOptions(ParsingOptions options);
 
-  void ReportUnexpectedToken(NewToken token,BracketList<NewTokenType> expectedList);
+  void ReportUnexpectedToken(Token token,BracketList<TokenType> expectedList);
 
-  NewToken NextToken();
-  NewToken PeekToken(int lookahead = 0);
+  Token NextToken();
+  Token PeekToken(int lookahead = 0);
 
-  bool IfNextToken(NewTokenType type);
+  bool IfNextToken(TokenType type);
   bool IfNextToken(char singleChar);
 
-  bool IfPeekToken(NewTokenType type);
+  bool IfPeekToken(TokenType type);
   bool IfPeekToken(char singleChar);
   
-  NewToken ExpectNext(NewTokenType type);
-  NewToken ExpectNext(char singleChar);
+  Token ExpectNext(TokenType type);
+  Token ExpectNext(char singleChar);
 
   void ExpectIdentifier(String expectedContent);
 
-  void Synch(BracketList<NewTokenType> possibleTypes);
+  void Synch(BracketList<TokenType> possibleTypes);
 
   bool Done();
 };
@@ -253,7 +257,7 @@ TokenizeResult ParseComments(const char* start,const char* end);
 TokenizeResult ParseSymbols(const char* start,const char* end);
 TokenizeResult ParseNumber(const char* start,const char* end);
 TokenizeResult ParseIdentifier(const char* start,const char* end);
-TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,NewTokenType result);
+TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,TokenType result);
 
 TokenizeResult ParseVerilogPreprocess(const char* start,const char* end);
 
@@ -267,7 +271,13 @@ TokenizeResult ParseFilepath(const char* start,const char* end);
 
 // ======================================
 // Check if identifier is a keyword in another language.
+// The intent was to prevent Versat from generating an invalid software or hardware file 
+// by using a keyword in a place that is not allowed, but so far it might be better to put this logic
+// after the parsing is done since there is no guarantee that we generate a keyword from the input.
 
 bool PARSE_IsCKeyword(String identifier);
 bool PARSE_IsVerilogKeyword(String identifier);
 
+//
+
+TokenLocation PARSE_TokenLocation(FileContent content,Token token);

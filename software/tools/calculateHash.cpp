@@ -1,9 +1,9 @@
 #include <cstdio>
 
 #include "memory.hpp"
-#include "parser.hpp"
 #include "utils.hpp"
 #include "utilsCore.hpp"
+#include "parser.hpp"
 
 Arena arenaInst;
 Arena* arena = &arenaInst;
@@ -15,8 +15,6 @@ inline u64 HashString(String data,u64 hash){
 
   return hash;
 }
-
-#include "newParser.hpp"
 
 String PushFile(Arena* arena,String path){
   // Care since this is stored on a static buffer
@@ -88,10 +86,10 @@ int main(int argc,const char* argv[]){
 
     while(ptr < end){
       TokenizeResult res = TokenizeFunction(ptr,end);
-      NewTokenType type = res.token.type;
+      TokenType type = res.token.type;
 
       bool hash = true;
-      if(type == NewTokenType_WHITESPACE || type == NewTokenType_COMMENT || type == NewTokenType_EOF){
+      if(type == TokenType_WHITESPACE || type == TokenType_COMMENT || type == TokenType_EOF){
         hash = false;
       }
 

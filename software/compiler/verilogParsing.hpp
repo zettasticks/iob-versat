@@ -3,7 +3,6 @@
 #include "embeddedData.hpp"
 
 #include "utils.hpp"
-#include "parser.hpp"
 #include "VerilogEmitter.hpp"
 
 struct Arena;
@@ -212,16 +211,10 @@ struct ModuleInfo{
   ModuleSource moduleSource;
 };
 
-SymbolicExpression* SymbolicExpressionFromVerilog(VExpr* topExpr,Arena* out);
-SymbolicExpression* SymbolicExpressionFromVerilog(ExpressionRange range,Arena* out);
-
 SYM_Expr SymbolicExpressionFromVerilog(VExpr* topExpr);
 SYM_Expr SymbolicExpressionFromVerilog(ExpressionRange range);
 
-String PreprocessVerilogFile(String fileContent,Array<String> includeFilepaths,Arena* out);
 Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths,Arena* out); // Only handles preprocessed files
 ModuleInfo ExtractModuleInfo(Module& module,Arena* out);
-
-Value Eval(VExpr* expr,Array<ParameterExpression> parameters);
 
 void ParseVerilogFileTest();

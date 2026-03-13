@@ -3,7 +3,7 @@
 #include "accelerator.hpp"
 #include "globals.hpp"
 #include "memory.hpp"
-#include "newParser.hpp"
+#include "parser.hpp"
 #include "symbolic.hpp"
 #include "declaration.hpp"
 #include "utils.hpp"
@@ -11,30 +11,6 @@
 
 #include "CEmitter.hpp"
 #include "versatSpecificationParser.hpp"
-
-bool IsNextTokenConfigFunctionStart(Parser* parser){
-  bool res = false;
-
-  res |= parser->IfPeekToken(NewTokenType_KEYWORD_CONFIG);
-  res |= parser->IfPeekToken(NewTokenType_KEYWORD_STATE);
-  res |= parser->IfPeekToken(NewTokenType_KEYWORD_MEM);
-  
-  return res;
-}
-
-// ======================================
-// Globals
-
-static TrieMap<String,ConfigFunction>* nameToFunction;
-static Arena userConfigsArenaInst;
-static Arena* userConfigsArena;
-
-void InitializeUserConfigs(){
-  userConfigsArenaInst = InitArena(Megabyte(1));
-  userConfigsArena = &userConfigsArenaInst;
-
-  nameToFunction = PushTrieMap<String,ConfigFunction>(userConfigsArena);
-}
 
 // ============================================================================
 // Instantiation and manipulation
@@ -52,9 +28,9 @@ struct ParseResult{
   
   SYM_Expr expr;
   Array<SpecExpression*> args;
-  NewToken entityName;
-  NewToken wireName; 
-  NewToken functionName;
+  Token entityName;
+  Token wireName; 
+  Token functionName;
 };
 
 struct DecompConfigStatement{
@@ -65,8 +41,8 @@ struct DecompConfigStatement{
   
   SYM_Expr expr;
   Array<SpecExpression*> args;
-  NewToken entityName;
-  NewToken wireName; 
+  Token entityName;
+  Token wireName; 
 
   ConfigFunction* func;
 };
@@ -142,11 +118,11 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   // TODO: Where is the error checking being perform to check if a given composite module contains the actual function?
   String structToReturnName = "void";
   Array<ConfigVarDeclaration> variables = def->variables;
-  Array<NewToken> variableNames = Extract(variables,temp,&ConfigVarDeclaration::name);
+  Array<Token> variableNames = Extract(variables,temp,&ConfigVarDeclaration::name);
 
   env->PushScope();
 
-  for(NewToken name : variableNames){
+  for(Token name : variableNames){
     env->AddVariable(name);
   }
   
@@ -210,7 +186,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       {
         auto tokens = AccumTokens(def.startSym,temp);
 
-        for(NewToken tok : tokens){
+        for(Token tok : tokens){
           variablesUsedOnLoopExpressions->Insert(tok.identifier); 
         }
       }
@@ -218,7 +194,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       {
         auto tokens = AccumTokens(def.endSym,temp);
 
-        for(NewToken tok : tokens){
+        for(Token tok : tokens){
           variablesUsedOnLoopExpressions->Insert(tok.identifier); 
         }
       }
@@ -229,7 +205,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   Array<String> varNames = PushArray<String>(out,def->variables.size); 
   for(int i = 0; i < variables.size; i++){
     ConfigVarDeclaration decl = variables[i];
-    NewToken typeTok = decl.type;
+    Token typeTok = decl.type;
 
     ConfigVarType type = ConfigVarType_SIMPLE;
 
@@ -270,7 +246,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       ConfigStatement* simple = stmts[stmts.size - 1];
       // TODO: Call entity function to make sure that the entity exists and it is a config wire
 
-      NewToken name = GetBase(simple->lhs)->name;
+      Token name = GetBase(simple->lhs)->name;
 
       auto forLoops = PushList<AddressGenForDef>(temp);
 
@@ -579,21 +555,20 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     varInfo[i].usedOnLoopExpressions = variablesUsedOnLoopExpressions->Exists(varInfo[i].name);
   }
 
-  ConfigFunction func = {};
-  func.type = type;
-  func.decl = declaration;
-  func.stuff = PushArray(out,list);
-  func.variables = varInfo;
-  func.individualName = PushString(out,def->name.identifier);
-  func.fullName = GlobalConfigFunctionName(func.individualName,declaration,out);
-  func.newStructs = PushArray(out,newStructs);
-  func.structToReturnName = structToReturnName;
-  func.debug = def->debug;
-  func.supportsSizeCalc = supportsSizeCalc;
-
-  ConfigFunction* res = nameToFunction->Insert(func.fullName,func);
+  ConfigFunction* func = PushStruct<ConfigFunction>(out);
+  func->type = type;
+  func->decl = declaration;
+  func->stuff = PushArray(out,list);
+  func->variables = varInfo;
+  func->individualName = PushString(out,def->name.identifier);
+  func->fullName = GlobalConfigFunctionName(func->individualName,declaration,out);
+  func->newStructs = PushArray(out,newStructs);
+  func->structToReturnName = structToReturnName;
+  func->debug = def->debug;
+  func->supportsSizeCalc = supportsSizeCalc;
+  
 
   env->PopScope();
   
-  return res;  
+  return func;  
 }

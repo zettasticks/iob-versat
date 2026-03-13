@@ -23,7 +23,7 @@ struct ConnectionExtra{
 };
 
 struct Var{
-  NewToken name;
+  Token name;
 
   ConnectionExtra extra;
   Range<SpecExpression*> index;
@@ -33,7 +33,7 @@ struct Var{
 
 struct VarGroup{
   Array<Var> vars;
-  NewToken fullText;
+  Token fullText;
 };
 
 enum SpecType{
@@ -52,25 +52,25 @@ struct SpecExpression{
     const char* op;
     Var var;
     int val;
-    NewToken name;
+    Token name;
   };
-  NewToken text;
+  Token text;
   
   // NOTE: If array access, expressions is an array of the expressions in order and var contains the array name.
   SpecType type;
 };
 
 //nocheckin - TODO: We probably want to remove this after we move more logic to Env
-Array<NewToken> AccumTokens(SpecExpression* top,Arena* out);
+Array<Token> AccumTokens(SpecExpression* top,Arena* out);
 
 struct VarDeclaration{
-  NewToken name;
+  Token name;
   int arraySize;
   bool isArray;
 };
 
 struct ParameterDeclaration{
-  NewToken name;
+  Token name;
   SpecExpression* defaultValue;
 };
 
@@ -87,14 +87,14 @@ enum InstanceDeclarationType{
 
 struct InstanceDeclaration{
   InstanceDeclarationType modifier;
-  NewToken typeName;
+  Token typeName;
   Array<VarDeclaration> declarations; // share(config) groups can have multiple different declarations. TODO: It is kinda weird that inside the syntax, the share allows groups of instances to be declared while this does not happen elsewhere. Not enought to warrant a look for now, but keep in mind for later.
 
   // NOTE: We could create a different expression type 
   Array<Pair<String,SpecExpression*>> parameters;
 
-  Array<NewToken> addressGenUsed; // NOTE: We do not check if address gen exists at parse time, we check it later.
-  Array<NewToken> shareNames;
+  Array<Token> addressGenUsed; // NOTE: We do not check if address gen exists at parse time, we check it later.
+  Array<Token> shareNames;
   bool negateShareNames;
   bool debug;
   
@@ -111,7 +111,7 @@ enum ConnectionType{
 struct ConnectionDef{
   ConnectionType type;
   VarGroup output;
-  Array<NewToken> transforms;
+  Array<Token> transforms;
 
   // TODO: Union.
   VarGroup input;
@@ -119,16 +119,16 @@ struct ConnectionDef{
 };
 
 struct TypeAndInstance{
-  NewToken typeName;
-  NewToken instanceName;
+  Token typeName;
+  Token instanceName;
 };
 
 struct DefBase{
-  NewToken name;
+  Token name;
 };
 
 struct ModuleDef : public DefBase{
-  NewToken numberOutputs; // TODO: Not being used. Not sure if we gonna actually add this or not.
+  Token numberOutputs; // TODO: Not being used. Not sure if we gonna actually add this or not.
   Array<ParameterDeclaration> params;
   Array<VarDeclaration> inputs;
   Array<InstanceDeclaration> declarations;
@@ -139,7 +139,7 @@ struct ModuleDef : public DefBase{
 struct MergeDef : public DefBase{
   Array<TypeAndInstance> declarations;
   Array<SpecificMergeNode> specifics;
-  Array<NewToken> mergeModifiers;
+  Array<Token> mergeModifiers;
 };
 
 struct ConstructDef{
@@ -152,14 +152,14 @@ struct ConstructDef{
 };
 
 struct HierarchicalName{
-  NewToken instanceName;
+  Token instanceName;
   Var subInstance;
 };
 
 typedef Pair<HierarchicalName,HierarchicalName> SpecNode;
 
 bool IsModuleLike(ConstructDef def);
-Array<NewToken> TypesUsed(ConstructDef def,Arena* out);
+Array<Token> TypesUsed(ConstructDef def,Arena* out);
 
 Array<ConstructDef> ParseVersatSpecification(String content,Arena* out);
 
@@ -185,9 +185,9 @@ struct ConfigIdentifier{
   ConfigIdentifier* parent;
 
   // TODO: Union
-  NewToken name;
+  Token name;
   SpecExpression* trueExpr;
-  NewToken functionName;
+  Token functionName;
   Array<SpecExpression*> arguments;
 };
 
@@ -288,7 +288,7 @@ struct Env{
   Array<EnvScope*> scopes;
   int currentScope;
 
-  void ReportError(NewToken badToken,String msg);
+  void ReportError(Token badToken,String msg);
 
   // By default we are inside a module scope.
   void PushScope();
@@ -299,15 +299,15 @@ struct Env{
 
   // TODO: The arrayIndexIfArray does not tell us if we are trying to access an array or not.
   //       We probably need to encode such info so that we can properly error report
-  FUInstance* GetFUInstance(NewToken name,int arrayIndexIfArray);
+  FUInstance* GetFUInstance(Token name,int arrayIndexIfArray);
 
   FUInstance* GetFUInstance(Var var);
   FUInstance* GetOutputInstance();
 
-  Entity* PushNewEntity(NewToken name);
-  Entity* GetEntity(NewToken name);
+  Entity* PushNewEntity(Token name);
+  Entity* GetEntity(Token name);
 
-  void CheckIfEntityExists(NewToken name);
+  void CheckIfEntityExists(Token name);
   Entity* GetEntity(ConfigIdentifier* id,Arena* out);
   Entity* GetEntity(SpecExpression* id,Arena* out);
 
@@ -319,8 +319,8 @@ struct Env{
   void AddConnection(ConnectionDef def);
   void AddEquality(ConnectionDef def);
 
-  void AddParam(NewToken name);
-  void AddVariable(NewToken name);
+  void AddParam(Token name);
+  void AddVariable(Token name);
 
   PortExpression InstantiateSpecExpression(SpecExpression* root);
 

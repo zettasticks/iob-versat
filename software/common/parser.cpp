@@ -1,4 +1,5 @@
-#include "newParser.hpp"
+#include "parser.hpp"
+#include "filesystem.hpp"
 #include "utilsCore.hpp"
 
 static bool IsAlpha(char ch){
@@ -14,121 +15,121 @@ static bool IsNumeric(char ch){
 static bool IsCharSingleToken(char ch){
   bool res = false;
 
-  if(ch >= NewTokenType_CHAR_GROUP_0_START && ch <= NewTokenType_CHAR_GROUP_0_LAST){
+  if(ch >= TokenType_CHAR_GROUP_0_START && ch <= TokenType_CHAR_GROUP_0_LAST){
     res = true;
   }
-  if(ch >= NewTokenType_CHAR_GROUP_1_START && ch <= NewTokenType_CHAR_GROUP_1_LAST){
+  if(ch >= TokenType_CHAR_GROUP_1_START && ch <= TokenType_CHAR_GROUP_1_LAST){
     res = true;
   }
-  if(ch >= NewTokenType_CHAR_GROUP_2_START && ch <= NewTokenType_CHAR_GROUP_2_LAST){
+  if(ch >= TokenType_CHAR_GROUP_2_START && ch <= TokenType_CHAR_GROUP_2_LAST){
     res = true;
   }
-  if(ch >= NewTokenType_CHAR_GROUP_3_START && ch <= NewTokenType_CHAR_GROUP_3_LAST){
+  if(ch >= TokenType_CHAR_GROUP_3_START && ch <= TokenType_CHAR_GROUP_3_LAST){
     res = true;
   }
   
   return res;
 }
 
-String PushRepr(Arena* out,NewTokenType type){
+String PushRepr(Arena* out,TokenType type){
   String res = {};
   if(IsCharSingleToken((char) type)){
     res = PushString(out,"'%c'",(char) type);
   }
-  if(type == NewTokenType_WHITESPACE){
+  if(type == TokenType_WHITESPACE){
     res = "Whitespace";
   }
-  if(type == NewTokenType_NEWLINE){
+  if(type == TokenType_NEWLINE){
     res = "Newline";
   }
-  if(type == NewTokenType_COMMENT){
+  if(type == TokenType_COMMENT){
     res = "Comment";
   }
-  if(type == NewTokenType_EOF){
+  if(type == TokenType_EOF){
     res = "EOF";
   }
-  if(type == NewTokenType_C_KEYWORD){
+  if(type == TokenType_C_KEYWORD){
     res = "C Reserved Keyword";
   }
-  if(type == NewTokenType_IDENTIFIER){
+  if(type == TokenType_IDENTIFIER){
     res = "Identifier";
   }
-  if(type == NewTokenType_NUMBER){
+  if(type == TokenType_NUMBER){
     res = "Number";
   }
-  if(type == NewTokenType_FILEPATH){
+  if(type == TokenType_FILEPATH){
     res = "Filepath";
   }
 
-  if(type >= NewTokenType_START_OF_KEYWORDS && type < NewTokenType_END_OF_KEYWORDS){
+  if(type >= TokenType_START_OF_KEYWORDS && type < TokenType_END_OF_KEYWORDS){
     res = "Keyword";
   }
 
 #define SIMPLE(TYPE,TYPENAME,RET) if(type == TYPE) res = PushString(out,"[%s] '%s'",TYPENAME,RET)
-  SIMPLE(NewTokenType_DOUBLE_DOT,"DoubleChar","..");
-  SIMPLE(NewTokenType_DOUBLE_HASHTAG,"DoubleChar","##");
-  SIMPLE(NewTokenType_ARROW,"DoubleChar","->");
-  SIMPLE(NewTokenType_SHIFT_RIGHT,"DoubleChar",">>");
-  SIMPLE(NewTokenType_SHIFT_LEFT,"DoubleChar","<<");
+  SIMPLE(TokenType_DOUBLE_DOT,"DoubleChar","..");
+  SIMPLE(TokenType_DOUBLE_HASHTAG,"DoubleChar","##");
+  SIMPLE(TokenType_ARROW,"DoubleChar","->");
+  SIMPLE(TokenType_SHIFT_RIGHT,"DoubleChar",">>");
+  SIMPLE(TokenType_SHIFT_LEFT,"DoubleChar","<<");
 
-  SIMPLE(NewTokenType_ROTATE_RIGHT,"TripleChar",">><");
-  SIMPLE(NewTokenType_ROTATE_LEFT,"DoubleChar","><<");
+  SIMPLE(TokenType_ROTATE_RIGHT,"TripleChar",">><");
+  SIMPLE(TokenType_ROTATE_LEFT,"DoubleChar","><<");
 
-  SIMPLE(NewTokenType_VERILOG_ATTRIBUTE_START,"DoubleChar","(*");
-  SIMPLE(NewTokenType_VERILOG_ATTRIBUTE_END,"DoubleChar","*)");
+  SIMPLE(TokenType_VERILOG_ATTRIBUTE_START,"DoubleChar","(*");
+  SIMPLE(TokenType_VERILOG_ATTRIBUTE_END,"DoubleChar","*)");
 
-  SIMPLE(NewTokenType_KEYWORD_MODULE,"Keyword","module");
-  SIMPLE(NewTokenType_KEYWORD_MERGE,"Keyword","merge");
-  SIMPLE(NewTokenType_KEYWORD_SHARE,"Keyword","share");
-  SIMPLE(NewTokenType_KEYWORD_STATIC,"Keyword","static");
-  SIMPLE(NewTokenType_KEYWORD_DEBUG,"Keyword","debug");
-  SIMPLE(NewTokenType_KEYWORD_CONFIG,"Keyword","config");
-  SIMPLE(NewTokenType_KEYWORD_STATE,"Keyword","state");
-  SIMPLE(NewTokenType_KEYWORD_MEM,"Keyword","mem");
-  SIMPLE(NewTokenType_KEYWORD_FOR,"Keyword","for");
+  SIMPLE(TokenType_KEYWORD_MODULE,"Keyword","module");
+  SIMPLE(TokenType_KEYWORD_MERGE,"Keyword","merge");
+  SIMPLE(TokenType_KEYWORD_SHARE,"Keyword","share");
+  SIMPLE(TokenType_KEYWORD_STATIC,"Keyword","static");
+  SIMPLE(TokenType_KEYWORD_DEBUG,"Keyword","debug");
+  SIMPLE(TokenType_KEYWORD_CONFIG,"Keyword","config");
+  SIMPLE(TokenType_KEYWORD_STATE,"Keyword","state");
+  SIMPLE(TokenType_KEYWORD_MEM,"Keyword","mem");
+  SIMPLE(TokenType_KEYWORD_FOR,"Keyword","for");
 
-  SIMPLE(NewTokenType_VERILOG_DEFINE,"Verilog","define");
-  SIMPLE(NewTokenType_VERILOG_UNDEF,"Verilog","undef");
+  SIMPLE(TokenType_VERILOG_DEFINE,"Verilog","define");
+  SIMPLE(TokenType_VERILOG_UNDEF,"Verilog","undef");
 
-  SIMPLE(NewTokenType_VERILOG_INCLUDE,"Verilog","include");
-  SIMPLE(NewTokenType_VERILOG_INCLUDE,"Verilog","timescale");
+  SIMPLE(TokenType_VERILOG_INCLUDE,"Verilog","include");
+  SIMPLE(TokenType_VERILOG_INCLUDE,"Verilog","timescale");
 
-  SIMPLE(NewTokenType_VERILOG_PREPROCESS,"Verilog","preprocess");
+  SIMPLE(TokenType_VERILOG_PREPROCESS,"Verilog","preprocess");
 
-  SIMPLE(NewTokenType_VERILOG_IFDEF,"Verilog","ifdef");
-  SIMPLE(NewTokenType_VERILOG_IFNDEF,"Verilog","ifndef");
-  SIMPLE(NewTokenType_VERILOG_ELSE,"Verilog","else");
-  SIMPLE(NewTokenType_VERILOG_ELSIF,"Verilog","elsif");
-  SIMPLE(NewTokenType_VERILOG_ENDIF,"Verilog","endif");
+  SIMPLE(TokenType_VERILOG_IFDEF,"Verilog","ifdef");
+  SIMPLE(TokenType_VERILOG_IFNDEF,"Verilog","ifndef");
+  SIMPLE(TokenType_VERILOG_ELSE,"Verilog","else");
+  SIMPLE(TokenType_VERILOG_ELSIF,"Verilog","elsif");
+  SIMPLE(TokenType_VERILOG_ENDIF,"Verilog","endif");
 
-  SIMPLE(NewTokenType_VERILOG_KEYWORD_PARAMETER,"Verilog","parameter");
+  SIMPLE(TokenType_VERILOG_KEYWORD_PARAMETER,"Verilog","parameter");
 
-  SIMPLE(NewTokenType_VERILOG_KEYWORD_MODULE,"Verilog","module");
-  SIMPLE(NewTokenType_VERILOG_KEYWORD_ENDMODULE,"Verilog","endmodule");
-  SIMPLE(NewTokenType_VERILOG_KEYWORD_SIGNED,"Verilog","signed");
-  SIMPLE(NewTokenType_VERILOG_KEYWORD_INPUT,"Verilog","input");
-  SIMPLE(NewTokenType_VERILOG_KEYWORD_OUTPUT,"Verilog","output");
-  SIMPLE(NewTokenType_VERILOG_KEYWORD_INOUT,"Verilog","inout");
-  SIMPLE(NewTokenType_VERILOG_KEYWORD_REG,"Verilog","reg");
-  SIMPLE(NewTokenType_VERILOG_KEYWORD_WIRE,"Verilog","wire");
+  SIMPLE(TokenType_VERILOG_KEYWORD_MODULE,"Verilog","module");
+  SIMPLE(TokenType_VERILOG_KEYWORD_ENDMODULE,"Verilog","endmodule");
+  SIMPLE(TokenType_VERILOG_KEYWORD_SIGNED,"Verilog","signed");
+  SIMPLE(TokenType_VERILOG_KEYWORD_INPUT,"Verilog","input");
+  SIMPLE(TokenType_VERILOG_KEYWORD_OUTPUT,"Verilog","output");
+  SIMPLE(TokenType_VERILOG_KEYWORD_INOUT,"Verilog","inout");
+  SIMPLE(TokenType_VERILOG_KEYWORD_REG,"Verilog","reg");
+  SIMPLE(TokenType_VERILOG_KEYWORD_WIRE,"Verilog","wire");
 #undef SIMPLE 
 
   return res;
 }
 
-String PARSE_PushDebugRepr(Arena* out,NewToken token){
+String PARSE_PushDebugRepr(Arena* out,Token token){
   String res = {};
 
-  if(token.type == NewTokenType_IDENTIFIER){
+  if(token.type == TokenType_IDENTIFIER){
     res = PushString(out,"[Identifier] '%.*s'",UN(token.identifier));
   }
-  if(token.type == NewTokenType_NUMBER){
+  if(token.type == TokenType_NUMBER){
     res = PushString(out,"[Number] '%ld'",token.number);
   }
-  if(token.type == NewTokenType_C_STRING){
+  if(token.type == TokenType_C_STRING){
     res = PushString(out,"\"%.*s\"",UN(token.cString));
   }
-  if(token.type == NewTokenType_FILEPATH){
+  if(token.type == TokenType_FILEPATH){
     res = PushString(out,"[Filepath] %.*s",UN(token.filepath));
   }
 
@@ -137,40 +138,40 @@ String PARSE_PushDebugRepr(Arena* out,NewToken token){
   }
 
 #define SIMPLE(TYPE,TYPENAME,RET) if(token.type == TYPE) res = PushString(out,"[%s] '%s'",TYPENAME,RET)
-  SIMPLE(NewTokenType_KEYWORD_MODULE,"Keyword","module");
-  SIMPLE(NewTokenType_KEYWORD_MERGE,"Keyword","merge");
-  SIMPLE(NewTokenType_KEYWORD_SHARE,"Keyword","share");
-  SIMPLE(NewTokenType_KEYWORD_STATIC,"Keyword","static");
-  SIMPLE(NewTokenType_KEYWORD_DEBUG,"Keyword","debug");
-  SIMPLE(NewTokenType_KEYWORD_CONFIG,"Keyword","config");
-  SIMPLE(NewTokenType_KEYWORD_STATE,"Keyword","state");
-  SIMPLE(NewTokenType_KEYWORD_MEM,"Keyword","mem");
-  SIMPLE(NewTokenType_KEYWORD_FOR,"Keyword","for");
+  SIMPLE(TokenType_KEYWORD_MODULE,"Keyword","module");
+  SIMPLE(TokenType_KEYWORD_MERGE,"Keyword","merge");
+  SIMPLE(TokenType_KEYWORD_SHARE,"Keyword","share");
+  SIMPLE(TokenType_KEYWORD_STATIC,"Keyword","static");
+  SIMPLE(TokenType_KEYWORD_DEBUG,"Keyword","debug");
+  SIMPLE(TokenType_KEYWORD_CONFIG,"Keyword","config");
+  SIMPLE(TokenType_KEYWORD_STATE,"Keyword","state");
+  SIMPLE(TokenType_KEYWORD_MEM,"Keyword","mem");
+  SIMPLE(TokenType_KEYWORD_FOR,"Keyword","for");
 
-  SIMPLE(NewTokenType_VERILOG_DEFINE,"Verilog","define");
-  SIMPLE(NewTokenType_VERILOG_UNDEF,"Verilog","undef");
+  SIMPLE(TokenType_VERILOG_DEFINE,"Verilog","define");
+  SIMPLE(TokenType_VERILOG_UNDEF,"Verilog","undef");
 
-  SIMPLE(NewTokenType_VERILOG_INCLUDE,"Verilog","timescale");
-  SIMPLE(NewTokenType_VERILOG_INCLUDE,"Verilog","include");
+  SIMPLE(TokenType_VERILOG_INCLUDE,"Verilog","timescale");
+  SIMPLE(TokenType_VERILOG_INCLUDE,"Verilog","include");
 
-  SIMPLE(NewTokenType_VERILOG_PREPROCESS,"Verilog","preprocess");
+  SIMPLE(TokenType_VERILOG_PREPROCESS,"Verilog","preprocess");
 
-  SIMPLE(NewTokenType_VERILOG_IFDEF,"Verilog","ifdef");
-  SIMPLE(NewTokenType_VERILOG_IFNDEF,"Verilog","ifndef");
-  SIMPLE(NewTokenType_VERILOG_ELSE,"Verilog","else");
-  SIMPLE(NewTokenType_VERILOG_ELSIF,"Verilog","elsif");
-  SIMPLE(NewTokenType_VERILOG_ENDIF,"Verilog","endif");
+  SIMPLE(TokenType_VERILOG_IFDEF,"Verilog","ifdef");
+  SIMPLE(TokenType_VERILOG_IFNDEF,"Verilog","ifndef");
+  SIMPLE(TokenType_VERILOG_ELSE,"Verilog","else");
+  SIMPLE(TokenType_VERILOG_ELSIF,"Verilog","elsif");
+  SIMPLE(TokenType_VERILOG_ENDIF,"Verilog","endif");
 
-  SIMPLE(NewTokenType_VERILOG_KEYWORD_PARAMETER,"Verilog","parameter");
+  SIMPLE(TokenType_VERILOG_KEYWORD_PARAMETER,"Verilog","parameter");
 
-  SIMPLE(NewTokenType_VERILOG_KEYWORD_MODULE,"Verilog","module");
-  SIMPLE(NewTokenType_VERILOG_KEYWORD_ENDMODULE,"Verilog","endmodule");
-  SIMPLE(NewTokenType_VERILOG_KEYWORD_SIGNED,"Verilog","signed");
-  SIMPLE(NewTokenType_VERILOG_KEYWORD_INPUT,"Verilog","input");
-  SIMPLE(NewTokenType_VERILOG_KEYWORD_OUTPUT,"Verilog","output");
-  SIMPLE(NewTokenType_VERILOG_KEYWORD_INOUT,"Verilog","inout");
-  SIMPLE(NewTokenType_VERILOG_KEYWORD_REG,"Verilog","reg");
-  SIMPLE(NewTokenType_VERILOG_KEYWORD_WIRE,"Verilog","wire");
+  SIMPLE(TokenType_VERILOG_KEYWORD_MODULE,"Verilog","module");
+  SIMPLE(TokenType_VERILOG_KEYWORD_ENDMODULE,"Verilog","endmodule");
+  SIMPLE(TokenType_VERILOG_KEYWORD_SIGNED,"Verilog","signed");
+  SIMPLE(TokenType_VERILOG_KEYWORD_INPUT,"Verilog","input");
+  SIMPLE(TokenType_VERILOG_KEYWORD_OUTPUT,"Verilog","output");
+  SIMPLE(TokenType_VERILOG_KEYWORD_INOUT,"Verilog","inout");
+  SIMPLE(TokenType_VERILOG_KEYWORD_REG,"Verilog","reg");
+  SIMPLE(TokenType_VERILOG_KEYWORD_WIRE,"Verilog","wire");
 #undef SIMPLE 
 
   if(Empty(res)){
@@ -185,8 +186,6 @@ Parser* StartParsing(TokenizeFunction tokenizer,String content,Arena* freeArena,
   Parser* res = PushStruct<Parser>(freeArena);
 
   DefaultTokenizerState* tokenizerState = PushStruct<DefaultTokenizerState>(freeArena);
-  tokenizerState->line = 1;
-  tokenizerState->column = 1;
   tokenizerState->start = content.data;
   tokenizerState->ptr = content.data;
   tokenizerState->end = content.data + content.size;
@@ -213,27 +212,27 @@ Parser* StartParsing(TokenizeFunction tokenizer,void* tokenizerState,Arena* free
 
 void Parser::EnsureTokens(int amount){
   while(this->amountStored < amount){
-    NewToken token = this->tokenizer(this->tokenizerState);
-    if(options & ParsingOptions_SKIP_WHITESPACE && token.type == NewTokenType_WHITESPACE){
+    Token token = this->tokenizer(this->tokenizerState);
+    if(options & ParsingOptions_SKIP_WHITESPACE && token.type == TokenType_WHITESPACE){
       continue;
     }
-    if(options & ParsingOptions_SKIP_WHITESPACE && token.type == NewTokenType_NEWLINE){
+    if(options & ParsingOptions_SKIP_WHITESPACE && token.type == TokenType_NEWLINE){
       continue;
     }
-    if(options & ParsingOptions_SKIP_COMMENTS && token.type == NewTokenType_COMMENT){
+    if(options & ParsingOptions_SKIP_COMMENTS && token.type == TokenType_COMMENT){
       continue;
     }
-    if(options & ParsingOptions_SKIP_COMMENTS && token.type == NewTokenType_UNTERMINATED_MULTILINE_COMMENT){
+    if(options & ParsingOptions_SKIP_COMMENTS && token.type == TokenType_UNTERMINATED_MULTILINE_COMMENT){
       // TODO: Improve error messages, We can show user the start of the multiline comment
       ReportError("Unterminated multiline comment");
       continue;
     }
 
-    if(token.type == NewTokenType_INVALID){
+    if(token.type == TokenType_INVALID){
       if(currentFile){
         printf("Invalid token: %s\n",currentFile);
       }
-      token.type = NewTokenType_EOF;
+      token.type = TokenType_EOF;
     }
 
     this->storedTokens[this->amountStored++] = token;
@@ -254,7 +253,7 @@ ParsingOptions Parser::SetOptions(ParsingOptions options){
   return old;
 }
 
-void Parser::ReportUnexpectedToken(NewToken token,BracketList<NewTokenType> expectedList){
+void Parser::ReportUnexpectedToken(Token token,BracketList<TokenType> expectedList){
   TEMP_REGION(temp,nullptr);
 
   String tokenRepr = PARSE_PushDebugRepr(temp,token);
@@ -264,7 +263,7 @@ void Parser::ReportUnexpectedToken(NewToken token,BracketList<NewTokenType> expe
   builder->PushString("Expected one of the following:\n");
   
   // TODO: Move tokenType to meta and proper data modelling of the token type properties.
-  for(NewTokenType type : expectedList){
+  for(TokenType type : expectedList){
     String repr = PushRepr(temp,type);
     builder->PushString("  '%.*s'\n",UN(repr));
   }
@@ -278,10 +277,10 @@ void Parser::ReportUnexpectedToken(NewToken token,BracketList<NewTokenType> expe
   *errors->PushElem() = EndString(this->arena,builder);
 }
 
-NewToken Parser::NextToken(){
+Token Parser::NextToken(){
   EnsureTokens(1);
 
-  NewToken res = this->storedTokens[0];
+  Token res = this->storedTokens[0];
   for(int i = 0; i < this->amountStored - 1; i++){
     this->storedTokens[i] = this->storedTokens[i+1];
   }
@@ -290,14 +289,14 @@ NewToken Parser::NextToken(){
   return res;
 }
 
-NewToken Parser::PeekToken(int lookahead){
+Token Parser::PeekToken(int lookahead){
   EnsureTokens(lookahead + 1);
 
   return this->storedTokens[lookahead];
 }
 
-bool Parser::IfNextToken(NewTokenType type){
-  NewToken tok = PeekToken();
+bool Parser::IfNextToken(TokenType type){
+  Token tok = PeekToken();
   if(tok.type == type){
     NextToken();
     return true;
@@ -312,8 +311,8 @@ bool Parser::IfNextToken(char singleChar){
   return IfNextToken(TOK_TYPE(singleChar));
 }
 
-bool Parser::IfPeekToken(NewTokenType type){
-  NewToken tok = PeekToken();
+bool Parser::IfPeekToken(TokenType type){
+  Token tok = PeekToken();
   if(tok.type == type){
     return true;
   }
@@ -327,13 +326,13 @@ bool Parser::IfPeekToken(char singleChar){
   return IfPeekToken(TOK_TYPE(singleChar));
 }
 
-NewToken Parser::ExpectNext(NewTokenType type){
-  NewToken tok = NextToken();
+Token Parser::ExpectNext(TokenType type){
+  Token tok = NextToken();
 
-  if(type == NewTokenType_IDENTIFIER && (options & ParsingOptions_ERROR_ON_C_VERILOG_KEYWORDS)){
-    if(tok.type == NewTokenType_C_KEYWORD && options & ParsingOptions_ERROR_ON_C_KEYWORDS){
+  if(type == TokenType_IDENTIFIER && (options & ParsingOptions_ERROR_ON_C_VERILOG_KEYWORDS)){
+    if(tok.type == TokenType_C_KEYWORD && options & ParsingOptions_ERROR_ON_C_KEYWORDS){
       ReportError("Expected identifier but instead got a C reserved keyword.\n We cannot have C keywords since we will have to generate C code and the generated code will be malformed");
-    } else if(tok.type == NewTokenType_VERILOG_KEYWORD && options & ParsingOptions_ERROR_ON_VERILOG_KEYWORDS){
+    } else if(tok.type == TokenType_VERILOG_KEYWORD && options & ParsingOptions_ERROR_ON_VERILOG_KEYWORDS){
       ReportError("Expected identifier but instead got a Verilog reserved keyword.\n We cannot have Verilog keywords since we will have to generate Verilog code and the generated code will be malformed");
     }
   } else if(tok.type != type){
@@ -348,16 +347,16 @@ NewToken Parser::ExpectNext(NewTokenType type){
   return tok;
 }
 
-NewToken Parser::ExpectNext(char singleChar){
+Token Parser::ExpectNext(char singleChar){
   Assert(IsCharSingleToken(singleChar));
 
   return ExpectNext(TOK_TYPE(singleChar));
 }
 
 void Parser::ExpectIdentifier(String expectedContent){
-  NewToken token = NextToken();
+  Token token = NextToken();
 
-  if(token.type == NewTokenType_IDENTIFIER){
+  if(token.type == TokenType_IDENTIFIER){
     if(token.identifier != expectedContent){
       ReportError(SF("Expected %.*s, got instead",UN(expectedContent)));
     }
@@ -368,11 +367,11 @@ void Parser::ExpectIdentifier(String expectedContent){
   return;
 }
 
-void Parser::Synch(BracketList<NewTokenType> possibleTypes){
+void Parser::Synch(BracketList<TokenType> possibleTypes){
   while(!Done()){
-    NewToken peek = PeekToken();
+    Token peek = PeekToken();
 
-    for(NewTokenType type : possibleTypes){
+    for(TokenType type : possibleTypes){
       if(peek.type == type){
         return;
       }
@@ -383,7 +382,7 @@ void Parser::Synch(BracketList<NewTokenType> possibleTypes){
 }
 
 bool Parser::Done(){
-  if(PeekToken().type == NewTokenType_EOF){
+  if(PeekToken().type == TokenType_EOF){
     return true;
   }
 
@@ -410,7 +409,16 @@ TokenizeResult ParseWhitespace(const char* start,const char* end,ParseWhitespace
     return res;
   };
 
+  int lines = 0;
+  int column = 0;
   while(ptr < end && IsWhitespace(*ptr)){
+    if(*ptr == '\n'){
+      column += 1;
+      lines = 0;
+    } else {
+      lines += 1;
+    }
+
     ptr += 1;
   }
   
@@ -421,10 +429,11 @@ TokenizeResult ParseWhitespace(const char* start,const char* end,ParseWhitespace
   res.bytesParsed = allWhitespace.size;
 
   if(res.bytesParsed > 0){
-    res.token.type = NewTokenType_WHITESPACE;
+    res.token.type = TokenType_WHITESPACE;
     res.token.whitespace = allWhitespace;
   }
 
+  res.token.originalData.size = res.bytesParsed;
   return res;
 }
 
@@ -435,13 +444,15 @@ TokenizeResult ParseNewline(const char* start,const char* end){
   res.token.originalData.data = start;
   char ch = *ptr;
 
-  NewTokenType type = NewTokenType_INVALID;
+  TokenType type = TokenType_INVALID;
   if(ch == '\n'){
-    type = NewTokenType_NEWLINE;
+    type = TokenType_NEWLINE;
   }
 
-  res.bytesParsed = (type == NewTokenType_INVALID ? 0 : 1);
+  res.bytesParsed = (type == TokenType_INVALID ? 0 : 1);
   res.token.type = type;
+
+  res.token.originalData.size = res.bytesParsed;
   return res;
 }
 
@@ -495,9 +506,9 @@ TokenizeResult ParseComments(const char* start,const char* end){
   
   if(res.bytesParsed > 0){
     if(unterminated){
-      res.token.type = NewTokenType_UNTERMINATED_MULTILINE_COMMENT;
+      res.token.type = TokenType_UNTERMINATED_MULTILINE_COMMENT;
     } else {
-      res.token.type = NewTokenType_COMMENT;
+      res.token.type = TokenType_COMMENT;
     }
     
     comment = Offset(comment,2);
@@ -508,6 +519,7 @@ TokenizeResult ParseComments(const char* start,const char* end){
     res.token.comment = comment;
   }  
 
+  res.token.originalData.size = res.bytesParsed;
   return res;
 }
 
@@ -521,24 +533,25 @@ TokenizeResult ParseSymbols(const char* start,const char* end){
   // TODO: We are only parsing single character digits and we might want to parse more characters than this one.
   //       Check how we want to progress when we start using this function more times.
   
-  NewTokenType type = NewTokenType_INVALID;
+  TokenType type = TokenType_INVALID;
 
-  if(ch >= NewTokenType_CHAR_GROUP_0_START && ch <= NewTokenType_CHAR_GROUP_0_LAST){
+  if(ch >= TokenType_CHAR_GROUP_0_START && ch <= TokenType_CHAR_GROUP_0_LAST){
     type = TOK_TYPE(ch);
   }
-  if(ch >= NewTokenType_CHAR_GROUP_1_START && ch <= NewTokenType_CHAR_GROUP_1_LAST){
+  if(ch >= TokenType_CHAR_GROUP_1_START && ch <= TokenType_CHAR_GROUP_1_LAST){
     type = TOK_TYPE(ch);
   }
-  if(ch >= NewTokenType_CHAR_GROUP_2_START && ch <= NewTokenType_CHAR_GROUP_2_LAST){
+  if(ch >= TokenType_CHAR_GROUP_2_START && ch <= TokenType_CHAR_GROUP_2_LAST){
     type = TOK_TYPE(ch);
   }
-  if(ch >= NewTokenType_CHAR_GROUP_3_START && ch <= NewTokenType_CHAR_GROUP_3_LAST){
+  if(ch >= TokenType_CHAR_GROUP_3_START && ch <= TokenType_CHAR_GROUP_3_LAST){
     type = TOK_TYPE(ch);
   }
 
-  res.bytesParsed = (type == NewTokenType_INVALID ? 0 : 1);
+  res.bytesParsed = (type == TokenType_INVALID ? 0 : 1);
   res.token.type = type;
   
+  res.token.originalData.size = res.bytesParsed;
   return res;
 }
 
@@ -558,12 +571,11 @@ TokenizeResult ParseNumber(const char* start,const char* end){
   res.bytesParsed = ptr - start;
   
   if(res.bytesParsed > 0){
-    res.token.type = NewTokenType_NUMBER;
+    res.token.type = TokenType_NUMBER;
     res.token.number = number;
   }  
 
   res.token.originalData.size = res.bytesParsed;
-
   return res;
 }
 
@@ -590,14 +602,14 @@ TokenizeResult ParseIdentifier(const char* start,const char* end){
   identifier.size = ptr - start;
 
   res.bytesParsed = ptr - start;
-  res.token.type = NewTokenType_IDENTIFIER;  
+  res.token.type = TokenType_IDENTIFIER;  
   res.token.identifier = identifier;
-  res.token.originalData.size = res.bytesParsed;
 
+  res.token.originalData.size = res.bytesParsed;
   return res;
 }
 
-TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,NewTokenType result){
+TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,TokenType result){
   TokenizeResult res = {};
 
   res.token.originalData.data = start;
@@ -613,9 +625,9 @@ TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,
   }
 
   res.bytesParsed = format.size;
-  res.token.originalData.size = format.size;
   res.token.type = result;  
 
+  res.token.originalData.size = res.bytesParsed;
   return res;
 }
 
@@ -642,9 +654,10 @@ TokenizeResult ParseFilepath(const char* start,const char* end){
   identifier.size = ptr - start;
 
   res.bytesParsed = ptr - start;
-  res.token.type = NewTokenType_FILEPATH;  
+  res.token.type = TokenType_FILEPATH;  
   res.token.identifier = identifier;
 
+  res.token.originalData.size = res.bytesParsed;
   return res;
 }
 
@@ -672,26 +685,27 @@ TokenizeResult ParseVerilogPreprocess(const char* start,const char* end){
   identifier.data = startIdentifierPart;
   identifier.size = ptr - startIdentifierPart;
 
-  NewTokenType type = NewTokenType_VERILOG_PREPROCESS; 
+  TokenType type = TokenType_VERILOG_PREPROCESS; 
 
   if(identifier.size == 0){
-    type = NewTokenType_INVALID;
+    type = TokenType_INVALID;
   }
 
-  if(identifier == "define" ){ type = NewTokenType_VERILOG_DEFINE; }
-  if(identifier == "timescale" ){ type = NewTokenType_VERILOG_TIMESCALE; }
-  if(identifier == "undef"  ){ type = NewTokenType_VERILOG_UNDEF; }
-  if(identifier == "include"){ type = NewTokenType_VERILOG_INCLUDE;}
-  if(identifier == "ifdef"  ){ type = NewTokenType_VERILOG_IFDEF; }
-  if(identifier == "ifndef" ){ type = NewTokenType_VERILOG_IFNDEF; }
-  if(identifier == "else"   ){ type = NewTokenType_VERILOG_ELSE; }
-  if(identifier == "elsif"  ){ type = NewTokenType_VERILOG_ELSIF; }
-  if(identifier == "endif"  ){ type = NewTokenType_VERILOG_ENDIF; }
+  if(identifier == "define" ){ type = TokenType_VERILOG_DEFINE; }
+  if(identifier == "timescale" ){ type = TokenType_VERILOG_TIMESCALE; }
+  if(identifier == "undef"  ){ type = TokenType_VERILOG_UNDEF; }
+  if(identifier == "include"){ type = TokenType_VERILOG_INCLUDE;}
+  if(identifier == "ifdef"  ){ type = TokenType_VERILOG_IFDEF; }
+  if(identifier == "ifndef" ){ type = TokenType_VERILOG_IFNDEF; }
+  if(identifier == "else"   ){ type = TokenType_VERILOG_ELSE; }
+  if(identifier == "elsif"  ){ type = TokenType_VERILOG_ELSIF; }
+  if(identifier == "endif"  ){ type = TokenType_VERILOG_ENDIF; }
 
   res.token.type = type;
   res.bytesParsed = ptr - start;
   res.token.identifier = identifier;
 
+  res.token.originalData.size = res.bytesParsed;
   return res;
 }
 
@@ -789,10 +803,11 @@ TokenizeResult ParseCString(const char* start,const char* end){
   String cStringContent = Offset(total,1);
   cStringContent.size -= 1;
   
-  res.token.type = NewTokenType_C_STRING;
+  res.token.type = TokenType_C_STRING;
   res.bytesParsed = ptr - start;
   res.token.identifier = cStringContent;
 
+  res.token.originalData.size = res.bytesParsed;
   return res;
 }
 
@@ -852,4 +867,31 @@ bool PARSE_IsVerilogKeyword(String str){
   }
 
   return false;
+}
+
+TokenLocation PARSE_TokenLocation(FileContent content,Token token){
+  const char* ptr = content.content.data;
+  const char* end = content.content.data + content.content.size;
+  const char* toFind = token.originalData.data;
+
+  if(toFind < ptr || toFind >= end){
+    return {};
+  }
+  
+  int line = 1;
+  int column = 1;
+  while(ptr < toFind){
+    if(*ptr == '\n'){
+      column += 1;
+      line = 1;
+    } else {
+      line += 1;
+    }
+  }
+
+  TokenLocation loc = {};
+  loc.line = line;
+  loc.column = column;
+
+  return loc;
 }

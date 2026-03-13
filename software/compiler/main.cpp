@@ -12,7 +12,6 @@
 #include "memory.hpp"
 #include "symbolic.hpp"
 #include "utils.hpp"
-#include "parser.hpp"
 #include "utilsCore.hpp"
 #include "verilogParsing.hpp"
 #include "versatSpecificationParser.hpp"
@@ -102,9 +101,9 @@ void Print(Work* work){
 void GetSubWorkRequirement(Hashmap<String,Work>* typeToWork,ConstructDef type){
   TEMP_REGION(temp,nullptr);
   TEMP_REGION(temp2,temp);
-  Array<NewToken> subTypesUsed = TypesUsed(type,temp);
+  Array<Token> subTypesUsed = TypesUsed(type,temp);
   
-  for(NewToken tok : subTypesUsed){
+  for(Token tok : subTypesUsed){
     Work* work = typeToWork->Get(tok.identifier);
     if(!work){
       continue;
@@ -247,13 +246,6 @@ void ReportFileCreation(bool allFiles = false){
   }
 }
 
-// TODO: Remove this
-void InitializeUserConfigs();
-
-void Test(SYM_Expr def = SYM_One){
-  SYM_Print(def);
-}
-
 int main(int argc,char* argv[]){
 #ifdef VERSAT_DEBUG
   printf("Running in debug mode\n");
@@ -286,17 +278,6 @@ int main(int argc,char* argv[]){
 
   InitializeDefaultData(perm);
   InitializeSimpleDeclarations();
-  InitializeUserConfigs();
-
-#if 0
-  SYM_Test();
-  return 0;
-#endif
-  
-#if 0
-  ParseVerilogFileTest();
-  return 0;
-#endif
 
   argp argp = { options, parse_opt, "SpecFile\n-T UnitName", "Dataflow to accelerator compiler. Check tutorial in https://github.com/IObundle/iob-versat to learn how to write a specification file"};
 
@@ -341,10 +322,6 @@ int main(int argc,char* argv[]){
 
   for(FileContent file : defaultVerilogUnits){
     String content = file.content;
-    
-    // nocheckin: TODO: Remove preprocess call
-    //String processed = PreprocessVerilogFile(content,globalOptions.includePaths,temp);
-    //Array<Module> modules = ParseVerilogFile(processed,globalOptions.includePaths,temp);
     Array<Module> modules = ParseVerilogFile(content,globalOptions.includePaths,temp);
 
     for(Module& mod : modules){
@@ -389,10 +366,6 @@ int main(int argc,char* argv[]){
       exit(-1);
     }
 
-    // nocheckin: TODO: Remove preprocess call
-    //String processed = PreprocessVerilogFile(content,globalOptions.includePaths,temp);
-    //Array<Module> modules = ParseVerilogFile(processed,globalOptions.includePaths,temp);
-    
     Array<Module> modules = ParseVerilogFile(content,globalOptions.includePaths,temp);
 
     for(Module& mod : modules){
@@ -488,9 +461,9 @@ int main(int argc,char* argv[]){
     
     auto arr = StartArray<Pair<int,int>>(temp2);
     for(int i = 0; i < size; i++){
-      Array<NewToken> subTypesUsed = TypesUsed(modules[i],temp);
+      Array<Token> subTypesUsed = TypesUsed(modules[i],temp);
 
-      for(NewToken str : subTypesUsed){
+      for(Token str : subTypesUsed){
         int* index = typeToId->Get(str.identifier);
         if(index){
           *arr.PushElem() = {i,*index};
@@ -507,7 +480,7 @@ int main(int argc,char* argv[]){
 
     for(int i : order){
       Work work = {};
-      NewToken name = modules[i].base.name;
+      Token name = modules[i].base.name;
       work.definition = modules[i];
       
       typeToWork->Insert(name.identifier,work);
@@ -536,7 +509,7 @@ int main(int argc,char* argv[]){
           }
 
           if(!found){
-            // nocheckin TODO:
+            //tp.typeName
             //ReportError(content,tp.typeName,"Did not find type");
             anyError = true;
           }

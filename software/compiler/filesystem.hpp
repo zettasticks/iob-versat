@@ -46,3 +46,4 @@ FILE* OpenFile(String filepath,const char* mode,FilePurpose purpose);
 Array<FileInfo> CollectAllFilesInfo(Arena* out);
 
 FileContent GetContentsOfFile(String filepath,FilePurpose purpose);
+FileContent FILE_FileContentsFromId(FILE_Handle id);

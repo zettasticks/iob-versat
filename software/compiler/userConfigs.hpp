@@ -1,6 +1,5 @@
 #pragma once
 
-#include "parser.hpp"
 #include "addressGen.hpp"
 #include "hierName.hpp"
 
@@ -9,7 +8,6 @@
 
 struct FUDeclaration;
 struct AddressAccess;
-struct Parser;
 
 // Move user configuration functions here.
 
@@ -24,8 +22,8 @@ enum ConfigExpressionType{
 struct ConfigExpression{
   ConfigExpressionType type;
 
-  NewToken identifier;
-  NewToken access; // Only single access supported, do not see why would need more than one.
+  Token identifier;
+  Token access; // Only single access supported, do not see why would need more than one.
 
   // TODO: Union
   ConfigExpression* child;
@@ -48,7 +46,7 @@ enum ConfigRHSType{
 
 struct FunctionInvocation{
   String functionName;
-  Array<NewToken> arguments; // TODO: For now we do not allow any expression. Only simple assignments.
+  Array<Token> arguments; // TODO: For now we do not allow any expression. Only simple assignments.
 };
 
 enum ConfigStatementType{
@@ -77,12 +75,12 @@ enum ConfigVarType{
 };
 
 struct ConfigVarDeclaration{
-  NewToken name;
+  Token name;
 
   // TODO: Not implemented, just parsed currently.
   
   //ConfigVarType type;
-  NewToken type;
+  Token type;
   int arraySize;
   bool isArray;
 };
@@ -90,13 +88,11 @@ struct ConfigVarDeclaration{
 struct ConfigFunctionDef{
   UserConfigType type;
   
-  NewToken name;
+  Token name;
   Array<ConfigVarDeclaration> variables;
   Array<ConfigStatement*> statements;
   bool debug;
 };
-
-bool IsNextTokenConfigFunctionStart(Parser* parser);
 
 // ============================================================================
 // Instantiation and manipulation

@@ -561,8 +561,13 @@ static bool operator==(const Pair<F,S>& p1,const Pair<F,S>& p2){
 }
 
 enum FileContentState{
+  FileContentState_NOT_SET,
   FileContentState_OK,
   FileContentState_FAILED_TO_LOAD
+};
+
+struct FILE_Handle{
+  int id;
 };
 
 // Meta depends on this. Careful when changing stuff.
@@ -574,6 +579,7 @@ struct FileContent{
   String content;
 
   FileContentState state;
+  FILE_Handle id;
 };
 
 String GetFilename(String fullpath);

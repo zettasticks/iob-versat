@@ -2,10 +2,9 @@
 
 #include "debug.hpp"
 #include "memory.hpp"
-#include "parser.hpp"
 #include "utils.hpp"
 #include "CEmitter.hpp"
-#include "newParser.hpp"
+#include "parser.hpp"
 #include "utilsCore.hpp"
 
 #include <dirent.h>
@@ -188,19 +187,19 @@ EnumDef* ParseEnum(Parser* tok,Arena* out){
   
   tok->ExpectIdentifier("enum");
 
-  NewToken enumTypeName = tok->ExpectNext(NewTokenType_IDENTIFIER);
+  Token enumTypeName = tok->ExpectNext(TokenType_IDENTIFIER);
 
   tok->ExpectNext('{');
   
   auto memberList = PushList<Pair<String,String>>(temp);
   while(!tok->Done()){
-    NewToken name = tok->ExpectNext(NewTokenType_IDENTIFIER);
+    Token name = tok->ExpectNext(TokenType_IDENTIFIER);
 
     String fullValue = {};
     if(tok->IfNextToken('=')){
       auto b = StartString(temp);
       while(!tok->Done() && !tok->IfPeekToken(',') && !tok->IfPeekToken('}')){
-        NewToken t = tok->NextToken();
+        Token t = tok->NextToken();
         b->PushString(t.originalData);
       }
 
@@ -231,14 +230,14 @@ StructDef* ParseStruct(Parser* tok,Arena* out){
 
   tok->ExpectIdentifier("struct");
 
-  NewToken structTypeName = tok->ExpectNext(NewTokenType_IDENTIFIER);
+  Token structTypeName = tok->ExpectNext(TokenType_IDENTIFIER);
 
   tok->ExpectNext('{');
 
   auto memberList = PushList<Pair<String,String>>(temp);
   while(!tok->Done()){
-    NewToken type = tok->ExpectNext(NewTokenType_IDENTIFIER);
-    NewToken name = tok->ExpectNext(NewTokenType_IDENTIFIER);
+    Token type = tok->ExpectNext(TokenType_IDENTIFIER);
+    Token name = tok->ExpectNext(TokenType_IDENTIFIER);
 
     *memberList->PushElem() = {type.identifier,name.identifier};
 
@@ -260,7 +259,7 @@ StructDef* ParseStruct(Parser* tok,Arena* out){
 }
 
 TypeDef* ParseTypeDef(Parser* tok,Arena* out){
-  NewToken name = tok->ExpectNext(NewTokenType_IDENTIFIER);
+  Token name = tok->ExpectNext(TokenType_IDENTIFIER);
 
   bool isArray = false;
   if(tok->IfNextToken('[')){
@@ -281,7 +280,7 @@ Array<String> ParseList(Parser* tok,Arena* out){
 
   auto typeList = PushList<String>(temp);
   while(!tok->Done()){
-    NewToken name = tok->ExpectNext(NewTokenType_IDENTIFIER);
+    Token name = tok->ExpectNext(TokenType_IDENTIFIER);
 
     *typeList->PushElem() = name.identifier;
     
@@ -305,7 +304,7 @@ Array<Parameter> ParseParameterList(Parser* tok,Arena* out){
   while(!tok->Done()){
     TypeDef* def = ParseTypeDef(tok,out);
     
-    NewToken name = tok->ExpectNext(NewTokenType_IDENTIFIER);
+    Token name = tok->ExpectNext(TokenType_IDENTIFIER);
 
     *typeList->PushElem() = {def,name.identifier};
     
@@ -325,7 +324,7 @@ DataValue* ParseValue(Parser* tok,Arena* out){
   TEMP_REGION(temp,out);
 
   if(tok->IfNextToken('@')){
-    NewToken functionName = tok->NextToken();
+    Token functionName = tok->NextToken();
 
     Array<String> parameters = ParseList(tok,out);
 
@@ -341,11 +340,7 @@ DataValue* ParseValue(Parser* tok,Arena* out){
     DataValue* val = PushStruct<DataValue>(out);
     val->type = DataValueType_SINGLE;
 
-    NewToken value = tok->NextToken();
-
-    if(value.type == NewTokenType_C_STRING){
-      DEBUG_BREAK();
-    }
+    Token value = tok->NextToken();
 
     val->asStr = value.cString;
     return val;
@@ -403,7 +398,7 @@ TableDef* ParseTable(Parser* tok,Arena* out){
   TEMP_REGION(temp,out);
 
   tok->ExpectIdentifier("table");
-  NewToken tableStructName = tok->ExpectNext(NewTokenType_IDENTIFIER);
+  Token tableStructName = tok->ExpectNext(TokenType_IDENTIFIER);
 
   Array<Parameter> defs = ParseParameterList(tok,out);
   Assert(defs.size > 0);
@@ -430,7 +425,7 @@ FileDef* ParseFile(Parser* tok,Arena* out){
   String fileName = tok->NextToken().identifier;
 
   tok->ExpectNext('=');
-  NewToken filepath = tok->ExpectNext(NewTokenType_FILEPATH);
+  Token filepath = tok->ExpectNext(TokenType_FILEPATH);
   tok->ExpectNext(';');
 
   FileDef* def = files->PushElem();
@@ -444,9 +439,9 @@ FileGroupDef* ParseFileGroup(Parser* tok,Arena* out){
   TEMP_REGION(temp,out);
   tok->ExpectIdentifier("fileGroup");
   
-  NewToken groupName = tok->NextToken();
+  Token groupName = tok->NextToken();
 
-  NewToken commonFolder = {};
+  Token commonFolder = {};
   if(tok->IfNextToken('(')){
     commonFolder = tok->NextToken();
     
@@ -461,7 +456,7 @@ FileGroupDef* ParseFileGroup(Parser* tok,Arena* out){
       break;
     }
     
-    NewToken folderFilepath = tok->ExpectNext(NewTokenType_FILEPATH);
+    Token folderFilepath = tok->ExpectNext(TokenType_FILEPATH);
 
     *list->PushElem() = TrimWhitespaces(folderFilepath.filepath);
     tok->IfNextToken('|');
@@ -480,7 +475,7 @@ FileGroupDef* ParseFileGroup(Parser* tok,Arena* out){
 MapDef* ParseMap(Parser* tok,Arena* out){
   TEMP_REGION(temp,out);
 
-  NewToken type = tok->ExpectNext(NewTokenType_IDENTIFIER);
+  Token type = tok->ExpectNext(TokenType_IDENTIFIER);
   bool isDefineMap = false;
 
   if(type.identifier == "define_map"){
@@ -491,7 +486,7 @@ MapDef* ParseMap(Parser* tok,Arena* out){
     tok->ReportError("Did not find either a define_map or a map");
   }
 
-  NewToken mapName = tok->ExpectNext(NewTokenType_IDENTIFIER);
+  Token mapName = tok->ExpectNext(TokenType_IDENTIFIER);
 
   if(!isDefineMap){
     Array<Parameter> parameters = ParseParameterList(tok,out);
@@ -545,8 +540,8 @@ ArrayDef* ParseArray(Parser* tok,Arena* out){
   TEMP_REGION(temp,out);
   tok->ExpectIdentifier("array");
 
-  NewToken arrayType = tok->ExpectNext(NewTokenType_IDENTIFIER);
-  NewToken arrayName = tok->ExpectNext(NewTokenType_IDENTIFIER);
+  Token arrayType = tok->ExpectNext(TokenType_IDENTIFIER);
+  Token arrayName = tok->ExpectNext(TokenType_IDENTIFIER);
   
   tok->ExpectNext('=');
 
@@ -566,26 +561,26 @@ ArrayDef* ParseArray(Parser* tok,Arena* out){
 void ParseContent(String content,Arena* out){
   TEMP_REGION(temp,out);
 
-  auto TokenizeFunction = [](void* tokenizerState) -> NewToken{
+  auto TokenizeFunction = [](void* tokenizerState) -> Token{
     DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
     
     const char* start = state->ptr;
     const char* end = state->end;
 
     if(start >= end){
-      NewToken token = {};
-      token.type = NewTokenType_EOF;
+      Token token = {};
+      token.type = TokenType_EOF;
       return token;
     }
 
     TokenizeResult res = {};
-    if(res.token.type == NewTokenType_INVALID) res |= ParseWhitespace(start,end);
-    if(res.token.type == NewTokenType_INVALID) res |= ParseComments(start,end);
-    if(res.token.type == NewTokenType_INVALID) res |= ParseCString(start,end);
-    if(res.token.type == NewTokenType_INVALID) res |= ParseFilepath(start,end);
-    if(res.token.type == NewTokenType_INVALID) res |= ParseSymbols(start,end);
-    if(res.token.type == NewTokenType_INVALID) res |= ParseNumber(start,end);
-    if(res.token.type == NewTokenType_INVALID) res |= ParseIdentifier(start,end);
+    if(res.token.type == TokenType_INVALID) res |= ParseWhitespace(start,end);
+    if(res.token.type == TokenType_INVALID) res |= ParseComments(start,end);
+    if(res.token.type == TokenType_INVALID) res |= ParseCString(start,end);
+    if(res.token.type == TokenType_INVALID) res |= ParseFilepath(start,end);
+    if(res.token.type == TokenType_INVALID) res |= ParseSymbols(start,end);
+    if(res.token.type == TokenType_INVALID) res |= ParseNumber(start,end);
+    if(res.token.type == TokenType_INVALID) res |= ParseIdentifier(start,end);
 
     int size = res.bytesParsed;
     if(size <= 0 && state->ptr != state->end){
@@ -605,9 +600,9 @@ void ParseContent(String content,Arena* out){
   Parser* parser = StartParsing(TokenizeFunction,content,parseArena);
   
   while(!parser->Done()){
-    NewToken peek = parser->PeekToken();
+    Token peek = parser->PeekToken();
 
-    if(peek.type != NewTokenType_IDENTIFIER){
+    if(peek.type != TokenType_IDENTIFIER){
       parser->ReportError("Unexpected token at global scope");
       parser->NextToken();
       continue;

@@ -1,11 +1,10 @@
 #include "symbolic.hpp"
 //#include "globals.hpp"
 #include "memory.hpp"
-#include "parser.hpp"
 #include "utils.hpp"
 #include "utilsCore.hpp"
 
-#include "newParser.hpp"
+#include "parser.hpp"
 #include <cstdint>
 
 struct TestCase{
@@ -1014,17 +1013,17 @@ SYM_Expr ParseSYM_Expr(Parser* parser,int bindingPower = -1){
   // Parse atom
   SYM_Expr res = {};
   
-  NewToken atom = parser->PeekToken();
+  Token atom = parser->PeekToken();
   if(atom.type == '('){
     parser->ExpectNext('(');
 
     res = ParseSYM_Expr(parser);
 
     parser->ExpectNext(')');
-  } else if(atom.type == NewTokenType_NUMBER){
-    NewToken number = parser->ExpectNext(NewTokenType_NUMBER);
+  } else if(atom.type == TokenType_NUMBER){
+    Token number = parser->ExpectNext(TokenType_NUMBER);
     res = GetOrAllocateLiteral(number.number);
-  } else if(atom.type == NewTokenType_IDENTIFIER){
+  } else if(atom.type == TokenType_IDENTIFIER){
     parser->NextToken();
 
     if(parser->IfNextToken('(')){
@@ -1049,7 +1048,7 @@ SYM_Expr ParseSYM_Expr(Parser* parser,int bindingPower = -1){
   }
 
   struct OpInfo{
-    NewTokenType type;
+    TokenType type;
     int bindingPower;
   };
 
@@ -1065,7 +1064,7 @@ SYM_Expr ParseSYM_Expr(Parser* parser,int bindingPower = -1){
   
   // Parse binary ops.
   while(!parser->Done()){
-    NewToken peek = parser->PeekToken();
+    Token peek = parser->PeekToken();
 
     bool continueOuter = false;
     for(OpInfo info : infos){
@@ -1106,7 +1105,7 @@ SYM_Expr ParseSYM_Expr(Parser* parser,int bindingPower = -1){
 SYM_Expr SYM_Parse(String content){
   FREE_ARENA(parseArena);
 
-  auto tokenizer = [](void* tokenizerState) -> NewToken {
+  auto tokenizer = [](void* tokenizerState) -> Token {
     DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
     
     const char* start = state->ptr;

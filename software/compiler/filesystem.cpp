@@ -129,6 +129,17 @@ void FILE_Init(){
   static Arena arenaInst = InitArena(Megabyte(4));
   FILE_State.arena = &arenaInst;
   FILE_State.fileContents = PushTrieMap<String,FileContent>(FILE_State.arena);
+
+  int id = 0;
+  for(FileContent& file : defaultVerilogUnits){
+    file.id.id = id++;
+    file.state = FileContentState_OK;
+  }
+
+  for(FileContent& file : defaultVerilogFiles){
+    file.id.id = id++;
+    file.state = FileContentState_OK;
+  }
 }
 
 FILE* OpenFileAndCreateDirectories(String path,const char* format,FilePurpose purpose){
@@ -198,4 +209,28 @@ FileContent GetContentsOfFile(String filepath,FilePurpose purpose){
   FILE_State.fileContents->Insert(savedPath,toInsert);
   
   return toInsert;
+}
+
+FileContent NullFileContent = {};
+
+FileContent FILE_FileContentsFromId(FILE_Handle id){
+  for(FileContent file : defaultVerilogUnits){
+    if(file.id.id == id.id){
+      return file;
+    }
+  }
+
+  for(FileContent file : defaultVerilogFiles){
+    if(file.id.id == id.id){
+      return file;
+    }
+  }
+
+  for(Pair<String,FileContent> p : FILE_State.fileContents){
+    if(p.second.id.id == id.id){
+      return p.second;
+    }
+  }
+
+  return NullFileContent;
 }

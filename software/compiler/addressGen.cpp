@@ -3,7 +3,6 @@
 #include "embeddedData.hpp"
 #include "globals.hpp"
 #include "memory.hpp"
-#include "parser.hpp"
 #include "symbolic.hpp"
 #include "utils.hpp"
 #include "utilsCore.hpp"
@@ -532,7 +531,7 @@ static Array<Pair<String,String>> InstantiateMem(AddressAccess* access,int port,
   return PushArray(out,list);
 }
 
-AddressAccess* CompileAddressGen(Env* env,Array<NewToken> inputs,Array<AddressGenForDef> loops,SYM_Expr addr,String content){
+AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenForDef> loops,SYM_Expr addr,String content){
   Arena* out = globalPermanent;
   
   TEMP_REGION(temp,out);
@@ -540,7 +539,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<NewToken> inputs,Array<AddressGe
   Array<String> asString = PushArray<String>(out,inputs.size);
 
   for(int i = 0; i <  inputs.size; i++){
-    NewToken t = inputs[i];
+    Token t = inputs[i];
     asString[i] = t.identifier;
   }
 

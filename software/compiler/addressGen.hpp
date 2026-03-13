@@ -2,13 +2,11 @@
 
 #include "utils.hpp"
 #include "memory.hpp"
-#include "parser.hpp"
 
 #include "embeddedData.hpp"
 
 #include "symbolic.hpp"
-
-#include "newParser.hpp"
+#include "parser.hpp"
 
 struct CEmitter;
 struct SpecExpression;
@@ -92,7 +90,7 @@ void   Print(AddressAccess* access);
 // Compilation 
 
 // TODO: We probably want to take in an Env* so that we can check stuff and we probably want to move this to the spec parser. No reason for other code to have token and to depend on parser stuff.
-AddressAccess* CompileAddressGen(Env* env,Array<NewToken> inputs,Array<AddressGenForDef> loops,SYM_Expr addr,String content);
+AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenForDef> loops,SYM_Expr addr,String content);
 
 // ======================================
 // Conversion

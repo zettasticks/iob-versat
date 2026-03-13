@@ -5,7 +5,6 @@
 #include "declaration.hpp"
 #include "globals.hpp"
 #include "memory.hpp"
-#include "parser.hpp"
 #include "utils.hpp"
 #include "utilsCore.hpp"
 #include "verilogParsing.hpp"
