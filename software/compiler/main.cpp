@@ -343,9 +343,11 @@ int main(int argc,char* argv[]){
   for(FileContent file : defaultVerilogUnits){
     String content = file.content;
     
-    String processed = PreprocessVerilogFile(content,globalOptions.includePaths,temp);
-    Array<Module> modules = ParseVerilogFile(processed,globalOptions.includePaths,temp);
-    
+    // nocheckin: TODO: Remove preprocess call
+    //String processed = PreprocessVerilogFile(content,globalOptions.includePaths,temp);
+    //Array<Module> modules = ParseVerilogFile(processed,globalOptions.includePaths,temp);
+    Array<Module> modules = ParseVerilogFile(content,globalOptions.includePaths,temp);
+
     for(Module& mod : modules){
       ModuleInfo info = ExtractModuleInfo(mod,perm);
       info.moduleSource = ModuleSource_DEFAULT_UNIT;
@@ -388,9 +390,12 @@ int main(int argc,char* argv[]){
       exit(-1);
     }
 
-    String processed = PreprocessVerilogFile(content,globalOptions.includePaths,temp);
-    Array<Module> modules = ParseVerilogFile(processed,globalOptions.includePaths,temp);
+    // nocheckin: TODO: Remove preprocess call
+    //String processed = PreprocessVerilogFile(content,globalOptions.includePaths,temp);
+    //Array<Module> modules = ParseVerilogFile(processed,globalOptions.includePaths,temp);
     
+    Array<Module> modules = ParseVerilogFile(content,globalOptions.includePaths,temp);
+
     for(Module& mod : modules){
       ModuleInfo info = ExtractModuleInfo(mod,perm);
       info.moduleSource = ModuleSource_USER_UNIT;

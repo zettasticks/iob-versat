@@ -197,6 +197,10 @@ if(_){ \
 
 #define DEBUG_BREAK() DEBUG_BREAK_IF(true)
 
+#define ENTER_DEBUG() if(currentlyDebugging) { \
+  fflush(stdout); \
+  __asm__("int3");} \
+
 // TODO: Better name for this, or better ergonomics somewhat.
 #define DEBUG_BREAK_OR_EXIT() \
   if(currentlyDebugging) { \

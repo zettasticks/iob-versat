@@ -11,17 +11,16 @@ enum NewTokenType : u16{
   NewTokenType_UNTERMINATED_MULTILINE_COMMENT,
 
   // Single characters are equal to their ASCII value.
-  NewTokenType_CHAR_GROUP_0_START = '!', // Start characters
+  // { Start characters
+  NewTokenType_CHAR_GROUP_0_START = '!',
   NewTokenType_CHAR_GROUP_0_LAST = '/',
-  
   NewTokenType_CHAR_GROUP_1_START = ':',
   NewTokenType_CHAR_GROUP_1_LAST = '@',
-
   NewTokenType_CHAR_GROUP_2_START = '[',
   NewTokenType_CHAR_GROUP_2_LAST = '`',
-
   NewTokenType_CHAR_GROUP_3_START = '{',
-  NewTokenType_CHAR_GROUP_3_LAST = '~',  // End characters
+  NewTokenType_CHAR_GROUP_3_LAST = '~',
+  // } End characters
 
   // Normal types commonly used
   NewTokenType_IDENTIFIER = 128,
@@ -38,9 +37,13 @@ enum NewTokenType : u16{
   // Triple digit symbols
   NewTokenType_ROTATE_RIGHT,   // >><
   NewTokenType_ROTATE_LEFT ,   // ><<
+
+  NewTokenType_VERILOG_ATTRIBUTE_START, // (*
+  NewTokenType_VERILOG_ATTRIBUTE_END,   // *)
   
   // Keywords
-  NewTokenType_KEYWORD_MODULE, // Start keywords
+  // { Start keywords
+  NewTokenType_KEYWORD_MODULE,
   NewTokenType_KEYWORD_MERGE,
   NewTokenType_KEYWORD_SHARE,
   NewTokenType_KEYWORD_STATIC,
@@ -48,22 +51,36 @@ enum NewTokenType : u16{
   NewTokenType_KEYWORD_CONFIG,
   NewTokenType_KEYWORD_STATE,
   NewTokenType_KEYWORD_MEM,
-  NewTokenType_KEYWORD_FOR,    // End keywords
+  NewTokenType_KEYWORD_FOR,
+  // } End keywords
 
   // Verilog preprocessing directives 
-  NewTokenType_VERILOG_DEFINE, // Start VERILOG_PREPROCESS
+  // { Start VERILOG_PREPROCESS
+  NewTokenType_VERILOG_DEFINE,
   NewTokenType_VERILOG_UNDEF,
-
+  NewTokenType_VERILOG_TIMESCALE,
   NewTokenType_VERILOG_INCLUDE,
-  
+  // nocheckin: Missing (timescale, resetall, undefineall)
   NewTokenType_VERILOG_IFDEF,
   NewTokenType_VERILOG_IFNDEF,
   NewTokenType_VERILOG_ELSE,
   NewTokenType_VERILOG_ELSIF,
   NewTokenType_VERILOG_ENDIF,
-  
-  // Any token that starts with an ` but is not a 
-  NewTokenType_VERILOG_PREPROCESS, // End VERILOG_PREPROCESS
+  // Any token that starts with an ` but is not a define
+  NewTokenType_VERILOG_PREPROCESS, 
+  // } End VERILOG_PREPROCESS
+
+  // { Start Verilog Keywords
+  NewTokenType_VERILOG_KEYWORD_MODULE,
+  NewTokenType_VERILOG_KEYWORD_ENDMODULE,
+  NewTokenType_VERILOG_KEYWORD_PARAMETER,
+  NewTokenType_VERILOG_KEYWORD_SIGNED,
+  NewTokenType_VERILOG_KEYWORD_INPUT,
+  NewTokenType_VERILOG_KEYWORD_OUTPUT,
+  NewTokenType_VERILOG_KEYWORD_INOUT,
+  NewTokenType_VERILOG_KEYWORD_REG,
+  NewTokenType_VERILOG_KEYWORD_WIRE,
+  // } End Verilog Keywords
 
   // TODO: While this is something that is kinda cool to have, it
   //       might also be fundamentally wrong.  Because of arrays and
@@ -99,6 +116,9 @@ enum NewTokenType : u16{
 
 #define NewTokenType_START_OF_VERILOG_PREPROCESS   (NewTokenType_VERILOG_DEFINE)
 #define NewTokenType_END_OF_VERILOG_PREPROCESS     (NewTokenType_VERILOG_PREPROCESS + 1)
+
+#define NewTokenType_START_OF_VERILOG_KEYWORDS   (NewTokenType_VERILOG_KEYWORD_MODULE)
+#define NewTokenType_END_OF_VERILOG_KEYWORDS   (NewTokenType_VERILOG_KEYWORD_WIRE + 1)
 
 #define TOK_TYPE(IN) ((NewTokenType) IN)
 

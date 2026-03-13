@@ -2182,25 +2182,21 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
       if(id == "mem")        type = NewTokenType_KEYWORD_MEM;
       if(id == "for")        type = NewTokenType_KEYWORD_FOR;
 
-#if 0
-      if(type == NewTokenType_INVALID && Parse_IsCKeyword(id)){
-        res.token.type = NewTokenType_C_KEYWORD;
-      }
-      if(type == NewTokenType_INVALID && Parse_IsVerilogKeyword(id)){
-        res.token.type = NewTokenType_VERILOG_KEYWORD;
-      }
-#endif
-
       if(type != NewTokenType_INVALID){
         res.token.type = type;
       }
     }
 
     int size = res.bytesParsed;
-    if(size <= 0){
+    if(size <= 0 && state->ptr != state->end){
       size = 1;
     }
+
     state->ptr += size;
+
+    // NOTE: Something very bad must happen to the point where the file is 1 byte after the end.
+    //       We expect it to only reach file->end, not file->end + 1
+    Assert(state->ptr < state->end + 1);
 
     return res.token;
   };

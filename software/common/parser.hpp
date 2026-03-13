@@ -26,6 +26,8 @@ struct Value{
 // TODO: Expression is now mostly a Verilog type thing. We can remove it from here and make it fully Verilog specific.
 struct Expression{
   const char* op;
+  
+  // nocheckin: TODO: Should be a Token instead of just a string
   String id;
   Array<Expression*> expressions;
   Value val;

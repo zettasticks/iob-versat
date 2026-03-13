@@ -88,7 +88,7 @@ String PushFile(Arena* out,FILE* file){
 
   AlignArena(out,alignof(void*));
 
-  Byte* mem = PushBytes(out,size);
+  Byte* mem = PushBytes(out,size + 1);
   int amountRead = fread(mem,sizeof(Byte),size,file);
 
   if(amountRead != size){
@@ -98,6 +98,7 @@ String PushFile(Arena* out,FILE* file){
 
   res.size = size;
   res.data = (const char*) mem;
+  mem[size] = '\0';
 
   return res;
 }

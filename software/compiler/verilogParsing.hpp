@@ -210,3 +210,5 @@ ModuleInfo ExtractModuleInfo(Module& module,Arena* out);
 Value Eval(Expression* expr,Array<ParameterExpression> parameters);
 
 void ParseVerilogFileTest();
+
+//Array<Module> ParseVerilogFile2(String fileContent,Array<String> includeFilepaths,Arena* out); // Only handles preprocessed files

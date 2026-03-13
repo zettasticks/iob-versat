@@ -1,4 +1,5 @@
 #include "newParser.hpp"
+#include "utilsCore.hpp"
 
 static bool IsAlpha(char ch){
   bool res = ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_'); 
@@ -57,7 +58,7 @@ String PushRepr(Arena* out,NewTokenType type){
   }
 
   if(type >= NewTokenType_START_OF_KEYWORDS && type < NewTokenType_END_OF_KEYWORDS){
-    return "Keyword";
+    res = "Keyword";
   }
 
 #define SIMPLE(TYPE,TYPENAME,RET) if(type == TYPE) res = PushString(out,"[%s] '%s'",TYPENAME,RET)
@@ -70,6 +71,9 @@ String PushRepr(Arena* out,NewTokenType type){
   SIMPLE(NewTokenType_ROTATE_RIGHT,"TripleChar",">><");
   SIMPLE(NewTokenType_ROTATE_LEFT,"DoubleChar","><<");
 
+  SIMPLE(NewTokenType_VERILOG_ATTRIBUTE_START,"DoubleChar","(*");
+  SIMPLE(NewTokenType_VERILOG_ATTRIBUTE_END,"DoubleChar","*)");
+
   SIMPLE(NewTokenType_KEYWORD_MODULE,"Keyword","module");
   SIMPLE(NewTokenType_KEYWORD_MERGE,"Keyword","merge");
   SIMPLE(NewTokenType_KEYWORD_SHARE,"Keyword","share");
@@ -79,6 +83,31 @@ String PushRepr(Arena* out,NewTokenType type){
   SIMPLE(NewTokenType_KEYWORD_STATE,"Keyword","state");
   SIMPLE(NewTokenType_KEYWORD_MEM,"Keyword","mem");
   SIMPLE(NewTokenType_KEYWORD_FOR,"Keyword","for");
+
+  SIMPLE(NewTokenType_VERILOG_DEFINE,"Verilog","define");
+  SIMPLE(NewTokenType_VERILOG_UNDEF,"Verilog","undef");
+
+  SIMPLE(NewTokenType_VERILOG_INCLUDE,"Verilog","include");
+  SIMPLE(NewTokenType_VERILOG_INCLUDE,"Verilog","timescale");
+
+  SIMPLE(NewTokenType_VERILOG_PREPROCESS,"Verilog","preprocess");
+
+  SIMPLE(NewTokenType_VERILOG_IFDEF,"Verilog","ifdef");
+  SIMPLE(NewTokenType_VERILOG_IFNDEF,"Verilog","ifndef");
+  SIMPLE(NewTokenType_VERILOG_ELSE,"Verilog","else");
+  SIMPLE(NewTokenType_VERILOG_ELSIF,"Verilog","elsif");
+  SIMPLE(NewTokenType_VERILOG_ENDIF,"Verilog","endif");
+
+  SIMPLE(NewTokenType_VERILOG_KEYWORD_PARAMETER,"Verilog","parameter");
+
+  SIMPLE(NewTokenType_VERILOG_KEYWORD_MODULE,"Verilog","module");
+  SIMPLE(NewTokenType_VERILOG_KEYWORD_ENDMODULE,"Verilog","endmodule");
+  SIMPLE(NewTokenType_VERILOG_KEYWORD_SIGNED,"Verilog","signed");
+  SIMPLE(NewTokenType_VERILOG_KEYWORD_INPUT,"Verilog","input");
+  SIMPLE(NewTokenType_VERILOG_KEYWORD_OUTPUT,"Verilog","output");
+  SIMPLE(NewTokenType_VERILOG_KEYWORD_INOUT,"Verilog","inout");
+  SIMPLE(NewTokenType_VERILOG_KEYWORD_REG,"Verilog","reg");
+  SIMPLE(NewTokenType_VERILOG_KEYWORD_WIRE,"Verilog","wire");
 #undef SIMPLE 
 
   return res;
@@ -94,7 +123,7 @@ String PARSE_PushDebugRepr(Arena* out,NewToken token){
     res = PushString(out,"[Number] '%ld'",token.number);
   }
   if(token.type == NewTokenType_C_STRING){
-    PushString(out,"\"%.*s\"",UN(token.cString));
+    res = PushString(out,"\"%.*s\"",UN(token.cString));
   }
 
   if(Empty(res)){
@@ -114,6 +143,8 @@ String PARSE_PushDebugRepr(Arena* out,NewToken token){
 
   SIMPLE(NewTokenType_VERILOG_DEFINE,"Verilog","define");
   SIMPLE(NewTokenType_VERILOG_UNDEF,"Verilog","undef");
+
+  SIMPLE(NewTokenType_VERILOG_INCLUDE,"Verilog","timescale");
   SIMPLE(NewTokenType_VERILOG_INCLUDE,"Verilog","include");
 
   SIMPLE(NewTokenType_VERILOG_PREPROCESS,"Verilog","preprocess");
@@ -123,6 +154,17 @@ String PARSE_PushDebugRepr(Arena* out,NewToken token){
   SIMPLE(NewTokenType_VERILOG_ELSE,"Verilog","else");
   SIMPLE(NewTokenType_VERILOG_ELSIF,"Verilog","elsif");
   SIMPLE(NewTokenType_VERILOG_ENDIF,"Verilog","endif");
+
+  SIMPLE(NewTokenType_VERILOG_KEYWORD_PARAMETER,"Verilog","parameter");
+
+  SIMPLE(NewTokenType_VERILOG_KEYWORD_MODULE,"Verilog","module");
+  SIMPLE(NewTokenType_VERILOG_KEYWORD_ENDMODULE,"Verilog","endmodule");
+  SIMPLE(NewTokenType_VERILOG_KEYWORD_SIGNED,"Verilog","signed");
+  SIMPLE(NewTokenType_VERILOG_KEYWORD_INPUT,"Verilog","input");
+  SIMPLE(NewTokenType_VERILOG_KEYWORD_OUTPUT,"Verilog","output");
+  SIMPLE(NewTokenType_VERILOG_KEYWORD_INOUT,"Verilog","inout");
+  SIMPLE(NewTokenType_VERILOG_KEYWORD_REG,"Verilog","reg");
+  SIMPLE(NewTokenType_VERILOG_KEYWORD_WIRE,"Verilog","wire");
 #undef SIMPLE 
 
   if(Empty(res)){
@@ -220,6 +262,8 @@ void Parser::ReportUnexpectedToken(NewToken token,BracketList<NewTokenType> expe
     String repr = PushRepr(temp,type);
     builder->PushString("  '%.*s'\n",UN(repr));
   }
+
+  ENTER_DEBUG();
 
   if(!errors){
     errors = PushList<String>(this->arena);
@@ -392,11 +436,13 @@ TokenizeResult ParseComments(const char* start,const char* end){
   }
 
   bool unterminated = false;
+  bool multiLine = false;
   if(ptr[0] == '/' && ptr[1] == '/'){
     while(ptr < end && (*ptr) != '\n'){
       ptr += 1;
     }
   } else if(ptr[0] == '/' && ptr[1] == '*'){
+    multiLine = true;
     while(ptr + 1 < end && ((*ptr) != '*' || (*(ptr + 1)) != '/')){
       ptr += 1;
     }
@@ -422,6 +468,11 @@ TokenizeResult ParseComments(const char* start,const char* end){
       res.token.type = NewTokenType_COMMENT;
     }
     
+    comment = Offset(comment,2);
+    if(multiLine){
+      comment.size -= 2;
+   }
+
     res.token.comment = comment;
   }  
 
@@ -527,6 +578,7 @@ TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,
   }
 
   res.bytesParsed = format.size;
+  res.token.originalData.size = format.size;
   res.token.type = result;  
 
   return res;
@@ -563,6 +615,7 @@ TokenizeResult ParseVerilogPreprocess(const char* start,const char* end){
   }
 
   if(identifier == "define" ){ type = NewTokenType_VERILOG_DEFINE; }
+  if(identifier == "timescale" ){ type = NewTokenType_VERILOG_TIMESCALE; }
   if(identifier == "undef"  ){ type = NewTokenType_VERILOG_UNDEF; }
   if(identifier == "include"){ type = NewTokenType_VERILOG_INCLUDE;}
   if(identifier == "ifdef"  ){ type = NewTokenType_VERILOG_IFDEF; }
@@ -589,6 +642,8 @@ TokenizeResult ParseCString(const char* start,const char* end){
     return res;
   }
 
+  ptr += 1;
+
   auto IsHex = [](char ch){
     bool res = (ch >= '0' && ch <= '9');
     res |= (ch == 'a' || ch == 'A');
@@ -604,6 +659,7 @@ TokenizeResult ParseCString(const char* start,const char* end){
   // TODO: Not doing anything with this but we could report as error if we define a token type for unterminated escape sequences (like we do with unterminated comments).
   bool unterminatedEscapeSequence = false;
   bool foundString = false;
+
   for(; ptr < end; ){
     const char* loopStart = ptr;
 
@@ -655,7 +711,9 @@ TokenizeResult ParseCString(const char* start,const char* end){
     }
 
     if(*ptr == '\"'){
+      ptr += 1;
       foundString = true;
+      break;
     }
 
     ptr += 1;
