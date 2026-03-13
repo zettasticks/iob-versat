@@ -647,6 +647,34 @@ Byte HexCharToNumber(char ch);
 void HexStringToHex(unsigned char* buffer,String str);
 int String_CommonPrefixSize(String first,String second);
 
+
+enum ValueType{
+  ValueType_NIL,
+  ValueType_NUMBER,
+  ValueType_STRING,
+  ValueType_BOOLEAN
+};
+
+struct Value{
+  ValueType type;
+
+  union{
+    bool boolean;
+    char ch;
+    i64 number;
+    String str;
+  };
+};
+
+// nocheckin: TODO: Reorganize
+bool Contains(String str,String toCheck);
+int ParseInt(String str);
+String PushPointingString(Arena* out,int startPos,int size);
+Array<Value> ExtractValues(const char* format,String tok,Arena* arena);
+
+bool IsNum(char ch);
+bool CheckFormat(const char* format,String text);
+
 // Weak random generator but produces same results in pc-emul and in simulation
 void SeedRandomNumber(uint seed);
 uint GetRandomNumber();

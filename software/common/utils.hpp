@@ -39,17 +39,6 @@ String JoinStrings(Array<String> strings,String separator,Arena* out);
 
 String PushBinaryRepr(Arena* out,int number);
 
-static inline bool Contains(String bigger,String smaller){
-  TEMP_REGION(temp,nullptr);
-  
-  String withNull = PushString(temp,bigger);
-  
-  void* ptr = (void*) strstr(withNull.data,StaticFormat("%.*s",UN(smaller)));
-  bool res = (ptr != nullptr);
-  
-  return res;
-}
-
 template<typename Value,typename Error>
 struct Result{
   union{

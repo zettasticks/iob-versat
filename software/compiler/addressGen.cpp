@@ -532,27 +532,35 @@ static Array<Pair<String,String>> InstantiateMem(AddressAccess* access,int port,
   return PushArray(out,list);
 }
 
-AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenForDef> loops,SYM_Expr addr,String content){
+AddressAccess* CompileAddressGen(Env* env,Array<NewToken> inputs,Array<AddressGenForDef> loops,SYM_Expr addr,String content){
   Arena* out = globalPermanent;
   
   TEMP_REGION(temp,out);
+
+  Array<String> asString = PushArray<String>(out,inputs.size);
+
+  for(int i = 0; i <  inputs.size; i++){
+    NewToken t = inputs[i];
+    asString[i] = t.identifier;
+  }
 
   // TODO: Issue a warning if a variable is declared but not used.
   // TODO: Better error reporting by allowing code to call the ReportError from the spec parser 
   bool anyError = false;
   for(AddressGenForDef loop : loops){
-    Opt<Token> sameNameAsInput = Find(inputs,loop.loopVariable);
+    Opt<String> sameNameAsInput = Find(asString,loop.loopVariable);
 
     if(sameNameAsInput.has_value()){
-      ReportErrorGoodTokenExists(content,loop.loopVariable,sameNameAsInput.value(),"Loop variable","Overshadows input variable");
+      //ReportErrorGoodTokenExists(content,loop.loopVariable,sameNameAsInput.value(),"Loop variable","Overshadows input variable");
       anyError = true;
     }
 
+#if 0
     {
       auto tokens = AccumTokens(loop.startSym,temp);
-      for(Token tok : tokens){
-        if(IsIdentifier(tok) && !Contains(inputs,tok)){
-          printf("\t[Error] Loop expression variable '%.*s' does not appear inside input list (did you forget to declare it as input?)\n",UN(tok));
+      for(NewToken tok : tokens){
+        if(!Contains(inputs,tok)){
+          printf("\t[Error] Loop expression variable '%.*s' does not appear inside input list (did you forget to declare it as input?)\n",UN(tok.identifier));
           anyError = true;
         }
       }
@@ -560,13 +568,14 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
 
     {
       auto tokens = AccumTokens(loop.endSym,temp);
-      for(Token tok : tokens){
-        if(IsIdentifier(tok) && !Contains(inputs,tok)){
-          printf("\t[Error] Loop expression variable '%.*s' does not appear inside input list (did you forget to declare it as input?)\n",UN(tok));
+      for(NewToken tok : tokens){
+        if(!Contains(inputs,tok)){
+          printf("\t[Error] Loop expression variable '%.*s' does not appear inside input list (did you forget to declare it as input?)\n",UN(tok.identifier));
           anyError = true;
         }
       }
     }
+#endif
   }
   
   if(anyError){
@@ -634,7 +643,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
   LoopLinearSum* freeTerm = PushLoopLinearSumFreeTerm(toCalcConst,temp);
       
   AddressAccess* result = PushStruct<AddressAccess>(out);
-  result->inputVariableNames = CopyArray<String>(inputs,out);
+  result->inputVariableNames = asString;
   result->internal = PushLoopLinearSumSimpleVar("x",SYM_One,SYM_Zero,finalExpression,out);
   result->external = AddLoopLinearSum(expr,freeTerm,out);
   result->dutyDivExpr = dutyDiv;

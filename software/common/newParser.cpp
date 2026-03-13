@@ -56,6 +56,9 @@ String PushRepr(Arena* out,NewTokenType type){
   if(type == NewTokenType_NUMBER){
     res = "Number";
   }
+  if(type == NewTokenType_FILEPATH){
+    res = "Filepath";
+  }
 
   if(type >= NewTokenType_START_OF_KEYWORDS && type < NewTokenType_END_OF_KEYWORDS){
     res = "Keyword";
@@ -124,6 +127,9 @@ String PARSE_PushDebugRepr(Arena* out,NewToken token){
   }
   if(token.type == NewTokenType_C_STRING){
     res = PushString(out,"\"%.*s\"",UN(token.cString));
+  }
+  if(token.type == NewTokenType_FILEPATH){
+    res = PushString(out,"[Filepath] %.*s",UN(token.filepath));
   }
 
   if(Empty(res)){
@@ -348,6 +354,20 @@ NewToken Parser::ExpectNext(char singleChar){
   return ExpectNext(TOK_TYPE(singleChar));
 }
 
+void Parser::ExpectIdentifier(String expectedContent){
+  NewToken token = NextToken();
+
+  if(token.type == NewTokenType_IDENTIFIER){
+    if(token.identifier != expectedContent){
+      ReportError(SF("Expected %.*s, got instead",UN(expectedContent)));
+    }
+  } else {
+    ReportError("Expected identifier, got instead");
+  }
+
+  return;
+}
+
 void Parser::Synch(BracketList<NewTokenType> possibleTypes){
   while(!Done()){
     NewToken peek = PeekToken();
@@ -443,7 +463,19 @@ TokenizeResult ParseComments(const char* start,const char* end){
     }
   } else if(ptr[0] == '/' && ptr[1] == '*'){
     multiLine = true;
-    while(ptr + 1 < end && ((*ptr) != '*' || (*(ptr + 1)) != '/')){
+    ptr += 1;
+    int level = 0;
+    while(ptr + 1 < end){
+      if((*ptr) == '/' && (*(ptr + 1)) == '*'){
+        level += 1;
+      }
+      if((*ptr) == '*' && (*(ptr + 1)) == '/'){
+        if(level == 0){
+          break;
+        }
+        level -= 1;
+      }
+
       ptr += 1;
     }
 
@@ -530,6 +562,8 @@ TokenizeResult ParseNumber(const char* start,const char* end){
     res.token.number = number;
   }  
 
+  res.token.originalData.size = res.bytesParsed;
+
   return res;
 }
 
@@ -558,6 +592,7 @@ TokenizeResult ParseIdentifier(const char* start,const char* end){
   res.bytesParsed = ptr - start;
   res.token.type = NewTokenType_IDENTIFIER;  
   res.token.identifier = identifier;
+  res.token.originalData.size = res.bytesParsed;
 
   return res;
 }
@@ -580,6 +615,35 @@ TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,
   res.bytesParsed = format.size;
   res.token.originalData.size = format.size;
   res.token.type = result;  
+
+  return res;
+}
+
+TokenizeResult ParseFilepath(const char* start,const char* end){
+  TokenizeResult res = {};
+
+  const char* ptr = start;
+  res.token.originalData.data = start;
+  char ch = *ptr;
+
+  if(ch != '.'){
+    return res;
+  }
+
+  ptr += 1;
+  for(; ptr < end; ptr += 1){
+    if(!IsAlpha(*ptr) && !IsNumeric(*ptr) && (*ptr != '.') && (*ptr != '/') && (*ptr != '-')){
+      break;
+    } 
+  }
+  
+  String identifier = {};
+  identifier.data = start;
+  identifier.size = ptr - start;
+
+  res.bytesParsed = ptr - start;
+  res.token.type = NewTokenType_FILEPATH;  
+  res.token.identifier = identifier;
 
   return res;
 }

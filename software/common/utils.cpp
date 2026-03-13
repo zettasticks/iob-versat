@@ -289,3 +289,41 @@ void* Next(GenericArenaDoubleListIterator& iter){
   
   return view;
 }
+
+
+Array<String> Split(String content,char sep,Arena* out){
+  TEMP_REGION(temp,out);
+  int index = 0;
+  int size = content.size;
+
+  auto list = PushList<String>(temp);
+  
+  while(1){
+    int start = index;
+    while(index < size && content[index] != sep){
+      index += 1;
+    }
+    int end = index; // content[end] is either sep or last character.
+    
+    String line = {};
+    if(start >= size){
+      break;
+    } else if(index >= size){
+      line = {&content[start],end - start};
+      *list->PushElem() = line;
+      break;
+    } else if(content[index] == sep){
+      line = {&content[start],end - start};
+    } else {
+      line = {&content[start],end - start + 1};
+      //Assert(false);
+    }
+
+    *list->PushElem() = line;
+
+    index += 1;
+  }
+  
+  Array<String> res = PushArray(out,list);
+  return res;
+}

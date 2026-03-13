@@ -24,8 +24,8 @@ enum ConfigExpressionType{
 struct ConfigExpression{
   ConfigExpressionType type;
 
-  Token identifier;
-  Token access; // Only single access supported, do not see why would need more than one.
+  NewToken identifier;
+  NewToken access; // Only single access supported, do not see why would need more than one.
 
   // TODO: Union
   ConfigExpression* child;
@@ -48,7 +48,7 @@ enum ConfigRHSType{
 
 struct FunctionInvocation{
   String functionName;
-  Array<Token> arguments; // TODO: For now we do not allow any expression. Only simple assignments.
+  Array<NewToken> arguments; // TODO: For now we do not allow any expression. Only simple assignments.
 };
 
 enum ConfigStatementType{
@@ -77,12 +77,12 @@ enum ConfigVarType{
 };
 
 struct ConfigVarDeclaration{
-  Token name;
+  NewToken name;
 
   // TODO: Not implemented, just parsed currently.
   
   //ConfigVarType type;
-  Token type;
+  NewToken type;
   int arraySize;
   bool isArray;
 };
@@ -90,7 +90,7 @@ struct ConfigVarDeclaration{
 struct ConfigFunctionDef{
   UserConfigType type;
   
-  Token name;
+  NewToken name;
   Array<ConfigVarDeclaration> variables;
   Array<ConfigStatement*> statements;
   bool debug;

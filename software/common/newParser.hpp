@@ -25,6 +25,7 @@ enum NewTokenType : u16{
   // Normal types commonly used
   NewTokenType_IDENTIFIER = 128,
   NewTokenType_NUMBER,
+  NewTokenType_FILEPATH,
   
   // Double digit symbols
   NewTokenType_DOUBLE_DOT,     // ..
@@ -132,6 +133,7 @@ struct NewToken{
     String whitespace;
     String comment;
     String cString;
+    String filepath;
     i64 number;
   };
 };
@@ -224,6 +226,8 @@ struct Parser{
   NewToken ExpectNext(NewTokenType type);
   NewToken ExpectNext(char singleChar);
 
+  void ExpectIdentifier(String expectedContent);
+
   void Synch(BracketList<NewTokenType> possibleTypes);
 
   bool Done();
@@ -254,6 +258,10 @@ TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,
 TokenizeResult ParseVerilogPreprocess(const char* start,const char* end);
 
 TokenizeResult ParseCString(const char* start,const char* end);
+
+// Since this is only for helper code, we define that all filepaths must begin with an '.'
+// This separates them from other normal identifiers 
+TokenizeResult ParseFilepath(const char* start,const char* end);
 
 //TODO: Create a parse remaining so that any other symbol does not cause problems further down the line.
 

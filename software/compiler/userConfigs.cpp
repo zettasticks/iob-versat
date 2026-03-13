@@ -39,54 +39,6 @@ void InitializeUserConfigs(){
 // ============================================================================
 // Instantiation and manipulation
 
-static FunctionInvocation* ParseFunctionInvocation(Array<Token> tokens,Arena* out){
-  TEMP_REGION(temp,out);
-  
-  String functionName = {};
-
-  #define CHECK_OR_ERROR(VAL) \
-    if(CompareString(tokens[index],VAL)){ \
-      index++; \
-    } else { \
-    } \
-  
-  int index = 0;
-
-  if(IsIdentifier(tokens[index])){
-    functionName = tokens[index++];
-  } else {
-    // TODO: Error
-  }
-
-  CHECK_OR_ERROR("(");
-  
-  auto list = PushList<Token>(temp);
-  while(index < tokens.size){
-    if(CompareString(tokens[index],",")){
-      index++;
-    }
-
-    if(CompareString(tokens[index],")")){
-      index++;
-      break;
-    }
-
-    if(IsIdentifier(tokens[index])){
-      *list->PushElem() = tokens[index];
-      index++;
-    }
-  }
-
-  if(index != tokens.size){
-    // TODO: Error
-  }
-
-  FunctionInvocation* res = PushStruct<FunctionInvocation>(out);
-  res->functionName = functionName;
-  res->arguments = PushArray(out,list);
-  return res;
-}
-
 static String GlobalConfigFunctionName(String functionName,FUDeclaration* decl,Arena* out){
   String name = PushString(out,"%.*s_%.*s",UN(decl->name),UN(functionName));
   return name;
@@ -100,9 +52,9 @@ struct ParseResult{
   
   SYM_Expr expr;
   Array<SpecExpression*> args;
-  Token entityName;
-  Token wireName; 
-  Token functionName;
+  NewToken entityName;
+  NewToken wireName; 
+  NewToken functionName;
 };
 
 struct DecompConfigStatement{
@@ -113,8 +65,8 @@ struct DecompConfigStatement{
   
   SYM_Expr expr;
   Array<SpecExpression*> args;
-  Token entityName;
-  Token wireName; 
+  NewToken entityName;
+  NewToken wireName; 
 
   ConfigFunction* func;
 };
@@ -190,11 +142,11 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   // TODO: Where is the error checking being perform to check if a given composite module contains the actual function?
   String structToReturnName = "void";
   Array<ConfigVarDeclaration> variables = def->variables;
-  Array<Token> variableNames = Extract(variables,temp,&ConfigVarDeclaration::name);
+  Array<NewToken> variableNames = Extract(variables,temp,&ConfigVarDeclaration::name);
 
   env->PushScope();
 
-  for(Token name : variableNames){
+  for(NewToken name : variableNames){
     env->AddVariable(name);
   }
   
@@ -258,20 +210,16 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       {
         auto tokens = AccumTokens(def.startSym,temp);
 
-        for(Token tok : tokens){
-          if(IsIdentifier(tok)){
-            variablesUsedOnLoopExpressions->Insert(tok); 
-          }
+        for(NewToken tok : tokens){
+          variablesUsedOnLoopExpressions->Insert(tok.identifier); 
         }
       }
 
       {
         auto tokens = AccumTokens(def.endSym,temp);
 
-        for(Token tok : tokens){
-          if(IsIdentifier(tok)){
-            variablesUsedOnLoopExpressions->Insert(tok); 
-          }
+        for(NewToken tok : tokens){
+          variablesUsedOnLoopExpressions->Insert(tok.identifier); 
         }
       }
     }
@@ -281,22 +229,24 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   Array<String> varNames = PushArray<String>(out,def->variables.size); 
   for(int i = 0; i < variables.size; i++){
     ConfigVarDeclaration decl = variables[i];
-    Token typeTok = decl.type;
+    NewToken typeTok = decl.type;
 
     ConfigVarType type = ConfigVarType_SIMPLE;
-    if(CompareString(typeTok,"Address")){
+
+    // nocheckin: Should this be a keyword?
+    if(typeTok.identifier == "Address"){
       type = ConfigVarType_ADDRESS;
-    } else if(CompareString(typeTok,"Fixed")){
+    } else if(typeTok.identifier == "Fixed"){
       type = ConfigVarType_FIXED;
-    } else if(CompareString(typeTok,"Dyn")){
+    } else if(typeTok.identifier == "Dyn"){
       type = ConfigVarType_DYN;
-    } else if(!Empty(typeTok)){
+    } else if(!Empty(typeTok.identifier)){
       // TODO: Proper error report, can only be one of three
       env->ReportError(typeTok,"Not a valid variable type");
     }
     
     varInfo[i].type = type;
-    varInfo[i].name = PushString(out,decl.name);
+    varInfo[i].name = PushString(out,decl.name.identifier);
 
     varNames[i] = varInfo[i].name;
   }
@@ -308,7 +258,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         supportsSizeCalc = false;
 
         // TODO: Better error calculation.
-        printf("[WARNING] UserConfig function \"%.*s\" does not support runtime size calculations because var \"%.*s\" which is part of loop logic is not defined as Fixed or Dyn\n",UN(def->name),UN(var.name));
+        printf("[WARNING] UserConfig function \"%.*s\" does not support runtime size calculations because var \"%.*s\" which is part of loop logic is not defined as Fixed or Dyn\n",UN(def->name.identifier),UN(var.name));
       }
     }
   }
@@ -320,7 +270,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       ConfigStatement* simple = stmts[stmts.size - 1];
       // TODO: Call entity function to make sure that the entity exists and it is a config wire
 
-      Token name = GetBase(simple->lhs)->name;
+      NewToken name = GetBase(simple->lhs)->name;
 
       auto forLoops = PushList<AddressGenForDef>(temp);
 
@@ -388,7 +338,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           argToVar->Insert(arg.name,var);
         }
         
-        String name = GetBase(simple->lhs)->name;
+        String name = GetBase(simple->lhs)->name.identifier;
       
         for(ConfigStuff stuff : function->stuff){
           // TODO: We are building the struct access expression in here but I got a feeling that we probably want to preserve data as much as possible in order to tackle merge later on.
@@ -432,10 +382,10 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
         // TODO: This logic is stupid. Rework into something better when we finalize the addressGen change.
         if(wirePort){
-          String name = GetBase(simple->lhs)->name;
+          String name = GetBase(simple->lhs)->name.identifier;
           
           ConfigIdentifier* before = GetBeforeBase(simple->lhs);
-          String wireName = before->name;
+          String wireName = before->name.identifier;
 
           ConfigStuff* assign = list->PushElem();
           assign->type = ConfigStuffType_ASSIGNMENT;
@@ -448,7 +398,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           newAssign->access.access = access;
           newAssign->access.inst = supported;
 
-          newAssign->lhs = newAssign->lhs + name;
+          newAssign->lhs = newAssign->lhs + name.identifier;
         } else if(parsedRhs.isExpr || parsedRhs.isArray){
           // NOTE: Memories and Generator do not follow the addr[expr]. They just have <instance> = <expr>.
           ConfigStuff* newAssign = list->PushElem();
@@ -462,16 +412,16 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
             newAssign->access.port = portEnt->port;
           }
 
-          newAssign->accessVariableName = PushString(out,parsedRhs.entityName);
-          newAssign->lhs = newAssign->lhs + name;
+          newAssign->accessVariableName = PushString(out,parsedRhs.entityName.identifier);
+          newAssign->lhs = newAssign->lhs + name.identifier;
         } else {
           ConfigStuff* newAssign = list->PushElem();
 
           newAssign->type = ConfigStuffType_ADDRESS_GEN;
           newAssign->access.access = access;
           newAssign->access.inst = supported;
-          newAssign->accessVariableName = PushString(out,parsedRhs.entityName);
-          newAssign->lhs = newAssign->lhs + name;
+          newAssign->accessVariableName = PushString(out,parsedRhs.entityName.identifier);
+          newAssign->lhs = newAssign->lhs + name.identifier;
         }
       }
     }
@@ -484,18 +434,18 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
     CEmitter* c = StartCCode(temp);
     
-    String structName = PushString(out,"%.*s_%.*s_Struct",UN(declaration->name),UN(def->name));
+    String structName = PushString(out,"%.*s_%.*s_Struct",UN(declaration->name),UN(def->name.identifier));
     structToReturnName = structName;
 
     c->Struct(structName);
     for(ConfigStatement* stmt : def->statements){
-      String name = GetBase(stmt->lhs)->name;
+      String name = GetBase(stmt->lhs)->name.identifier;
           
       String wireName = {};
       
       ConfigIdentifier* before = GetBeforeBase(stmt->lhs);
       if(before){
-        wireName = before->name;
+        wireName = before->name.identifier;
       }      
 
       // TODO: Proper error reporting. 
@@ -508,13 +458,13 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     *newStructs->PushElem() = PushASTRepr(c,out,false);
 
     for(ConfigStatement* stmt : def->statements){
-      String name = GetBase(stmt->lhs)->name;
+      String name = GetBase(stmt->lhs)->name.identifier;
 
       String wireName = {};
       
       ConfigIdentifier* before = GetBeforeBase(stmt->lhs);
       if(before){
-        wireName = before->name;
+        wireName = before->name.identifier;
       }
 
       ConfigIdentifier id = {};
@@ -528,7 +478,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       ParseResult parsedRhs = ParseRHS(env,stmt->rhs,temp);
 
       if(ent->type == EntityType_CONFIG_FUNCTION){
-        String varName = parsedRhs.entityName;
+        String varName = parsedRhs.entityName.identifier;
         
         for(ConfigStuff stmt : ent->func->stuff){
           ConfigStuff* assign = list->PushElem();
@@ -539,8 +489,8 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       } else if(parsedRhs.containsAccess){
         ConfigStuff* assign = list->PushElem();
           
-        String wireName = parsedRhs.wireName;
-        String varName = parsedRhs.entityName;
+        String wireName = parsedRhs.wireName.identifier;
+        String varName = parsedRhs.entityName.identifier;
 
         assign->type = ConfigStuffType_ASSIGNMENT;
         assign->assign.lhs = name;
@@ -578,7 +528,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           //nocheckin: This probably only currently works because variable have the same names
           // TODO: Need to create more complex tests to force the issue
           assign->transfer = stuff.transfer;
-          assign->transfer.name = simple->lhs->name + assign->transfer.name;
+          assign->transfer.name = simple->lhs->name.identifier + assign->transfer.name;
         }
       } else {
         ParseResult parsedRhs = ParseRHS(env,simple->rhs,temp);
@@ -634,7 +584,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   func.decl = declaration;
   func.stuff = PushArray(out,list);
   func.variables = varInfo;
-  func.individualName = PushString(out,def->name);
+  func.individualName = PushString(out,def->name.identifier);
   func.fullName = GlobalConfigFunctionName(func.individualName,declaration,out);
   func.newStructs = PushArray(out,newStructs);
   func.structToReturnName = structToReturnName;

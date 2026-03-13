@@ -9,7 +9,22 @@
 struct Arena;
 struct SymbolicExpression;
 
-typedef Range<Expression*> ExpressionRange;
+struct VExpr{
+  const char* op;
+  
+  // nocheckin: TODO: Should be a Token instead of just a string
+  String id;
+  Array<VExpr*> expressions;
+  Value val;
+  String text;
+  int approximateLine;
+  
+  enum {UNDEFINED,OPERATION,IDENTIFIER,FUNCTION,LITERAL} type;
+};
+
+void PrintExpression(VExpr* exp);
+
+typedef Range<VExpr*> ExpressionRange;
 
 struct MacroDefinition{
   String content;
@@ -31,7 +46,7 @@ struct PortDeclaration{
 
 struct ParameterExpression{
   String name;
-  Expression* expr;
+  VExpr* expr;
   ParamFlags flags;
 };
 
@@ -197,18 +212,16 @@ struct ModuleInfo{
   ModuleSource moduleSource;
 };
 
-SymbolicExpression* SymbolicExpressionFromVerilog(Expression* topExpr,Arena* out);
+SymbolicExpression* SymbolicExpressionFromVerilog(VExpr* topExpr,Arena* out);
 SymbolicExpression* SymbolicExpressionFromVerilog(ExpressionRange range,Arena* out);
 
-SYM_Expr SymbolicExpressionFromVerilog(Expression* topExpr);
+SYM_Expr SymbolicExpressionFromVerilog(VExpr* topExpr);
 SYM_Expr SymbolicExpressionFromVerilog(ExpressionRange range);
 
 String PreprocessVerilogFile(String fileContent,Array<String> includeFilepaths,Arena* out);
 Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths,Arena* out); // Only handles preprocessed files
 ModuleInfo ExtractModuleInfo(Module& module,Arena* out);
 
-Value Eval(Expression* expr,Array<ParameterExpression> parameters);
+Value Eval(VExpr* expr,Array<ParameterExpression> parameters);
 
 void ParseVerilogFileTest();
-
-//Array<Module> ParseVerilogFile2(String fileContent,Array<String> includeFilepaths,Arena* out); // Only handles preprocessed files

@@ -54,14 +54,61 @@ Opt<MathFunctionDescription> GetMathFunction(String name){
   return {};
 }
 
-SYM_Expr SymbolicExpressionFromVerilog(Expression* topExpr){
+static void PrintExpression(StringBuilder* b,VExpr* exp,int level){
+  b->PushSpaces(level);
+  switch(exp->type){
+  case VExpr::UNDEFINED:{
+    b->PushString("UNDEFINED\n");
+  }break;
+  case VExpr::OPERATION:{
+    b->PushString("OPERATION\n");
+  }break;
+  case VExpr::IDENTIFIER:{
+    b->PushString("IDENTIFIER\n");
+  }break;
+  case VExpr::FUNCTION:{
+    b->PushString("FUNCTION\n");
+  }break;
+  case VExpr::LITERAL:{
+    Value val = exp->val;
+    b->PushString("LITERAL: %ld\n",val.number);
+  }break;
+  }
+
+  if(exp->op){
+    b->PushSpaces(level);
+    b->PushString("op: %s\n",exp->op);
+  }
+
+  if(exp->id.size){
+    b->PushSpaces(level);
+    b->PushString("id: %.*s\n",UN(exp->id));
+  }
+
+  for(VExpr* subExpressions : exp->expressions){
+    PrintExpression(b,subExpressions,level + 2);
+    b->PushString("\n");
+  }
+}
+
+void PrintExpression(VExpr* exp){
+  TEMP_REGION(temp,nullptr);
+
+  auto b = StartString(temp);
+  PrintExpression(b,exp,0);
+
+  String res = EndString(temp,b);
+  printf("%.*s\n",UN(res));
+}
+
+SYM_Expr SymbolicExpressionFromVerilog(VExpr* topExpr){
   SYM_Expr res = SYM_Zero;
 
   FULL_SWITCH(topExpr->type){
-  case Expression::UNDEFINED: {
+  case VExpr::UNDEFINED: {
     Assert(false);
   } break;
-  case Expression::OPERATION: {
+  case VExpr::OPERATION: {
     SYM_Expr left = SymbolicExpressionFromVerilog(topExpr->expressions[0]);
     SYM_Expr right = SymbolicExpressionFromVerilog(topExpr->expressions[1]);
     
@@ -84,14 +131,14 @@ SYM_Expr SymbolicExpressionFromVerilog(Expression* topExpr){
     } break;
     } 
   } break;
-  case Expression::IDENTIFIER: {
+  case VExpr::IDENTIFIER: {
     res = SYM_Var(topExpr->id);
   } break;
-  case Expression::FUNCTION: {
+  case VExpr::FUNCTION: {
     // TODO: Better error message and we probably can do more stuff here
     NOT_IMPLEMENTED("");
   } break;
-  case Expression::LITERAL: {
+  case VExpr::LITERAL: {
     res = SYM_Lit(topExpr->val.number);
   } break;
 }
@@ -108,13 +155,13 @@ SYM_Expr SymbolicExpressionFromVerilog(ExpressionRange range){
   return res;
 }
 
-Value Eval(Expression* expr,Array<ParameterExpression> parameters){
+Value Eval(VExpr* expr,Array<ParameterExpression> parameters){
   Value ret = {};
   switch(expr->type){
-  case Expression::LITERAL: {
+  case VExpr::LITERAL: {
     ret = expr->val;
   } break;
-  case Expression::OPERATION: {
+  case VExpr::OPERATION: {
     // TODO: Not the first place where we have default operation behaviour. Refactor into a single place
     switch(expr->op[0]){
     case '+': {
@@ -139,7 +186,7 @@ Value Eval(Expression* expr,Array<ParameterExpression> parameters){
     } break;
     }
   } break;
-  case Expression::IDENTIFIER: {
+  case VExpr::IDENTIFIER: {
     String id = expr->id;
 
     for(ParameterExpression& p : parameters){
@@ -149,8 +196,8 @@ Value Eval(Expression* expr,Array<ParameterExpression> parameters){
       }
     }
   } break;
-  case Expression::FUNCTION:; 
-  case Expression::UNDEFINED:; 
+  case VExpr::FUNCTION:; 
+  case VExpr::UNDEFINED:; 
   }
 
   return ret;
@@ -1200,48 +1247,13 @@ struct VerilogTokenizerState{
 };
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // MARK1
 
 #if 1
 
-// nochecking
-// TODO: Just to remove the syntax errors from the compiler
-static Token C(NewToken t){
-  Token res = {};
-  res.data = t.originalData.data;
-  res.size = t.identifier.size;
-  return res;
-}
-
-static Value Eval(Expression* expr,TrieMap<String,Value>* map){
+static Value Eval(VExpr* expr,TrieMap<String,Value>* map){
   switch(expr->type){
-  case Expression::OPERATION:{
+  case VExpr::OPERATION:{
     Value val1 = Eval(expr->expressions[0],map);
     Value val2 = Eval(expr->expressions[1],map);
 
@@ -1267,7 +1279,7 @@ static Value Eval(Expression* expr,TrieMap<String,Value>* map){
     } break;
     }
   }break;
-  case Expression::IDENTIFIER:{
+  case VExpr::IDENTIFIER:{
     Value* val = map->Get(expr->id);
     if(!map){
       printf("Error, did not find parameter %.*s\n",UN(expr->id));
@@ -1276,13 +1288,13 @@ static Value Eval(Expression* expr,TrieMap<String,Value>* map){
     
     return *val;
   }break;
-  case Expression::LITERAL:{
+  case VExpr::LITERAL:{
     return expr->val;
   }break;
-  case Expression::FUNCTION:{ // Called Command but for verilog it is actually a math function call
+  case VExpr::FUNCTION:{ // Called Command but for verilog it is actually a math function call
     String functionName = expr->id;
 
-    Expression* argument = expr->expressions[0];
+    VExpr* argument = expr->expressions[0];
     MathFunctionDescription optDescription = GetMathFunction(functionName).value();
 
     if(!optDescription.func){
@@ -1296,7 +1308,7 @@ static Value Eval(Expression* expr,TrieMap<String,Value>* map){
     
     return result;
   } break;
-  case Expression::UNDEFINED:
+  case VExpr::UNDEFINED:
     NOT_POSSIBLE("None of these should appear in parameters");
   }
 
@@ -1305,7 +1317,7 @@ static Value Eval(Expression* expr,TrieMap<String,Value>* map){
 }
 
 static ExpressionRange ParseRange(Parser* tok,Arena* out);
-Expression* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower = 99);
+VExpr* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower = 99);
 
 static Array<ParameterExpression> ParseParameters(Parser* tok,TrieMap<String,Value>* map,Arena* out){
   //TODO: Add type and range to parsing
@@ -1339,25 +1351,63 @@ static Array<ParameterExpression> ParseParameters(Parser* tok,TrieMap<String,Val
       if(possibleComment.type == NewTokenType_COMMENT){
         tok->NextToken();
 
-        // nocheckin: TODO: Also replace this with a proper parser.
-        Tokenizer comTok(possibleComment.comment,":,",{});
-        
-        comTok.AssertNextToken("versat");
-        comTok.AssertNextToken(":");
-        
-        while(!comTok.Done()){
-          comTok.IfNextToken(",");
-          
-          Token paramFlag = comTok.NextToken();
-          Opt<ParamFlags> flagOpt = META_ParamToFlag_ReverseMap(paramFlag);
+        auto TokenizeFunction = [](void* tokenizerState) -> NewToken{
+          DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
+    
+          const char* start = state->ptr;
+          const char* end = state->end;
 
-          if(flagOpt.has_value()){
-            // Better support for flag concatenation when using enums.
-            flags = (ParamFlags) ((u32) flags | (u32) flagOpt.value());
-          } else {
-            // TODO: Better error reporting
-            printf("%.*s is not a valid param flag",UN(paramFlag));
+          if(start >= end){
+            NewToken token = {};
+            token.type = NewTokenType_EOF;
+            return token;
           }
+
+          TokenizeResult res = ParseWhitespace(start,end);
+          res |= ParseComments(start,end);
+          res |= ParseSymbols(start,end);
+          res |= ParseNumber(start,end);
+          res |= ParseIdentifier(start,end);
+
+          int size = res.bytesParsed;
+          if(size <= 0 && state->ptr != state->end){
+            size = 1;
+          }
+
+          state->ptr += size;
+
+          // NOTE: Something very bad must happen to the point where the file is 1 byte after the end.
+          //       We expect it to only reach file->end, not file->end + 1
+          Assert(state->ptr < state->end + 1);
+
+          return res.token;
+        };
+
+        FREE_ARENA(commentParsing);
+        Parser* p = StartParsing(TokenizeFunction,possibleComment.comment,commentParsing);
+
+        NewToken t = p->NextToken();
+        if(t.type == NewTokenType_IDENTIFIER && t.identifier == "versat"){
+          p->ExpectNext(':');
+          
+          while(!p->Done()){
+            p->IfNextToken(',');
+          
+            NewToken paramFlag = p->ExpectNext(NewTokenType_IDENTIFIER);
+            Opt<ParamFlags> flagOpt = META_ParamToFlag_ReverseMap(paramFlag.identifier);
+
+            if(flagOpt.has_value()){
+              // Better support for flag concatenation when using enums.
+              flags = (ParamFlags) ((u32) flags | (u32) flagOpt.value());
+            } else {
+              // TODO: Better error reporting
+              printf("%.*s is not a valid param flag",UN(paramFlag.identifier));
+            }
+          }
+        }
+        
+        for(String err : p->errors){
+          tok->ReportError(err);
         }
       }
 
@@ -1365,7 +1415,7 @@ static Array<ParameterExpression> ParseParameters(Parser* tok,TrieMap<String,Val
 
       range = ParseRange(tok,out);
 
-      Token paramName = C(tok->NextToken());
+      NewToken paramName = tok->NextToken();
 
       tok->ExpectNext('=');
 
@@ -1387,13 +1437,13 @@ static Array<ParameterExpression> ParseParameters(Parser* tok,TrieMap<String,Val
         continue;
       }
       
-      Expression* expr = VerilogParseExpression(tok,out);
+      VExpr* expr = VerilogParseExpression(tok,out);
       Value val = Eval(expr,map);
 
-      map->Insert(paramName,val);
+      map->Insert(paramName.identifier,val);
       
       ParameterExpression* p = params.PushElem();
-      p->name = paramName;
+      p->name = paramName.identifier;
       p->expr = expr;
       p->flags = flags;
     } else if(peek.type == ')'){
@@ -1410,22 +1460,22 @@ static Array<ParameterExpression> ParseParameters(Parser* tok,TrieMap<String,Val
   return EndArray(params);
 }
 
-Expression* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower){
-  Expression* topUnary = nullptr;
-  Expression* innerMostUnary = nullptr;
+VExpr* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower){
+  VExpr* topUnary = nullptr;
+  VExpr* innerMostUnary = nullptr;
 
-  Expression* res = nullptr;
+  VExpr* res = nullptr;
   
   // Parse unary
   while(!parser->Done()){
-    Expression* parsed = nullptr;
+    VExpr* parsed = nullptr;
     if(!parsed &&  parser->IfNextToken('-')){
-      parsed = PushStruct<Expression>(out);
+      parsed = PushStruct<VExpr>(out);
       parsed->op = "-";
     }
 
     if(parsed){
-      parsed->type = Expression::OPERATION;
+      parsed->type = VExpr::OPERATION;
     }
 
     if(parsed && !topUnary){
@@ -1435,7 +1485,7 @@ Expression* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower){
     }
 
     if(parsed){
-      innerMostUnary->expressions = PushArray<Expression*>(out,1);
+      innerMostUnary->expressions = PushArray<VExpr*>(out,1);
       innerMostUnary->expressions[0] = parsed;
       innerMostUnary = parsed;
       continue;
@@ -1454,24 +1504,24 @@ Expression* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower){
     parser->ExpectNext(')');
   } else if(peek.type == NewTokenType_NUMBER){
     NewToken number = parser->ExpectNext(NewTokenType_NUMBER);
-    res = PushStruct<Expression>(out);
+    res = PushStruct<VExpr>(out);
 
-    res->type = Expression::LITERAL;
+    res->type = VExpr::LITERAL;
     res->val = MakeValue(number.number);
   } else if(peek.type == NewTokenType_IDENTIFIER){
     NewToken id = parser->ExpectNext(NewTokenType_IDENTIFIER);
    
-    res = PushStruct<Expression>(out);
-    res->type = Expression::IDENTIFIER;
+    res = PushStruct<VExpr>(out);
+    res->type = VExpr::IDENTIFIER;
     res->id = id.identifier;
   } else if (peek.type == NewTokenType_C_STRING) {
     NewToken string = parser->ExpectNext(NewTokenType_C_STRING);
     
-    res = PushStruct<Expression>(out);
+    res = PushStruct<VExpr>(out);
     res->val = MakeValue(string.cString);
-    res->type = Expression::LITERAL;
+    res->type = VExpr::LITERAL;
   } else if(peek.type == '$'){
-    Expression* expr = PushStruct<Expression>(out);
+    VExpr* expr = PushStruct<VExpr>(out);
     *expr = {};
 
     parser->NextToken();
@@ -1482,8 +1532,8 @@ Expression* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower){
     Assert(optDescription.has_value());
     MathFunctionDescription description = optDescription.value();
 
-    expr->type = Expression::FUNCTION;
-    expr->expressions = PushArray<Expression*>(out,description.amountOfParameters);
+    expr->type = VExpr::FUNCTION;
+    expr->expressions = PushArray<VExpr*>(out,description.amountOfParameters);
 
     parser->ExpectNext('(');
     expr->expressions[0] = VerilogParseExpression(parser,out);
@@ -1500,7 +1550,7 @@ Expression* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower){
   }
 
   if(topUnary){
-    innerMostUnary->expressions = PushArray<Expression*>(out,1);
+    innerMostUnary->expressions = PushArray<VExpr*>(out,1);
     innerMostUnary->expressions[0] = res;
 
     res = topUnary;
@@ -1538,13 +1588,13 @@ Expression* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower){
         if(info.bindingPower < bindingPower){
           parser->NextToken();
 
-          Expression* right = VerilogParseExpression(parser,out,info.bindingPower);
+          VExpr* right = VerilogParseExpression(parser,out,info.bindingPower);
       
-          Expression* op = PushStruct<Expression>(out);
+          VExpr* op = PushStruct<VExpr>(out);
 
           op->op = info.op;
-          op->type = Expression::OPERATION;
-          op->expressions = PushArray<Expression*>(out,2);
+          op->type = VExpr::OPERATION;
+          op->expressions = PushArray<VExpr*>(out,2);
           op->expressions[0] = res;
           op->expressions[1] = right;
 
@@ -1564,17 +1614,17 @@ Expression* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower){
 
   // Parse ternary ops.
   if(parser->IfNextToken('?')){
-    Expression* first = VerilogParseExpression(parser,out);
+    VExpr* first = VerilogParseExpression(parser,out);
 
     parser->ExpectNext(':');
 
-    Expression* second = VerilogParseExpression(parser,out);
+    VExpr* second = VerilogParseExpression(parser,out);
     
-    Expression* ternary = PushStruct<Expression>(out);
+    VExpr* ternary = PushStruct<VExpr>(out);
 
     ternary->op = "?";
-    ternary->type = Expression::OPERATION;
-    ternary->expressions = PushArray<Expression*>(out,3);
+    ternary->type = VExpr::OPERATION;
+    ternary->expressions = PushArray<VExpr*>(out,3);
     ternary->expressions[0] = res;
     ternary->expressions[1] = first;
     ternary->expressions[2] = second;
@@ -1586,14 +1636,14 @@ Expression* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower){
 }
 
 static ExpressionRange ParseRange(Parser* tok,Arena* out){
-  static Expression zeroExpression = {};
+  static VExpr zeroExpression = {};
 
   NewToken peek = tok->PeekToken();
 
   if(peek.type != '['){ // No range is equal to range [0:0]. Do not known if it's worth/need to  differentiate
     ExpressionRange range = {};
 
-    zeroExpression.type = Expression::LITERAL;
+    zeroExpression.type = VExpr::LITERAL;
     zeroExpression.val = MakeValue(0);
     
     range.top = &zeroExpression;
@@ -1624,7 +1674,7 @@ static Module ParseModule(Parser* tok,Arena* out){
 
   tok->ExpectNext(NewTokenType_VERILOG_KEYWORD_MODULE);
 
-  module.name = C(tok->NextToken());
+  module.name = tok->ExpectNext(NewTokenType_IDENTIFIER).identifier;
 
   //NewToken peek = C(tok->PeekToken());
   if(tok->IfNextToken('#')){
@@ -1661,7 +1711,7 @@ static Module ParseModule(Parser* tok,Arena* out){
           NewToken peek = tok->PeekToken();
           if(peek.type == '='){
             tok->NextToken();
-            Expression* expr = VerilogParseExpression(tok,out);
+            VExpr* expr = VerilogParseExpression(tok,out);
             Value value = Eval(expr,values);
 
             *attributeList->PushElem() = {attributeName.identifier,value};
@@ -1710,7 +1760,7 @@ static Module ParseModule(Parser* tok,Arena* out){
 
       ExpressionRange res = ParseRange(tok,out);
       port.range = res;
-      port.name = C(tok->NextToken());
+      port.name = tok->ExpectNext(NewTokenType_IDENTIFIER).identifier;
 
       *portList->PushElem() = port;
 
@@ -1982,7 +2032,12 @@ Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths
     parser->NextToken();
   }
 
+  for(String error : state->errors){
+    printf("%.*s\n",UN(error));
+  }
+
   for(String error : parser->errors){
+    DEBUG_BREAK();
     printf("%.*s\n",UN(error));
   }
 
@@ -2007,7 +2062,7 @@ ModuleInfo ExtractModuleInfo(Module& module,Arena* out){
   auto* external = PushTrieMap<ExternalMemoryID,ExternalMemoryInfo>(temp);
   
   for(PortDeclaration decl : module.ports){
-    Tokenizer port(decl.name,"",{"in","out","delay","done","rst","clk","run","running","databus"});
+    String name = decl.name;
     
     if(CompareString("signal_loop",decl.name)){
       info.singleInterfaces |= SingleInterfaces_SIGNAL_LOOP;
@@ -2085,8 +2140,8 @@ ModuleInfo ExtractModuleInfo(Module& module,Arena* out){
         UNHANDLED_ERROR("Should be an handled error");
       }
     } else if(CheckFormat("in%d",decl.name)){
-      port.AssertNextToken("in");
-      int index = ParseInt(port.NextToken());
+      name = Offset(name,2);
+      int index = ParseInt(name);
       Value* delayValue = decl.attributes->Get(VERSAT_LATENCY);
 
       int delay = 0;
@@ -2095,8 +2150,8 @@ ModuleInfo ExtractModuleInfo(Module& module,Arena* out){
       inputs[index].delay = delay;
       inputs[index].range = decl.range;
     } else if(CheckFormat("out%d",decl.name)){
-      port.AssertNextToken("out");
-      int index = ParseInt(port.NextToken());
+      name = Offset(name,3);
+      int index = ParseInt(name);
       Value* latencyValue = decl.attributes->Get(VERSAT_LATENCY);
 
       int latency = 0;
@@ -2105,8 +2160,8 @@ ModuleInfo ExtractModuleInfo(Module& module,Arena* out){
       outputs[index].delay = latency;
       outputs[index].range = decl.range;
     } else if(CheckFormat("delay%d",decl.name)){
-      port.AssertNextToken("delay");
-      int delay = ParseInt(port.NextToken());
+      name = Offset(name,5);
+      int delay = ParseInt(name);
 
       info.nDelays = MAX(info.nDelays,delay + 1);
     } else if(  CheckFormat("databus_ready_%d",decl.name)

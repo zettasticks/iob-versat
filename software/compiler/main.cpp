@@ -94,7 +94,7 @@ struct Work{
 };
 
 void Print(Work* work){
-  printf("Name: %.*s\n",UN(work->definition.base.name));
+  printf("Name: %.*s\n",UN(work->definition.base.name.identifier));
   printf("calculateDelayFixedGraph: %d\n",work->calculateDelayFixedGraph ? 1 : 0);
   printf("flattenWithMapping: %d\n",work->flattenWithMapping ? 1 : 0);
 }
@@ -102,10 +102,10 @@ void Print(Work* work){
 void GetSubWorkRequirement(Hashmap<String,Work>* typeToWork,ConstructDef type){
   TEMP_REGION(temp,nullptr);
   TEMP_REGION(temp2,temp);
-  Array<Token> subTypesUsed = TypesUsed(type,temp);
+  Array<NewToken> subTypesUsed = TypesUsed(type,temp);
   
-  for(Token tok : subTypesUsed){
-    Work* work = typeToWork->Get(tok);
+  for(NewToken tok : subTypesUsed){
+    Work* work = typeToWork->Get(tok.identifier);
     if(!work){
       continue;
     }
@@ -287,7 +287,6 @@ int main(int argc,char* argv[]){
   InitializeDefaultData(perm);
   InitializeSimpleDeclarations();
   InitializeUserConfigs();
-  InitParser(perm);
 
 #if 0
   SYM_Test();
@@ -479,7 +478,7 @@ int main(int argc,char* argv[]){
     
     Hashmap<String,int>* typeToId = PushHashmap<String,int>(temp,size);
     for(int i = 0; i < size; i++){
-      typeToId->Insert(modules[i].base.name,i);
+      typeToId->Insert(modules[i].base.name.identifier,i);
     }
     
     if(!typeToId->Exists(topLevelTypeStr)){
@@ -489,10 +488,10 @@ int main(int argc,char* argv[]){
     
     auto arr = StartArray<Pair<int,int>>(temp2);
     for(int i = 0; i < size; i++){
-      Array<Token> subTypesUsed = TypesUsed(modules[i],temp);
+      Array<NewToken> subTypesUsed = TypesUsed(modules[i],temp);
 
-      for(String str : subTypesUsed){
-        int* index = typeToId->Get(str);
+      for(NewToken str : subTypesUsed){
+        int* index = typeToId->Get(str.identifier);
         if(index){
           *arr.PushElem() = {i,*index};
         }
@@ -508,10 +507,10 @@ int main(int argc,char* argv[]){
 
     for(int i : order){
       Work work = {};
-      Token name = modules[i].base.name;
+      NewToken name = modules[i].base.name;
       work.definition = modules[i];
       
-      typeToWork->Insert(name,work);
+      typeToWork->Insert(name.identifier,work);
     }
     
     for(int i : order){
@@ -530,14 +529,15 @@ int main(int argc,char* argv[]){
         for(TypeAndInstance tp : merge.declarations){
           bool found = false;
           for(auto p : typeToWork){
-            if(CompareString(p.first,tp.typeName)){
+            if(p.first == tp.typeName.identifier){
               found = true;
               break;
             }
           }
 
           if(!found){
-            ReportError(content,tp.typeName,"Did not find type");
+            // nocheckin TODO:
+            //ReportError(content,tp.typeName,"Did not find type");
             anyError = true;
           }
         }

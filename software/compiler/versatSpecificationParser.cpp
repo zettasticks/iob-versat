@@ -30,32 +30,6 @@ static SpecExpression SPEC_LITERAL_0 = {.val = 0,.type = SpecType_LITERAL};
 //         user error that most be reported.
 
 
-// TODO: This functions could show more lines of code before and after so we can actually see where the problem is.
-void ReportError(String content,Token faultyToken,String error){
-  TEMP_REGION(temp,nullptr);
-
-  String loc = GetRichLocationError(content,faultyToken,temp);
-
-  printf("[Error]\n");
-  printf("%.*s:\n",UN(error));
-  printf("%.*s\n",UN(loc));
-  printf("\n");
-}
-
-void ReportErrorGoodTokenExists(String content,Token faultyToken,Token goodToken,String faultyError,String good){
-  TEMP_REGION(temp,nullptr);
-
-  String loc = GetRichLocationError(content,faultyToken,temp);
-  String loc2 = GetRichLocationError(content,goodToken,temp);
-  
-  printf("[Error]\n");
-  printf("%.*s:\n",UN(faultyError));
-  printf("%.*s\n",UN(loc));
-  printf("%.*s:\n",UN(good));
-  printf("%.*s\n",UN(loc2));
-  printf("\n");
-}
-
 SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower = 99);
 
 String GetUniqueName(String name,Arena* out,InstanceTable* names){
@@ -81,21 +55,21 @@ FUDeclaration* InstantiateMerge(MergeDef def){
   
   auto declArr = StartArray<FUDeclaration*>(temp);
   for(TypeAndInstance tp : def.declarations){
-    FUDeclaration* decl = GetTypeByNameOrFail(tp.typeName); // TODO: Rewrite stuff so that at this point we know that the type must exist
+    FUDeclaration* decl = GetTypeByNameOrFail(tp.typeName.identifier); // TODO: Rewrite stuff so that at this point we know that the type must exist
     *declArr.PushElem() = decl;
   }
   Array<FUDeclaration*> decl = EndArray(declArr);
 
-  String name = PushString(globalPermanent,def.name);
+  String name = PushString(globalPermanent,def.name.identifier);
 
   bool error = false;
   MergeModifier modifier = MergeModifier_NONE;
 
-  for(Token t : def.mergeModifiers){
-    Opt<MergeModifier> parsed = META_mergeModifiers_ReverseMap(t);
+  for(NewToken t : def.mergeModifiers){
+    Opt<MergeModifier> parsed = META_mergeModifiers_ReverseMap(t.identifier);
 
     if(!parsed.has_value()){
-      printf("Error, merge does not support option: %.*s\n",UN(t));
+      printf("Error, merge does not support option: %.*s\n",UN(t.identifier));
       error = true;
     }
 
@@ -190,7 +164,7 @@ struct ConnectionStartInfo{
   bool isDelay;
   bool isArray;
 
-  Token name;
+  NewToken name;
 
   int port;
   int delay;
@@ -251,7 +225,7 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
   Arena* perm = globalPermanent;
   TEMP_REGION(temp,perm);
 
-  Accelerator* circuit = CreateAccelerator(def.name,AcceleratorPurpose_MODULE);
+  Accelerator* circuit = CreateAccelerator(def.name.identifier,AcceleratorPurpose_MODULE);
 
   FREE_ARENA(envArena);
   FREE_ARENA(envArena2);
@@ -263,7 +237,7 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
 
     ParameterDef* def = paramList->PushElem();
     
-    def->name = param.name;
+    def->name = param.name.identifier;
     def->defaultValue = env->SymbolicFromSpecExpression(param.defaultValue);
   }
   auto params = PushArray(temp,paramList);
@@ -331,21 +305,23 @@ bool IsModuleLike(ConstructDef def){
   return false;
 }
 
-Array<Token> TypesUsed(ConstructDef def,Arena* out){
+Array<NewToken> TypesUsed(ConstructDef def,Arena* out){
   TEMP_REGION(temp,out);
 
   FULL_SWITCH(def.type){
   case ConstructType_MERGE: {
     // TODO: How do we deal with same types being used?
     //       Do we just ignore it?
-    Array<Token> result = Extract(def.merge.declarations,out,&TypeAndInstance::typeName);
+    Array<NewToken> result = Extract(def.merge.declarations,out,&TypeAndInstance::typeName);
     
     return result;
   } break;
   case ConstructType_MODULE: {
-    Array<Token> result = Extract(def.module.declarations,temp,&InstanceDeclaration::typeName);
+    Array<NewToken> result = Extract(def.module.declarations,temp,&InstanceDeclaration::typeName);
 
-    return Unique(result,out);
+    // nocheckin: TODO: Check repetition
+    return result;
+    ///return Unique(result,out);
   } break;
   case ConstructType_ITERATIVE:{
     NOT_IMPLEMENTED("yet");
@@ -391,9 +367,9 @@ Env* StartEnvironment(Arena* freeUse,Arena* freeUse2){
   return env;
 }
 
-void Env::ReportError(Token badToken,String msg){
+void Env::ReportError(NewToken badToken,String msg){
   // TODO: More detailed error message
-  String error = PushString(miscArena,"[%.*s] %.*s: '%.*s'",UN(circuit->name),UN(msg),UN(badToken));
+  String error = PushString(miscArena,"[%.*s] %.*s: '%.*s'",UN(circuit->name),UN(msg),UN(badToken.identifier));
   *this->errors->PushElem() = error;
 }
 
@@ -418,8 +394,9 @@ void Env::PopScope(){
 FUInstance* Env::CreateInstance(FUDeclaration* type,String name){
   FUInstance* inst = CreateFUInstance(circuit,type,name);
 
-  Token tok = {};
-  tok = *((Token*) &inst->name);
+  NewToken tok = {};
+  tok.identifier = inst->name;
+  tok.type = NewTokenType_IDENTIFIER;
   Entity* ent = PushNewEntity(tok);
   ent->type = EntityType_FU;
   ent->instance = inst;
@@ -442,18 +419,18 @@ FUInstance* Env::CreateFUInstanceWithDeclaration(FUDeclaration* type,String name
   return inst;
 }
 
-FUInstance* Env::GetFUInstance(Token name,int arrayIndexIfArray){
+FUInstance* Env::GetFUInstance(NewToken name,int arrayIndexIfArray){
   TEMP_REGION(temp,nullptr);
 
   FUInstance* res = nullptr;
-  if(name == "out"){
+  if(name.identifier == "out"){
     res = GetOutputInstance();
   } else {
     Entity* ent = GetEntity(name);
 
     // TODO: Error reporting if entity does not exist.
 
-    String asStr = name;
+    String asStr = name.identifier;
     if(ent->type == EntityType_FU_ARRAY){
       asStr = GetActualArrayName(asStr,arrayIndexIfArray,temp);
     }
@@ -467,7 +444,7 @@ FUInstance* Env::GetFUInstance(Var var){
   TEMP_REGION(temp,nullptr);
   
   FUInstance* res = nullptr;
-  if(var.name == "out"){
+  if(var.name.identifier == "out"){
     if(var.isArrayAccess){
       ReportError(var.name,"'out' special unit cannot have array subscriptions");
     }
@@ -476,7 +453,7 @@ FUInstance* Env::GetFUInstance(Var var){
   } else {
     Entity* ent = GetEntity(var.name);
     
-    String name = var.name;
+    String name = var.name.identifier;
     if(ent->type == EntityType_FU_ARRAY){
       int index = CalculateConstantExpression(var.index.low);
       name = GetActualArrayName(name,index,temp);
@@ -497,12 +474,12 @@ FUInstance* Env::GetOutputInstance(){
   return res;
 }
 
-Entity* Env::PushNewEntity(Token name){
-  if(name == "out"){
+Entity* Env::PushNewEntity(NewToken name){
+  if(name.identifier == "out"){
     ReportError(name,"Cannot have a variable with the reserved name out");
   }
 
-  auto res = this->scopes[this->currentScope]->variable->GetOrAllocate(name);
+  auto res = this->scopes[this->currentScope]->variable->GetOrAllocate(name.identifier);
   
   if(res.alreadyExisted){
     ReportError(name,"Entity already exists. Rename entity to resolve conflict");
@@ -511,7 +488,7 @@ Entity* Env::PushNewEntity(Token name){
   return res.data;
 }
 
-void Env::CheckIfEntityExists(Token name){
+void Env::CheckIfEntityExists(NewToken name){
   Entity* ent = GetEntity(name);
   
   // nocheckin: TODO: Currently not enabled since code is not properly
@@ -524,9 +501,9 @@ void Env::CheckIfEntityExists(Token name){
 #endif
 }
 
-Entity* Env::GetEntity(Token name){
+Entity* Env::GetEntity(NewToken name){
   for(int i = this->currentScope; i >= 0; i--){
-    Entity* ent = this->scopes[i]->variable->Get(name);
+    Entity* ent = this->scopes[i]->variable->Get(name.identifier);
 
     if(ent){
       return ent;
@@ -565,12 +542,12 @@ Entity* Env::GetEntity(ConfigIdentifier* id,Arena* out){
         nextEnt = ent;
       } break;
       case ConfigAccessType_FUNC_CALL:{
-        Token funcName = ptr->functionName;
+        NewToken funcName = ptr->functionName;
         FUDeclaration* decl = ent->instance->declaration;
 
         for(MergePartition part : decl->info.infos){
           for(ConfigFunction* func : part.userFunctions){
-            if(func->individualName == funcName){
+            if(func->individualName == funcName.identifier){
               Entity* userFunc = PushStruct<Entity>(out);
 
               userFunc->func = func;
@@ -583,7 +560,7 @@ Entity* Env::GetEntity(ConfigIdentifier* id,Arena* out){
         }
       } break;
       case ConfigAccessType_ACCESS:{
-        Token access = ptr->name;
+        String access = ptr->name.identifier;
 
         SWITCH(ent->type){
         case EntityType_FU:{
@@ -656,7 +633,7 @@ Entity* Env::GetEntity(ConfigIdentifier* id,Arena* out){
         case EntityType_STATE_WIRE:
         case EntityType_VARIABLE_INPUT:
         case EntityType_VARIABLE_SPECIAL:{
-          ReportError(access,"Cannot have access expression for entity of this type");
+          ReportError(ptr->name,"Cannot have access expression for entity of this type");
         } break;
       }
       } break;
@@ -698,7 +675,7 @@ Entity* Env::GetEntity(SpecExpression* id,Arena* out){
     SpecExpression* accessExpr = id->expressions[0];
     Assert(accessExpr->type == SpecType_NAME);
     
-    Token access = accessExpr->name;
+    String access = accessExpr->name.identifier;
 
     Direction dir = Direction_NONE;
     int port = 0;
@@ -789,16 +766,16 @@ void Env::AddInput(VarDeclaration var){
 
   if(var.isArray){
     ent->type = EntityType_FU_ARRAY;
-    ent->arrayBaseName = var.name;
+    ent->arrayBaseName = var.name.identifier;
     ent->arraySize = var.arraySize;
 
     for(int i = 0; i < var.arraySize; i++){
-      String actualName = GetActualArrayName(var.name,i,temp);
+      String actualName = GetActualArrayName(var.name.identifier,i,temp);
       FUInstance* input = CreateOrGetInput(circuit,actualName,insertedInputs++);
       table->Insert(input->name,input);
     }
   } else {
-    FUInstance* input = CreateOrGetInput(circuit,var.name,insertedInputs++);
+    FUInstance* input = CreateOrGetInput(circuit,var.name.identifier,insertedInputs++);
     table->Insert(input->name,input);
     
     ent->type = EntityType_FU;
@@ -811,7 +788,7 @@ void Env::AddInput(VarDeclaration var){
 void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
   TEMP_REGION(temp,nullptr);
 
-  FUDeclaration* type = GetTypeByName(decl.typeName);
+  FUDeclaration* type = GetTypeByName(decl.typeName.identifier);
   
   if(!type){
     ReportError(decl.typeName,"Typename does not exist");
@@ -821,16 +798,16 @@ void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
 
   if(var.isArray){
     ent->type = EntityType_FU_ARRAY;
-    ent->arrayBaseName = var.name;
+    ent->arrayBaseName = var.name.identifier;
     ent->arraySize = var.arraySize;
 
     for(int i = 0; i < var.arraySize; i++){
-      String actualName = GetActualArrayName(var.name,i,temp);
+      String actualName = GetActualArrayName(var.name.identifier,i,temp);
       FUInstance* inst = CreateFUInstanceWithDeclaration(type,actualName,decl);
       table->Insert(inst->name,inst);
     }
   } else {
-    FUInstance* inst = CreateFUInstanceWithDeclaration(type,var.name,decl);
+    FUInstance* inst = CreateFUInstanceWithDeclaration(type,var.name.identifier,decl);
     table->Insert(inst->name,inst);
 
     ent->type = EntityType_FU;
@@ -845,10 +822,10 @@ void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
     case InstanceDeclarationType_SHARE_CONFIG:{
       ShareInstanceConfig(inst,decl.shareIndex);
       
-      for(Token partialShareName : decl.shareNames){
+      for(NewToken partialShareName : decl.shareNames){
         bool foundOne = false;
         for(int ii = 0; ii < inst->declaration->configs.size; ii++){
-          if(inst->declaration->configs[ii].name == partialShareName){
+          if(inst->declaration->configs[ii].name == partialShareName.identifier){
             inst->isSpecificConfigShared[ii] = false;
             foundOne = true;
           }
@@ -856,7 +833,7 @@ void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
 
         if(!foundOne){
           TEMP_REGION(temp,nullptr);
-          String errorMsg = PushString(temp,"Cannot share config wire since it does not exist for instance '%.*s' of type '%.*s'",UN(inst->name),UN(decl.typeName));
+          String errorMsg = PushString(temp,"Cannot share config wire since it does not exist for instance '%.*s' of type '%.*s'",UN(inst->name),UN(decl.typeName.identifier));
           ReportError(partialShareName,errorMsg);
         }
       }
@@ -909,15 +886,15 @@ void Env::AddEquality(ConnectionDef decl){
 
   // When dealing with equality, we can just increase array size by accessing higher and higher values.
   if(outVar.isArrayAccess){
-    auto res = this->scopes[this->currentScope]->variable->GetOrAllocate(outVar.name);
+    auto res = this->scopes[this->currentScope]->variable->GetOrAllocate(outVar.name.identifier);
     Entity* ent = res.data;
 
     ent->type = EntityType_FU_ARRAY;
-    ent->arrayBaseName = outVar.name;
+    ent->arrayBaseName = outVar.name.identifier;
     ent->arraySize = MAX(ent->arraySize,CalculateConstantExpression(outVar.index.low));
   }
 
-  String name = outVar.name;
+  String name = outVar.name.identifier;
   if(outVar.isArrayAccess){
     name = GetActualArrayName(name,CalculateConstantExpression(outVar.index.low),temp);
   }
@@ -926,8 +903,9 @@ void Env::AddEquality(ConnectionDef decl){
   String uniqueName = GetUniqueName(name,globalPermanent,table);
   inst->name = PushString(globalPermanent,uniqueName);
 
-  Token tok = {};
-  tok = *((Token*) &inst->name);
+  NewToken tok = {};
+  tok.type = NewTokenType_IDENTIFIER;
+  tok.identifier = inst->name;
   Entity* ent = PushNewEntity(tok);
   ent->type = EntityType_FU;
   ent->instance = inst;
@@ -935,7 +913,7 @@ void Env::AddEquality(ConnectionDef decl){
   table->Insert(inst->name,inst);
 }
 
-void Env::AddParam(Token name){
+void Env::AddParam(NewToken name){
   Entity* ent = GetEntity(name);
 
   if(ent){
@@ -945,10 +923,10 @@ void Env::AddParam(Token name){
   Entity* entity = PushNewEntity(name);
 
   entity->type = EntityType_PARAM;
-  entity->paramName = name;
+  entity->paramName = name.identifier;
 }
 
-void Env::AddVariable(Token name){
+void Env::AddVariable(NewToken name){
   Entity* ent = GetEntity(name);
 
   if(ent){
@@ -958,7 +936,7 @@ void Env::AddVariable(Token name){
   Entity* entity = PushNewEntity(name);
 
   entity->type = EntityType_VARIABLE_INPUT;
-  entity->varName = name;
+  entity->varName = name.identifier;
 }
 
 FUInstanceIterator FUInstanceIterator::Next(){
@@ -1034,10 +1012,10 @@ PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
   }break;
   case SpecType_VAR:{
     Var var = root->var;  
-    String name = var.name;
+    String name = var.name.identifier;
 
     if(var.isArrayAccess){
-      name = GetActualArrayName(var.name,CalculateConstantExpression(var.index.bottom),globalPermanent);
+      name = GetActualArrayName(var.name.identifier,CalculateConstantExpression(var.index.bottom),globalPermanent);
     }
     
     FUInstance* inst = table->GetOrFail(name);
@@ -1175,7 +1153,7 @@ SYM_Expr Env::SymbolicFromSpecExpression(SpecExpression* spec){
     case SpecType_NAME:
     case SpecType_VAR:{
       CheckIfEntityExists(top->name);
-      res = SYM_Var(top->name);
+      res = SYM_Var(top->name.identifier);
     } break;
     case SpecType_LITERAL:{
       res = SYM_Lit(top->val);
@@ -1189,15 +1167,6 @@ SYM_Expr Env::SymbolicFromSpecExpression(SpecExpression* spec){
   };
 
   SYM_Expr res = Recurse(Recurse,spec);
-  return res;
-}
-
-// nochecking
-// TODO: Just to remove the syntax errors from the compiler
-Token C(NewToken t){
-  Token res = {};
-  res.data = t.originalData.data;
-  res.size = t.identifier.size;
   return res;
 }
 
@@ -1228,7 +1197,7 @@ Range<SpecExpression*> ParseRange(Parser* parser,Arena* out){
 }
 
 Var ParseVar(Parser* parser,Arena* out){
-  Token name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+  NewToken name = parser->ExpectNext(NewTokenType_IDENTIFIER);
 
   bool isArrayAccess = false;
   SpecExpression* indexStart = &SPEC_LITERAL_0;
@@ -1278,7 +1247,7 @@ Var ParseVar(Parser* parser,Arena* out){
 VarDeclaration ParseVarDeclaration(Parser* parser){
   VarDeclaration res = {};
 
-  res.name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+  res.name = parser->ExpectNext(NewTokenType_IDENTIFIER);
   
   // TODO: We should integrate the array parsing logic with this one
   if(parser->IfNextToken('[')){
@@ -1348,13 +1317,13 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
 
       parsedModifier = InstanceDeclarationType_SHARE_CONFIG;
       
-      res.typeName = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+      res.typeName = parser->ExpectNext(NewTokenType_IDENTIFIER);
 
       if(parser->IfNextToken('(')){
         // TODO: For now, we assume that every wire specified inside the spec file is a negative (remove share).
-        auto toShare = StartArray<Token>(out);
+        auto toShare = StartArray<NewToken>(out);
         while(!parser->Done()){
-          Token name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+          NewToken name = parser->ExpectNext(NewTokenType_IDENTIFIER);
 
           *toShare.PushElem() = name;
 
@@ -1400,7 +1369,7 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
     }
   }
 
-  res.typeName = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+  res.typeName = parser->ExpectNext(NewTokenType_IDENTIFIER);
 
   NewToken possibleParameters = parser->PeekToken();
   auto list = PushList<Pair<String,SpecExpression*>>(temp);
@@ -1410,7 +1379,7 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
 
     while(!parser->Done()){
       parser->ExpectNext('.');
-      Token parameterName = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+      NewToken parameterName = parser->ExpectNext(NewTokenType_IDENTIFIER);
 
       parser->ExpectNext('(');
 
@@ -1418,7 +1387,7 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
 
       parser->ExpectNext(')');
       
-      String savedParameter = PushString(out,parameterName);
+      String savedParameter = PushString(out,parameterName.identifier);
       *list->PushElem() = {savedParameter,expr}; 
 
       if(parser->IfNextToken(',')){
@@ -1531,7 +1500,7 @@ SpecExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
   } else if(atom.type == NewTokenType_IDENTIFIER){
     TEMP_REGION(temp,out);
 
-    Token name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+    NewToken name = parser->ExpectNext(NewTokenType_IDENTIFIER);
     
     res = PushStruct<SpecExpression>(out);
     res->name = name;
@@ -1559,7 +1528,7 @@ SpecExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
       
       SpecExpression* singleAccess = PushStruct<SpecExpression>(out);
       singleAccess->type = SpecType_NAME;
-      singleAccess->name = C(singleAccessName);
+      singleAccess->name = singleAccessName;
       
       res->expressions = PushArray<SpecExpression*>(out,1);
       res->expressions[0] = singleAccess;
@@ -1734,7 +1703,7 @@ SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower){
       
       SpecExpression* singleAccess = PushStruct<SpecExpression>(out);
       singleAccess->type = SpecType_NAME;
-      singleAccess->name = C(singleAccessName);
+      singleAccess->name = singleAccessName;
       
       res->expressions = PushArray<SpecExpression*>(out,1);
       res->expressions[0] = singleAccess;
@@ -1877,7 +1846,7 @@ ConfigFunctionDef* ParseConfigFunction(Parser* parser,Arena* out);
 ParameterDeclaration ParseParameterDeclaration(Parser* parser,Arena* out){
   ParameterDeclaration res = {};
 
-  res.name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+  res.name = parser->ExpectNext(NewTokenType_IDENTIFIER);
   
   if(parser->IfNextToken('=')){
     res.defaultValue = ParseMathExpression(parser,out);
@@ -1893,7 +1862,7 @@ ModuleDef ParseModuleDef(Parser* parser,Arena* out){
 
   parser->ExpectNext(NewTokenType_KEYWORD_MODULE);
 
-  Token name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+  NewToken name = parser->ExpectNext(NewTokenType_IDENTIFIER);
 
   Array<ParameterDeclaration> params = {};
   if(parser->IfNextToken('#')){
@@ -2009,8 +1978,8 @@ TypeAndInstance ParseTypeAndInstance(Parser* parser){
   }
 
   TypeAndInstance res = {};
-  res.typeName = C(typeName);
-  res.instanceName = C(instanceName);
+  res.typeName = typeName;
+  res.instanceName = instanceName;
   
   return res;
 }
@@ -2023,7 +1992,7 @@ HierarchicalName ParseHierarchicalName(Parser* parser,Arena* out){
   Var var = ParseVar(parser,out);
 
   HierarchicalName res = {};
-  res.instanceName = C(topInstance);
+  res.instanceName = topInstance;
   res.subInstance = var;
 
   return res;
@@ -2034,9 +2003,9 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
   
   parser->ExpectNext(NewTokenType_KEYWORD_MERGE);
 
-  Array<Token> mergeModifiers = {};
+  Array<NewToken> mergeModifiers = {};
   if(parser->IfNextToken('(')){
-    auto tokenList = PushList<Token>(temp);
+    auto tokenList = PushList<NewToken>(temp);
     
     while(!parser->Done()){
       NewToken peek = parser->PeekToken();
@@ -2045,7 +2014,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
         break;
       }
 
-      *tokenList->PushElem() = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+      *tokenList->PushElem() = parser->ExpectNext(NewTokenType_IDENTIFIER);
 
       parser->IfNextToken(',');
     }
@@ -2055,7 +2024,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
     parser->ExpectNext(')');
   }
 
-  Token mergeName = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+  NewToken mergeName = parser->ExpectNext(NewTokenType_IDENTIFIER);
   
   parser->ExpectNext('=');
 
@@ -2106,10 +2075,10 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
     int secondIndex = -1;
     for(int i = 0; i < declarations.size; i++){
       TypeAndInstance& decl = declarations[i];
-      if(CompareString(node.first.instanceName,decl.instanceName)){
+      if(CompareString(node.first.instanceName.identifier,decl.instanceName.identifier)){
         firstIndex = i;
       } 
-      if(CompareString(node.second.instanceName,decl.instanceName)){
+      if(CompareString(node.second.instanceName.identifier,decl.instanceName.identifier)){
         secondIndex = i;
       } 
     }
@@ -2125,7 +2094,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
     }
 #endif
 
-    *specificsArr.PushElem() = {firstIndex,node.first.subInstance.name,secondIndex,node.second.subInstance.name};
+    *specificsArr.PushElem() = {firstIndex,node.first.subInstance.name.identifier,secondIndex,node.second.subInstance.name.identifier};
   }
   Array<SpecificMergeNode> specifics = EndArray(specificsArr);
 
@@ -2146,6 +2115,12 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
     
     const char* start = state->ptr;
     const char* end = state->end;
+
+    if(start >= end){
+      NewToken token = {};
+      token.type = NewTokenType_EOF;
+      return token;
+    }
 
     TokenizeResult res = ParseWhitespace(start,end);
     res |= ParseComments(start,end);
@@ -2243,7 +2218,7 @@ static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
   
   ConfigIdentifier* base = PushStruct<ConfigIdentifier>(out);
   base->type = ConfigAccessType_BASE;
-  base->name = C(id);
+  base->name = id;
 
   ConfigIdentifier* ptr = base;
 
@@ -2251,7 +2226,7 @@ static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
     ConfigIdentifier* parsed = nullptr;
 
     if(!parsed && parser->IfNextToken('.')){
-      Token access = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+      NewToken access = parser->ExpectNext(NewTokenType_IDENTIFIER);
 
       if(parser->IfNextToken('(')){
         auto args = PushList<SpecExpression*>(temp);       
@@ -2328,7 +2303,7 @@ static ConfigStatement* ParseConfigStatement(Parser* parser,Arena* out){
 
     parser->ExpectNext('}');
     
-    stmt->def.loopVariable = C(loopVariable);
+    stmt->def.loopVariable = loopVariable.identifier;
     stmt->def.startSym = start;
     stmt->def.endSym = end;
     stmt->childs = PushArray(out,list);
@@ -2355,7 +2330,7 @@ static ConfigStatement* ParseConfigStatement(Parser* parser,Arena* out){
 static ConfigVarDeclaration ParseConfigVarDeclaration(Parser* parser){
   ConfigVarDeclaration res = {};
 
-  res.name = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+  res.name = parser->ExpectNext(NewTokenType_IDENTIFIER);
 
   if(parser->IfNextToken('[')){
     NewToken number = parser->ExpectNext(NewTokenType_NUMBER);
@@ -2367,9 +2342,9 @@ static ConfigVarDeclaration ParseConfigVarDeclaration(Parser* parser){
     res.isArray = true;
   }
 
-  Token type = {};
+  NewToken type = {};
   if(parser->IfNextToken(':')){
-    type = C(parser->NextToken());
+    type = parser->NextToken();
   }
 
   res.type = type;
@@ -2421,7 +2396,7 @@ ConfigFunctionDef* ParseConfigFunction(Parser* parser,Arena* out){
 
   bool debug = parser->IfNextToken(NewTokenType_KEYWORD_DEBUG);
     
-  Token configName = C(parser->ExpectNext(NewTokenType_IDENTIFIER));
+  NewToken configName = parser->ExpectNext(NewTokenType_IDENTIFIER);
 
   Array<ConfigVarDeclaration> functionVars = {};
   if(type == UserConfigType_MEM || type == UserConfigType_CONFIG){
@@ -2454,10 +2429,10 @@ ConfigFunctionDef* ParseConfigFunction(Parser* parser,Arena* out){
   return res;
 }
 
-Array<Token> AccumTokens(SpecExpression* top,Arena* out){
+Array<NewToken> AccumTokens(SpecExpression* top,Arena* out){
   TEMP_REGION(temp,out);
 
-  auto AccumTokens = [](auto AccumTokens,SpecExpression* top,ArenaList<Token>* list) -> void {
+  auto AccumTokens = [](auto AccumTokens,SpecExpression* top,ArenaList<NewToken>* list) -> void {
     switch(top->type){
     case SpecType_LITERAL: break;
     case SpecType_NAME: {
@@ -2483,7 +2458,7 @@ Array<Token> AccumTokens(SpecExpression* top,Arena* out){
     }
   };
 
-  auto list = PushList<Token>(temp);
+  auto list = PushList<NewToken>(temp);
   AccumTokens(AccumTokens,top,list);
   return PushArray(out,list);
 }

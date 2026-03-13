@@ -8,6 +8,8 @@
 
 #include "symbolic.hpp"
 
+#include "newParser.hpp"
+
 struct CEmitter;
 struct SpecExpression;
 struct Env;
@@ -17,7 +19,7 @@ struct Env;
 // NOTE: Majority of the approach taken in relation to memory allocations and how much we mutate data is not final, we do not care about things like that currently. More important is to start making the code correct and producing the correct data and later we can rewrite the code to be better in this aspect if needed.
 
 struct AddressGenForDef{
-  Token loopVariable;
+  String loopVariable;
   SpecExpression* startSym;
   SpecExpression* endSym;
 };
@@ -90,7 +92,7 @@ void   Print(AddressAccess* access);
 // Compilation 
 
 // TODO: We probably want to take in an Env* so that we can check stuff and we probably want to move this to the spec parser. No reason for other code to have token and to depend on parser stuff.
-AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenForDef> loops,SYM_Expr addr,String content);
+AddressAccess* CompileAddressGen(Env* env,Array<NewToken> inputs,Array<AddressGenForDef> loops,SYM_Expr addr,String content);
 
 // ======================================
 // Conversion

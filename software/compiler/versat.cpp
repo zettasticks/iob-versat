@@ -71,9 +71,9 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
     // TODO: We cannot remove this because the external memories are instantiated based on this value and we currently have no way of exporting this value.
     //       This essentially means that the accelerator is still dependent on the setup phase, but this only affects the datapath size and the datapath size is mostly a setup phase thing anyway, so it is not the worst. 
     if(CompareString(def.name,"AXI_DATA_W")){
-      Expression* expr = PushStruct<Expression>(temp);
+      VExpr* expr = PushStruct<VExpr>(temp);
 
-      expr->type = Expression::LITERAL;
+      expr->type = VExpr::LITERAL;
       expr->id = def.name;
       expr->val = MakeValue(globalOptions.databusDataSize);
 
