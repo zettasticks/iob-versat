@@ -183,8 +183,8 @@ struct ConfigFunction{
 
   Array<ConfigStuff> stuff;
   Array<ConfigVariable> variables;
-  Array<String> newStructs;
   String structToReturnName;
+  String stateStructContent;
 
   bool supportsSizeCalc;
 

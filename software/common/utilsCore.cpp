@@ -119,7 +119,6 @@ String GetFilename(String fullpath){
   const char* ptr = fullpath.data;
 
   int size = fullpath.size;
-  int index = 0;
 
   for(int index = 0; index < size; index += 1){
     if(ptr[index] == '/'){

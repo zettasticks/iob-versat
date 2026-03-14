@@ -351,6 +351,15 @@ FUDeclaration* InstantiateSpecifications(String content,ConstructDef def){
 // ======================================
 // Hierarchical access
 
+bool IsEntitySubType(EntityType type){
+  bool res = false;
+
+  res |= (type == EntityType_MEM_PORT);
+  res |= (type == EntityType_CONFIG_WIRE);
+  
+  return res;
+}
+
 Env* StartEnvironment(Arena* freeUse,Arena* freeUse2){
   Env* env = PushStruct<Env>(freeUse);
   env->scopeArena = freeUse;
@@ -512,6 +521,18 @@ Entity* Env::GetEntity(Token name){
   return nullptr;
 }
 
+Entity* Env::GetEntity(String name){
+  for(int i = this->currentScope; i >= 0; i--){
+    Entity* ent = this->scopes[i]->variable->Get(name);
+
+    if(ent){
+      return ent;
+    }
+  }
+
+  return nullptr;
+}
+
 Entity* Env::GetEntity(ConfigIdentifier* id,Arena* out){
   TEMP_REGION(temp,out);
 
@@ -529,14 +550,27 @@ Entity* Env::GetEntity(ConfigIdentifier* id,Arena* out){
         Assert(false);
       } break;
       case ConfigAccessType_ARRAY:{
-        if(ent->type != EntityType_FU_ARRAY){
-          ReportError({},"Cannot access array since entity is not an array");
-        }
+        if(ent->type == EntityType_FU_ARRAY){
+          SYM_Expr expr = SymbolicFromSpecExpression(id->arrayExpr);
+          
+          SYM_EvaluateResult eval = SYM_ConstantEvaluate(expr);
 
-        // NOTE: At this point there are two things to do.
-        //       Either we check if the expression is a constant and at that point we try to return the actual FU variable.
-        //       Or, if the expression is not a constant we just return that the entity is a FU_ARRAY.
-        // TODO: Right now we are just assuming that it is a FU_ARRAY since we are just trying to implement the memory user config stuff
+          if(eval.Error()){
+            ReportError({},"Not a constant expression");
+          }
+          
+          int arrayIndex = eval.result;
+
+          String asStr = ent->arrayBaseName;
+          if(ent->type == EntityType_FU_ARRAY){
+            asStr = GetActualArrayName(asStr,arrayIndex,temp);
+          }
+
+          FUInstance* res = table->GetOrElse(asStr,nullptr);
+          
+          // NOTE: We only support 1D arrays doing things this way.
+          nextEnt = GetEntity(res->name);
+        }
 
         nextEnt = ent;
       } break;
@@ -2271,7 +2305,7 @@ static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
 
       parsed = PushStruct<ConfigIdentifier>(out);
       parsed->type = ConfigAccessType_ARRAY;
-      parsed->trueExpr = expr;
+      parsed->arrayExpr = expr;
     }
 
     if(parsed){

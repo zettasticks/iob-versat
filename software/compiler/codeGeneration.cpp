@@ -3265,9 +3265,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
         bool isState = (func->type == ConfigFunctionType_STATE);
 
         c->RawLine("\n");
-        for(String structs : func->newStructs){
-          c->RawLine(structs);
-        }
+        c->RawLine(func->stateStructContent);
         c->RawLine("\n");
 
         String fullFunctionName = PushString(temp,"%.*s",UN(func->fullName));
@@ -3292,6 +3290,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
           assignStarter = "accelState";
         }
         
+        DEBUG_BREAK();
         // Because of merge, need to generate the config pointer that allow us to access the named members directly.
         if(isMerge){
           String stmt;

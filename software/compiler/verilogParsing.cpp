@@ -410,9 +410,11 @@ struct VerilogTokenizerState{
       file->ptr = peek.originalData.data;
     } else {
       Array<String> funcArgs = {};
-      if(parser->IfPeekToken('(')){
+      if(parser->IfNextToken('(')){
         auto argList = PushList<String>(temp);
       
+        parser->SetOptions(ParsingOptions_DEFAULT);
+
         while(!parser->Done()){
           Token t = parser->ExpectNext(TokenType_IDENTIFIER);
 
@@ -421,12 +423,18 @@ struct VerilogTokenizerState{
           if(parser->IfNextToken(',')){
             continue;
           }
+
+          if(parser->IfPeekToken(')')){
+            break;
+          }
         }
       
         parser->ExpectNext(')');
         funcArgs = PushArray(arena,argList);
       }
       parser->IfNextToken(TokenType_WHITESPACE);
+
+      parser->SetOptions(ParsingOptions_DEFAULT);
 
       auto list = PushList<Token>(temp);
       
@@ -1555,8 +1563,6 @@ void ParseVerilogFileTest(){
   state->currentStage = 0;
 
   state->stageBuffer[0].type = VerilogTokenizerStageType_FILE;
-
-  ContentState* first = &state->stageBuffer[0].state;
 
   String tests[] = {
 #if 0

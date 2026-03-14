@@ -186,7 +186,7 @@ struct ConfigIdentifier{
 
   // TODO: Union
   Token name;
-  SpecExpression* trueExpr;
+  SpecExpression* arrayExpr;
   Token functionName;
   Array<SpecExpression*> arguments;
 };
@@ -220,6 +220,8 @@ enum EntityType{
   EntityType_VARIABLE_SPECIAL // For variables that exist "by default"
 };
 
+bool IsEntitySubType(EntityType type);
+
 enum VariableType{
   VariableType_VOID_PTR,
   VariableType_INTEGER
@@ -237,7 +239,6 @@ struct Entity{
   
   // TODO: Union
   //union {
-  //InstanceInfo* info;
   FUInstance* instance;
 
   bool isInput;
@@ -306,6 +307,7 @@ struct Env{
 
   Entity* PushNewEntity(Token name);
   Entity* GetEntity(Token name);
+  Entity* GetEntity(String name);
 
   void CheckIfEntityExists(Token name);
   Entity* GetEntity(ConfigIdentifier* id,Arena* out);

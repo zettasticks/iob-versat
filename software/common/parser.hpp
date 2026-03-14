@@ -169,10 +169,6 @@ typedef Token (*TokenizeFunction)(void* tokenizerState);
 
 #define MAX_STORED_TOKENS 4
 
-struct ParserMark{
-  const char* ptr;
-};
-
 enum ParsingOptions{
   ParsingOptions_NONE = 0,
 
