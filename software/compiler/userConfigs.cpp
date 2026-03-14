@@ -302,7 +302,6 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
       // MARK
       Entity* ent = decomp.parentEntity; //env->GetEntity(simple->lhs,temp);
-
       Entity* wireEnt = decomp.subEntity;
       Entity* portEnt = decomp.subEntity;
 
@@ -393,8 +392,6 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         // Is Address gen expression. Including array accesses for VUnits
         AddressAccess* access = CompileAddressGen(env,variableNames,loops,decomp.expr,content);
         AddressGenInst supported = ent->instance->declaration->supportedAddressGen;
-
-        DEBUG_BREAK();
 
         // NOTE: Memories and Generator do not follow the addr[expr]. They just have <instance> = <expr>.
         ConfigStuff* newAssign = list->PushElem();
