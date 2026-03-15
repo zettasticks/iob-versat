@@ -30,6 +30,7 @@ static SpecExpression SPEC_LITERAL_0 = {.val = 0,.type = SpecType_LITERAL};
 
 
 SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower = 99);
+SpecExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower = 99);
 
 String GetUniqueName(String name,Arena* out,InstanceTable* names){
   int counter = 0;
@@ -412,6 +413,7 @@ FUInstance* Env::CreateInstance(FUDeclaration* type,String name){
   return inst;
 }
 
+
 FUInstance* Env::CreateFUInstanceWithDeclaration(FUDeclaration* type,String name,InstanceDeclaration decl){
   FUInstance* inst = CreateFUInstance(circuit,type,name);
   
@@ -686,8 +688,13 @@ int Env::CalculateConstantExpression(SpecExpression* top){
   TEMP_REGION(temp,nullptr);
 
   // TODO: Need to report error if we find a non constant value in here.
+  //       And then return 0
+
   SYM_Expr expr = SymbolicFromSpecExpression(top);
   SYM_EvaluateResult eval = SYM_ConstantEvaluate(expr);
+
+  //Assert(!eval.Error());
+
   return eval.result;
 }
 
@@ -800,9 +807,11 @@ void Env::AddInput(VarDeclaration var){
   if(var.isArray){
     ent->type = EntityType_FU_ARRAY;
     ent->arrayBaseName = var.name.identifier;
-    ent->arraySize = var.arraySize;
 
-    for(int i = 0; i < var.arraySize; i++){
+    int arraySize = CalculateConstantExpression(var.arraySize);
+    ent->arraySize = arraySize;
+
+    for(int i = 0; i < arraySize; i++){
       String actualName = GetActualArrayName(var.name.identifier,i,temp);
       FUInstance* input = CreateOrGetInput(circuit,actualName,insertedInputs++);
       table->Insert(input->name,input);
@@ -832,9 +841,11 @@ void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
   if(var.isArray){
     ent->type = EntityType_FU_ARRAY;
     ent->arrayBaseName = var.name.identifier;
-    ent->arraySize = var.arraySize;
 
-    for(int i = 0; i < var.arraySize; i++){
+    int arraySize = CalculateConstantExpression(var.arraySize);
+    ent->arraySize = arraySize;
+
+    for(int i = 0; i < arraySize; i++){
       String actualName = GetActualArrayName(var.name.identifier,i,temp);
       FUInstance* inst = CreateFUInstanceWithDeclaration(type,actualName,decl);
       table->Insert(inst->name,inst);
@@ -1279,15 +1290,17 @@ Var ParseVar(Parser* parser,Arena* out){
   return var;
 }
 
-VarDeclaration ParseVarDeclaration(Parser* parser){
+VarDeclaration ParseVarDeclaration(Parser* parser,Arena* out){
   VarDeclaration res = {};
 
   res.name = parser->ExpectNext(TokenType_IDENTIFIER);
   
   // TODO: We should integrate the array parsing logic with this one
   if(parser->IfNextToken('[')){
-    Token number = parser->ExpectNext(TokenType_NUMBER);
-    int arraySize = number.number;
+    SpecExpression* arraySize = ParseMathExpression(parser,out);
+
+    //Token number = parser->ExpectNext(TokenType_NUMBER);
+    //int arraySize = number.number;
 
     parser->ExpectNext(']');
 
@@ -1310,7 +1323,7 @@ Array<VarDeclaration> ParseModuleInputDeclaration(Parser* parser,Arena* out){
   }
   
   while(!parser->Done()){
-    VarDeclaration var = ParseVarDeclaration(parser);
+    VarDeclaration var = ParseVarDeclaration(parser,out);
     *vars->PushElem() = var;
     
     if(parser->IfNextToken(',')){
@@ -1385,7 +1398,7 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
           break;
         }
 
-        *array.PushElem() = ParseVarDeclaration(parser);
+        *array.PushElem() = ParseVarDeclaration(parser,out);
       
         parser->ExpectNext(';');
       }
@@ -1436,7 +1449,7 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
     res.parameters = PushArray(out,list);
   }
 
-  VarDeclaration varDecl = ParseVarDeclaration(parser);
+  VarDeclaration varDecl = ParseVarDeclaration(parser,out);
 
   res.declarations = PushArray<VarDeclaration>(out,1);
   res.declarations[0] = varDecl;
@@ -1481,8 +1494,6 @@ VarGroup ParseVarGroup(Parser* parser,Arena* out){
     return res;
   }
 }
-
-SpecExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower = 99);
 
 SpecExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
   SpecExpression* topUnary = nullptr;
@@ -2253,7 +2264,7 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
     *typeList->PushElem() = def;
   }
 
-  if(parser->errors){
+  if(!Empty(parser->errors)){
     for(String str : parser->errors){
       printf("%.*s\n",UN(str));
     }

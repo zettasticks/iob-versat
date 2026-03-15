@@ -2017,6 +2017,7 @@ SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top){
   SYM_EvaluateResult res = {};
   res.result = (int) result;
   res.divByZero = divByZero;
+  res.nonConstantValue = nonConstantValue;
   
   return res;
 }

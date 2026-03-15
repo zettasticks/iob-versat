@@ -279,42 +279,6 @@ int main(int argc,char* argv[]){
   InitializeDefaultData(perm);
   InitializeSimpleDeclarations();
 
-  // nocheckin: TODO: Remove this, function works good.
-#if 0
-  String content = R"FOO(1
-
-3
-4
-5
-6
-7
-)FOO";
-  {
-    LocInfo info = PARSE_GetLinesAroundLocation(content.data + 1,content,2,1,temp);
-
-    printf("Before %d: \n",info.linesBefore.size);
-
-    for(String str : info.linesBefore){
-      printf("%.*s\n",UN(str));
-    }
-
-    printf("Line: %.*s\n",UN(info.lineContent));
-
-    printf("After %d: \n",info.linesAfter.size);
-
-    for(String str : info.linesAfter){
-      printf("%.*s\n",UN(str));
-    }
-
-    printf("All %d: \n",info.allLines.size);
-
-    for(String str : info.allLines){
-      printf("%.*s\n",UN(str));
-    }
-  }
-  return 0;
-#endif
-
   argp argp = { options, parse_opt, "SpecFile\n-T UnitName", "Dataflow to accelerator compiler. Check tutorial in https://github.com/IObundle/iob-versat to learn how to write a specification file"};
 
   OptionsGather gather = {};
@@ -757,13 +721,15 @@ int main(int argc,char* argv[]){
   //       actually visualize what we are producing in terms of resources/performance.
   SYM_EvaluateResult eval = SYM_ConstantEvaluate(val.configurationBits);
   SYM_EvaluateResult eval2 = SYM_ConstantEvaluate(val.stateBits);
-  Assert(!eval.Error());
-  Assert(!eval2.Error());
 
   printf("Some stats\n");
-  printf("CONFIG_BITS: %d\n",eval.result);
-  printf("STATE_BITS: %d\n",eval2.result);
-  
+
+  if(!eval.Error()){
+    printf("CONFIG_BITS: %d\n",eval.result);
+  }
+  if(!eval2.Error()){
+    printf("STATE_BITS: %d\n",eval2.result);
+  }
   // nocheckin: We might just remove the mem used otherwise need to reimplement all the stuff needed to calculate this.
 #if 0
   printf("MEM_USED: ");
@@ -848,16 +814,8 @@ int main(int argc,char* argv[]){
 }
 
 /*
-
-[0] - We need to start moving filesystem stuff into the filesystem files. It should be easier to do now since we moved the filesystem to the compiler folder instead of having it inside the common folder.
-
 We should move graph stuff to a separate file (or keep it in accelerator.hpp and make it the proper place for it).
 Remove the dynamic arena and just share memory between the nodes.
-
-TODO:
-
-We should implement a layer to store hierarchical names and start using it instead of converting stuff into 
-Strings or carrying around Array<String> everywhere.
 
 Memory mapped transfers do not check for sizes and report errors if too big.
 

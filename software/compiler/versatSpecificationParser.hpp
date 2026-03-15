@@ -65,7 +65,7 @@ Array<Token> AccumTokens(SpecExpression* top,Arena* out);
 
 struct VarDeclaration{
   Token name;
-  int arraySize;
+  SpecExpression* arraySize;
   bool isArray;
 };
 

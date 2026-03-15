@@ -4828,8 +4828,10 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topDecl,String hardwa
     SYM_EvaluateResult eval = SYM_ConstantEvaluate(val.configurationBits);
     SYM_EvaluateResult eval2 = SYM_ConstantEvaluate(val.stateBits);
 
-    Assert(!eval.Error());
-    Assert(!eval2.Error());
+    // NOTE: For non constants we use zero meaning that these values are actually 
+    //       the minimun and not the actual values (since they might depend on parameters)
+    //Assert(!eval.Error());
+    //Assert(!eval2.Error());
 
     fprintf(c,"`define NUMBER_UNITS %d\n",accel->allocated.Size());
     fprintf(f,"`undef  NUMBER_UNITS\n");
