@@ -1120,7 +1120,10 @@ SYM_Expr SYM_Parse(String content){
     state->ptr += result.bytesParsed;
     result.token.originalData.size = result.bytesParsed;
 
-    return result.token;
+    Token res = result.token;
+    //res.originalFile = state->
+
+    return res;
   };
   
   Parser* parser = StartParsing(tokenizer,content,parseArena);

@@ -1,6 +1,7 @@
 #include "parser.hpp"
 #include "filesystem.hpp"
 #include "utilsCore.hpp"
+#include "debug.hpp"
 
 static bool IsAlpha(char ch){
   bool res = ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_'); 
@@ -190,6 +191,8 @@ Parser* StartParsing(TokenizeFunction tokenizer,String content,Arena* freeArena,
   tokenizerState->ptr = content.data;
   tokenizerState->end = content.data + content.size;
 
+  res->errors = PushList<String>(freeArena);
+
   res->tokenizerState = (void*) tokenizerState;
   res->tokenizer = tokenizer;
   res->arena = freeArena;
@@ -207,7 +210,6 @@ Parser* StartParsing(TokenizeFunction tokenizer,void* tokenizerState,Arena* free
   res->options = options;
   
   return res;
-
 }
 
 void Parser::EnsureTokens(int amount){
@@ -240,10 +242,6 @@ void Parser::EnsureTokens(int amount){
 }
 
 void Parser::ReportError(String error){
-  if(!errors){
-    errors = PushList<String>(this->arena);
-  }
-  
   *errors->PushElem() = PushString(arena,error);
 }
 
@@ -269,10 +267,6 @@ void Parser::ReportUnexpectedToken(Token token,BracketList<TokenType> expectedLi
   }
 
   ENTER_DEBUG();
-
-  if(!errors){
-    errors = PushList<String>(this->arena);
-  }
 
   *errors->PushElem() = EndString(this->arena,builder);
 }
@@ -338,10 +332,33 @@ Token Parser::ExpectNext(TokenType type){
   } else if(tok.type != type){
     TEMP_REGION(temp,nullptr);
 
+    FileContent content = tok.originalFile;
+
+    LocInfo loc = PARSE_GetLinesAroundLocation(tok.originalData.data,content.content,1,1,temp);
+    
     String typeRepr = PushRepr(temp,type);
     String repr = PARSE_PushDebugRepr(temp,tok);
     String error = PushString(temp,"Unexpected token. Expected type: %.*s , Got: %.*s",UN(typeRepr),UN(repr));
-    ReportError(error);
+    String pointing = PushPointingString(temp,loc.column,tok.originalData.size);
+
+    auto b = StartString(temp);
+
+    b->PushString("At line %d column %d:\n",loc.line,loc.column);
+    b->PushString(error);
+    b->PushString("\n");
+    b->PushString(loc.lineContent);
+    b->PushString("\n");
+    b->PushString(pointing);
+    b->PushString("\n");
+
+    Array<Location> stackTrace = CollectStackTrace(temp,1);
+    stackTrace.size -= 1;
+
+    for(Location l : stackTrace){
+      b->PushString("%.*s:%d\n",UN(l.functionName),l.line);
+    }
+
+    ReportError(EndString(temp,b));
   }
 
   return tok;
@@ -869,10 +886,10 @@ bool PARSE_IsVerilogKeyword(String str){
   return false;
 }
 
-TokenLocation PARSE_TokenLocation(FileContent content,Token token){
-  const char* ptr = content.content.data;
-  const char* end = content.content.data + content.content.size;
-  const char* toFind = token.originalData.data;
+TokenLocation PARSE_TokenLocation(const char* pos,String content){
+  const char* ptr = content.data;
+  const char* end = content.data + content.size;
+  const char* toFind = pos;
 
   if(toFind < ptr || toFind >= end){
     return {};
@@ -887,11 +904,89 @@ TokenLocation PARSE_TokenLocation(FileContent content,Token token){
     } else {
       line += 1;
     }
+    ptr += 1;
   }
 
   TokenLocation loc = {};
+  loc.bytePos = ptr - content.data;
   loc.line = line;
   loc.column = column;
 
   return loc;
+}
+
+LocInfo PARSE_GetLinesAroundLocation(const char* pos,String content, int linesBefore, int linesAfter,Arena* out){
+  TEMP_REGION(temp,out);
+
+  if(content.size == 0){
+    return {};
+  }
+
+  linesBefore = Abs(linesBefore);
+  linesAfter = Abs(linesAfter);
+
+  const char* contentEnd = content.data + content.size;
+
+  auto list = PushList<String>(temp);
+
+  // NOTE: Slow but should not matter
+  int posLine = -1;
+  int posColumn = -1;
+  const char* ptr = content.data;
+  for(int lineIndex = 0; ; lineIndex++){
+    const char* start = ptr;
+    const char* end = ptr;
+
+    if(start >= contentEnd){
+      break;
+    }
+
+    while(end < contentEnd){
+      if(*end == '\n'){
+        break;
+      }
+      end += 1;
+    }
+
+    if(pos >= start && pos <= end){
+      posLine = lineIndex;
+      posColumn = pos - start - 1;
+    }
+
+    String line = String(start,end-start);
+    *list->PushElem() = line;
+
+    ptr = end + 1;
+  }
+
+  if(posLine == -1){
+    return {};
+  }
+
+  Array<String> allLines = PushArray(temp,list);
+  
+  int lineStart = MAX(0,posLine - linesBefore);
+  int lineMiddle = posLine - lineStart;
+  int lineEnd = MIN(allLines.size,posLine + 1 + linesAfter);
+  int linesAmount = lineEnd - lineStart;
+
+  Array<String> returnLines = PushArray<String>(out,linesAmount);
+
+  int index = 0;
+  for(int i = lineStart; i < lineEnd; i++){
+    returnLines[index++] = allLines[i];
+  }
+
+  LocInfo res = {};
+
+  res.linesBefore.data = returnLines.data;
+  res.linesBefore.size = lineStart;
+  res.lineContent = returnLines[lineMiddle];
+  res.linesAfter.data = returnLines.data + lineStart + 1;
+  res.linesAfter.size = lineEnd - 1;
+  res.allLines = returnLines;
+  res.line = posLine + 1;
+  res.column = posColumn + 1;
+
+  return res;
 }

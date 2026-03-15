@@ -2149,6 +2149,8 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
   return result;
 }
 
+#include "filesystem.hpp"
+
 Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
   TEMP_REGION(temp,out);
 
@@ -2215,11 +2217,21 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
     //       We expect it to only reach file->end, not file->end + 1
     Assert(state->ptr < state->end + 1);
 
-    return res.token;
+    Token ret = res.token;
+    ret.originalFile = state->content;
+
+    return ret;
   };
 
   FREE_ARENA(parseArena);
   Parser* parser = StartParsing(TokenizeFunction,content,parseArena,ParsingOptions_DEFAULT);
+
+  // TODO:
+  // nocheckin: Kinda hacky way of doing this.
+  //            We cannot put filesystem stuff on the parser since parser is common.
+  DefaultTokenizerState* state = (DefaultTokenizerState*) parser->tokenizerState;
+  FileContent contentAsFile = FILE_GetFileContentFromString(content);
+  state->content = contentAsFile;
 
   ArenaList<ConstructDef>* typeList = PushList<ConstructDef>(temp);
 

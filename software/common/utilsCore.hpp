@@ -11,7 +11,7 @@
 #include <errno.h>
 
 #include "assert.h"
-#include "debug.hpp"
+//#include "debug.hpp"
 
 #define ALWAYS_INLINE __attribute__((always_inline)) inline
 
@@ -23,6 +23,8 @@
 #define MAX(A,B) ((A) > (B) ? (A) : (B))
 
 inline float ABS(float f){return (f < 0.0f ? -f : f);};
+
+extern bool currentlyDebugging;
 
 // TODO: We probably want to standardize some of these. Do it right. Care about overflow and stuff like that
 //       Either that or use values from C or something.
@@ -675,8 +677,6 @@ struct Value{
 // nocheckin: TODO: Reorganize
 bool Contains(String str,String toCheck);
 int ParseInt(String str);
-String PushPointingString(Arena* out,int startPos,int size);
-Array<Value> ExtractValues(const char* format,String tok,Arena* arena);
 
 bool IsNum(char ch);
 bool CheckFormat(const char* format,String text);

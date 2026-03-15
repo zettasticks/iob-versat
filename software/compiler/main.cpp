@@ -279,6 +279,42 @@ int main(int argc,char* argv[]){
   InitializeDefaultData(perm);
   InitializeSimpleDeclarations();
 
+  // nocheckin: TODO: Remove this, function works good.
+#if 0
+  String content = R"FOO(1
+
+3
+4
+5
+6
+7
+)FOO";
+  {
+    LocInfo info = PARSE_GetLinesAroundLocation(content.data + 1,content,2,1,temp);
+
+    printf("Before %d: \n",info.linesBefore.size);
+
+    for(String str : info.linesBefore){
+      printf("%.*s\n",UN(str));
+    }
+
+    printf("Line: %.*s\n",UN(info.lineContent));
+
+    printf("After %d: \n",info.linesAfter.size);
+
+    for(String str : info.linesAfter){
+      printf("%.*s\n",UN(str));
+    }
+
+    printf("All %d: \n",info.allLines.size);
+
+    for(String str : info.allLines){
+      printf("%.*s\n",UN(str));
+    }
+  }
+  return 0;
+#endif
+
   argp argp = { options, parse_opt, "SpecFile\n-T UnitName", "Dataflow to accelerator compiler. Check tutorial in https://github.com/IObundle/iob-versat to learn how to write a specification file"};
 
   OptionsGather gather = {};

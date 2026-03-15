@@ -125,6 +125,8 @@ enum TokenType : u16{
 #define TOK_TYPE(IN) ((TokenType) IN)
 
 struct TokenLocation{
+  //FileContent content;
+  int bytePos;
   int line;
   int column;
 };
@@ -133,6 +135,7 @@ struct Token{
   TokenType type;
 
   String originalData;
+  FileContent originalFile;
 
   union{
     String identifier;
@@ -163,6 +166,7 @@ struct DefaultTokenizerState{
   const char* start;
   const char* ptr;
   const char* end;
+  FileContent content;
 };
 
 typedef Token (*TokenizeFunction)(void* tokenizerState);
@@ -206,13 +210,13 @@ struct Parser{
   void EnsureTokens(int amount);
   void ReportError(String error);
   
+  void ReportUnexpectedToken(Token token,BracketList<TokenType> expectedList);
+
   // NOTE: Options does not currently reset the stored tokens. This means that if we peek a bunch of tokens ahead
   //       and then change options it might be possible that we ignore or return more tokens than we expected.
   //       Regardless, the parsing process never peeks ahead more than it needs so it might be fine.
   //       If calling Next and such then we can change options easily. If we are peeking then need to be careful.
   ParsingOptions SetOptions(ParsingOptions options);
-
-  void ReportUnexpectedToken(Token token,BracketList<TokenType> expectedList);
 
   Token NextToken();
   Token PeekToken(int lookahead = 0);
@@ -274,6 +278,18 @@ TokenizeResult ParseFilepath(const char* start,const char* end);
 bool PARSE_IsCKeyword(String identifier);
 bool PARSE_IsVerilogKeyword(String identifier);
 
-//
+// ======================================
+// Location
 
-TokenLocation PARSE_TokenLocation(FileContent content,Token token);
+struct LocInfo{
+  int line;
+  int column;
+
+  Array<String> allLines;
+
+  Array<String> linesBefore;
+  String lineContent;
+  Array<String> linesAfter;
+};
+
+LocInfo PARSE_GetLinesAroundLocation(const char* pos,String content, int linesBefore, int linesAfter,Arena* out);

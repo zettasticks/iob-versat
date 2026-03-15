@@ -79,8 +79,9 @@ Array<FileInfo> CollectAllFilesInfo(Arena* out){
 struct {
   Arena* arena;
   TrieMap<String,FileContent>* fileContents;
+  ArenaList<FileContent>* stringFiles;
+  int currentId;
 } FILE_State;
-
 
 String PushFile(Arena* out,FILE* file){
   String res;
@@ -129,15 +130,15 @@ void FILE_Init(){
   static Arena arenaInst = InitArena(Megabyte(4));
   FILE_State.arena = &arenaInst;
   FILE_State.fileContents = PushTrieMap<String,FileContent>(FILE_State.arena);
+  FILE_State.stringFiles = PushList<FileContent>(FILE_State.arena);
 
-  int id = 0;
   for(FileContent& file : defaultVerilogUnits){
-    file.id.id = id++;
+    file.id.id = FILE_State.currentId++;
     file.state = FileContentState_OK;
   }
 
   for(FileContent& file : defaultVerilogFiles){
-    file.id.id = id++;
+    file.id.id = FILE_State.currentId++;
     file.state = FileContentState_OK;
   }
 }
@@ -233,4 +234,13 @@ FileContent FILE_FileContentsFromId(FILE_Handle id){
   }
 
   return NullFileContent;
+}
+
+FileContent FILE_GetFileContentFromString(String content){
+  FileContent* file = FILE_State.stringFiles->PushElem();
+
+  file->content = content;
+  file->id.id = FILE_State.currentId++;
+
+  return *file;
 }

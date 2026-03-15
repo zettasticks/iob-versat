@@ -47,3 +47,7 @@ Array<FileInfo> CollectAllFilesInfo(Arena* out);
 
 FileContent GetContentsOfFile(String filepath,FilePurpose purpose);
 FileContent FILE_FileContentsFromId(FILE_Handle id);
+
+//FileContent FILE_GetFileContent();
+
+FileContent FILE_GetFileContentFromString(String content);

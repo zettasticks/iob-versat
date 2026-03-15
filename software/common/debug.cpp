@@ -389,12 +389,6 @@ void InitDebug(const char* exeName){
 
 typedef void (*SignalHandler)(int sig);
  
-struct Location{
-  String functionName;
-  String fileName;
-  u32 line;
-};
-
 Arena* debugArena = nullptr;
 bool debugFlag = false;
 bool currentlyDebugging = false;
@@ -467,8 +461,6 @@ void SetDebugSignalHandler(SignalHandler func){
   old_SIGABRT = signal(SIGABRT, func);
   old_SIGILL  = signal(SIGILL, func);
 }
-
-static Array<Location> CollectStackTrace(Arena*,int offset);
 
 void PrintStacktrace(int offset = 2){
   BLOCK_REGION(debugArena);
@@ -655,7 +647,7 @@ void InitDebug(const char* exeName){
   InitSymtab(abfd,debugArena);
 }
 
-static Array<Location> CollectStackTrace(Arena* out,int offset = 1){
+Array<Location> CollectStackTrace(Arena* out,int offset){
   TEMP_REGION(temp,out);
 
   void* addrBuffer[100];
