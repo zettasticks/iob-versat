@@ -246,11 +246,16 @@ void ReportFileCreation(bool allFiles = false){
   }
 }
 
+struct TESTER{
+  const char* t1;
+  String t2;
+};
+
 int main(int argc,char* argv[]){
 #ifdef VERSAT_DEBUG
   printf("Running in debug mode\n");
 #endif
-  
+
   Arena globalPermanentInst = InitArena(Megabyte(128));
   globalPermanent = &globalPermanentInst;
   Arena tempInst = InitArena(Megabyte(128));
@@ -269,6 +274,17 @@ int main(int argc,char* argv[]){
   TEMP_REGION(temp2,temp);
   
   Arena* perm = globalPermanent;
+  
+  const char* test1 = "OLA";
+  String test2 = "OLA";
+
+  TESTER test3 = {};
+  test3.t1 = "OLA";
+  test3.t2 = "OLA";
+
+  Array<int> test = PushArray<int>(perm,2);
+  test[0] = 1;
+  test[1] = 2;
   
   // Init common stuff before compiler stuff.
   SYM_Init();
@@ -438,7 +454,25 @@ int main(int argc,char* argv[]){
     String content = PushFile(temp,StaticFormat("%.*s",UN(specFilepath)));
     
     Array<ConstructDef> types = ParseVersatSpecification(content,temp);
+
+    TrieSet<String>* checkNames = PushTrieSet<String>(temp);
     
+    bool sameName = false;
+    for(ConstructDef def : types){
+      if(checkNames->ExistsOrInsert(def.base.name.originalData)){
+        sameName = true;
+        
+        // TODO: Also need to check if we do not have collision with verilog files and stuff like that.
+        
+        // TODO: Better error reporting. Actually show the position on the file and stuff like that.
+        printf("Error, module with same name already exists: %.*s\n",UN(def.base.name.originalData));
+      }
+    }
+
+    if(sameName){
+      return -1;
+    }
+
     auto moduleLike = PushList<ConstructDef>(temp);
     for(ConstructDef def : types){
       if(IsModuleLike(def)){
@@ -655,6 +689,8 @@ int main(int argc,char* argv[]){
 
   AccelInfo info = CalculateAcceleratorInfo(accel,true,temp,true);
 
+  DEBUG_BREAK();
+
   InstantiateParameters(&info,temp);
   FillStaticInfo(&info,temp);
 
@@ -803,7 +839,7 @@ int main(int argc,char* argv[]){
     
     fs::copy(path,hardwareDestinationPath,options);
   }
-  
+
   // This should be the last thing that we do, no further file creation can occur after this point
   ReportFileCreation();
 

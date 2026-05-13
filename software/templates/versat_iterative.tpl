@@ -1,10 +1,10 @@
 `timescale 1ns / 1ps
 
 module @{accel.name} #(
-      parameter DELAY_W = 32,
-      parameter DATA_W = 32,
-      parameter ADDR_W = 32,
-      parameter AXI_ADDR_W = 32
+   parameter DELAY_W = 32,
+   parameter DATA_W = 32,
+   parameter ADDR_W = 32,
+   parameter AXI_ADDR_W = 32
 )
 (
    input run,

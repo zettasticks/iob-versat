@@ -2866,6 +2866,7 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
   DebugOutputGraphs(merged,"AfterInsertingMux");
 
   FUDeclaration declInst = {};
+  declInst.type = FUDeclarationType_MERGED;
 
   // TODO: Kinda hacked approach to this
   declInst.parameters = PushArray<Parameter>(globalPermanent,6);
@@ -2952,14 +2953,13 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
       reconToOrder[i]->Insert(order.instances[ii],order.order[ii]);
     }
   }
+
   
   FUDeclaration* decl = RegisterFU(declInst);
   decl->baseCircuit = baseCopy.first;
   decl->flattenedBaseCircuit = baseCopy.first; // Merged graph is already flattened.
   // TODO: We still need to look at the delay insertion step.
   decl->fixedDelayCircuit = mergedGraph;
-  
-  decl->type = FUDeclarationType_MERGED;
 
   FillDeclarationWithAcceleratorValues(decl,mergedGraph,globalPermanent,false);
   FillDeclarationWithDelayType(decl);

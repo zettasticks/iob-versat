@@ -18,7 +18,7 @@ struct Env;
 // NOTE: Majority of the approach taken in relation to memory allocations and how much we mutate data is not final, we do not care about things like that currently. More important is to start making the code correct and producing the correct data and later we can rewrite the code to be better in this aspect if needed.
 
 struct AddressGenForDef{
-  String loopVariable;
+  Token loopVariable;
   MathExpression* startSym;
   MathExpression* endSym;
 };

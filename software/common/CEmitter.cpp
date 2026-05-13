@@ -342,13 +342,14 @@ void CEmitter::FunctionBlock(String returnType,String functionName){
   PushLevel(function);
 }
 
-void CEmitter::Argument(String type,String name){
+void CEmitter::Argument(String type,String name,int arraySize){
   CAST* function = FindFirstCASTType(CASTType_FUNCTION);
   
   CAST* argument = PushCAST(CASTType_VAR_DECL,arena);
 
   argument->varDecl.typeName = PushString(arena,type);
   argument->varDecl.varName = PushString(arena,name);
+  argument->varDecl.arraySize = arraySize;
   
   *function->funcDecl.arguments->PushElem() = argument;
 }
@@ -778,7 +779,11 @@ void Repr(CAST* top,StringBuilder* b,bool cppStyle,int level){
     }    
   } break;
   case CASTType_VAR_DECL: {
-    b->PushString("%.*s %.*s",UN(top->varDecl.typeName),UN(top->varDecl.varName));
+    if(top->varDecl.arraySize > 0){
+      b->PushString("%.*s %.*s[%d]",UN(top->varDecl.typeName),UN(top->varDecl.varName),top->varDecl.arraySize);
+    } else {
+      b->PushString("%.*s %.*s",UN(top->varDecl.typeName),UN(top->varDecl.varName));
+    }
   } break;
   case CASTType_MEMBER_DECL:{
     b->PushSpaces(level * 2);

@@ -133,6 +133,8 @@ struct ConnectionNode{
   ConnectionNode* next;
 };
 
+extern ConnectionNode ConnectionNode_Nil;
+
 enum NodeType{
   NodeType_UNCONNECTED,
   NodeType_SOURCE,
@@ -161,6 +163,7 @@ struct FUInstance{
     int portIndex;
     int muxGroup; // Merge multiplexers that belong to the same group must also have the same config (similar to shared units, but we want to separate the share mechanism from the mechanism used to represent multiplexers groups)
   };
+
   int sharedIndex;
   Array<bool> isSpecificConfigShared;
   bool isStatic;
@@ -179,6 +182,8 @@ struct FUInstance{
   bool multipleSamePortInputs;
   NodeType type;
 };
+
+extern FUInstance FUInstance_Nil;
 
 enum AcceleratorPurpose{
   AcceleratorPurpose_TEMP,
@@ -224,7 +229,6 @@ struct StaticInfo{
    StaticId id;
    StaticData data;
 };
-
 
 struct WireInformation{
   Wire wire;

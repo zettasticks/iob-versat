@@ -87,6 +87,7 @@ String PushRepr(Arena* out,TokenType type){
   SIMPLE(TokenType_KEYWORD_CONFIG,"Keyword","config");
   SIMPLE(TokenType_KEYWORD_STATE,"Keyword","state");
   SIMPLE(TokenType_KEYWORD_MEM,"Keyword","mem");
+  SIMPLE(TokenType_KEYWORD_GEN,"Keyword","gen");
   SIMPLE(TokenType_KEYWORD_FOR,"Keyword","for");
 
   SIMPLE(TokenType_VERILOG_DEFINE,"Verilog","define");
@@ -147,6 +148,7 @@ String PARSE_PushDebugRepr(Arena* out,Token token){
   SIMPLE(TokenType_KEYWORD_CONFIG,"Keyword","config");
   SIMPLE(TokenType_KEYWORD_STATE,"Keyword","state");
   SIMPLE(TokenType_KEYWORD_MEM,"Keyword","mem");
+  SIMPLE(TokenType_KEYWORD_GEN,"Keyword","gen");
   SIMPLE(TokenType_KEYWORD_FOR,"Keyword","for");
 
   SIMPLE(TokenType_VERILOG_DEFINE,"Verilog","define");

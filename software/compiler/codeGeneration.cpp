@@ -3268,7 +3268,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
         c->FunctionBlock(SF("static inline %.*s",UN(func->structToReturnName)),fullFunctionName);
 
         for(ConfigVariable var : func->variables){
-          c->Argument(ConfigVarTypeToName(var.type),var.name);
+          c->Argument(ConfigVarTypeToName(var.type),var.name,var.arraySize);
         }
 
         if(func->debug){
@@ -3301,6 +3301,9 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
         }
         
         FULL_SWITCH(func->type){
+        case ConfigFunctionType_NIL:{
+          Assert(false);
+        } break;
         case ConfigFunctionType_MEM:{
           for(ConfigStuff assign : func->stuff){
             Assert(assign.type == ConfigStuffType_MEMORY_TRANSFER);
@@ -3779,14 +3782,6 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
   }
 
   Array<WireExtra> allConfigsVerilatorSide = PushArray(temp,build);
-
-  auto builder = StartArray<ExternalMemorySymbolic>(temp);
-  for(AccelInfoIterator iter = StartIteration(&info); iter.IsValid(); iter = iter.Next()){
-    for(ExternalMemorySymbolic& inter : iter.CurrentUnit()->externalMemory){
-      *builder.PushElem() = inter;
-    }
-  }
-  auto external = EndArray(builder);
 
   TE_SetNumber("delays",info.delays);
   Array<String> statesHeaderSide = ExtractStates(info.infos[0].info,temp);

@@ -18,8 +18,11 @@
 // ======================================
 // Constants
 
-static SpecExpression SPEC_LITERAL_0 = {.val = 0,.type = SpecType_LITERAL};
-static MathExpression MATH_LITERAL_0 = {.val = 0,.type = SpecType_LITERAL};
+// static readOnly SpecExpression SPEC_LITERAL_0 = {.val = 0,.type = SpecType_LITERAL};
+static readOnly MathExpression MATH_LITERAL_0 = {.val = 0,.type = SpecType_LITERAL};
+
+readOnly Entity Entity_Nil = {.func = nullptr};
+readOnly Entity2 Entity2_Nil = {.inst = &FUInstance_Nil,.func = &ConfigFunction_Nil,.decl = &FUDeclaration_Nil};
 
 // NOTE: Spec expression is more associated to the equality operator when defining the graph
 //       Math expression is everything else
@@ -500,15 +503,25 @@ Entity* Env::PushNewEntity(Token name){
 
 void Env::CheckIfEntityExists(Token name){
   Entity* ent = GetEntity(name);
-  
-  // nocheckin: TODO: Currently not enabled since code is not properly
-  //                  setting values needed to make this properly work
-#if 0
+
   if(!ent){
     ReportError(name,"Entity does not exist");
     DEBUG_BREAK();
   }
-#endif
+}
+
+Entity2 Env::GetEntity2(Token name){
+  for(int i = this->currentScope; i >= 0; i--){
+    Entity2* ent = this->scopes[i]->variable2->Get(name.identifier);
+
+    if(ent){
+      return *ent;
+    }
+  }
+
+  ReportError(name,"Entity does not exist");
+
+  return Entity2_Nil;
 }
 
 Entity* Env::GetEntity(Token name){
@@ -545,13 +558,308 @@ EntityAndLeftoverAccess Env::GetEntity(ConfigIdentifier* id,Arena* out){
   
   MathExpression* leftover = nullptr;
 
-  ptr = ptr->next;
   for(; ent && ptr; ptr = ptr->next){
     Entity* nextEnt = nullptr;
 
     switch(ptr->type){
       case ConfigAccessType_BASE:{
-        Assert(false);
+        // Nothing
+      } break;
+      case ConfigAccessType_ARRAY:{
+        
+        // NOTE: THIS IS STUPID.
+        //       The entire reason we made this in the first place is because we add a stupid idea that 
+        //       entities returned must be pointers for some bizarre reason.
+
+        //       If we stop with this stupidity we can realize that entities can just be data and therefore 
+        //       we can just "peel" the expression array one by one (which means that we also want to parse
+        //       the array accesses one by one).
+
+
+        if(ent->type == EntityType_FU_ARRAY){
+          Array<MathExpression*> arrayExpr = id->arrayExpr;
+
+          if(arrayExpr.size == ent->arrayDims.size + 1){
+            leftover = arrayExpr[arrayExpr.size - 1];
+            arrayExpr.size -= 1;
+          }
+
+          Array<int> arrayIndex = CalculateArraySize(arrayExpr);
+
+          String asStr = ent->arrayBaseName;
+          if(ent->type == EntityType_FU_ARRAY){
+            asStr = GetActualArrayName(asStr,arrayIndex,temp);
+          }
+
+          FUInstance* res = table->GetOrElse(asStr,nullptr);
+          
+          Entity* result = PushStruct<Entity>(out);
+          result->instance = res;
+          result->type = EntityType_FU;
+          nextEnt = result;
+        } else {
+          nextEnt = ent;
+        }
+      } break;
+      case ConfigAccessType_FUNC_CALL:{
+        Token funcName = ptr->functionName;
+        FUDeclaration* decl = ent->instance->declaration;
+
+        for(MergePartition part : decl->info.infos){
+          for(ConfigFunction* func : part.userFunctions){
+            if(func->individualName == funcName.identifier){
+              Entity* userFunc = PushStruct<Entity>(out);
+
+              userFunc->func = func;
+              userFunc->type = EntityType_CONFIG_FUNCTION;
+
+              if(nextEnt) ReportError({},"Name collision");
+              nextEnt = userFunc;
+            }
+          }
+        }
+      } break;
+      case ConfigAccessType_ACCESS:{
+        String access = ptr->name.identifier;
+
+        SWITCH(ent->type){
+        case EntityType_FU:{
+          Direction dir = Direction_NONE;
+          int port = 0;
+          if(access == "out0"){
+            dir = Direction_OUTPUT;
+          }
+          if(access == "out1"){
+            dir = Direction_OUTPUT;
+            port = 1;
+          }
+          if(access == "in0"){
+            dir = Direction_INPUT;
+          }
+          if(access == "in1"){
+            dir = Direction_INPUT;
+            port = 1;
+          }
+          
+          if(dir != Direction_NONE){
+            Entity* virtualWire = PushStruct<Entity>(out);
+            virtualWire->type = EntityType_MEM_PORT;
+            virtualWire->dir = dir;
+            virtualWire->port = port;
+            
+            if(nextEnt) ReportError({},"Name collision");
+            nextEnt = virtualWire;
+          } 
+          
+          FUDeclaration* decl = ent->instance->declaration;
+            
+          // TODO: We need to check if we have the same name for stuff. If
+          //       wire has the same name as a userConfig function then we have a problem and this
+          //       code will not act correctly. Furthermore, this check needs to be done elsewhere.
+          //       By the time we reach this point we are probably too far. Otherwise we need to 
+          for(Wire& w : decl->configs){
+            if(w.name == access){
+              Entity* wire = PushStruct<Entity>(out);
+              wire->wire = w;
+              wire->type = EntityType_CONFIG_WIRE;
+              
+              if(nextEnt) ReportError({},"Name collision");
+              nextEnt = wire;
+              break;
+            }
+          }
+
+          for(Wire& w : decl->states){
+            if(w.name == access){
+              Entity* wire = PushStruct<Entity>(out);
+              wire->wire = w;
+              wire->type = EntityType_STATE_WIRE;
+              
+              if(nextEnt) ReportError({},"Name collision");
+              nextEnt = wire;
+              break;
+            }
+          }
+        } break;
+
+        case EntityType_CONFIG_FUNCTION:
+        case EntityType_FU_ARRAY:
+        case EntityType_MEM_PORT:
+        case EntityType_PARAM:
+        case EntityType_CONFIG_WIRE:
+        case EntityType_STATE_WIRE:
+        case EntityType_VARIABLE_INPUT:
+        case EntityType_VARIABLE_SPECIAL:{
+          ReportError(ptr->name,"Cannot have access expression for entity of this type");
+        } break;
+      }
+      } break;
+    }
+
+    if(nextEnt){
+      nextEnt->parent = ent;
+      ent = nextEnt;
+    }
+  }
+
+  EntityAndLeftoverAccess result = {};
+  result.ent = ent;
+  result.leftover = leftover;
+
+  return result;
+}
+
+Array<int> Env::CalculateArraySize(Array<MathExpression*> exprs){
+  if(exprs.size <= 0){
+    Assert(false); // Not an error. Programmer cannot call this if empty (not an array)
+  }
+
+  Array<int> res = PushArray<int>(scopeArena,exprs.size);
+
+  for(int i = 0; i <  exprs.size; i++){
+    MathExpression* expr = exprs[i];
+    res[i] = CalculateConstantExpression(expr);
+  }
+
+  return res;
+}
+
+int Env::CalculateConstantExpression(MathExpression* top){
+  TEMP_REGION(temp,nullptr);
+
+  // TODO: Need to report error if we find a non constant value in here.
+  //       And then return 0
+
+  SYM_Expr expr = SymbolicFromMathExpression(top);
+  SYM_EvaluateResult eval = SYM_ConstantEvaluate(expr);
+
+  //Assert(!eval.Error());
+
+  return eval.result;
+}
+
+Entity* Env::GetEntity(MathExpression* id,Arena* out){
+  TEMP_REGION(temp,out);
+
+  Entity* ent = nullptr;
+
+  if(id->type == SpecType_NAME){
+    ent = GetEntity(id->name);
+  }
+  if(id->type == SpecType_ARRAY_ACCESS){
+    NOT_IMPLEMENTED();
+  }
+  if(id->type == SpecType_SINGLE_ACCESS){
+    ent = GetEntity(id->name);
+    
+    MathExpression* accessExpr = id->expressions[0];
+    Assert(accessExpr->type == SpecType_NAME);
+    
+    String access = accessExpr->name.identifier;
+
+    Direction dir = Direction_NONE;
+    int port = 0;
+    if(access == "out0"){
+      dir = Direction_OUTPUT;
+    }
+    if(access == "out1"){
+      dir = Direction_OUTPUT;
+      port = 1;
+    }
+    if(access == "in0"){
+      dir = Direction_INPUT;
+    }
+    if(access == "in1"){
+      dir = Direction_INPUT;
+      port = 1;
+    }
+
+    Entity* nextEnt = nullptr;
+    if(dir != Direction_NONE){
+      Entity* virtualWire = PushStruct<Entity>(out);
+      virtualWire->type = EntityType_MEM_PORT;
+      virtualWire->dir = dir;
+      virtualWire->port = port;
+      virtualWire->parent = ent;
+            
+      nextEnt = virtualWire;
+    } 
+          
+    FUDeclaration* decl = ent->instance->declaration;
+            
+    // TODO: We need to check if we have the same name for stuff. If
+    //       wire has the same name as a userConfig function then we have a problem and this
+    //       code will not act correctly. Furthermore, this check needs to be done elsewhere.
+    //       By the time we reach this point we are probably too far. Otherwise we need to 
+    for(Wire& w : decl->configs){
+      if(w.name == access){
+        Entity* wire = PushStruct<Entity>(out);
+        wire->wire = w;
+        wire->type = EntityType_CONFIG_WIRE;
+              
+        if(nextEnt) ReportError({},"Name collision");
+        nextEnt = wire;
+        break;
+      }
+    }
+
+    for(Wire& w : decl->states){
+      if(w.name == access){
+        Entity* wire = PushStruct<Entity>(out);
+        wire->wire = w;
+        wire->type = EntityType_STATE_WIRE;
+              
+        if(nextEnt) ReportError({},"Name collision");
+        nextEnt = wire;
+        break;
+      }
+    }
+ 
+    for(MergePartition part : decl->info.infos){
+      for(ConfigFunction* func : part.userFunctions){
+        if(func->individualName == access){
+          Entity* userFunc = PushStruct<Entity>(out);
+
+          userFunc->func = func;
+          userFunc->type = EntityType_CONFIG_FUNCTION;
+          
+          if(nextEnt) ReportError({},"Name collision");
+          nextEnt = userFunc;
+        }
+      }
+    }
+    
+    if(nextEnt){
+      nextEnt->parent = ent;
+      ent = nextEnt;
+    }
+  }
+
+  return ent;
+}
+
+EntityAccess Env::UnpackEntity(ConfigIdentifier* id,Arena* out){
+  // MARK
+  return {};
+#if 0
+  TEMP_REGION(temp,out);
+
+  ConfigIdentifier* ptr = id;
+  //Entity* ent = GetEntity(ptr->name);
+  MathExpression* leftover = nullptr;
+
+  auto list = PushList<Entity>(temp);
+
+  list->PushElem() = *GetEntity(ptr->name);
+
+  for(; ent && ptr; ptr = ptr->next){
+    
+
+    Entity* nextEnt = nullptr;
+
+    switch(ptr->type){
+      case ConfigAccessType_BASE:{
+        // Nothing
       } break;
       case ConfigAccessType_ARRAY:{
         if(ent->type == EntityType_FU_ARRAY){
@@ -571,10 +879,13 @@ EntityAndLeftoverAccess Env::GetEntity(ConfigIdentifier* id,Arena* out){
 
           FUInstance* res = table->GetOrElse(asStr,nullptr);
           
-          nextEnt = GetEntity(res->name);
+          Entity* result = PushStruct<Entity>(out);
+          result->instance = res;
+          result->type = EntityType_FU;
+          nextEnt = result;
+        } else {
+          nextEnt = ent;
         }
-
-        nextEnt = ent;
       } break;
       case ConfigAccessType_FUNC_CALL:{
         Token funcName = ptr->functionName;
@@ -673,9 +984,8 @@ EntityAndLeftoverAccess Env::GetEntity(ConfigIdentifier* id,Arena* out){
 
     if(nextEnt){
       nextEnt->parent = ent;
+      ent = nextEnt;
     }
-
-    ent = nextEnt;
   }
 
   EntityAndLeftoverAccess result = {};
@@ -683,136 +993,7 @@ EntityAndLeftoverAccess Env::GetEntity(ConfigIdentifier* id,Arena* out){
   result.leftover = leftover;
 
   return result;
-}
-
-Array<int> Env::CalculateArraySize(Array<MathExpression*> exprs){
-  if(exprs.size <= 0){
-    Assert(false); // Not an error. Programmer cannot call this if empty (not an array)
-  }
-
-  Array<int> res = PushArray<int>(scopeArena,exprs.size);
-
-  int arraySize = 1;
-  for(int i = 0; i <  exprs.size; i++){
-    MathExpression* expr = exprs[i];
-    res[i] = CalculateConstantExpression(expr);
-  }
-
-  return res;
-}
-
-int Env::CalculateConstantExpression(MathExpression* top){
-  TEMP_REGION(temp,nullptr);
-
-  // TODO: Need to report error if we find a non constant value in here.
-  //       And then return 0
-
-  SYM_Expr expr = SymbolicFromMathExpression(top);
-  SYM_EvaluateResult eval = SYM_ConstantEvaluate(expr);
-
-  //Assert(!eval.Error());
-
-  return eval.result;
-}
-
-Entity* Env::GetEntity(MathExpression* id,Arena* out){
-  TEMP_REGION(temp,out);
-
-  Entity* ent = nullptr;
-
-  if(id->type == SpecType_NAME){
-    ent = GetEntity(id->name);
-  }
-  if(id->type == SpecType_ARRAY_ACCESS){
-    NOT_IMPLEMENTED();
-  }
-  if(id->type == SpecType_SINGLE_ACCESS){
-    ent = GetEntity(id->name);
-    
-    MathExpression* accessExpr = id->expressions[0];
-    Assert(accessExpr->type == SpecType_NAME);
-    
-    String access = accessExpr->name.identifier;
-
-    Direction dir = Direction_NONE;
-    int port = 0;
-    if(access == "out0"){
-      dir = Direction_OUTPUT;
-    }
-    if(access == "out1"){
-      dir = Direction_OUTPUT;
-      port = 1;
-    }
-    if(access == "in0"){
-      dir = Direction_INPUT;
-    }
-    if(access == "in1"){
-      dir = Direction_INPUT;
-      port = 1;
-    }
-
-    Entity* nextEnt = nullptr;
-    if(dir != Direction_NONE){
-      Entity* virtualWire = PushStruct<Entity>(out);
-      virtualWire->type = EntityType_MEM_PORT;
-      virtualWire->dir = dir;
-      virtualWire->port = port;
-      virtualWire->parent = ent;
-            
-      nextEnt = virtualWire;
-    } 
-          
-    FUDeclaration* decl = ent->instance->declaration;
-            
-    // TODO: We need to check if we have the same name for stuff. If
-    //       wire has the same name as a userConfig function then we have a problem and this
-    //       code will not act correctly. Furthermore, this check needs to be done elsewhere.
-    //       By the time we reach this point we are probably too far. Otherwise we need to 
-    for(Wire& w : decl->configs){
-      if(w.name == access){
-        Entity* wire = PushStruct<Entity>(out);
-        wire->wire = &w;
-        wire->type = EntityType_CONFIG_WIRE;
-              
-        if(nextEnt) ReportError({},"Name collision");
-        nextEnt = wire;
-        break;
-      }
-    }
-
-    for(Wire& w : decl->states){
-      if(w.name == access){
-        Entity* wire = PushStruct<Entity>(out);
-        wire->wire = &w;
-        wire->type = EntityType_STATE_WIRE;
-              
-        if(nextEnt) ReportError({},"Name collision");
-        nextEnt = wire;
-        break;
-      }
-    }
- 
-    for(MergePartition part : decl->info.infos){
-      for(ConfigFunction* func : part.userFunctions){
-        if(func->individualName == access){
-          Entity* userFunc = PushStruct<Entity>(out);
-
-          userFunc->func = func;
-          userFunc->type = EntityType_CONFIG_FUNCTION;
-          
-          if(nextEnt) ReportError({},"Name collision");
-          nextEnt = userFunc;
-        }
-      }
-    }
-    
-    if(nextEnt){
-      nextEnt->parent = ent;
-      ent = nextEnt;
-    }
-  }
-
-  return ent;
+#endif
 }
 
 Array<int> Env::ConvertRangeToStart(Array<Range<MathExpression*>> range,Arena* out){
@@ -1046,7 +1227,7 @@ void Env::AddParam(Token name){
   entity->paramName = name.identifier;
 }
 
-void Env::AddVariable(Token name){
+void Env::AddVariable(Token name,MathExpression* arraySize){
   Entity* ent = GetEntity(name);
 
   if(ent){
@@ -1057,6 +1238,20 @@ void Env::AddVariable(Token name){
 
   entity->type = EntityType_VARIABLE_INPUT;
   entity->varName = name.identifier;
+  
+  if(arraySize){
+    entity->inputVarDims = CalculateConstantExpression(arraySize);
+  }
+}
+
+void Env::SetGenVariable(Token name,int value){
+  EnvScope* current = scopes[currentScope];
+
+  Entity ent = {};
+  ent.type = EntityType_GEN_VALUE;
+  ent.genVal = value;
+
+  current->variable->Insert(name.originalData,ent);
 }
 
 #if 1
@@ -1252,7 +1447,9 @@ PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
 }
 
 SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
-  auto Recurse = [this](auto Recurse,MathExpression* top) -> SYM_Expr{
+  TEMP_REGION(temp,nullptr);
+
+  auto Recurse = [temp,this](auto Recurse,MathExpression* top) -> SYM_Expr{
     SYM_Expr res = SYM_Zero;
 
     switch(top->type){
@@ -1282,7 +1479,20 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
         }
       }
     } break;
-    case SpecType_NAME:
+    case SpecType_NAME:{
+      Entity* ent = GetEntity(top->name);
+
+      bool found = false;
+
+      if(!found && ent && ent->type == EntityType_GEN_VALUE){
+        res = SYM_Lit(ent->genVal);
+      }
+
+      if(!found){
+        CheckIfEntityExists(top->name);
+        res = SYM_Var(top->name.identifier);
+      }
+    } break;
     case SpecType_VAR:{
       CheckIfEntityExists(top->name);
       res = SYM_Var(top->name.identifier);
@@ -1290,8 +1500,20 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
     case SpecType_LITERAL:{
       res = SYM_Lit(top->val);
     } break;
+    case SpecType_ARRAY_ACCESS: {
+      Entity* ent = GetEntity(top->name);
+
+      if(ent->type == EntityType_VARIABLE_INPUT){
+        MathExpression* index = top->expressions[0];
+        String indexName = index->name.identifier;
+        Entity* indexVal = GetEntity(indexName);
+
+        String fullName = PushString(temp,"%.*s[%d]",UN(top->name.originalData),indexVal->genVal);
+        res = SYM_Var(fullName);
+      }
+    } break;
+
     case SpecType_SINGLE_ACCESS:
-    case SpecType_ARRAY_ACCESS:
     case SpecType_FUNCTION_CALL: Assert(false);
     }
 
@@ -1314,9 +1536,7 @@ MathExpression* ParseNumberOnly(Parser* parser,Arena* out){
 Range<MathExpression*> ParseRange(Parser* parser,Arena* out){
   Range<MathExpression*> res = {};
 
-  MathExpression* n1 = ParseNumberOnly(parser,out);
-
-  Assert(n1);
+  MathExpression* n1 = ParseNumberOnly(parser,out); //ParseNumberOnly(parser,out);
 
   res.start = n1;
   res.end = n1;
@@ -1328,26 +1548,37 @@ Range<MathExpression*> ParseRange(Parser* parser,Arena* out){
   return res;
 }
 
+Range<MathExpression*> ParseExprRange(Parser* parser,Arena* out){
+  Range<MathExpression*> res = {};
+
+  MathExpression* n1 = ParseMathExpression(parser,out);
+
+  res.start = n1;
+  res.end = n1;
+
+  if(parser->IfNextToken(TokenType_DOUBLE_DOT)){
+    res.end = ParseMathExpression(parser,out);
+  }
+  
+  return res;
+}
+
 Var ParseVar(Parser* parser,Arena* out){
   TEMP_REGION(temp,out);
   
   Token name = parser->ExpectNext(TokenType_IDENTIFIER);
 
-  bool isArrayAccess = false;
   auto list = PushList<Range<MathExpression*>>(temp); 
   while(parser->IfNextToken('[')){
-    Range<MathExpression*> range = ParseRange(parser,out);
+    Range<MathExpression*> range = ParseExprRange(parser,out);
     *list->PushElem() = range;
-
-    //isArrayAccess = true;
-
     parser->ExpectNext(']');
   }
   
   MathExpression* delayStart = &MATH_LITERAL_0;
   MathExpression* delayEnd = &MATH_LITERAL_0;
   if(parser->IfNextToken('{')){
-    Range<MathExpression*> range = ParseRange(parser,out);
+    Range<MathExpression*> range = ParseExprRange(parser,out);
     delayStart = range.start;
     delayEnd = range.end;
 
@@ -2234,8 +2465,6 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
       
       TokenType type = TokenType_INVALID;
 
-      // TODO: We really need a fast way of checking this using size + character by character branching path.
-      //       However this is something that we want to push to the meta function generation. We do not want to actually write this and potentially get it wrong.
       if(id == "module")     type = TokenType_KEYWORD_MODULE;
       if(id == "merge")      type = TokenType_KEYWORD_MERGE;
       if(id == "share")      type = TokenType_KEYWORD_SHARE;
@@ -2244,6 +2473,7 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
       if(id == "config")     type = TokenType_KEYWORD_CONFIG;
       if(id == "state")      type = TokenType_KEYWORD_STATE;
       if(id == "mem")        type = TokenType_KEYWORD_MEM;
+      if(id == "gen")        type = TokenType_KEYWORD_GEN;
       if(id == "for")        type = TokenType_KEYWORD_FOR;
 
       if(type != TokenType_INVALID){
@@ -2320,7 +2550,8 @@ static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
   base->name = id;
 
   ConfigIdentifier* ptr = base;
-  
+
+#if 1
   auto list = PushList<MathExpression*>(temp);
   while(parser->IfNextToken('[')){
     MathExpression* expr = ParseMathExpression(parser,out);
@@ -2368,6 +2599,7 @@ static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
     ptr->next = parsed;
     ptr = parsed;
   }
+#endif
 
 #if 0
   while(!parser->Done()){
@@ -2376,6 +2608,7 @@ static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
     if(!parsed && parser->IfNextToken('.')){
       Token access = parser->ExpectNext(TokenType_IDENTIFIER);
 
+      // Function call syntax
       if(parser->IfNextToken('(')){
         auto args = PushList<MathExpression*>(temp);       
       
@@ -2412,13 +2645,13 @@ static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
       parsed = PushStruct<ConfigIdentifier>(out);
       parsed->type = ConfigAccessType_ARRAY;
 
-      parsed->arrayExpr = PushArray<MathExpression*>(out,1);
-      parsed->arrayExpr[0] = expr;
+      parsed->arrayExpr = expr;
     }
 
     if(parsed){
-      ptr->parent = parsed;
+      ptr->next = parsed;
       ptr = parsed;
+      continue;
     }
 
     break;
@@ -2433,7 +2666,7 @@ static ConfigStatement* ParseConfigStatement(Parser* parser,Arena* out){
   
   ConfigStatement* stmt = PushStruct<ConfigStatement>(out);
 
-  if(parser->IfNextToken(TokenType_KEYWORD_FOR)){
+  if(parser->IfNextToken(TokenType_KEYWORD_GEN)){
     Token loopVariable = parser->ExpectNext(TokenType_IDENTIFIER);
  
     MathExpression* start = ParseMathExpression(parser,out);
@@ -2454,7 +2687,33 @@ static ConfigStatement* ParseConfigStatement(Parser* parser,Arena* out){
 
     parser->ExpectNext('}');
     
-    stmt->def.loopVariable = loopVariable.identifier;
+    stmt->def.loopVariable = loopVariable;
+    stmt->def.startSym = start;
+    stmt->def.endSym = end;
+    stmt->childs = PushArray(out,list);
+    stmt->type = ConfigStatementType_GEN_LOOP;
+  } else if(parser->IfNextToken(TokenType_KEYWORD_FOR)){
+    Token loopVariable = parser->ExpectNext(TokenType_IDENTIFIER);
+ 
+    MathExpression* start = ParseMathExpression(parser,out);
+    parser->ExpectNext(TokenType_DOUBLE_DOT);
+    MathExpression* end = ParseMathExpression(parser,out);
+
+    parser->ExpectNext('{');
+
+    auto list = PushList<ConfigStatement*>(temp);
+    while(!parser->Done()){
+      ConfigStatement* child = ParseConfigStatement(parser,out);
+      *list->PushElem() = child;
+
+      if(parser->IfPeekToken('}')){
+        break;
+      }
+    }
+
+    parser->ExpectNext('}');
+    
+    stmt->def.loopVariable = loopVariable;
     stmt->def.startSym = start;
     stmt->def.endSym = end;
     stmt->childs = PushArray(out,list);
@@ -2478,19 +2737,15 @@ static ConfigStatement* ParseConfigStatement(Parser* parser,Arena* out){
   return stmt;
 }
 
-static ConfigVarDeclaration ParseConfigVarDeclaration(Parser* parser){
+static ConfigVarDeclaration ParseConfigVarDeclaration(Parser* parser,Arena* out){
   ConfigVarDeclaration res = {};
 
   res.name = parser->ExpectNext(TokenType_IDENTIFIER);
 
   if(parser->IfNextToken('[')){
-    Token number = parser->ExpectNext(TokenType_NUMBER);
-    int arraySize = number.number;
-
+    MathExpression* arraySize = ParseMathExpression(parser,out);
     parser->ExpectNext(']');
-
     res.arraySize = arraySize;
-    res.isArray = true;
   }
 
   Token type = {};
@@ -2515,7 +2770,7 @@ static Array<ConfigVarDeclaration> ParseConfigFunctionArguments(Parser* parser,A
       break;
     }
 
-    ConfigVarDeclaration var = ParseConfigVarDeclaration(parser);
+    ConfigVarDeclaration var = ParseConfigVarDeclaration(parser,out);
 
     *list->PushElem() = var;
     

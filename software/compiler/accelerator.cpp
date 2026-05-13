@@ -16,6 +16,9 @@
 
 static Pool<Accelerator> accelerators;
 
+readOnly ConnectionNode ConnectionNode_Nil = {.next = &ConnectionNode_Nil};
+readOnly FUInstance FUInstance_Nil = {.declaration = &FUDeclaration_Nil,.allInputs = &ConnectionNode_Nil,.allOutputs = &ConnectionNode_Nil};
+
 // ======================================
 // Accelerator creation
 

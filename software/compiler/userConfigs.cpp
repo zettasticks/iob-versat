@@ -12,6 +12,8 @@
 #include "CEmitter.hpp"
 #include "versatSpecificationParser.hpp"
 
+readOnly ConfigFunction ConfigFunction_Nil = {};
+
 // ============================================================================
 // Instantiation and manipulation
 
@@ -42,6 +44,8 @@ struct DecompConfigStatement{
   bool isSingleWire;
   bool isEntityOnly;
   bool isLeftSideArray;
+
+  String lhsName;
   
   // RHS type
   bool isExprOnly;
@@ -65,7 +69,7 @@ struct DecompConfigStatement{
 DecompConfigStatement DecomposeConfigStatement(Env* env,ConfigStatement* stmt,Arena* out){
   DecompConfigStatement res = {};
   
-  Assert(stmt->type != ConfigStatementType_FOR_LOOP);
+  Assert(!IsLoop(stmt->type));
   if(stmt->type == ConfigStatementType_FUNCTION_CALL){
     res.isFunctionInvoc = true;
     
@@ -84,6 +88,8 @@ DecompConfigStatement DecomposeConfigStatement(Env* env,ConfigStatement* stmt,Ar
 
     res.parentEntity = lhs.ent;
     res.subEntity = nullptr;
+
+    res.lhsName = GetBase(stmt->lhs)->name.identifier;
 
     if(IsEntitySubType(lhs.ent->type)){
       Assert(lhs.ent->parent);
@@ -109,6 +115,7 @@ DecompConfigStatement DecomposeConfigStatement(Env* env,ConfigStatement* stmt,Ar
       Assert(!lhs.leftover);
     } else {
       res.isEntityOnly = true;
+      res.lhsName = lhs.ent->instance->name;
     }
 
     res.isLeftSideArray = (lhs.leftover != nullptr);
@@ -180,8 +187,8 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
   env->PushScope();
 
-  for(Token name : variableNames){
-    env->AddVariable(name);
+  for(ConfigVarDeclaration varDecl : variables){
+    env->AddVariable(varDecl.name,varDecl.arraySize);
   }
   
   // TODO: This flow is not good. With a bit more work we probably can join state and config into the same flow or at least avoid duplicating work. For now we are mostly prototyping so gonna keep pushing what we have.
@@ -192,7 +199,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   auto simpleStmtList = PushList<ConfigStatement*>(temp);
 
   auto Recurse = [nodeToParent,simpleStmtList](auto Recurse,ConfigStatement* top) -> void{
-    if(top->type == ConfigStatementType_FOR_LOOP){
+    if(IsLoop(top->type)){
       for(ConfigStatement* child : top->childs){
         nodeToParent->Insert(child,top);
         Recurse(Recurse,child);
@@ -230,12 +237,25 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   // TODO: Remember, after pushing every statement into an individual loop, we need to do error checking and check if the variable still exists. We cannot do variable checking globally since some statements might not be inside one of the loops.
   Array<Array<ConfigStatement*>> individualStatements = PushArray(temp,stmtList);
 
+  // Pass all gen loops to outer loops.
+  for(Array<ConfigStatement*>& individual : individualStatements){
+    for(int i = 0; i < individual.size; i++){
+      for(int j = 0; j < individual.size - 1; j++){
+        if(   individual[j]->type == ConfigStatementType_FOR_LOOP
+           && individual[j+1]->type == ConfigStatementType_GEN_LOOP){
+          
+          SWAP(individual[j],individual[j+1]);
+        }
+      }
+    }
+  }
+
   // TODO: Kinda stupid calculating things this way but the rest of the code needs to collapse into a simpler form for the more robust approach first.
   auto variablesUsedOnLoopExpressions = PushTrieSet<String>(temp);
 
   for(Array<ConfigStatement*> arr : individualStatements){
     for(ConfigStatement* conf : arr){
-      if(conf->type != ConfigStatementType_FOR_LOOP){
+      if(!IsLoop(conf->type)){
         continue;
       }
 
@@ -280,6 +300,10 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     
     varInfo[i].type = type;
     varInfo[i].name = PushString(out,decl.name.identifier);
+    
+    if(decl.arraySize){
+      varInfo[i].arraySize = env->CalculateConstantExpression(decl.arraySize);
+    }
 
     varNames[i] = varInfo[i].name;
   }
@@ -300,131 +324,198 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     type = ConfigFunctionType_CONFIG;
 
     for(Array<ConfigStatement*> stmts : individualStatements){
-      ConfigStatement* simple = stmts[stmts.size - 1];
-      // TODO: Call entity function to make sure that the entity exists and it is a config wire
+      // Collect all gen loops into an "iterator" structures.
+      // Iterate over that structure setting the gen variables to the expected value.
 
-      String lhsName = GetBase(simple->lhs)->name.identifier;
-      
-      auto forLoops = PushList<AddressGenForDef>(temp);
+      // Environment accesses to arrays can only be done by expressions that contain constants or gen variables.
 
+      // Separate loops for easier processing
+      auto genList = PushList<AddressGenForDef>(temp);
       for(int i = 0; i < stmts.size - 1; i++){
-        *forLoops->PushElem() = stmts[i]->def;
+        if(stmts[i]->type == ConfigStatementType_GEN_LOOP){
+          *genList->PushElem() = stmts[i]->def;
+        }
+      }
+      Array<AddressGenForDef> genLoops = PushArray(temp,genList);
+
+      auto forList = PushList<AddressGenForDef>(temp);
+      for(int i = 0; i < stmts.size - 1; i++){
+        if(stmts[i]->type == ConfigStatementType_FOR_LOOP){
+          *forList->PushElem() = stmts[i]->def;
+        }
+      }
+      Array<AddressGenForDef> forLoops = PushArray(temp,forList);
+
+      ConfigStatement* simple = stmts[stmts.size - 1];
+
+      // Setup gen loop state
+      struct GenLoopState{
+        Token name;
+        int val;
+        int start;
+        int end;
+      };
+      Array<GenLoopState> genState = PushArray<GenLoopState>(temp,genLoops.size);
+
+      // We are now inside the loops scope.
+      env->PushScope();
+      for(int i = 0; i <  genLoops.size; i++){
+        AddressGenForDef gen = genLoops[i];
+
+        genState[i].name = gen.loopVariable;
+        genState[i].start = env->CalculateConstantExpression(gen.startSym);
+        genState[i].end = env->CalculateConstantExpression(gen.endSym);
+        genState[i].val = genState[i].start;
+
+        env->SetGenVariable(gen.loopVariable,genState[i].start);
       }
 
-      Array<AddressGenForDef> loops = PushArray(temp,forLoops);
+      for(AddressGenForDef loop : forLoops){
+        env->AddVariable(loop.loopVariable);
+      }
 
-      DecompConfigStatement decomp = DecomposeConfigStatement(env,simple,temp);
+      while(1){
+        // Register current loop variables on environment
+        for(int i = 0; i <  genLoops.size; i++){
+          GenLoopState gen = genState[i];
 
-      // TODO: We can clear this code even further.
-      Entity* ent = decomp.parentEntity; //env->GetEntity(simple->lhs,temp);
-      Entity* wireEnt = decomp.subEntity;
-      Entity* portEnt = decomp.subEntity;
-
-      // Function invocation is basically argument instantiation and replacing the 
-      // statements with the new version.
-      if(decomp.isFunctionInvoc){
-        Array<MathExpression*> args = decomp.args;
-        ConfigFunction* function = decomp.func;
-
-        // TODO: Not an assert, should be a proper error
-        Assert(function->type == ConfigFunctionType_CONFIG);
-
-        if(!function){
-          // TODO: Error
-          printf("Error 2, function does not exist, make sure the name is correct\n");
-          exit(-1);
-          return nullptr;
+          env->SetGenVariable(gen.name,gen.val);
         }
 
-        if(args.size != function->variables.size){
-          printf("Error 2.1, number of arguments does not match\n");
-          exit(-1);
-          return nullptr;
-        }
-      
-        // Invocation var to function argument
-        TrieMap<String,SYM_Expr>* argToVar = PushTrieMap<String,SYM_Expr>(temp);
-        for(int i = 0; i <  args.size; i++){
-          // Arg is in the function space
-          ConfigVariable arg = function->variables[i];
+        DecompConfigStatement decomp = DecomposeConfigStatement(env,simple,temp);
+        String lhsName = decomp.lhsName;
 
-          SYM_Expr var = env->SymbolicFromMathExpression(args[i]);
+        // TODO: We can clear this code even further.
+        Entity* ent = decomp.parentEntity;
+        Entity* wireEnt = decomp.subEntity;
+        Entity* portEnt = decomp.subEntity;
 
-          // TODO: Kinda stupid.
-          Array<String> vars = SYM_GetAllVariables(var,temp);
-          if(arg.usedOnLoopExpressions){
-            for(String s : vars){
-              variablesUsedOnLoopExpressions->Insert(s);
-            }
+        // Function invocation is basically argument instantiation and replacing the 
+        // statements with the new version.
+        if(decomp.isFunctionInvoc){
+          Array<MathExpression*> args = decomp.args;
+          ConfigFunction* function = decomp.func;
+
+          // TODO: Not an assert, should be a proper error
+          Assert(function->type == ConfigFunctionType_CONFIG);
+
+          if(!function){
+            // TODO: Error
+            printf("Error 2, function does not exist, make sure the name is correct\n");
+            exit(-1);
+            return nullptr;
           }
 
-          argToVar->Insert(arg.name,var);
-        }
+          if(args.size != function->variables.size){
+            printf("Error 2.1, number of arguments does not match\n");
+            exit(-1);
+            return nullptr;
+          }
       
-        for(ConfigStuff stuff : function->stuff){
-          // TODO: We are building the struct access expression in here but I got a feeling that we probably want to preserve data as much as possible in order to tackle merge later on.
-          FULL_SWITCH(stuff.type){
-          case ConfigStuffType_ASSIGNMENT:{
-            String lhs = PushString(out,"%.*s.%.*s",UN(lhsName),UN(stuff.assign.lhs));
+          // Invocation var to function argument
+          TrieMap<String,SYM_Expr>* argToVar = PushTrieMap<String,SYM_Expr>(temp);
+          for(int i = 0; i <  args.size; i++){
+            // Arg is in the function space
+            ConfigVariable arg = function->variables[i];
+
+            SYM_Expr var = env->SymbolicFromMathExpression(args[i]);
+
+            // TODO: Kinda stupid.
+            Array<String> vars = SYM_GetAllVariables(var,temp);
+            if(arg.usedOnLoopExpressions){
+              for(String s : vars){
+                variablesUsedOnLoopExpressions->Insert(s);
+              }
+            }
+
+            argToVar->Insert(arg.name,var);
+          }
+      
+          for(ConfigStuff stuff : function->stuff){
+            // TODO: We are building the struct access expression in here but I got a feeling that we probably want to preserve data as much as possible in order to tackle merge later on.
+            FULL_SWITCH(stuff.type){
+            case ConfigStuffType_ASSIGNMENT:{
+              String lhs = PushString(out,"%.*s.%.*s",UN(lhsName),UN(stuff.assign.lhs));
         
-            SYM_Expr rhs = stuff.assign.rhs;
-            SYM_Expr newExpr = SYM_Replace(rhs,argToVar);
+              SYM_Expr rhs = stuff.assign.rhs;
+              SYM_Expr newExpr = SYM_Replace(rhs,argToVar);
         
-            ConfigStuff* newAssign = list->PushElem();
-            newAssign->type = ConfigStuffType_ASSIGNMENT;
-            newAssign->assign.lhs = lhs;
-            newAssign->assign.rhs = newExpr;
-          } break;
-          case ConfigStuffType_ADDRESS_GEN:{
-            AccessAndType access = stuff.access;
+              ConfigStuff* newAssign = list->PushElem();
+              newAssign->type = ConfigStuffType_ASSIGNMENT;
+              newAssign->assign.lhs = lhs;
+              newAssign->assign.rhs = newExpr;
+            } break;
+            case ConfigStuffType_ADDRESS_GEN:{
+              AccessAndType access = stuff.access;
 
-            ConfigStuff* newAccess = list->PushElem();
-            newAccess->type = ConfigStuffType_ADDRESS_GEN;
+              ConfigStuff* newAccess = list->PushElem();
+              newAccess->type = ConfigStuffType_ADDRESS_GEN;
 
-            // TODO: By doing stuff this way we do not allow expressions inside functions.
-            //       We cannot have ent.func(expr + expr) for example since we assume that the expression
-            //       inside is just simple substitution.
-            newAccess->access = access;
-            newAccess->access.access = ReplaceVariables(access.access,argToVar,varNames,out);
-            newAccess->lhs = lhsName + stuff.lhs;
-          } break;
-          case ConfigStuffType_MEMORY_TRANSFER:{
-            // We should never have memory transfers at config functions, right?
-            NOT_IMPLEMENTED();
-          } break;
+              // TODO: By doing stuff this way we do not allow expressions inside functions.
+              //       We cannot have ent.func(expr + expr) for example since we assume that the expression
+              //       inside is just simple substitution.
+              newAccess->access = access;
+              newAccess->access.access = ReplaceVariables(access.access,argToVar,varNames,out);
+              newAccess->lhs = lhsName + stuff.lhs;
+            } break;
+            case ConfigStuffType_MEMORY_TRANSFER:{
+              // We should never have memory transfers at config functions, right?
+              NOT_IMPLEMENTED();
+            } break;
+          }
+          }
+        } else if(decomp.isSingleWire){
+          // We are setting a value to a constant wire.
+          ConfigIdentifier* before = GetBeforeBase(simple->lhs);
+          String wireName = before->name.identifier;
+
+          ConfigStuff* assign = list->PushElem();
+          assign->type = ConfigStuffType_ASSIGNMENT;
+          assign->assign.lhs = PushString(out,"%.*s.%.*s",UN(lhsName),UN(wireName));
+          assign->assign.rhs = decomp.expr;
+        } else if(decomp.isVirtualWire || decomp.isExpr || decomp.isArray){
+          // Is Address gen expression. Including array accesses for VUnits
+          AddressAccess* access = CompileAddressGen(env,variableNames,forLoops,decomp.expr,content);
+          AddressGenInst supported = ent->instance->declaration->supportedAddressGen;
+
+          // NOTE: Memories and Generator do not follow the addr[expr]. They just have <instance> = <expr>.
+          ConfigStuff* newAssign = list->PushElem();
+
+          newAssign->type = ConfigStuffType_ADDRESS_GEN;
+          newAssign->access.access = access;
+          newAssign->access.inst = supported;
+
+          if(portEnt){
+            newAssign->access.dir = portEnt->dir;
+            newAssign->access.port = portEnt->port;
+          }
+
+          newAssign->accessVariableName = PushString(out,decomp.entityName.identifier);
+          newAssign->lhs = lhsName;
+        } else {
+          Assert(false);
         }
-        }
-      } else if(decomp.isSingleWire){
-        // We are setting a value to a constant wire.
-        ConfigIdentifier* before = GetBeforeBase(simple->lhs);
-        String wireName = before->name.identifier;
 
-        ConfigStuff* assign = list->PushElem();
-        assign->type = ConfigStuffType_ASSIGNMENT;
-        assign->assign.lhs = PushString(out,"%.*s.%.*s",UN(lhsName),UN(wireName));
-        assign->assign.rhs = decomp.expr;
-      } else if(decomp.isVirtualWire || decomp.isExpr || decomp.isArray){
-        // Is Address gen expression. Including array accesses for VUnits
-        AddressAccess* access = CompileAddressGen(env,variableNames,loops,decomp.expr,content);
-        AddressGenInst supported = ent->instance->declaration->supportedAddressGen;
+        // Increment gen state in reverse order.
+        bool didAllLoops = true;
+        for(int i = genLoops.size - 1; i >= 0; i--){
+          GenLoopState& gen = genState[i];
 
-        // NOTE: Memories and Generator do not follow the addr[expr]. They just have <instance> = <expr>.
-        ConfigStuff* newAssign = list->PushElem();
+          gen.val += 1;
+          if(gen.val >= gen.end){
+            gen.val = gen.start;
+            continue;
+          }
 
-        newAssign->type = ConfigStuffType_ADDRESS_GEN;
-        newAssign->access.access = access;
-        newAssign->access.inst = supported;
-
-        if(portEnt){
-          newAssign->access.dir = portEnt->dir;
-          newAssign->access.port = portEnt->port;
+          didAllLoops = false;
+          break;
         }
 
-        newAssign->accessVariableName = PushString(out,decomp.entityName.identifier);
-        newAssign->lhs = lhsName;
-      } else {
-        Assert(false);
+        if(didAllLoops){
+          break;
+        }
       }
+      env->PopScope();
     }
   }
 
@@ -498,6 +589,21 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     type = ConfigFunctionType_MEM;
 
     for(Array<ConfigStatement*> stmts : individualStatements){
+      env->PushScope();
+
+      auto forList = PushList<AddressGenForDef>(temp);
+      for(int i = 0; i < stmts.size - 1; i++){
+        if(stmts[i]->type == ConfigStatementType_FOR_LOOP){
+          *forList->PushElem() = stmts[i]->def;
+        }
+      }
+      Array<AddressGenForDef> forLoops = PushArray(temp,forList);
+
+      for(AddressGenForDef def : forLoops){
+        env->AddParam(def.loopVariable);
+        //def.loopVariable
+      }
+
       ConfigStatement* stmt = stmts[0];
       ConfigStatement* simple = stmts[stmts.size - 1];
 
@@ -505,8 +611,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       
       // We currently only support a single statement or a single loop.
       // We technically can do multi loops just fine, just need to augment the logic to support it.
-      Assert(singleStatement || (stmt->type == ConfigStatementType_FOR_LOOP 
-                              && IsLeaf(simple->type)));
+      Assert(singleStatement || (IsLoop(stmt->type) && IsLeaf(simple->type)));
 
       DecompConfigStatement decomp = DecomposeConfigStatement(env,simple,temp);
       
@@ -567,6 +672,8 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
         assign->transfer.variable = PushString(out,addrVar->varName);
       }
+
+      env->PopScope();
     }
   }
 

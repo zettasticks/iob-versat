@@ -4,10 +4,11 @@
 #include "hierName.hpp"
 
 // TODO: Remove this.
-#include "versatSpecificationParser.hpp"
+// #include "versatSpecificationParser.hpp"
 
 struct FUDeclaration;
 struct AddressAccess;
+struct ConfigIdentifier;
 
 // Move user configuration functions here.
 
@@ -51,11 +52,14 @@ struct FunctionInvocation{
 
 enum ConfigStatementType{
   ConfigStatementType_FOR_LOOP,
+  ConfigStatementType_GEN_LOOP,
   ConfigStatementType_EQUALITY,
   ConfigStatementType_FUNCTION_CALL
 };
 
-inline bool IsLeaf(ConfigStatementType type){ return (type == ConfigStatementType_EQUALITY || type == ConfigStatementType_FUNCTION_CALL);}
+inline bool IsLeaf(ConfigStatementType type){return (type == ConfigStatementType_EQUALITY || type == ConfigStatementType_FUNCTION_CALL);}
+
+inline bool IsLoop(ConfigStatementType type){return (type == ConfigStatementType_FOR_LOOP || type == ConfigStatementType_GEN_LOOP);}
 
 struct ConfigStatement{
   ConfigStatementType type;
@@ -79,12 +83,9 @@ enum ConfigVarType{
 struct ConfigVarDeclaration{
   Token name;
 
-  // TODO: Not implemented, just parsed currently.
-  
   //ConfigVarType type;
   Token type;
-  int arraySize;
-  bool isArray;
+  MathExpression* arraySize; // If non null then its an array.
 };
 
 struct ConfigFunctionDef{
@@ -99,8 +100,10 @@ struct ConfigFunctionDef{
 // ============================================================================
 // Instantiation and manipulation
 
-// TODO: We want to remove this. Stupid to force the user to have to provide a switch when we can just figure out on our side. Still need to take care about the differences between config/mem and state.
+// TODO: We probably want to remove the need for the user to specify this. Stupid to force the user to have to provide a switch when we can just figure out on our side. Still need to take care about the differences between config/mem and state.
 enum ConfigFunctionType{
+  ConfigFunctionType_NIL,
+
   ConfigFunctionType_CONFIG,
   ConfigFunctionType_STATE,
   ConfigFunctionType_MEM
@@ -154,6 +157,7 @@ struct ConfigStuff{
 struct ConfigVariable{
   ConfigVarType type;
   String name;
+  int arraySize;
   bool usedOnLoopExpressions;
 };
 
@@ -176,7 +180,14 @@ struct ConfigFunction{
   bool debug;
 };
  
+struct ConfigLoopIterator{
+  Array<AddressGenForDef> loops;
+
+  Array<int> index;
+};
+
 // Can fail (parsed data is validated in here)
 // TODO: Instead of passing the content, it would be easier if the function was capable of reporting the errors without having to accesss the text, just by storing the relevant tokens and the upper parts of the code is responsible for reporting it. The language is not that complicated meaning that we are free to just define all the possible errors in a large enum and having a simple structure that stores all the relevant data. 
 ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDeclaration* declaration,String content,Arena* out);
 
+extern ConfigFunction ConfigFunction_Nil;

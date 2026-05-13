@@ -109,6 +109,7 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
   
 
   decl.name = info->name;
+  decl.type = FUDeclarationType_SINGLE;
 
   decl.info.infos = PushArray<MergePartition>(globalPermanent,1);
   decl.info.infos[0].inputDelays = Extract(info->inputs,out,&PortInfo::delay);
@@ -202,7 +203,7 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
     decl.supportedAddressGen.type = AddressGenType_MEM;
     decl.supportedAddressGen.loopsSupported = CountLoops(AddressGenMemExtraFormat);
   }
-
+  
   FUDeclaration* res = RegisterFU(decl);
 
   return res;
@@ -377,8 +378,9 @@ FUDeclaration* RegisterSubUnit(Accelerator* circuit,Array<ParameterDef> params,S
   
   String name = circuit->name;
   FUDeclaration decl = {};
+  decl.type = FUDeclarationType_COMPOSITE;
+
   FUDeclaration* res = RegisterFU(decl);
-  res->type = FUDeclarationType_COMPOSITE;
   res->name = name;
 
   // Default parameters given to all modules. Parameters need a proper revision, but need to handle parameters going up in the hierarchy

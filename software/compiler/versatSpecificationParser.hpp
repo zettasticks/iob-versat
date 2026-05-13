@@ -1,8 +1,10 @@
 #pragma once
 
+#include "declaration.hpp"
 #include "merge.hpp"
 
 #include "embeddedData.hpp"
+#include "userConfigs.hpp"
 
 struct ConfigFunctionDef;
 struct SpecExpression;
@@ -59,10 +61,6 @@ struct SpecExpression{
   
   // NOTE: If array access, expressions is an array of the expressions in order and var contains the array name.
   SpecType type;
-};
-
-enum MathType{
-
 };
 
 struct MathExpression{
@@ -196,15 +194,19 @@ enum ConfigAccessType{
 
 // TODO: Probably rename this.
 // ConfigIdentifier is parsed in reverse order than expected. Name appears first and access expressions appear after.
+// 
 struct ConfigIdentifier{
   ConfigAccessType type;
-
   ConfigIdentifier* next;
 
-  // TODO: Union
-  Token name;
+  union{
+    Token name;
+    Token functionName;
+  }; 
+
   Array<MathExpression*> arrayExpr;
-  Token functionName;
+  //MathExpression* arrayExpr;
+
   Array<MathExpression*> arguments;
 };
 
@@ -225,9 +227,11 @@ inline ConfigIdentifier* GetBeforeBase(ConfigIdentifier* top){
 // Map from name in hierarchical access (ex: a.b.c[0].d) to an entity. The VARIABLE part is that this mapping is also used inside the parser to map stuff to things like variables or to special names that are specific to a given part of the code.
 
 enum EntityType{
+  EntityType_NIL,
   EntityType_FU,
   EntityType_FU_ARRAY,
   EntityType_PARAM,
+  EntityType_GEN_VALUE,
   EntityType_MEM_PORT, // User can "represent" a memory port by doing something like mem.in0 (input port 0).
   EntityType_CONFIG_WIRE,
   EntityType_STATE_WIRE,
@@ -256,14 +260,9 @@ struct Entity{
   // TODO: Union
   //union {
   FUInstance* instance;
-
   bool isInput;
-
-  Wire* wire;
-
+  Wire wire;
   ConfigFunction* func;
-
-  //int arraySize;
   Array<int> arrayDims;
 
   union {
@@ -273,19 +272,35 @@ struct Entity{
   }; 
 
   VariableType varType;
+
+  int genVal;
+  int inputVarDims;
   //};
 };
 
-enum ScopeType{
-  ScopeType_CONFIG_FUNCTION,
-  ScopeType_FOR_LOOP
+
+struct Entity2{
+  EntityType type;
+
+  String name;
+  Direction dir;
+  SYM_Expr size;
+  FUInstance* inst;
+  ConfigFunction* func;
+  FUDeclaration* decl;
+  Array<int> arrayDims;
+  bool isInput;
 };
+
+extern Entity Entity_Nil;
+extern Entity2 Entity2_Nil;
 
 struct EnvScope{
   ArenaMark mark;
 
   //TrieMap<String,VariableType>* variableTypes;
   TrieMap<String,Entity>* variable;
+  TrieMap<String,Entity2>* variable2;
 };
 
 struct EntityAndLeftoverAccess{
@@ -293,10 +308,11 @@ struct EntityAndLeftoverAccess{
   MathExpression* leftover;
 };
 
-// Env is more of a parser related thing than it is an accelerator related thing.
-// Need to copy this to a better place and start using it in other parts of the code that should use it.
-// NOTE: This is more like a FUDeclaration builder than an environment, I think
-// NOTE: Make the easy changes first and then see what happens.
+struct EntityAccess{
+  Array<Entity2> entities;
+  MathExpression* leftover;
+};
+
 struct Env{
   Arena* scopeArena;
   Arena* miscArena;
@@ -331,19 +347,19 @@ struct Env{
 
   Entity* PushNewEntity(Token name);
   Entity* GetEntity(Token name);
+
+  Entity2 GetEntity2(Token name);
   
   // TODO: Need to remove this. We want tokens so that we can do proper error report.
   Entity* GetEntity(String name);
 
   void CheckIfEntityExists(Token name);
-  
-#if 0
-  LEFT HERE - We need to return a leftover array access otherwise outside code cannot properly handle 
-              the missing array.
-#endif
 
   EntityAndLeftoverAccess GetEntity(ConfigIdentifier* id,Arena* out);
   Entity* GetEntity(MathExpression* id,Arena* out);
+
+  // nocheckin
+  EntityAccess UnpackEntity(ConfigIdentifier* id,Arena* out);
 
   Array<int> ConvertRangeToStart(Array<Range<MathExpression*>> range,Arena* out);
   Array<int> ConvertRangeToEnd(Array<Range<MathExpression*>> range,Arena* out);
@@ -360,7 +376,9 @@ struct Env{
   void AddEquality(ConnectionDef def);
 
   void AddParam(Token name);
-  void AddVariable(Token name);
+  void AddVariable(Token name,MathExpression* arraySize = nullptr);
+
+  void SetGenVariable(Token name,int value);
 
   PortExpression InstantiateSpecExpression(SpecExpression* root);
 

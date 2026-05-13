@@ -171,11 +171,11 @@ SYM_Expr GetOrAllocateLiteral(int input);
 
 bool operator>(SYM_Expr left,SYM_Expr right);
 
-// For an expression of the form a*b*c*d*e, returns the members individually and the literal seperatly.
 struct SYM_MultTerms{
   Array<SYM_Expr> terms;
 };
 
+// For an expression of the form a*b*c*d*e, returns the members individually and the literal seperatly.
 struct SYM_MultPartition{
   SYM_Expr literal;
   SYM_MultTerms mults;

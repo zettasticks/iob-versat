@@ -547,7 +547,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
   // TODO: Better error reporting by allowing code to call the ReportError from the spec parser 
   bool anyError = false;
   for(AddressGenForDef loop : loops){
-    Opt<String> sameNameAsInput = Find(asString,loop.loopVariable);
+    Opt<String> sameNameAsInput = Find(asString,loop.loopVariable.originalData);
 
     if(sameNameAsInput.has_value()){
       //ReportErrorGoodTokenExists(content,loop.loopVariable,sameNameAsInput.value(),"Loop variable","Overshadows input variable");
@@ -585,7 +585,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
   for(int i = 0; i < loops.size; i++){
     AddressGenForDef loop = loops[i];
 
-    *loopVarBuilder->PushElem() = PushString(temp,loop.loopVariable);
+    *loopVarBuilder->PushElem() = PushString(temp,loop.loopVariable.originalData);
   }
   Array<String> loopVars = PushArray(out,loopVarBuilder);
 
@@ -606,7 +606,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
     if(start != SYM_Zero){
       loopEnd[i] = loopEnd[i] - start;
 
-      SYM_Expr loopVar = SYM_Var(loop.loopVariable);
+      SYM_Expr loopVar = SYM_Var(loop.loopVariable.originalData);
       symbolicExpr = SYM_Replace(symbolicExpr,loopVar,loopVar + start);
     }
 
@@ -633,7 +633,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
 
     AddressGenForDef loop = loops[i];
     
-    LoopLinearSum* sum = PushLoopLinearSumSimpleVar(loop.loopVariable,term,SYM_Zero,loopEnd[i],temp);
+    LoopLinearSum* sum = PushLoopLinearSumSimpleVar(loop.loopVariable.originalData,term,SYM_Zero,loopEnd[i],temp);
     expr = AddLoopLinearSum(sum,expr,temp);
   }
   

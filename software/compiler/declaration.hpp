@@ -24,6 +24,7 @@ inline DelayType operator|(DelayType a, DelayType b)
 {return static_cast<DelayType>(static_cast<int>(a) | static_cast<int>(b));}
 
 enum FUDeclarationType{
+  FUDeclarationType_NIL,
   FUDeclarationType_SINGLE,
   FUDeclarationType_COMPOSITE,
   FUDeclarationType_SPECIAL,
@@ -60,8 +61,6 @@ struct FUDeclaration{
   int numberDelays;
   Array<Parameter> parameters;
 
-  // TODO: Eventually remove external expression and external memory and only keep externalMemorySymbol
-  //Array<ExternalMemoryInterface> externalMemory;
   Array<ExternalMemorySymbolic> externalMemorySymbol;
   
   // Stores different accelerators depending on properties we want. Mostly in relation to merge, because we want to use baseCircuit when doing a merge operation.
@@ -149,8 +148,12 @@ struct FUDeclaration{
   }
 };
 
+extern FUDeclaration FUDeclaration_Nil;
+
 // Simple operations should also be stored here.
 namespace BasicDeclaration{
+  extern FUDeclaration* nil;
+
   extern FUDeclaration* variableBuffer;
   extern FUDeclaration* fixedBuffer;
   extern FUDeclaration* input;
@@ -161,6 +164,8 @@ namespace BasicDeclaration{
   extern FUDeclaration* stridedMerge;
   extern FUDeclaration* pipelineRegister;
 }
+
+bool IsNil(FUDeclaration* decl);
 
 FUDeclaration* RegisterFU(FUDeclaration declaration);
 FUDeclaration* GetTypeByName(String str);

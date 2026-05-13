@@ -186,7 +186,7 @@ struct CEmitter{
   void FunctionDeclOnlyBlock(String returnType,String functionName);
   
   void FunctionBlock(String returnType,String functionName);
-  void Argument(String type,String name);
+  void Argument(String type,String name,int arraySize = 0);
   
   // TODO: Var block + Var element + EndBlock
   void VarDeclare(String type,String name,String initialValue = {});

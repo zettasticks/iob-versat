@@ -53,6 +53,7 @@ enum TokenType : u16{
   TokenType_KEYWORD_CONFIG,
   TokenType_KEYWORD_STATE,
   TokenType_KEYWORD_MEM,
+  TokenType_KEYWORD_GEN,
   TokenType_KEYWORD_FOR,
   // } End keywords
 
