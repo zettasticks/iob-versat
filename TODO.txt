@@ -1,4 +1,16 @@
-Start putting stuff in here numbered with a [N] bracket so that we can reference everything into a single place.
+=============== TODO LIST ================
 
-[0] - Not properly handling the insertion of any instance named "out" or other special names that we might create in the future. 
+List of stuff to do but that we do not want to put multiple todos all over the codebase. Easier to just put a simple TODO-N and then put the 
 
+Inside the code put this following the format: "TODO-N" (ex: // TODO-0  ) . That way we can easily search for this using textual search and not having to worry about code searches getting in the way. 
+
+0 - Not properly handling the insertion of any instance named "out" or other special names that we might create in the future. 
+
+1 - As far as I'm aware we do not prevent units from having naming conflicts in regards to ports and user config functions. The "virtual" memory ports that we use to define 
+
+=============== TODO IDEAS ===============
+
+- There exists moments where I want to check a given portion of code but do not know which test runs that part.
+-- If we could create a macro that causes that portion to get checked, increment a counter and at the end of the program output that counter (if > 0) then we could just run all the tests in parallel and then parse the output inside the test.py script to then compile a list of tests that we know ran that portion of the code and we could even sorted them based on the count.
+-- Furthermore since we only need to run Versat to get this value, we can technically make this very fast.
+-- A proper implementation would store the filename and the line number so that we could have multiple counters at the same time. Furthermore the python side needs to properly parse the info and be able to accurately report this and sort it out.

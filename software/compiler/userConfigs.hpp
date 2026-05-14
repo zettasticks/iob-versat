@@ -15,39 +15,12 @@ struct ConfigIdentifier;
 // ============================================================================
 // Parsed structs only (not validated and no strings is saved)
 
-enum ConfigExpressionType{
-  ConfigExpressionType_IDENTIFIER,
-  ConfigExpressionType_NUMBER
-};
-
-struct ConfigExpression{
-  ConfigExpressionType type;
-
-  Token identifier;
-  Token access; // Only single access supported, do not see why would need more than one.
-
-  // TODO: Union
-  ConfigExpression* child;
-  int number;
-};
-
 // TODO: While this exists, we do not want to have different flow if possible. I think that it should be possible to describe the data in such a way that we do not have to make this distinction.
 enum UserConfigType{
   UserConfigType_NONE,
   UserConfigType_CONFIG,
   UserConfigType_MEM,
   UserConfigType_STATE
-};
-
-enum ConfigRHSType{
-  ConfigRHSType_SYMBOLIC_EXPR,
-  ConfigRHSType_FUNCTION_CALL,
-  ConfigRHSType_IDENTIFIER
-};
-
-struct FunctionInvocation{
-  String functionName;
-  Array<Token> arguments; // TODO: For now we do not allow any expression. Only simple assignments.
 };
 
 enum ConfigStatementType{
@@ -67,8 +40,11 @@ struct ConfigStatement{
   // Why have a ConfigIdentifier and a SpecExpression?
 
   // TODO: Union
+  // Statement
   ConfigIdentifier* lhs;
   MathExpression* rhs;
+
+  // Loops
   AddressGenForDef def;
   Array<ConfigStatement*> childs; // Only for loops contains these right now.
 };
@@ -144,8 +120,7 @@ struct ConfigStuff{
   // TODO: This lhs is only for access. Need to join stuff with assign and access if we eventually cleanup the code.
   HIER_Name lhs;
 
-  String accessVariableName;
-  String nameOfLeftEntity;
+  String pointerVarName;
 
   union{
     ConfigAssignment assign;
@@ -180,12 +155,6 @@ struct ConfigFunction{
   bool debug;
 };
  
-struct ConfigLoopIterator{
-  Array<AddressGenForDef> loops;
-
-  Array<int> index;
-};
-
 // Can fail (parsed data is validated in here)
 // TODO: Instead of passing the content, it would be easier if the function was capable of reporting the errors without having to accesss the text, just by storing the relevant tokens and the upper parts of the code is responsible for reporting it. The language is not that complicated meaning that we are free to just define all the possible errors in a large enum and having a simple structure that stores all the relevant data. 
 ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDeclaration* declaration,String content,Arena* out);

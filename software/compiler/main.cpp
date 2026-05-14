@@ -21,7 +21,6 @@
 #include "addressGen.hpp"
 #include "hierName.hpp"
 
-// TODO: See [0]
 #include <filesystem>
 namespace fs = std::filesystem;
 

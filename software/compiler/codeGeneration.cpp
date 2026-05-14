@@ -3374,7 +3374,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
               } break;
               case AddressGenType_READ: {
                 String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(fullLhs));
-                EmitReadStatements(c,access,lhs,assign.accessVariableName);
+                EmitReadStatements(c,access,lhs,assign.pointerVarName);
               } break;
             }
 

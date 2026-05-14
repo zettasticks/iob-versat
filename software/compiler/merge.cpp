@@ -2953,7 +2953,6 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
       reconToOrder[i]->Insert(order.instances[ii],order.order[ii]);
     }
   }
-
   
   FUDeclaration* decl = RegisterFU(declInst);
   decl->baseCircuit = baseCopy.first;

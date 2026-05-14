@@ -19,10 +19,9 @@
 // Constants
 
 // static readOnly SpecExpression SPEC_LITERAL_0 = {.val = 0,.type = SpecType_LITERAL};
-static readOnly MathExpression MATH_LITERAL_0 = {.val = 0,.type = SpecType_LITERAL};
+static readOnly MathExpression MATH_LITERAL_0 = {.val = 0,.type = MathType_LITERAL};
 
-readOnly Entity Entity_Nil = {.func = nullptr};
-readOnly Entity2 Entity2_Nil = {.inst = &FUInstance_Nil,.func = &ConfigFunction_Nil,.decl = &FUDeclaration_Nil};
+readOnly Entity Entity2_Nil = {.inst = &FUInstance_NilInst,.func = &ConfigFunction_Nil,.decl = &FUDeclaration_Nil};
 
 // NOTE: Spec expression is more associated to the equality operator when defining the graph
 //       Math expression is everything else
@@ -107,11 +106,11 @@ int GetRangeCount(Env* env,Range<MathExpression*> range){
 
 // Connection type and number of connections
 Pair<PortRangeType,int> GetConnectionInfo(Env* env,Var var){
-  Entity* ent = env->GetEntity(var.name);
+  Entity ent = env->GetEntity(var.name);
 
   int expectedRanges = 0;
-  if(ent->type == EntityType_FU_ARRAY){
-    expectedRanges = ent->arrayDims.size; // arraySize
+  if(ent.type == EntityType_FU_ARRAY){
+    expectedRanges = ent.dims.size; // arraySize
   }
 
   if(var.index.size != expectedRanges){
@@ -208,10 +207,11 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
   }
 
   if(addOutputInstance){
-    Entity* outEnt = env->PushReservedEntity("out");
-    outEnt->type = EntityType_FU;
-    outEnt->instance = CreateOrGetOutput(circuit);
-    env->table->Insert("out",outEnt->instance);
+    FUInstance* outInst = CreateOrGetOutput(circuit);
+
+    Entity outEnt2 = MakeEntity(outInst);
+    env->PushEntity("out",outEnt2);
+    env->table->Insert("out",outInst);
   }
 
   auto paramList = PushList<ParameterDef>(temp);
@@ -333,15 +333,6 @@ FUDeclaration* InstantiateSpecifications(String content,ConstructDef def){
 // ======================================
 // Hierarchical access
 
-bool IsEntitySubType(EntityType type){
-  bool res = false;
-
-  res |= (type == EntityType_MEM_PORT);
-  res |= (type == EntityType_CONFIG_WIRE);
-  
-  return res;
-}
-
 Env* StartEnvironment(Arena* freeUse,Arena* freeUse2){
   Env* env = PushStruct<Env>(freeUse);
   env->scopeArena = freeUse;
@@ -382,23 +373,18 @@ void Env::PopScope(){
 }
 
 FUInstance* Env::CreateInstance(FUDeclaration* type,String name){
-  // TODO: [0] 
+  // TODO-0 
 
   FUInstance* inst = CreateFUInstance(circuit,type,name);
 
-  Token tok = {};
-  tok.identifier = inst->name;
-  tok.type = TokenType_IDENTIFIER;
-  Entity* ent = PushNewEntity(tok);
-  ent->type = EntityType_FU;
-  ent->instance = inst;
+  Entity ent2 = MakeEntity(inst);
+  PushEntity(inst->name,ent2);
 
   return inst;
 }
 
-
 FUInstance* Env::CreateFUInstanceWithDeclaration(FUDeclaration* type,String name,InstanceDeclaration decl){
-  // TODO: [0] 
+  // TODO-0 
 
   FUInstance* inst = CreateFUInstance(circuit,type,name);
   
@@ -418,12 +404,10 @@ FUInstance* Env::GetFUInstance(Token name,int arrayIndexIfArray){
   TEMP_REGION(temp,nullptr);
 
   FUInstance* res = nullptr;
-  Entity* ent = GetEntity(name);
-
-  // TODO: Error reporting if entity does not exist.
+  Entity ent = GetEntity(name);
 
   String asStr = name.identifier;
-  if(ent->type == EntityType_FU_ARRAY){
+  if(ent.type == EntityType_FU_ARRAY){
     asStr = GetActualArrayName(asStr,arrayIndexIfArray,temp);
   }
 
@@ -435,15 +419,10 @@ FUInstance* Env::GetFUInstance(Token name,Array<int> arrayIndexIfArray){
   TEMP_REGION(temp,nullptr);
 
   FUInstance* res = nullptr;
-  Entity* ent = GetEntity(name);
-  if(!ent){
-    ReportError(name,"Entity does not exist");
-    return nullptr;
-  }
+  Entity ent = GetEntity(name);
 
-  bool isArray = (ent->type == EntityType_FU_ARRAY);
+  bool isArray = (ent.type == EntityType_FU_ARRAY);
 
-  // TODO: Error reporting if entity does not exist.
   String asStr = name.identifier;
   if(isArray){
     asStr = GetActualArrayName(asStr,arrayIndexIfArray,temp);
@@ -464,10 +443,10 @@ FUInstance* Env::GetFUInstance(Var var){
   TEMP_REGION(temp,nullptr);
   
   FUInstance* res = nullptr;
-  Entity* ent = GetEntity(var.name);
+  Entity ent = GetEntity(var.name);
     
   String name = var.name.identifier;
-  if(ent->type == EntityType_FU_ARRAY){
+  if(ent.type == EntityType_FU_ARRAY){
     Array<int> index = ConvertRangeToIndex(var.index,temp);
     name = GetActualArrayName(name,index,temp);
   }
@@ -476,43 +455,9 @@ FUInstance* Env::GetFUInstance(Var var){
   return res;
 }
 
-Entity* Env::PushReservedEntity(String name){
-  auto res = this->scopes[this->currentScope]->variable->GetOrAllocate(name);
-
-  Assert(!res.alreadyExisted);
-
-  return res.data;
-}
-
-Entity* Env::PushNewEntity(Token name){
-  // MARK: We do not want to hardcode this.
-  //       Need to add the concept of reserved name and use it to add out and any special
-  //       entity bypassing any logic that checks names.
-  if(name.identifier == "out"){
-    ReportError(name,"Cannot have a variable with the reserved name out");
-  }
-
-  auto res = this->scopes[this->currentScope]->variable->GetOrAllocate(name.identifier);
-  
-  if(res.alreadyExisted){
-    ReportError(name,"Entity already exists. Rename entity to resolve conflict");
-  }
-
-  return res.data;
-}
-
-void Env::CheckIfEntityExists(Token name){
-  Entity* ent = GetEntity(name);
-
-  if(!ent){
-    ReportError(name,"Entity does not exist");
-    DEBUG_BREAK();
-  }
-}
-
-Entity2 Env::GetEntity2(Token name){
+Entity Env::GetEntity(Token name){
   for(int i = this->currentScope; i >= 0; i--){
-    Entity2* ent = this->scopes[i]->variable2->Get(name.identifier);
+    Entity* ent = this->scopes[i]->variable->Get(name.identifier);
 
     if(ent){
       return *ent;
@@ -524,189 +469,270 @@ Entity2 Env::GetEntity2(Token name){
   return Entity2_Nil;
 }
 
-Entity* Env::GetEntity(Token name){
-  for(int i = this->currentScope; i >= 0; i--){
-    Entity* ent = this->scopes[i]->variable->Get(name.identifier);
+void Env::PushEntity(Token name,Entity ent){
+  auto res = this->scopes[this->currentScope]->variable->GetOrAllocate(name.identifier);
+  if(res.alreadyExisted){
+    ReportError(name,"An entity with this name already exists");
+  }
+  
+  *res.data = ent;
+}
 
-    if(ent){
-      return ent;
+void Env::PushEntity(String name,Entity ent){
+  auto res = this->scopes[this->currentScope]->variable->GetOrAllocate(name);
+  
+  if(res.alreadyExisted){
+    ENTER_DEBUG();
+    ReportError({},"An entity with this name already exists. This should be a programmer error since we should have already verified that this is not possible");
+  }
+  
+  *res.data = ent;
+}
+
+Entity Env::GetEntityFromAccess(Entity ent,Token accessName){
+  Entity res = Entity2_Nil;
+
+  String access = accessName.identifier;
+
+  bool found = false;
+  FUDeclaration* decl = ent.decl;
+
+  Direction dir = Direction_NONE;
+  int port = 0;
+  if(access == "out0"){
+    dir = Direction_OUTPUT;
+  }
+  if(access == "out1"){
+    dir = Direction_OUTPUT;
+    port = 1;
+  }
+  if(access == "in0"){
+    dir = Direction_INPUT;
+  }
+  if(access == "in1"){
+    dir = Direction_INPUT;
+    port = 1;
+  }
+
+  if(dir != Direction_NONE){
+    res.type = EntityType_MEM_PORT;
+    res.dir = dir;
+    res.port = port;
+    found = true;
+  } 
+  
+  for(Wire& w : decl->configs){
+    if(w.name == access){
+      res.name = w.name;
+      res.type = EntityType_CONFIG_WIRE;
+
+      if(found){
+        // TODO-1
+        ReportError(accessName,"The identifier has a naming conflict");
+      }
+      found = true;
     }
   }
 
-  return nullptr;
-}
+  for(Wire& w : decl->states){
+    if(w.name == access){
+      res.name = w.name;
+      res.type = EntityType_STATE_WIRE;
 
-Entity* Env::GetEntity(String name){
-  for(int i = this->currentScope; i >= 0; i--){
-    Entity* ent = this->scopes[i]->variable->Get(name);
-
-    if(ent){
-      return ent;
+      if(found){
+        // TODO-1
+        ReportError(accessName,"The identifier has a naming conflict");
+      }
+      found = true;
     }
   }
 
-  return nullptr;
+  Token funcName = accessName;
+
+  for(MergePartition part : decl->info.infos){
+    for(ConfigFunction* func : part.userFunctions){
+      if(func->individualName == funcName.identifier){
+        res.func = func;
+        res.type = EntityType_FUNCTION;
+            
+        if(found){
+          // TODO-1
+          ReportError(funcName,"Multiple functions with same name detected\n");
+        }
+        found = true;
+      }
+    }
+  }
+
+  return res;
 }
 
-EntityAndLeftoverAccess Env::GetEntity(ConfigIdentifier* id,Arena* out){
+Array<Entity> Env::GetEntity(ConfigIdentifier* id,Arena* out){
   TEMP_REGION(temp,out);
 
-  ConfigIdentifier* ptr = id;
-  Assert(ptr->type == ConfigAccessType_BASE || ptr->type == ConfigAccessType_ARRAY);
+  ArenaList<Entity>* accessList = PushList<Entity>(temp);
 
-  Entity* ent = GetEntity(ptr->name);
-  
-  MathExpression* leftover = nullptr;
+  Entity current = Entity2_Nil;
 
-  for(; ent && ptr; ptr = ptr->next){
-    Entity* nextEnt = nullptr;
+  // MARK
+  DEBUG_BREAK();
 
-    switch(ptr->type){
-      case ConfigAccessType_BASE:{
-        // Nothing
-      } break;
-      case ConfigAccessType_ARRAY:{
+  for(ConfigIdentifier* ptr = id; ptr; ptr = ptr->next){
+    Entity next = {};
+
+    FULL_SWITCH(ptr->type){
+    case ConfigIdentifierType_BASE:{
+      next = GetEntity(id->name);
+    } break;
+    case ConfigIdentifierType_ARRAY:{
+      MathExpression* expr = ptr->arrayExpr2;
+
+      bool found = false;
+      if(!found && current.type == EntityType_FU_ARRAY){
+        found = true;
         
-        // NOTE: THIS IS STUPID.
-        //       The entire reason we made this in the first place is because we add a stupid idea that 
-        //       entities returned must be pointers for some bizarre reason.
+        int index = CalculateConstantExpression(expr);
+        
+        if(index < 0 || index >= current.dims[0]){
+          ReportError({},"Outside array bounds");
+        }
 
-        //       If we stop with this stupidity we can realize that entities can just be data and therefore 
-        //       we can just "peel" the expression array one by one (which means that we also want to parse
-        //       the array accesses one by one).
+        String arrayName = PushString(out,"%.*s_%d",UN(current.name),index);
+        
+        Array<int> newDims = Offset(current.dims,1);
 
-
-        if(ent->type == EntityType_FU_ARRAY){
-          Array<MathExpression*> arrayExpr = id->arrayExpr;
-
-          if(arrayExpr.size == ent->arrayDims.size + 1){
-            leftover = arrayExpr[arrayExpr.size - 1];
-            arrayExpr.size -= 1;
-          }
-
-          Array<int> arrayIndex = CalculateArraySize(arrayExpr);
-
-          String asStr = ent->arrayBaseName;
-          if(ent->type == EntityType_FU_ARRAY){
-            asStr = GetActualArrayName(asStr,arrayIndex,temp);
-          }
-
-          FUInstance* res = table->GetOrElse(asStr,nullptr);
-          
-          Entity* result = PushStruct<Entity>(out);
-          result->instance = res;
-          result->type = EntityType_FU;
-          nextEnt = result;
+        if(newDims.size > 0){
+          next.type = EntityType_FU_ARRAY;
+          next.name = arrayName;
+          next.dims = newDims;
         } else {
-          nextEnt = ent;
-        }
-      } break;
-      case ConfigAccessType_FUNC_CALL:{
-        Token funcName = ptr->functionName;
-        FUDeclaration* decl = ent->instance->declaration;
+          FUInstance** possibleInst = table->Get(arrayName);
 
-        for(MergePartition part : decl->info.infos){
-          for(ConfigFunction* func : part.userFunctions){
-            if(func->individualName == funcName.identifier){
-              Entity* userFunc = PushStruct<Entity>(out);
-
-              userFunc->func = func;
-              userFunc->type = EntityType_CONFIG_FUNCTION;
-
-              if(nextEnt) ReportError({},"Name collision");
-              nextEnt = userFunc;
-            }
+          if(!possibleInst){
+            ReportError({},"Inst does not exist");
+          } else {
+            next = MakeEntity(*possibleInst);
           }
         }
-      } break;
-      case ConfigAccessType_ACCESS:{
-        String access = ptr->name.identifier;
-
-        SWITCH(ent->type){
-        case EntityType_FU:{
-          Direction dir = Direction_NONE;
-          int port = 0;
-          if(access == "out0"){
-            dir = Direction_OUTPUT;
-          }
-          if(access == "out1"){
-            dir = Direction_OUTPUT;
-            port = 1;
-          }
-          if(access == "in0"){
-            dir = Direction_INPUT;
-          }
-          if(access == "in1"){
-            dir = Direction_INPUT;
-            port = 1;
-          }
-          
-          if(dir != Direction_NONE){
-            Entity* virtualWire = PushStruct<Entity>(out);
-            virtualWire->type = EntityType_MEM_PORT;
-            virtualWire->dir = dir;
-            virtualWire->port = port;
-            
-            if(nextEnt) ReportError({},"Name collision");
-            nextEnt = virtualWire;
-          } 
-          
-          FUDeclaration* decl = ent->instance->declaration;
-            
-          // TODO: We need to check if we have the same name for stuff. If
-          //       wire has the same name as a userConfig function then we have a problem and this
-          //       code will not act correctly. Furthermore, this check needs to be done elsewhere.
-          //       By the time we reach this point we are probably too far. Otherwise we need to 
-          for(Wire& w : decl->configs){
-            if(w.name == access){
-              Entity* wire = PushStruct<Entity>(out);
-              wire->wire = w;
-              wire->type = EntityType_CONFIG_WIRE;
-              
-              if(nextEnt) ReportError({},"Name collision");
-              nextEnt = wire;
-              break;
-            }
-          }
-
-          for(Wire& w : decl->states){
-            if(w.name == access){
-              Entity* wire = PushStruct<Entity>(out);
-              wire->wire = w;
-              wire->type = EntityType_STATE_WIRE;
-              
-              if(nextEnt) ReportError({},"Name collision");
-              nextEnt = wire;
-              break;
-            }
-          }
-        } break;
-
-        case EntityType_CONFIG_FUNCTION:
-        case EntityType_FU_ARRAY:
-        case EntityType_MEM_PORT:
-        case EntityType_PARAM:
-        case EntityType_CONFIG_WIRE:
-        case EntityType_STATE_WIRE:
-        case EntityType_VARIABLE_INPUT:
-        case EntityType_VARIABLE_SPECIAL:{
-          ReportError(ptr->name,"Cannot have access expression for entity of this type");
-        } break;
       }
-      } break;
+
+      if(!found && current.type == EntityType_VARIABLE_INPUT){
+        if(!found && current.flags == EntityVarFlags_ADDRESS){
+          found = true;
+
+          next.type = EntityType_ACCESS_EXPR;
+          next.accessExpr = expr;
+        }
+
+        if(!found){
+          NOT_IMPLEMENTED("Probably gonna need to generate the 'variable' name");
+          DEBUG_BREAK();
+        }
+      }
+
+      if(!found){
+        found = true;
+        
+        next.type = EntityType_ACCESS_EXPR;
+        next.accessExpr = expr;
+      }
+    } break;
+    case ConfigIdentifierType_ACCESS:{
+      Token accessName = ptr->name;
+      String access = accessName.identifier;
+
+      if(current.type != EntityType_FU){
+        ReportError(accessName,"Trying to access entity that does not support member access");
+      }
+
+      if(current.type == EntityType_FU){
+        next = GetEntityFromAccess(current,accessName);
+
+        if(Nil(next)){
+          ReportError(accessName,"Not found");
+        }
+      }
+    } break;
+    case ConfigIdentifierType_FUNC_CALL:{
+      Token funcName = ptr->functionName;
+      FUDeclaration* decl = current.decl;
+
+      bool found = false;
+      for(MergePartition part : decl->info.infos){
+        for(ConfigFunction* func : part.userFunctions){
+          if(func->individualName == funcName.identifier){
+            next.func = func;
+            next.type = EntityType_FUNCTION;
+            
+            if(found){
+              // TODO-1
+              ReportError(funcName,"Multiple functions with same name detected\n");
+            }
+            found = true;
+          }
+        }
+      }
+    } break;
     }
 
-    if(nextEnt){
-      nextEnt->parent = ent;
-      ent = nextEnt;
-    }
+    *accessList->PushElem() = next;
+    current = next;
   }
 
-  EntityAndLeftoverAccess result = {};
-  result.ent = ent;
-  result.leftover = leftover;
+  Array<Entity> accesses = PushArray<Entity>(out,accessList);
+  return accesses;
+}
 
-  return result;
+Array<Entity> Env::GetEntity(MathExpression* spec,Arena* out){
+  TEMP_REGION(temp,out);
+
+  bool anyIllegalType = false;
+  ArenaList<Entity>* accessList = PushList<Entity>(temp);
+
+  auto Recurse = [this,&anyIllegalType,accessList](auto Recurse,MathExpression* top) -> Entity{
+    Entity ent = Entity2_Nil;
+    
+    FULL_SWITCH(top->type){
+    case MathType_NAME: {
+      ent = GetEntity(top->name);
+    } break;
+    case MathType_SINGLE_ACCESS: {
+      Entity child = Recurse(Recurse,top->expressions[0]);
+      ent = GetEntityFromAccess(child,top->name);
+    } break;
+    
+    // We only care about the type of entity that makes the array. We already know that the access is an
+    // expression and we do not care about it.
+    case MathType_ARRAY_ACCESS: {
+      ent = GetEntity(top->name);
+    } break;
+
+    case MathType_OPERATION: {
+      anyIllegalType = true;
+    } break;
+    case MathType_LITERAL: {
+      anyIllegalType = true;
+    } break;
+    case MathType_FUNCTION_CALL:{
+      anyIllegalType = true;
+    } break;
+  }
+
+    if(!Nil(ent)){
+      *accessList->PushElem() = ent;
+    }    
+
+    return ent;
+  };
+ 
+  Recurse(Recurse,spec);
+
+  if(anyIllegalType){
+    return {};
+  }
+
+  Array<Entity> accesses = PushArray<Entity>(out,accessList);
+  return accesses;
 }
 
 Array<int> Env::CalculateArraySize(Array<MathExpression*> exprs){
@@ -738,23 +764,24 @@ int Env::CalculateConstantExpression(MathExpression* top){
   return eval.result;
 }
 
-Entity* Env::GetEntity(MathExpression* id,Arena* out){
+#if 0
+Array<Entity2> Env::GetEntity(MathExpression* id,Arena* out){
   TEMP_REGION(temp,out);
 
-  Entity* ent = nullptr;
+  Entity2 ent = Entity2_Nil;
 
   if(id->type == SpecType_NAME){
-    ent = GetEntity(id->name);
+    ent = GetEntity2(id->name);
   }
   if(id->type == SpecType_ARRAY_ACCESS){
     NOT_IMPLEMENTED();
   }
   if(id->type == SpecType_SINGLE_ACCESS){
-    ent = GetEntity(id->name);
+    ent = GetEntity2(id->name);
     
     MathExpression* accessExpr = id->expressions[0];
     Assert(accessExpr->type == SpecType_NAME);
-    
+
     String access = accessExpr->name.identifier;
 
     Direction dir = Direction_NONE;
@@ -774,6 +801,7 @@ Entity* Env::GetEntity(MathExpression* id,Arena* out){
       port = 1;
     }
 
+#if 0
     Entity* nextEnt = nullptr;
     if(dir != Direction_NONE){
       Entity* virtualWire = PushStruct<Entity>(out);
@@ -833,13 +861,14 @@ Entity* Env::GetEntity(MathExpression* id,Arena* out){
       nextEnt->parent = ent;
       ent = nextEnt;
     }
+#endif
   }
 
   return ent;
 }
+#endif
 
 EntityAccess Env::UnpackEntity(ConfigIdentifier* id,Arena* out){
-  // MARK
   return {};
 #if 0
   TEMP_REGION(temp,out);
@@ -1038,16 +1067,16 @@ Array<int> Env::ConvertRangeToIndex(Array<Range<MathExpression*>> range,Arena* o
 void Env::AddInput(VarDeclaration var){
   TEMP_REGION(temp,nullptr);
 
-  Entity* ent = PushNewEntity(var.name);
+  Entity ent = Entity2_Nil;
 
   if(var.arrayDims.size){
-    ent->type = EntityType_FU_ARRAY;
-    ent->arrayBaseName = var.name.identifier;
-    ent->arrayDims = CalculateArraySize(var.arrayDims);
+    ent.type = EntityType_FU_ARRAY;
+    ent.name = var.name.identifier;
+    ent.dims = CalculateArraySize(var.arrayDims);
 
-    auto zeroArray = PushArray<int>(temp,ent->arrayDims.size);
+    auto zeroArray = PushArray<int>(temp,ent.dims.size);
 
-    for(auto iter = StartIteration(ent->arrayDims,zeroArray,temp); iter->IsValid(); iter->Advance()){
+    for(auto iter = StartIteration(ent.dims,zeroArray,temp); iter->IsValid(); iter->Advance()){
       Array<int> index = iter->Current();
 
       String actualName = GetActualArrayName(var.name.identifier,index,temp);
@@ -1058,11 +1087,13 @@ void Env::AddInput(VarDeclaration var){
     FUInstance* input = CreateOrGetInput(circuit,var.name.identifier,insertedInputs++);
     table->Insert(input->name,input);
     
-    ent->type = EntityType_FU;
-    ent->instance = input;
+    ent.type = EntityType_FU;
+    ent.inst = input;
   }
 
-  ent->isInput = true;
+  ent.isInput = true;
+
+  PushEntity(ent.name,ent);
 }
 
 void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
@@ -1074,16 +1105,16 @@ void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
     ReportError(decl.typeName,"Typename does not exist");
   }
 
-  Entity* ent = PushNewEntity(var.name);
+  Entity ent = Entity2_Nil;
 
   if(var.arrayDims.size){
-    ent->type = EntityType_FU_ARRAY;
-    ent->arrayBaseName = var.name.identifier;
-    ent->arrayDims = CalculateArraySize(var.arrayDims);
+    ent.type = EntityType_FU_ARRAY;
+    ent.name = var.name.identifier;
+    ent.dims = CalculateArraySize(var.arrayDims);
 
-    auto zeroArray = PushArray<int>(temp,ent->arrayDims.size);
+    auto zeroArray = PushArray<int>(temp,ent.dims.size);
 
-    for(auto iter = StartIteration(ent->arrayDims,zeroArray,temp); iter->IsValid(); iter->Advance()){
+    for(auto iter = StartIteration(ent.dims,zeroArray,temp); iter->IsValid(); iter->Advance()){
       Array<int> index = iter->Current();
 
       String actualName = GetActualArrayName(var.name.identifier,index,temp);
@@ -1094,8 +1125,7 @@ void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
     FUInstance* inst = CreateFUInstanceWithDeclaration(type,var.name.identifier,decl);
     table->Insert(inst->name,inst);
 
-    ent->type = EntityType_FU;
-    ent->instance = inst;
+    ent = MakeEntity(inst);
   }
 
   for(auto iter = StartIteration(this,ent,temp); iter.IsValid(); iter.Advance()){
@@ -1127,6 +1157,8 @@ void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
     } break;
     }
   }
+
+  PushEntity(ent.name,ent);
 }
 
 void Env::AddConnection(ConnectionDef decl){
@@ -1189,9 +1221,9 @@ void Env::AddEquality(ConnectionDef decl){
     Entity* ent = res.data;
 
     ent->type = EntityType_FU_ARRAY;
-    ent->arrayBaseName = outVar.name.identifier;
+    ent->name = outVar.name.identifier;
 
-    ent->arrayDims[0] = MAX(ent->arrayDims[0],CalculateConstantExpression(outVar.index[0].high));
+    ent->dims[0] = MAX(ent->dims[0],CalculateConstantExpression(outVar.index[0].high));
   }
 
   String name = outVar.name.identifier;
@@ -1204,57 +1236,41 @@ void Env::AddEquality(ConnectionDef decl){
   String uniqueName = GetUniqueName(name,globalPermanent,table);
   inst->name = PushString(globalPermanent,uniqueName);
 
-  Token tok = {};
-  tok.type = TokenType_IDENTIFIER;
-  tok.identifier = inst->name;
-  Entity* ent = PushNewEntity(tok);
-  ent->type = EntityType_FU;
-  ent->instance = inst;
-
+  Entity ent = MakeEntity(inst);
+  PushEntity(inst->name,ent);
   table->Insert(inst->name,inst);
 }
 
 void Env::AddParam(Token name){
-  Entity* ent = GetEntity(name);
-
-  if(ent){
-    ReportError(name,"This name is already being used");
-  }
-
-  Entity* entity = PushNewEntity(name);
-
-  entity->type = EntityType_PARAM;
-  entity->paramName = name.identifier;
+  Entity ent = Entity2_Nil;
+  ent.type = EntityType_PARAM;
+  ent.name = name.identifier;
+  PushEntity(name,ent);
 }
 
-void Env::AddVariable(Token name,MathExpression* arraySize){
-  Entity* ent = GetEntity(name);
+void Env::AddVariable(Token name,MathExpression* arraySize,EntityVarFlags flags){
+  Entity ent = Entity2_Nil;
+  ent.type = EntityType_VARIABLE_INPUT;
+  ent.name = name.identifier;
+  ent.flags = flags;
 
-  if(ent){
-    ReportError(name,"This name is already being used");
-  }
-
-  Entity* entity = PushNewEntity(name);
-
-  entity->type = EntityType_VARIABLE_INPUT;
-  entity->varName = name.identifier;
-  
   if(arraySize){
-    entity->inputVarDims = CalculateConstantExpression(arraySize);
+    ent.arrayDims = CalculateConstantExpression(arraySize);
   }
+
+  PushEntity(name,ent);
 }
 
 void Env::SetGenVariable(Token name,int value){
   EnvScope* current = scopes[currentScope];
 
-  Entity ent = {};
+  Entity ent = Entity2_Nil;
   ent.type = EntityType_GEN_VALUE;
   ent.genVal = value;
 
-  current->variable->Insert(name.originalData,ent);
+  PushEntity(name,ent);
 }
 
-#if 1
 void FUInstanceIterator::Advance(){
   if(iter){
     iter->Advance();
@@ -1274,12 +1290,10 @@ bool FUInstanceIterator::IsValid(){
 FUInstance* FUInstanceIterator::Current(){
   Assert(IsValid());
 
-  FUInstance* inst = ent->instance;
-  if(!iter){
-    return ent->instance;
-  } else {
+  FUInstance* inst = ent.inst;
+  if(iter){
     TEMP_REGION(temp,nullptr);
-    String baseName = ent->arrayBaseName;
+    String baseName = ent.name;
     String actualName = GetActualArrayName(baseName,iter->Current(),temp);
 
     inst = GetUnit(this->env->circuit,actualName);
@@ -1288,23 +1302,22 @@ FUInstance* FUInstanceIterator::Current(){
   return inst;
 }
 
-FUInstanceIterator StartIteration(Env* env,Entity* ent,Arena* out){
+FUInstanceIterator StartIteration(Env* env,Entity ent,Arena* out){
   TEMP_REGION(temp,out);
 
   FUInstanceIterator iter = {};
   iter.env = env;
   iter.ent = ent;
 
-  auto zeroArray = PushArray<int>(temp,ent->arrayDims.size);
-  if(ent->type == EntityType_FU_ARRAY){
-    iter.iter = StartIteration(ent->arrayDims,zeroArray,out);
+  auto zeroArray = PushArray<int>(temp,ent.dims.size);
+  if(ent.type == EntityType_FU_ARRAY){
+    iter.iter = StartIteration(ent.dims,zeroArray,out);
   } else {
     iter.iter = nullptr;
   }
 
   return iter;
 }
-#endif
 
 PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
   TEMP_REGION(temp,nullptr);
@@ -1453,7 +1466,7 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
     SYM_Expr res = SYM_Zero;
 
     switch(top->type){
-    case SpecType_OPERATION:{
+    case MathType_OPERATION:{
       if(top->expressions.size == 1){
         if(top->op[0] == '-' || top->op[0] == '~'){
           SYM_Expr left  = Recurse(Recurse,top->expressions[0]);
@@ -1479,42 +1492,39 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
         }
       }
     } break;
-    case SpecType_NAME:{
-      Entity* ent = GetEntity(top->name);
+    case MathType_NAME:{
+      Entity ent = GetEntity(top->name);
 
       bool found = false;
 
-      if(!found && ent && ent->type == EntityType_GEN_VALUE){
-        res = SYM_Lit(ent->genVal);
+      if(!found && ent.type == EntityType_GEN_VALUE){
+        res = SYM_Lit(ent.genVal);
       }
 
       if(!found){
-        CheckIfEntityExists(top->name);
         res = SYM_Var(top->name.identifier);
       }
     } break;
-    case SpecType_VAR:{
-      CheckIfEntityExists(top->name);
-      res = SYM_Var(top->name.identifier);
-    } break;
-    case SpecType_LITERAL:{
+    case MathType_LITERAL:{
       res = SYM_Lit(top->val);
     } break;
-    case SpecType_ARRAY_ACCESS: {
-      Entity* ent = GetEntity(top->name);
+    case MathType_ARRAY_ACCESS: {
+      Entity ent = GetEntity(top->name);
 
-      if(ent->type == EntityType_VARIABLE_INPUT){
+      if(ent.type == EntityType_VARIABLE_INPUT){
+        // TODO: Technically we should recurse but I do not want to convert from Sym_expr back to an integer 
+        //       when we can just access this directly.
         MathExpression* index = top->expressions[0];
-        String indexName = index->name.identifier;
-        Entity* indexVal = GetEntity(indexName);
+        Token indexName = index->name;
+        Entity indexVal = GetEntity(indexName);
 
-        String fullName = PushString(temp,"%.*s[%d]",UN(top->name.originalData),indexVal->genVal);
+        String fullName = PushString(temp,"%.*s[%d]",UN(top->name.originalData),indexVal.genVal);
         res = SYM_Var(fullName);
       }
     } break;
 
-    case SpecType_SINGLE_ACCESS:
-    case SpecType_FUNCTION_CALL: Assert(false);
+    case MathType_SINGLE_ACCESS:
+    case MathType_FUNCTION_CALL: Assert(false);
     }
 
     return res;
@@ -1528,7 +1538,7 @@ MathExpression* ParseNumberOnly(Parser* parser,Arena* out){
   MathExpression* res = PushStruct<MathExpression>(out);
 
   res->val = parser->ExpectNext(TokenType_NUMBER).number;
-  res->type = SpecType_LITERAL;
+  res->type = MathType_LITERAL;
 
   return res;
 }
@@ -1825,7 +1835,7 @@ MathExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
     }
 
     if(parsed){
-      parsed->type = SpecType_OPERATION;
+      parsed->type = MathType_OPERATION;
     }
 
     if(parsed && !topUnary){
@@ -1856,7 +1866,7 @@ MathExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
     Token number = parser->ExpectNext(TokenType_NUMBER);
     res = PushStruct<MathExpression>(out);
 
-    res->type = SpecType_LITERAL;
+    res->type = MathType_LITERAL;
     res->val = number.number;
   } else if(atom.type == TokenType_IDENTIFIER){
     TEMP_REGION(temp,out);
@@ -1865,7 +1875,7 @@ MathExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
 
     res = PushStruct<MathExpression>(out);
     res->name = name;
-    res->type = SpecType_NAME;
+    res->type = MathType_NAME;
 
     if(parser->IfPeekToken('[')){
       auto accesses = PushList<MathExpression*>(temp);       
@@ -1879,7 +1889,7 @@ MathExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
       }
 
       res->expressions = PushArray(out,accesses);
-      res->type = SpecType_ARRAY_ACCESS;
+      res->type = MathType_ARRAY_ACCESS;
     }
 
     // TODO: This is mostly for state right side.
@@ -1888,12 +1898,12 @@ MathExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
       Token singleAccessName = parser->ExpectNext(TokenType_IDENTIFIER);
       
       MathExpression* singleAccess = PushStruct<MathExpression>(out);
-      singleAccess->type = SpecType_NAME;
+      singleAccess->type = MathType_SINGLE_ACCESS; //MathType_NAME;
       singleAccess->name = singleAccessName;
-      
-      res->expressions = PushArray<MathExpression*>(out,1);
-      res->expressions[0] = singleAccess;
-      res->type = SpecType_SINGLE_ACCESS;
+      singleAccess->expressions = PushArray<MathExpression*>(out,1);
+      singleAccess->expressions[0] = res;
+
+      res = singleAccess;
     }
 
     if(parser->IfNextToken('(')){
@@ -1914,7 +1924,7 @@ MathExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
       parser->ExpectNext(')');
       
       res->expressions = PushArray(out,args);
-      res->type = SpecType_FUNCTION_CALL;
+      res->type = MathType_FUNCTION_CALL;
     }
   } else {
     // TODO: Better error reporting
@@ -2546,62 +2556,11 @@ static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
   Token id = parser->ExpectNext(TokenType_IDENTIFIER);
   
   ConfigIdentifier* base = PushStruct<ConfigIdentifier>(out);
-  base->type = ConfigAccessType_BASE;
+  base->type = ConfigIdentifierType_BASE;
   base->name = id;
 
   ConfigIdentifier* ptr = base;
 
-#if 1
-  auto list = PushList<MathExpression*>(temp);
-  while(parser->IfNextToken('[')){
-    MathExpression* expr = ParseMathExpression(parser,out);
-    *list->PushElem() = expr;
-
-    parser->ExpectNext(']');
-  }    
-
-  if(!Empty(list)){
-    ptr->type = ConfigAccessType_ARRAY;
-    ptr->arrayExpr = PushArray(out,list);
-  }
-
-  if(parser->IfNextToken('.')){
-    Token access = parser->ExpectNext(TokenType_IDENTIFIER);
-
-    ConfigIdentifier* parsed = nullptr;
-    if(parser->IfNextToken('(')){
-      auto args = PushList<MathExpression*>(temp);       
-      
-      while(!parser->Done()){
-        MathExpression* arg = ParseMathExpression(parser,out);
-
-        *args->PushElem() = arg;
-        
-        if(parser->IfNextToken(',')){
-          continue;
-        }
-        
-        break;
-      }
-
-      parser->ExpectNext(')');
-
-      parsed = PushStruct<ConfigIdentifier>(out);
-      parsed->type = ConfigAccessType_FUNC_CALL;
-      parsed->functionName = access;
-      parsed->arguments = PushArray(out,args);
-    } else {
-      parsed = PushStruct<ConfigIdentifier>(out);
-      parsed->type = ConfigAccessType_ACCESS;
-      parsed->name = access;
-    }
-
-    ptr->next = parsed;
-    ptr = parsed;
-  }
-#endif
-
-#if 0
   while(!parser->Done()){
     ConfigIdentifier* parsed = nullptr;
 
@@ -2627,12 +2586,12 @@ static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
         parser->ExpectNext(')');
 
         parsed = PushStruct<ConfigIdentifier>(out);
-        parsed->type = ConfigAccessType_FUNC_CALL;
+        parsed->type = ConfigIdentifierType_FUNC_CALL;
         parsed->functionName = access;
         parsed->arguments = PushArray(out,args);
       } else {
         parsed = PushStruct<ConfigIdentifier>(out);
-        parsed->type = ConfigAccessType_ACCESS;
+        parsed->type = ConfigIdentifierType_ACCESS;
         parsed->name = access;
       }
     }
@@ -2643,9 +2602,9 @@ static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
       parser->ExpectNext(']');
 
       parsed = PushStruct<ConfigIdentifier>(out);
-      parsed->type = ConfigAccessType_ARRAY;
+      parsed->type = ConfigIdentifierType_ARRAY;
 
-      parsed->arrayExpr = expr;
+      parsed->arrayExpr2 = expr;
     }
 
     if(parsed){
@@ -2656,7 +2615,6 @@ static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
 
     break;
   }
-#endif
 
   return base;
 }
@@ -2731,7 +2689,6 @@ static ConfigStatement* ParseConfigStatement(Parser* parser,Arena* out){
     }
   } else {
     parser->ReportUnexpectedToken(parser->NextToken(),{});
-    // TODO: stmt = EmptyStmt (Return something so that code does not have to worry about null statements).
   }
 
   return stmt;
@@ -2842,22 +2799,19 @@ Array<Token> AccumTokens(MathExpression* top,Arena* out){
 
   auto AccumTokens = [](auto AccumTokens,MathExpression* top,ArenaList<Token>* list) -> void {
     switch(top->type){
-    case SpecType_LITERAL: break;
-    case SpecType_NAME: {
+    case MathType_LITERAL: break;
+    case MathType_NAME: {
       *list->PushElem() = top->name;
     } break;
-    case SpecType_VAR: {
-      *list->PushElem() = top->var.name;
+    case MathType_OPERATION: {
     } break;
-    case SpecType_OPERATION: {
-    } break;
-    case SpecType_SINGLE_ACCESS: {
+    case MathType_SINGLE_ACCESS: {
       *list->PushElem() = top->name;
     } break;
-    case SpecType_ARRAY_ACCESS: {
+    case MathType_ARRAY_ACCESS: {
       *list->PushElem() = top->name;
     } break;
-    case SpecType_FUNCTION_CALL: {
+    case MathType_FUNCTION_CALL: {
       *list->PushElem() = top->name;
     } break;
     }
@@ -2961,7 +2915,6 @@ void DimIterator::Invalidate(){
   current[0] = dim[0];
 }
 
-// MARK: Move to a better place
 void DimIterator::Advance(){
   ArrayIndexIncrementInPlace(dim,startValue,current);
 }
@@ -2983,11 +2936,11 @@ VarIterator* StartIteration(Env* env,Var var,Arena* out){
 
   VarIterator* res = PushStruct<VarIterator>(out);
 
-  Entity* ent = env->GetEntity(var.name);
+  Entity ent = env->GetEntity(var.name);
 
   int expectedIndexSize = 0;
-  if(ent->type == EntityType_FU_ARRAY){
-    expectedIndexSize = ent->arrayDims.size;
+  if(ent.type == EntityType_FU_ARRAY){
+    expectedIndexSize = ent.dims.size;
   }
 
   res->name = var.name;
@@ -3014,7 +2967,7 @@ VarIterator* StartIteration(Env* env,Var var,Arena* out){
     res->arrayIndex = StartIteration(1,out);
   }
 
-  if(ent->type != EntityType_FU_ARRAY && var.index.size){
+  if(ent.type != EntityType_FU_ARRAY && var.index.size){
     env->ReportError({},"Error, var is not an array and does not support array subscriptions");
     res->Invalidate();
     return res;
@@ -3143,4 +3096,22 @@ Connection GroupIterator::Current(){
 
   Connection con = innerIters[currentIter]->Current();
   return con;
+}
+
+
+
+
+
+Entity MakeEntity(FUInstance* inst){
+  Entity res = {};
+  res.type = EntityType_FU;
+  res.inst = inst;
+  res.decl = inst->declaration;
+  res.name = inst->name;
+  return res;
+}
+
+bool Nil(Entity ent){
+  bool res = (ent.type == EntityType_NIL);
+  return res;
 }

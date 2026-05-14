@@ -183,7 +183,10 @@ struct FUInstance{
   NodeType type;
 };
 
-extern FUInstance FUInstance_Nil;
+extern FUInstance FUInstance_NilInst;
+static FUInstance* FUInstance_Nil = &FUInstance_NilInst;
+
+bool Nil(FUInstance* inst);
 
 enum AcceleratorPurpose{
   AcceleratorPurpose_TEMP,

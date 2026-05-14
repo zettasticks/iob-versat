@@ -63,17 +63,24 @@ struct SpecExpression{
   SpecType type;
 };
 
+enum MathType{
+  MathType_OPERATION,
+  MathType_NAME,
+  MathType_LITERAL,
+  MathType_SINGLE_ACCESS,
+  MathType_ARRAY_ACCESS,
+  MathType_FUNCTION_CALL
+};
+
 struct MathExpression{
   Array<MathExpression*> expressions;
   union{
     const char* op;
-    Var var;
     int val;
     Token name;
   };
   
-  // NOTE: If array access, expressions is an array of the expressions in order and var contains the array name.
-  SpecType type;
+  MathType type;
 };
 
 
@@ -185,18 +192,18 @@ FUDeclaration* InstantiateSpecifications(String content,ConstructDef def);
 // nocheckin Move to a better place after we probably remove the userConfigs.hpp file.
 // TODO: We cannot represent an array access followed by a wireOrPort access.
 //       This is probably not the best way to proceed.
-enum ConfigAccessType{
-  ConfigAccessType_BASE,
-  ConfigAccessType_ACCESS,
-  ConfigAccessType_ARRAY,
-  ConfigAccessType_FUNC_CALL
+enum ConfigIdentifierType{
+  ConfigIdentifierType_BASE,
+  ConfigIdentifierType_ACCESS,
+  ConfigIdentifierType_ARRAY,
+  ConfigIdentifierType_FUNC_CALL
 };
 
 // TODO: Probably rename this.
 // ConfigIdentifier is parsed in reverse order than expected. Name appears first and access expressions appear after.
 // 
 struct ConfigIdentifier{
-  ConfigAccessType type;
+  ConfigIdentifierType type;
   ConfigIdentifier* next;
 
   union{
@@ -204,8 +211,8 @@ struct ConfigIdentifier{
     Token functionName;
   }; 
 
-  Array<MathExpression*> arrayExpr;
-  //MathExpression* arrayExpr;
+  //Array<MathExpression*> arrayExpr;
+  MathExpression* arrayExpr2;
 
   Array<MathExpression*> arguments;
 };
@@ -224,7 +231,7 @@ inline ConfigIdentifier* GetBeforeBase(ConfigIdentifier* top){
 // ======================================
 // Hierarchical access (WIP)
 
-// Map from name in hierarchical access (ex: a.b.c[0].d) to an entity. The VARIABLE part is that this mapping is also used inside the parser to map stuff to things like variables or to special names that are specific to a given part of the code.
+// Map from name in hierarchical access (ex: a.b.c[0].d) to an entity.
 
 enum EntityType{
   EntityType_NIL,
@@ -233,83 +240,64 @@ enum EntityType{
   EntityType_PARAM,
   EntityType_GEN_VALUE,
   EntityType_MEM_PORT, // User can "represent" a memory port by doing something like mem.in0 (input port 0).
+  EntityType_ACCESS_EXPR,
   EntityType_CONFIG_WIRE,
   EntityType_STATE_WIRE,
-  EntityType_CONFIG_FUNCTION,
+  EntityType_FUNCTION,
   EntityType_VARIABLE_INPUT,
   EntityType_VARIABLE_SPECIAL // For variables that exist "by default"
 };
 
-bool IsEntitySubType(EntityType type);
-
-enum VariableType{
-  VariableType_VOID_PTR,
-  VariableType_INTEGER
+enum EntityVarFlags{
+  EntityVarFlags_NONE,
+  EntityVarFlags_ADDRESS
 };
 
 struct Entity{
   EntityType type;
-
-  // TODO: We might want to also store the token associated to the entity in question.
-
-  // Virtual port
-  Direction dir;
-  int port;
-  Entity* parent;
-  
-  // TODO: Union
-  //union {
-  FUInstance* instance;
-  bool isInput;
-  Wire wire;
-  ConfigFunction* func;
-  Array<int> arrayDims;
-
-  union {
-    String varName;
-    String arrayBaseName;
-    String paramName;
-  }; 
-
-  VariableType varType;
-
-  int genVal;
-  int inputVarDims;
-  //};
-};
-
-
-struct Entity2{
-  EntityType type;
+  EntityVarFlags flags;
 
   String name;
   Direction dir;
   SYM_Expr size;
   FUInstance* inst;
   ConfigFunction* func;
+  MathExpression* accessExpr;
   FUDeclaration* decl;
-  Array<int> arrayDims;
+  Array<int> dims;
+  int arrayDims; // This is probably just a symptom of trying to only support 1D arrays. But since we need to generate C code this is probably for the best.
+  int port;
+  int genVal;
   bool isInput;
 };
 
-extern Entity Entity_Nil;
-extern Entity2 Entity2_Nil;
+static bool Entity_IsArray(Entity in){
+  bool res = false;
+  res |= (in.type == EntityType_FU_ARRAY);
+  res |= (in.type == EntityType_VARIABLE_INPUT && in.dims.size > 0);
+  return res;
+}
+
+Entity MakeEntity(FUInstance* inst);
+
+extern Entity Entity2_Nil;
+
+bool Nil(Entity ent);
 
 struct EnvScope{
   ArenaMark mark;
 
-  //TrieMap<String,VariableType>* variableTypes;
   TrieMap<String,Entity>* variable;
-  TrieMap<String,Entity2>* variable2;
 };
 
-struct EntityAndLeftoverAccess{
-  Entity* ent;
-  MathExpression* leftover;
+struct EntityAndLeftoverAccess2{
+  Array<Entity> accesses;
+  Entity first;
+  Entity last;
 };
 
 struct EntityAccess{
-  Array<Entity2> entities;
+  Array<Entity> entities;
   MathExpression* leftover;
 };
 
@@ -343,20 +331,14 @@ struct Env{
 
   FUInstance* GetFUInstance(Var var);
 
-  Entity* PushReservedEntity(String name);
+  void PushEntity(Token name,Entity ent);
+  void PushEntity(String name,Entity ent);
 
-  Entity* PushNewEntity(Token name);
-  Entity* GetEntity(Token name);
+  Entity GetEntityFromAccess(Entity ent,Token access);
 
-  Entity2 GetEntity2(Token name);
-  
-  // TODO: Need to remove this. We want tokens so that we can do proper error report.
-  Entity* GetEntity(String name);
-
-  void CheckIfEntityExists(Token name);
-
-  EntityAndLeftoverAccess GetEntity(ConfigIdentifier* id,Arena* out);
-  Entity* GetEntity(MathExpression* id,Arena* out);
+  Entity GetEntity(Token name);
+  Array<Entity> GetEntity(ConfigIdentifier* id,Arena* out);
+  Array<Entity> GetEntity(MathExpression* spec,Arena* out);
 
   // nocheckin
   EntityAccess UnpackEntity(ConfigIdentifier* id,Arena* out);
@@ -376,7 +358,7 @@ struct Env{
   void AddEquality(ConnectionDef def);
 
   void AddParam(Token name);
-  void AddVariable(Token name,MathExpression* arraySize = nullptr);
+  void AddVariable(Token name,MathExpression* arraySize = nullptr,EntityVarFlags flags = {});
 
   void SetGenVariable(Token name,int value);
 
@@ -414,7 +396,7 @@ Array<int> IntegerToArrayIndex(Array<int> dims,int index,Arena* out);
 
 struct FUInstanceIterator{
   Env* env;
-  Entity* ent;
+  Entity ent;
 
   bool used;
   DimIterator* iter;
@@ -424,7 +406,7 @@ struct FUInstanceIterator{
   FUInstance* Current();
 };
 
-FUInstanceIterator StartIteration(Env* env,Entity* ent,Arena* out);
+FUInstanceIterator StartIteration(Env* env,Entity ent,Arena* out);
 
 struct Connection{
   Token name;
