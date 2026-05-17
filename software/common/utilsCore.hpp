@@ -194,7 +194,8 @@ if(_){ \
   if(currentlyDebugging) { \
     if(COND){ \
       fflush(stdout); \
-      __asm__("int3");} \
+      __asm__("int3"); \
+      __asm__("nop");} \
   } else { \
     once{ \
       printf("Old debug break point still active:\n");  \

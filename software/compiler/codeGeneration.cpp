@@ -3314,11 +3314,11 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
             String sizeExpr = SYM_Repr(transf.size,temp);
             
             AccelInfoIterator iter = StartIteration(&info,0);
-            InstanceInfo* info = Find(iter.StepInsideOnly(),transf.name);
+            InstanceInfo* unitInfo = Find(iter.StepInsideOnly(),transf.name);
 
-            Assert(info);
+            Assert(unitInfo);
 
-            String entityMemName = GetEntityMemName(info,temp);
+            String entityMemName = GetEntityMemName(unitInfo,temp);
             
             FULL_SWITCH(transf.dir){
             case TransferDirection_NONE: Assert(false); break;

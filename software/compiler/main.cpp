@@ -294,6 +294,11 @@ int main(int argc,char* argv[]){
   InitializeDefaultData(perm);
   InitializeSimpleDeclarations();
 
+  if(0){
+    SYM_Test();
+    return 0;
+  }
+
   argp argp = { options, parse_opt, "SpecFile\n-T UnitName", "Dataflow to accelerator compiler. Check tutorial in https://github.com/IObundle/iob-versat to learn how to write a specification file"};
 
   OptionsGather gather = {};

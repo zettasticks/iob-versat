@@ -85,10 +85,10 @@ inline bool IsNegative(SYM_Expr expr){return IsNegative(expr.node);}
 struct SYM_Node{
   SYM_Type type;
 
-  String name; // For functions
+  String name;
+
   union{
     int literal;
-    String variable;
 
     struct {
       union{
@@ -259,6 +259,7 @@ static inline int Compare(SYM_MultTerms left,SYM_MultTerms right){
 
   return 0;
 }
+
 
 void SYM_Test();
 char*  SYM_DebugRepr(SYM_Expr expr);

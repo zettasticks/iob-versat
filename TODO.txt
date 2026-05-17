@@ -8,6 +8,8 @@ Inside the code put this following the format: "TODO-N" (ex: // TODO-0  ) . That
 
 1 - As far as I'm aware we do not prevent units from having naming conflicts in regards to ports and user config functions. The "virtual" memory ports that we use to define 
 
+2 - Spec parsing and environment use tokens to carry info needed to properly report stuff to user but sometimes we need to generate names on the fly for each entity. This is kinda hacky specially because we cannot report errors that we want. (Array problems should still point user to the start of the array name at least). We could solve this somewhat by separating the Token into two pieces of code: the location of the "entity" and the name of the entity. That way even if we generate different names for whatever reason we can still point the location to a decent position inside the spec file to properly report stuff to the user.
+
 =============== TODO IDEAS ===============
 
 - There exists moments where I want to check a given portion of code but do not know which test runs that part.

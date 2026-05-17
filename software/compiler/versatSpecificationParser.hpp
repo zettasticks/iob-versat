@@ -238,14 +238,15 @@ enum EntityType{
   EntityType_FU,
   EntityType_FU_ARRAY,
   EntityType_PARAM,
-  EntityType_GEN_VALUE,
+  EntityType_GEN_VALUE, // Gen value depends on currently gen variable value.
   EntityType_MEM_PORT, // User can "represent" a memory port by doing something like mem.in0 (input port 0).
   EntityType_ACCESS_EXPR,
   EntityType_CONFIG_WIRE,
   EntityType_STATE_WIRE,
   EntityType_FUNCTION,
   EntityType_VARIABLE_INPUT,
-  EntityType_VARIABLE_SPECIAL // For variables that exist "by default"
+  EntityType_VARIABLE_SPECIAL, // For variables that exist "by default"
+  EntityType_SYM
 };
 
 enum EntityVarFlags{
@@ -257,17 +258,18 @@ struct Entity{
   EntityType type;
   EntityVarFlags flags;
 
-  String name;
+  Token name;
+  //String name;
   Direction dir;
   SYM_Expr size;
   FUInstance* inst;
   ConfigFunction* func;
-  MathExpression* accessExpr;
   FUDeclaration* decl;
+  SYM_Expr sym;
   Array<int> dims;
   int arrayDims; // This is probably just a symptom of trying to only support 1D arrays. But since we need to generate C code this is probably for the best.
   int port;
-  int genVal;
+  int val;
   bool isInput;
 };
 
@@ -280,7 +282,7 @@ static bool Entity_IsArray(Entity in){
 
 Entity MakeEntity(FUInstance* inst);
 
-extern Entity Entity2_Nil;
+extern Entity Entity_Nil;
 
 bool Nil(Entity ent);
 
@@ -339,9 +341,6 @@ struct Env{
   Entity GetEntity(Token name);
   Array<Entity> GetEntity(ConfigIdentifier* id,Arena* out);
   Array<Entity> GetEntity(MathExpression* spec,Arena* out);
-
-  // nocheckin
-  EntityAccess UnpackEntity(ConfigIdentifier* id,Arena* out);
 
   Array<int> ConvertRangeToStart(Array<Range<MathExpression*>> range,Arena* out);
   Array<int> ConvertRangeToEnd(Array<Range<MathExpression*>> range,Arena* out);

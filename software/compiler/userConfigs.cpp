@@ -22,19 +22,6 @@ static String GlobalConfigFunctionName(String functionName,FUDeclaration* decl,A
   return name;
 }
 
-struct ParseResult{
-  bool isArray;
-  bool isFunctionInvoc;
-  bool containsAccess;
-  bool isExpr;
-  
-  SYM_Expr expr;
-  Array<SpecExpression*> args;
-  Token entityName;
-  Token wireName; 
-  Token functionName;
-};
-
 struct DecompConfigStatement{
   // Single type
   bool isFunctionInvoc;
@@ -63,6 +50,7 @@ struct DecompConfigStatement{
     Entity entity;
     Entity subEntity; 
 
+    // TODO: I think that this has to go. Entity + SubEntity is enough to provide all the info needed to user.
     SYM_Expr expr;
   } rhs;
 };
@@ -70,37 +58,41 @@ struct DecompConfigStatement{
 DecompConfigStatement DecomposeConfigStatement(Env* env,ConfigStatement* stmt,Arena* out){
   DecompConfigStatement res = {};
 
+  // TODO: While we currently do not support it, we could technically add:
+  //       Multiple access expressions: a.b.c.d.e actually resolving to something (currently we do not support this).
+
+  // TODO: Since the majority of the logic is specific to a certain size and format of the access, we could add more
+  //       robust error checking and reporting.
+
   Array<Entity> lhs = env->GetEntity(stmt->lhs,out);
 
-  Entity first = Entity2_Nil;
-  Entity secondLast = Entity2_Nil;
-  Entity last = Entity2_Nil;
+  Entity lhsFirst = Entity_Nil;
+  Entity lhsSecondLast = Entity_Nil;
+  Entity lhsLast = Entity_Nil;
 
   if(lhs.size >= 1){
-    first = lhs[0];
-    last = lhs[lhs.size - 1];
+    lhsFirst = lhs[0];
+    lhsLast = lhs[lhs.size - 1];
   }
   if(lhs.size >= 2){
-    secondLast = lhs[lhs.size - 2];
+    lhsSecondLast = lhs[lhs.size - 2];
   }
   
   Assert(!IsLoop(stmt->type));
   if(stmt->type == ConfigStatementType_FUNCTION_CALL){
-    //EntityAndLeftoverAccess2 ent = env->GetEntity2(stmt->lhs,out);
-   
     res.isFunctionInvoc = true;
-
-    res.func = last.func;
+    res.func = lhsLast.func;
     res.args = stmt->lhs->next->arguments;
   }
 
   if(stmt->type == ConfigStatementType_EQUALITY){
     // Left hand side
-    res.lhs.name = first.name;
+    res.lhs.name = lhsFirst.name.identifier;
 
-    FULL_SWITCH(last.type){
+    FULL_SWITCH(lhsLast.type){
     case EntityType_NIL:{
       // Nothing
+      Assert(false);
     } break;
 
     case EntityType_VARIABLE_SPECIAL:
@@ -108,109 +100,98 @@ DecompConfigStatement DecomposeConfigStatement(Env* env,ConfigStatement* stmt,Ar
     case EntityType_FUNCTION:
     case EntityType_GEN_VALUE:
     case EntityType_PARAM:
+    case EntityType_SYM:
     case EntityType_FU_ARRAY:{
-      // Should be an error, right?
+      // TODO: Should be user error, right?
+      //Assert(false);
     } break;
 
     case EntityType_FU:{
       res.lhs.isEntityOnly = true;
-      res.lhs.name = last.name;
-      res.lhs.entity = last;
+      res.lhs.name = lhsLast.name.identifier;
+      res.lhs.entity = lhsLast;
     } break;
     case EntityType_ACCESS_EXPR:{
       res.lhs.isArrayAccess = true;
-      res.lhs.entity = secondLast;
-      res.lhs.subEntity = last;
+      res.lhs.entity = lhsSecondLast;
+      res.lhs.subEntity = lhsLast;
     } break;
     case EntityType_MEM_PORT:{
       res.lhs.isVirtualWire = true;
-      res.lhs.entity = secondLast;
-      res.lhs.subEntity = last;
+      res.lhs.entity = lhsSecondLast;
+      res.lhs.subEntity = lhsLast;
     } break;
     case EntityType_CONFIG_WIRE:
     case EntityType_STATE_WIRE:{
       res.lhs.isSingleWire = true;
-      res.lhs.entity = secondLast;
-      res.lhs.subEntity = last;
+      res.lhs.entity = lhsSecondLast;
+      res.lhs.subEntity = lhsLast;
     } break;
   }
 
     // Right hand side
     MathExpression* rhs = stmt->rhs;
-    if(rhs->type == MathType_ARRAY_ACCESS){
-      // Statement of the form x = addr[expr]
-      // This almost always implies a VUnit access 
+    Array<Entity> rhsDecomp = env->GetEntity(rhs,out);
+
+    Entity rhsFirst = Entity_Nil;
+    Entity rhsLast = Entity_Nil;
+
+    if(rhsDecomp.size >= 1){
+      rhsFirst = rhsDecomp[0];
+    }
+    if(rhsDecomp.size >= 2){
+      rhsLast = rhsDecomp[rhsDecomp.size - 1];
+    }
+
+    res.rhs.entity = rhsFirst;
+    res.rhs.subEntity = rhsLast;
+
+    bool found = false;
+    
+    // TODO: The access expr stuff is really weird. 
+    if(!found && rhsFirst.type == EntityType_ACCESS_EXPR){
+      // TODO: Do not even know if we can reach this.
+      found = true;
       res.rhs.isArray = true;
-      res.rhs.expr = env->SymbolicFromMathExpression(rhs->expressions[0]);
+      res.rhs.entity = rhsFirst;
+      res.rhs.expr = rhsFirst.sym;
+    } 
+    if(!found && rhsFirst.type == EntityType_FU && rhsLast.type == EntityType_ACCESS_EXPR){
+      found = true;
+      res.rhs.isArray = true;
+    }
+    if(!found && rhsFirst.type == EntityType_VARIABLE_INPUT && rhsLast.type == EntityType_ACCESS_EXPR){
+      found = true;
+      res.rhs.isArray = true;
+      res.rhs.entity = rhsFirst;
+      res.rhs.subEntity = rhsLast;
+    }
 
-      Array<Entity> rhsDecomp = env->GetEntity(rhs,out);
-      
-      if(rhsDecomp.size > 1){
-        // TODO: I do not know if this is possible and I want to get an example if this occurs. If this triggers
-        //       then check if it makes sense, otherwise eventually try to trigger it and if not possible then
-        //       change this check into an error instead of an assert.
-        Assert(false);
-      }
-
-      if(rhsDecomp.size > 0){
-        res.rhs.entity = rhsDecomp[rhsDecomp.size-1];
-      }
-    } else if(rhs->type == MathType_SINGLE_ACCESS){
+    if(!found && rhsFirst.type == EntityType_FU
+       && (rhsLast.type == EntityType_CONFIG_WIRE || 
+           rhsLast.type == EntityType_STATE_WIRE)){
       // Statement of the form x = ent.wire
       // This is mostly state statements
-      
-      Array<Entity> rhsDecomp = env->GetEntity(rhs,out);
-
-      if(rhsDecomp.size > 2){
-        // TODO: I do not know if this is possible and I want to get an example if this occurs. If this triggers
-        //       then check if it makes sense, otherwise eventually try to trigger it and if not possible then
-        //       change this check into an error instead of an assert.
-        Assert(false);
-      }
-
-      if(rhsDecomp.size == 2){
-        res.rhs.entity = rhsDecomp[0];
-        res.rhs.subEntity = rhsDecomp[1];
-      }
-
+      found = true;
+      res.rhs.entity = rhsFirst;
+      res.rhs.subEntity = rhsLast;
       res.rhs.isHierAccess = true;
-    } else {
-      // Only expressions remain as valid statements
-      res.rhs.isExpr = true;
-      res.rhs.expr = env->SymbolicFromMathExpression(rhs);
     }
+
+    if(!found && rhsFirst.type == EntityType_SYM){
+      found = true;
+      res.rhs.isExpr = true;
+      res.rhs.entity = rhsFirst;
+      res.rhs.expr = rhsFirst.sym;
+    }
+
+    if(rhsLast.type == EntityType_ACCESS_EXPR){
+      res.rhs.expr = rhsLast.sym;
+    }
+
+    Assert(found);
   }
   
-  return res;
-}
-
-// TODO: We could do better. We could have a decompose ConfigStatement
-ParseResult ParseRHS(Env* env,MathExpression* top,Arena* out){
-/*
-  RHS can be:
-
-  wire           'name.wire'
-  addrExpr       'addr[expr]'
-  expression     'expr'
-*/
-
-  // TODO: We still need to access env to check if this makes sense or not.
-  //       nocheckin
-
-  ParseResult res = {};
-  if(top->type == MathType_ARRAY_ACCESS){
-    res.isArray = true;
-    res.expr = env->SymbolicFromMathExpression(top->expressions[0]);
-    res.entityName = top->name;
-  } else if(top->type == MathType_SINGLE_ACCESS){
-    res.containsAccess = true;
-    res.entityName = top->name;
-    res.wireName = top->expressions[0]->name;
-  } else {    
-    res.isExpr = true;
-    res.expr = env->SymbolicFromMathExpression(top);
-  }
-
   return res;
 }
 
@@ -430,7 +411,11 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           env->SetGenVariable(gen.name,gen.val);
         }
 
+        DEBUG_BREAK();
         DecompConfigStatement decomp = DecomposeConfigStatement(env,simple,temp);
+
+        SYM_Print(decomp.rhs.expr);
+
         String lhsName = decomp.lhs.name;
 
         Entity entity = decomp.lhs.entity;
@@ -512,7 +497,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           }
         } else if(decomp.lhs.isSingleWire){
           // We are setting a value to a constant wire.
-          String wireName = wirePortEnt.name;
+          String wireName = wirePortEnt.name.identifier;
 
           ConfigStuff* assign = list->PushElem();
           assign->type = ConfigStuffType_ASSIGNMENT;
@@ -533,7 +518,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           newAssign->access.dir = wirePortEnt.dir;
           newAssign->access.port = wirePortEnt.port;
 
-          newAssign->pointerVarName = PushString(out,decomp.rhs.entity.name);
+          newAssign->pointerVarName = PushString(out,decomp.rhs.entity.name.identifier);
           newAssign->lhs = lhsName;
         } else {
           Assert(false);
@@ -594,9 +579,9 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     for(ConfigStatement* stmt : def->statements){
       env->PushScope();
 
-      Entity ent = Entity2_Nil;
+      Entity ent = Entity_Nil;
       ent.type = EntityType_VARIABLE_SPECIAL;
-      ent.name = stmt->lhs->name.identifier;
+      ent.name = stmt->lhs->name;
       env->PushEntity(ent.name,ent);
 
       DecompConfigStatement decomp = DecomposeConfigStatement(env,stmt,temp);
@@ -609,7 +594,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       if(wireOrFunction.type == EntityType_FUNCTION){
         found = true;
 
-        String varName = rhsMain.name;
+        String varName = rhsMain.name.identifier;
         
         for(ConfigStuff stmt : wireOrFunction.func->stuff){
           ConfigStuff* assign = list->PushElem();
@@ -622,8 +607,8 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       if(wireOrFunction.type == EntityType_STATE_WIRE){
         found = true;
 
-        String wireName = wireOrFunction.name;
-        String varName = rhsMain.name;
+        String wireName = wireOrFunction.name.identifier;
+        String varName = rhsMain.name.identifier;
 
         ConfigStuff* assign = list->PushElem();
         assign->type = ConfigStuffType_ASSIGNMENT;
@@ -665,7 +650,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       bool singleStatement = (stmts.size == 1);
 
       DecompConfigStatement decomp = DecomposeConfigStatement(env,simple,temp);
-      
+
       if(decomp.isFunctionInvoc){
         ConfigFunction* func = decomp.func;
 
@@ -682,28 +667,24 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           assign->transfer.name = simple->lhs->name.identifier + assign->transfer.name;
         }
       } 
+      
+      Entity dst = Entity_Nil;
+      Entity src = Entity_Nil;
+      TransferDirection dir = TransferDirection_NONE;
 
-      if(decomp.lhs.isArrayAccess){
-        Entity lhsEnt = decomp.lhs.entity;
-        Entity lhsExpr = decomp.lhs.subEntity;
+      // TODO: Weird logic. Also need to see how this would act when we add arrays and stuff like that into the mix.
+      if(decomp.lhs.entity.type == EntityType_FU){
+        dir = TransferDirection_READ;
+        dst = decomp.lhs.entity;
+        src = decomp.rhs.entity;
+      }
+      if(decomp.rhs.entity.type == EntityType_FU){
+        dir = TransferDirection_WRITE;
+        dst = decomp.rhs.entity;
+        src = decomp.lhs.entity;
+      }
 
-        Entity rhsEnt = decomp.rhs.entity;
-        Entity rhsExpr = decomp.rhs.subEntity;
-        
-        Entity dst = Entity2_Nil;
-        Entity src = Entity2_Nil;
-
-        TransferDirection dir = TransferDirection_NONE;
-        if(lhsEnt.type == EntityType_FU){
-          dir = TransferDirection_READ;
-          dst = lhsEnt;
-          src = rhsEnt;
-        } else {
-          dir = TransferDirection_WRITE;
-          dst = rhsEnt;
-          src = lhsEnt;
-        }        
-
+      if(dir != TransferDirection_NONE){
         SYM_Expr size = SYM_One;
         if(!singleStatement){
           SYM_Expr start = env->SymbolicFromMathExpression(stmt->def.startSym);
@@ -716,9 +697,9 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         assign->type = ConfigStuffType_MEMORY_TRANSFER;
         assign->transfer.dir = dir;
         assign->transfer.size = size;
-        assign->transfer.name = assign->transfer.name + dst.name;
+        assign->transfer.name = assign->transfer.name + dst.name.identifier;
 
-        assign->transfer.variable = PushString(out,src.name);
+        assign->transfer.variable = PushString(out,src.name.identifier);
       }
 
       env->PopScope();

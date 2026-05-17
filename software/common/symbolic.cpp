@@ -260,9 +260,8 @@ String VariableValue(SYM_Expr in){
   Assert(IsVariable(in));
   
   SYM_Node* node = GetPointer(in.node);
-  return node->variable;
+  return node->name;
 }
-
 
 void SortInPlace(Array<SYM_Expr>& toSort){
   for(int i = 0; i < toSort.size; i++){
@@ -437,7 +436,7 @@ SYM_Expr GetOrAllocateVariable(String name){
 
   SYM_Node* res = nullptr;
   for(; ptr; previous = ptr,ptr = ptr->hashNext){
-    if(ptr->type == SYM_Type_VARIABLE && ptr->variable == name){
+    if(ptr->type == SYM_Type_VARIABLE && ptr->name == name){
       res = ptr;
       break;
     }
@@ -446,7 +445,7 @@ SYM_Expr GetOrAllocateVariable(String name){
   if(!res){
     res = PushStruct<SYM_Node>(SYM_State.arena);
     res->type = SYM_Type_VARIABLE;
-    res->variable = PushString(SYM_State.arena,name);
+    res->name = PushString(SYM_State.arena,name);
 
     if(previous){
       previous->hashNext = res;
@@ -468,7 +467,7 @@ SYM_Expr GetOrAllocateFunc(String name,SYM_Expr first,SYM_Expr second){
 
   SYM_Node* res = nullptr;
   for(; ptr; previous = ptr,ptr = ptr->hashNext){
-    if(ptr->type == SYM_Type_VARIABLE && ptr->variable == name){
+    if(ptr->type == SYM_Type_VARIABLE && ptr->name == name){
       res = ptr;
       break;
     }
@@ -621,7 +620,7 @@ u64 Hash(SYM_Expr expr){
       res += (int64_t) LiteralValue(node);
     } break;
     case SYM_Type_VARIABLE: {
-      res += Hash(node->variable);
+      res += Hash(node->name);
     } break;
     case SYM_Type_FUNC: res += Hash(node->name);
     case SYM_Type_MUL:
@@ -1176,7 +1175,7 @@ String SYM_ReprHier(SYM_Expr expr,Arena* out){
     
     FULL_SWITCH(GetType(node)){
     case SYM_Type_LITERAL: b->PushString("%d",LiteralValue(node)); break;
-    case SYM_Type_VARIABLE: b->PushString("%.*s",UN(node->variable)); break;
+    case SYM_Type_VARIABLE: b->PushString("%.*s",UN(node->name)); break;
     case SYM_Type_FUNC:
     case SYM_Type_MUL:
     case SYM_Type_DIV:
@@ -1223,7 +1222,7 @@ void SYM_Repr(StringBuilder* b,SYM_Expr expr){
 
     FULL_SWITCH(GetType(node)){
     case SYM_Type_LITERAL: b->PushString("%d",LiteralValue(node)); break;
-    case SYM_Type_VARIABLE: b->PushString(node->variable); break;
+    case SYM_Type_VARIABLE: b->PushString(node->name); break;
     case SYM_Type_MUL:
     case SYM_Type_DIV:
     case SYM_Type_SUM:{
@@ -1757,7 +1756,7 @@ SYM_Expr SYM_Derivate(SYM_Expr expr,String var){
     case SYM_Type_VARIABLE:{
       res = SYM_Zero;
       
-      if(node->variable == var){
+      if(node->name == var){
         res = SYM_One;
       }
     } break;
@@ -1890,10 +1889,10 @@ SYM_EvaluateResult SYM_DebugEvaluate(SYM_Expr top,TrieMap<String,SYM_Expr>* valu
       res = (float) LiteralValue(node);
     } break;
     case SYM_Type_VARIABLE:{
-      SYM_Expr* val = values->Get(node->variable);
+      SYM_Expr* val = values->Get(node->name);
       
       if(!val){
-        *errorList->PushElem() = PushString(out,"Variable %.*s does not exist. Evaluator assuming zero value",UN(node->variable));
+        *errorList->PushElem() = PushString(out,"Variable %.*s does not exist. Evaluator assuming zero value",UN(node->name));
       } else {
         res = Recurse(Recurse,*val);
       }
@@ -2032,7 +2031,7 @@ Array<String> SYM_GetAllVariables(SYM_Expr top,Arena* out){
 
     FULL_SWITCH(GetType(node)){
     case SYM_Type_VARIABLE:{
-      varSet->Insert(node->variable);
+      varSet->Insert(node->name);
     } break;
     case SYM_Type_SUM:  // fallthrough
     case SYM_Type_MUL:  // fallthrough
