@@ -38,6 +38,11 @@ struct Parameter{
   ParamFlags flags;
 };
 
+struct ParamNameAndValue{
+  String name;
+  SYM_Expr value;
+};
+
 // TODO: A lot of duplicated data exists since the change to merge.
 
 // TODO: There is a lot of crux between parsing and creating the FUDeclaration for composite accelerators 
@@ -168,8 +173,12 @@ namespace BasicDeclaration{
 bool IsNil(FUDeclaration* decl);
 
 FUDeclaration* RegisterFU(FUDeclaration declaration);
+
 FUDeclaration* GetTypeByName(String str);
 FUDeclaration* GetTypeByNameOrFail(String name);
+
+String DECL_MangleName(String typeName,Array<ParamNameAndValue> params,Arena* out);
+
 void InitializeSimpleDeclarations();
 bool HasMultipleConfigs(FUDeclaration* decl);
 // Because of merge, we need units that can delay the datapath for different values depending on the datapath that is being configured.

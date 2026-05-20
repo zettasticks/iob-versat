@@ -83,6 +83,7 @@ DecompConfigStatement DecomposeConfigStatement(Env* env,ConfigStatement* stmt,Ar
     res.isFunctionInvoc = true;
     res.func = lhsLast.func;
     res.args = stmt->lhs->next->arguments;
+    res.lhs.name = lhsFirst.name.identifier;
   }
 
   if(stmt->type == ConfigStatementType_EQUALITY){
@@ -189,7 +190,7 @@ DecompConfigStatement DecomposeConfigStatement(Env* env,ConfigStatement* stmt,Ar
       res.rhs.expr = rhsLast.sym;
     }
 
-    Assert(found);
+    //Assert(found);
   }
   
   return res;
@@ -356,8 +357,6 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       // Collect all gen loops into an "iterator" structures.
       // Iterate over that structure setting the gen variables to the expected value.
 
-      // Environment accesses to arrays can only be done by expressions that contain constants or gen variables.
-
       // Separate loops for easier processing
       auto genList = PushList<AddressGenForDef>(temp);
       for(int i = 0; i < stmts.size - 1; i++){
@@ -411,10 +410,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           env->SetGenVariable(gen.name,gen.val);
         }
 
-        DEBUG_BREAK();
         DecompConfigStatement decomp = DecomposeConfigStatement(env,simple,temp);
-
-        SYM_Print(decomp.rhs.expr);
 
         String lhsName = decomp.lhs.name;
 
@@ -521,7 +517,8 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           newAssign->pointerVarName = PushString(out,decomp.rhs.entity.name.identifier);
           newAssign->lhs = lhsName;
         } else {
-          Assert(false);
+          // Decomp failed. Error already reported.
+          //Assert(false);
         }
 
         // Increment gen state in reverse order.
@@ -542,7 +539,6 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         if(didAllLoops){
           break;
         }
-
       }
       env->PopScope();
     }
@@ -558,6 +554,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
     c->Struct(structName);
     for(ConfigStatement* stmt : def->statements){
+      // TODO: Remove this since we want to rely on the decomp stuff
       String name = GetBase(stmt->lhs)->name.identifier;
           
       String wireName = {};
@@ -641,7 +638,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       Array<AddressGenForDef> forLoops = PushArray(temp,forList);
 
       for(AddressGenForDef def : forLoops){
-        env->AddParam(def.loopVariable);
+        env->AddVariable(def.loopVariable);
       }
 
       // TODO: We only support a single transfer loop.

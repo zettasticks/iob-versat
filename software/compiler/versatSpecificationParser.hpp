@@ -250,8 +250,8 @@ enum EntityType{
 };
 
 enum EntityVarFlags{
-  EntityVarFlags_NONE,
-  EntityVarFlags_ADDRESS
+  EntityVarFlags_NONE = 0,
+  EntityVarFlags_ADDRESS = (1 << 1)
 };
 
 struct Entity{
@@ -276,7 +276,7 @@ struct Entity{
 static bool Entity_IsArray(Entity in){
   bool res = false;
   res |= (in.type == EntityType_FU_ARRAY);
-  res |= (in.type == EntityType_VARIABLE_INPUT && in.dims.size > 0);
+  res |= (in.type == EntityType_VARIABLE_INPUT && in.arrayDims > 0);
   return res;
 }
 
@@ -356,7 +356,7 @@ struct Env{
   void AddConnection(ConnectionDef def);
   void AddEquality(ConnectionDef def);
 
-  void AddParam(Token name);
+  void AddParam(Token name,int val);
   void AddVariable(Token name,MathExpression* arraySize = nullptr,EntityVarFlags flags = {});
 
   void SetGenVariable(Token name,int value);

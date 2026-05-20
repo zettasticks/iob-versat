@@ -157,4 +157,29 @@ Wire* GetConfigWireByName(FUDeclaration* decl,String name){
   return nullptr;
 }
 
+String DECL_MangleName(String typeName,Array<ParamNameAndValue> params,Arena* out){
+  TEMP_REGION(temp,out);
 
+  Array<ParamNameAndValue> ordered = CopyArray(params,temp);
+  
+  for(int i = 0; i < ordered.size; i++){
+    for(int j = i + 1; j < ordered.size; j++){
+      if(CompareStringOrdered(ordered[i].name,ordered[j].name) > 0){
+        SWAP(ordered[i],ordered[j]);
+      }
+    }
+  }
+
+  auto b = StartString(temp);
+  b->PushString(typeName);
+
+  for(ParamNameAndValue val : ordered){
+    b->PushString("_");
+    b->PushString(val.name);
+    b->PushString("_");
+    SYM_Repr(b,val.value);
+  }
+
+  String res = EndString(out,b);
+  return res;
+}

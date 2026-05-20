@@ -3,9 +3,6 @@
 #include "addressGen.hpp"
 #include "hierName.hpp"
 
-// TODO: Remove this.
-// #include "versatSpecificationParser.hpp"
-
 struct FUDeclaration;
 struct AddressAccess;
 struct ConfigIdentifier;
@@ -49,17 +46,8 @@ struct ConfigStatement{
   Array<ConfigStatement*> childs; // Only for loops contains these right now.
 };
 
-enum ConfigVarType{
-  ConfigVarType_SIMPLE,
-  ConfigVarType_ADDRESS,
-  ConfigVarType_FIXED,
-  ConfigVarType_DYN
-};
-
 struct ConfigVarDeclaration{
   Token name;
-
-  //ConfigVarType type;
   Token type;
   MathExpression* arraySize; // If non null then its an array.
 };
@@ -127,6 +115,13 @@ struct ConfigStuff{
     FunctionMemoryTransfer transfer;
     AccessAndType access;
   };
+};
+
+enum ConfigVarType{
+  ConfigVarType_SIMPLE,
+  ConfigVarType_ADDRESS,
+  ConfigVarType_FIXED,
+  ConfigVarType_DYN
 };
 
 struct ConfigVariable{

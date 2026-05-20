@@ -189,6 +189,7 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
   Env* env = StartEnvironment(envArena,envArena2);
   env->circuit = circuit;
 
+  // Pass to check if out instance is used anywhere
   bool addOutputInstance = false;
   for(ConnectionDef& decl : def.connections){
     for(Var v : decl.input.vars){
@@ -205,7 +206,6 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
       }
     }
   }
-
   if(addOutputInstance){
     FUInstance* outInst = CreateOrGetOutput(circuit);
 
@@ -216,7 +216,9 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
 
   auto paramList = PushList<ParameterDef>(temp);
   for(ParameterDeclaration param : def.params){
-    env->AddParam(param.name);
+    int val = env->CalculateConstantExpression(param.defaultValue);
+
+    env->AddParam(param.name,val);
 
     ParameterDef* def = paramList->PushElem();
     
@@ -472,6 +474,7 @@ Entity Env::GetEntity(Token name){
 void Env::PushEntity(Token name,Entity ent){
   auto res = this->scopes[this->currentScope]->variable->GetOrAllocate(name.identifier);
   if(res.alreadyExisted){
+    DEBUG_BREAK();
     ReportError(name,"An entity with this name already exists");
   }
   
@@ -679,8 +682,12 @@ Array<Entity> Env::GetEntity(ConfigIdentifier* id,Arena* out){
     } break;
     }
 
-    *accessList->PushElem() = next;
-    current = next;
+    if(!Nil(next)){
+      *accessList->PushElem() = next;
+      current = next;
+    } else {
+      DEBUG_BREAK();
+    }
   }
 
   Array<Entity> accesses = PushArray<Entity>(out,accessList);
@@ -707,9 +714,13 @@ Array<Entity> Env::GetEntity(MathExpression* spec,Arena* out){
         ent.type = EntityType_SYM;
         ent.sym = SYM_Lit(ent.val);
       }  
-
+      if(ent.type == EntityType_PARAM){
+        save = false;
+        ent.type = EntityType_SYM;
+        ent.sym = SYM_Lit(ent.val);
+      }
+      
       bool isVar = false;
-      isVar |= (ent.type == EntityType_PARAM);
       isVar |= (ent.type == EntityType_VARIABLE_INPUT);
 
       if(isVar) {
@@ -733,13 +744,35 @@ Array<Entity> Env::GetEntity(MathExpression* spec,Arena* out){
 
       bool found = false;
       if(!found && ent.type == EntityType_VARIABLE_INPUT){
-        if(indexOrSym.type == EntityType_GEN_VALUE){
-          found = true;
-          save = false;
+        bool isAddress = (ent.flags & EntityVarFlags_ADDRESS);
+        bool isArray = ent.arrayDims > 0;
 
-          String trueName = PushString(temp,"%.*s[%d]",UN(ent.name.identifier),indexOrSym.val);
-          ent.type = EntityType_SYM;
-          ent.sym = SYM_Var(trueName);
+        if(!isAddress && isArray){
+          int val = 0;
+          bool found2 = false;
+          if(indexOrSym.type == EntityType_GEN_VALUE){
+            found2 = true;
+            save = false;
+
+            val = indexOrSym.val;
+          }
+          if(indexOrSym.type == EntityType_SYM){
+            SYM_EvaluateResult res = SYM_ConstantEvaluate(indexOrSym.sym);
+
+            if(!res.Error()){
+              found2 = true;
+              save = false;
+
+              val = res.result;
+            }
+          }
+
+          if(found2){
+            found = true;
+            String trueName = PushString(temp,"%.*s[%d]",UN(ent.name.identifier),val);
+            ent.type = EntityType_SYM;
+            ent.sym = SYM_Var(trueName);
+          }
         }
       }
 
@@ -1063,10 +1096,11 @@ void Env::AddEquality(ConnectionDef decl){
   table->Insert(inst->name,inst);
 }
 
-void Env::AddParam(Token name){
+void Env::AddParam(Token name,int val){
   Entity ent = Entity_Nil;
   ent.type = EntityType_PARAM;
   ent.name = name;
+  ent.val = val;
   PushEntity(name,ent);
 }
 
@@ -1084,13 +1118,24 @@ void Env::AddVariable(Token name,MathExpression* arraySize,EntityVarFlags flags)
 }
 
 void Env::SetGenVariable(Token name,int value){
-  EnvScope* current = scopes[currentScope];
+  Entity* alreadyExists;
+  for(int i = this->currentScope; i >= 0; i--){
+    alreadyExists = this->scopes[i]->variable->Get(name.identifier);
 
-  Entity ent = Entity_Nil;
-  ent.type = EntityType_GEN_VALUE;
-  ent.val = value;
+    if(alreadyExists && alreadyExists->type == EntityType_GEN_VALUE){
+      break;
+    }
+  }
 
-  PushEntity(name,ent);
+  if(alreadyExists){
+    alreadyExists->val = value;
+  } else {
+    Entity ent = Entity_Nil;
+    ent.type = EntityType_GEN_VALUE;
+    ent.val = value;
+
+    PushEntity(name,ent);
+  }
 }
 
 void FUInstanceIterator::Advance(){
@@ -1318,8 +1363,12 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
       Entity ent = GetEntity(top->name);
 
       bool found = false;
-
       if(!found && ent.type == EntityType_GEN_VALUE){
+        found = true;
+        res = SYM_Lit(ent.val);
+      }
+      if(!found && ent.type == EntityType_PARAM){
+        found = true;
         res = SYM_Lit(ent.val);
       }
 

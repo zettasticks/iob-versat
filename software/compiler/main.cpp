@@ -547,8 +547,6 @@ int main(int argc,char* argv[]){
           }
 
           if(!found){
-            //tp.typeName
-            //ReportError(content,tp.typeName,"Did not find type");
             anyError = true;
           }
         }

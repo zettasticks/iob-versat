@@ -907,7 +907,7 @@ SYM_Expr SYM_PosMax(SYM_Expr leftIn,SYM_Expr rightIn){
 }
 
 SYM_Expr SYM_Align(SYM_Expr left,SYM_Expr right){
-  // TODO: This name is hardcoded and must match the header generation code.
+  // TODO: This name is hardcoded and must match the header generated code.
   return SYM_Func("ALIGN",left,right);
 }
 
