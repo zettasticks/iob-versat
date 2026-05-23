@@ -1333,10 +1333,10 @@ ModuleInfo ExtractModuleInfo(Module& module,Arena* out){
 
   info.defaultParameters = module.parameters;
 
-  auto inputs = StartArray<PortInfo>(out);
-  auto outputs = StartArray<PortInfo>(out);
-  auto configs = StartArray<WireExpression>(out);
-  auto states = StartArray<WireExpression>(out);
+  auto inputs = StartGrowableArray<PortInfo>(out);
+  auto outputs = StartGrowableArray<PortInfo>(out);
+  auto configs = StartGrowableArray<WireExpression>(out);
+  auto states = StartGrowableArray<WireExpression>(out);
 
   info.name = module.name;
   info.isSource = module.isSource;

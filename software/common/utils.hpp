@@ -448,7 +448,7 @@ Array<T> PushArray(Arena* out,ArenaList<T>* list){
     return {};
   }
 
-  auto arr = StartArray<T>(out);
+  auto arr = StartGrowableArray<T>(out);
   
   FOREACH_LIST(SingleLink<T>*,iter,list->head){
     T* ptr = arr.PushElem();

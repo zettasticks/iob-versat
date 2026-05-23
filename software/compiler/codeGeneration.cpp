@@ -59,9 +59,9 @@ Array<Array<MuxInfo>> CalculateMuxInformation(AccelInfoIterator* iter,Arena* out
   auto ExtractMuxInfo = [](AccelInfoIterator iter,Arena* out) -> Array<MuxInfo>{
     TEMP_REGION(temp,out);
 
-    auto alreadySet = StartArray<bool>(temp);
+    auto alreadySet = StartGrowableArray<bool>(temp);
     
-    auto builder = StartArray<MuxInfo>(out);
+    auto builder = StartGrowableArray<MuxInfo>(out);
     for(; iter.IsValid(); iter = iter.Step()){
       InstanceInfo* info = iter.CurrentUnit();
       if(info->isMergeMultiplexer && !info->doesNotBelong){
@@ -1062,7 +1062,7 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
   AccelInfo info = module->info;
   
   Array<InstanceInfo*> allSameLevel = GetAllSameLevelUnits(&info,0,0,temp);
-  auto builder = StartArray<Array<int>>(temp);
+  auto builder = StartGrowableArray<Array<int>>(temp);
   for(InstanceInfo* p : allSameLevel){
     *builder.PushElem() = p->individualWiresGlobalConfigPos;
   }
@@ -2064,7 +2064,7 @@ Array<TypeStructInfo> GenerateStructs(Array<StructInfo*> info,String typeString,
       }
     }
 
-    auto builder = StartArray<IndexInfo>(temp);
+    auto builder = StartGrowableArray<IndexInfo>(temp);
     for(int i = 0; i < maxPos; i++){
       if(!validPositions[i]){
         *builder.PushElem() = {true,i,0};
@@ -3076,7 +3076,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
     int i = 0;
     for(int ii = 0; ii <  info.infos.size; ii++){
       Array<InstanceInfo> allInfos = info.infos[ii].info;
-      auto arr = StartArray<int>(temp);
+      auto arr = StartGrowableArray<int>(temp);
       for(InstanceInfo& t : allInfos){
         if(!t.isComposite){
           for(int d : t.extraDelay){
@@ -3338,7 +3338,13 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
 
           for(ConfigStuff assign : func->stuff){
             String lhs = PushString(temp,"res.%.*s",UN(assign.assign.lhs));
-            String rhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(assign.assign.rhsId));
+
+            String rhs = {};
+            if(assign.assign.noAccess){
+              rhs = assign.assign.rhsId;
+            } else {
+              rhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(assign.assign.rhsId));
+            }
 
             c->Assignment(lhs,rhs);
           }
@@ -3596,7 +3602,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
 
   // Accelerator header
-  auto arr = StartArray<int>(temp);
+  auto arr = StartGrowableArray<int>(temp);
   for(InstanceInfo& t : info.infos[0].info){
     if(!t.isComposite){
       for(int d : t.extraDelay){

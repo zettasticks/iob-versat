@@ -262,7 +262,7 @@ static inline int Compare(SYM_MultTerms left,SYM_MultTerms right){
 
 
 void SYM_Test();
-char*  SYM_DebugRepr(SYM_Expr expr);
+char* SYM_DebugRepr(SYM_Expr expr);
 
 int LiteralValue(SYM_Expr in);
 bool IsLiteral(SYM_Expr in);

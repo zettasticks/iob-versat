@@ -30,8 +30,15 @@ namespace fs = std::filesystem;
 #define STRINGIFY(ARG) DO_STRINGIFY(ARG)
 
 // Only for graphs that we know for sure are DAG
-Array<int> CalculateDAG(int maxNode,Array<Pair<int,int>> edges,int start,Arena* out){
+Array<int> CalculateDAG(Array<Pair<int,int>> edges,int start,Arena* out){
   TEMP_REGION(temp,out);
+
+  int maxNode = 0;
+
+  for(Pair<int,int> p : edges){
+    maxNode = MAX(maxNode,p.first);
+    maxNode = MAX(maxNode,p.second);
+  }
 
   int NOT_SEEN = 0; 
   int WAIT_CHILDREN = 1;
@@ -86,6 +93,7 @@ Array<int> CalculateDAG(int maxNode,Array<Pair<int,int>> edges,int start,Arena* 
 // This structure needs to represent the entire work that is required to perform 
 struct Work{
   ConstructDef definition;
+  Array<ParamNameAndValue> params;
 
   bool calculateDelayFixedGraph;
   bool flattenWithMapping;
@@ -99,7 +107,6 @@ void Print(Work* work){
 
 void GetSubWorkRequirement(Hashmap<String,Work>* typeToWork,ConstructDef type){
   TEMP_REGION(temp,nullptr);
-  TEMP_REGION(temp2,temp);
   Array<Token> subTypesUsed = TypesUsed(type,temp);
   
   for(Token tok : subTypesUsed){
@@ -160,6 +167,8 @@ struct OptionsGather{
   ArenaList<String>* unitFolderPaths;
   ArenaList<String>* extraSources;
   ArenaList<String>* includePaths;
+  
+  ArenaList<String>* paramDefinitions;
 
   Options* options;
 };
@@ -174,6 +183,10 @@ parse_opt (int key, char *arg,
     {
     case 'S': *opts->extraSources->PushElem() = arg; break;
     case 'I': *opts->includePaths->PushElem() = arg; break;
+
+    case 'A': {
+      *opts->paramDefinitions->PushElem() = arg; break;
+    } break;
 
     // TODO: All the filepaths should be inserted into verilogFiles while this only takes in folders.
     case 'u': *opts->unitFolderPaths->PushElem() = arg; break;
@@ -206,7 +219,7 @@ parse_opt (int key, char *arg,
     case 't': opts->options->topName = arg; break;
     case 'o': opts->options->hardwareOutputFilepath = arg; break;
     case 'O': opts->options->softwareOutputFilepath = arg; break;
-      
+
     case ARGP_KEY_ARG: opts->options->specificationFilepath = arg; break;
     case ARGP_KEY_END: break;
     }
@@ -218,6 +231,7 @@ struct argp_option options[] =
   {
     { "debug", 128 ,0, 0, "Insert debug registers on the generated accelerator"},
     { "profile", 129 ,0, 0, "Insert profiling registers on the generated accelerator"},
+    { 0, 'A', "Arg",   0, "Set param to value"},
     { 0, 'b',"Size",   0, "Databus size connected to external RAM (8,16,default:32,64,128,256)"},
     { 0, 'd', 0,       0, "Use DMA"},
     { 0, 'D', 0,       0, "Architecture has databus"},
@@ -273,18 +287,7 @@ int main(int argc,char* argv[]){
   TEMP_REGION(temp2,temp);
   
   Arena* perm = globalPermanent;
-  
-  const char* test1 = "OLA";
-  String test2 = "OLA";
 
-  TESTER test3 = {};
-  test3.t1 = "OLA";
-  test3.t2 = "OLA";
-
-  Array<int> test = PushArray<int>(perm,2);
-  test[0] = 1;
-  test[1] = 2;
-  
   // Init common stuff before compiler stuff.
   SYM_Init();
   TE_Init();
@@ -306,6 +309,7 @@ int main(int argc,char* argv[]){
   gather.extraSources = PushList<String>(temp);
   gather.includePaths = PushList<String>(temp);
   gather.unitFolderPaths = PushList<String>(temp);
+  gather.paramDefinitions = PushList<String>(temp);
 
   globalOptions = DefaultOptions(perm);
   gather.options = &globalOptions;
@@ -337,6 +341,8 @@ int main(int argc,char* argv[]){
     printf("\nNeed to specify top unit with -t\n");
     exit(-1);
   }
+
+  Array<String> paramDefinitions = PushArray(perm,gather.paramDefinitions);
 
   TrieMap<String,ModuleInfo>* allModules = PushTrieMap<String,ModuleInfo>(temp);
 
@@ -449,18 +455,21 @@ int main(int argc,char* argv[]){
   }
   
   String specFilepath = globalOptions.specificationFilepath;
-  String topLevelTypeStr = globalOptions.topName;
 
   // TODO: Simplify this part. 
-  FUDeclaration* simpleType = GetTypeByName(topLevelTypeStr);
+  FUDeclaration* simpleType = GetTypeByName(globalOptions.topName);
 
+  String topLevelTypeStr = globalOptions.topName;
+  
   if(!simpleType && specFilepath.size && !CompareString(topLevelTypeStr,"VERSAT_RESERVED_ALL_UNITS")){
     String content = PushFile(temp,StaticFormat("%.*s",UN(specFilepath)));
     
+    // Parse spec file
     Array<ConstructDef> types = ParseVersatSpecification(content,temp);
 
     TrieSet<String>* checkNames = PushTrieSet<String>(temp);
-    
+
+    // Check for repeated module names
     bool sameName = false;
     for(ConstructDef def : types){
       if(checkNames->ExistsOrInsert(def.base.name.originalData)){
@@ -477,6 +486,7 @@ int main(int argc,char* argv[]){
       return -1;
     }
 
+    // Collect all modules 
     auto moduleLike = PushList<ConstructDef>(temp);
     for(ConstructDef def : types){
       if(IsModuleLike(def)){
@@ -484,49 +494,165 @@ int main(int argc,char* argv[]){
       }
     }
     auto modules = PushArray(temp,moduleLike);
-    
-    int size = modules.size;
-    
-    Hashmap<String,int>* typeToId = PushHashmap<String,int>(temp,size);
-    for(int i = 0; i < size; i++){
-      typeToId->Insert(modules[i].base.name.identifier,i);
-    }
-    
-    if(!typeToId->Exists(topLevelTypeStr)){
-      printf("Did not find the top level type: %.*s\n",UN(topLevelTypeStr));
-      return -1;
-    }
-    
-    auto arr = StartArray<Pair<int,int>>(temp2);
-    for(int i = 0; i < size; i++){
-      Array<Token> subTypesUsed = TypesUsed(modules[i],temp);
 
-      for(Token str : subTypesUsed){
-        int* index = typeToId->Get(str.identifier);
-        if(index){
-          *arr.PushElem() = {i,*index};
+    int typesSeen = 0;
+    BiMap<String,int>* typeToId = PushBiMap<String,int>(temp);
+
+    String trueTopName = topLevelTypeStr;
+
+    // Create DAG graph of types usage. No type checking performed at this stage
+    auto edgeList = PushList<Pair<int,int>>(temp2);
+    for(int i = 0; i < modules.size; i++){
+      ConstructDef def = modules[i];
+
+      auto subtypesUsed = PushList<String>(temp);
+      String constructName = def.base.name.identifier;
+
+      // Collect all the subtypes used
+      FULL_SWITCH(def.type){
+      case ConstructType_MERGE: {
+        Array<Token> subTypesUsed = Extract(def.merge.declarations,perm,&TypeAndInstance::typeName);
+        for(Token t : subTypesUsed){
+          *subtypesUsed->PushElem() = t.identifier;
+        }
+      } break;
+      case ConstructType_MODULE: {
+        // Initialize an environment to properly figure out params values
+        FREE_ARENA(envArena);
+        FREE_ARENA(envArena2);
+        Env* env = StartEnvironment(envArena,envArena2);
+
+        // Build param values array and set params on environment.
+        auto l = PushList<ParamNameAndValue>(temp);
+        for(ParameterDeclaration decl : def.module.params){
+          String paramName = decl.name.identifier;
+
+          bool topLevelOverride = false;
+
+          int val = 0;
+          if(constructName == topLevelTypeStr){
+            for(String topLevelParam : paramDefinitions){
+              Array<String> splitted = Split(topLevelParam,'=',temp);
+
+              if(splitted[0] == paramName){
+                val = ParseInt(splitted[1]);
+                topLevelOverride = true;
+                break;
+              }
+            }
+          } 
+
+          if(!topLevelOverride){
+            val = env->CalculateConstantExpression(decl.defaultValue);
+          }
+
+          ParamNameAndValue* v = l->PushElem();
+          v->name = paramName;
+          v->value = val;
+
+          env->AddParam(decl.name,val);
+        }
+
+        // We store the mangled name of the top level in here 
+        if(constructName == topLevelTypeStr){
+          Array<ParamNameAndValue> params = PushArray(temp,l);
+          trueTopName = DECL_MangleName(constructName,params,perm);
+          constructName = trueTopName;
+        }
+        
+        for(InstanceDeclaration decl : def.module.declarations){
+          String typeName = decl.typeName.identifier;
+
+          auto list = PushList<ParamNameAndValue>(temp);
+          for(Pair<String,MathExpression*> params : decl.parameters){
+            ParamNameAndValue* val = list->PushElem();
+            
+            val->name = params.first;
+            val->value = env->CalculateConstantExpression(params.second);
+          }
+          Array<ParamNameAndValue> params = PushArray(temp,list);
+
+          String mangledName = DECL_MangleName(typeName,params,perm);
+          if(mangledName != typeName){
+            printf("Mangled: %.*s\n",UN(mangledName));
+          }
+
+          *subtypesUsed->PushElem() = mangledName;
+        }
+      } break;
+      case ConstructType_ITERATIVE: {
+        // Nothing
+      } break;
+    }
+
+      int moduleIndex = -1;
+      int* possibleModuleIndex = typeToId->Get(constructName);
+      
+      if(possibleModuleIndex){
+        moduleIndex = *possibleModuleIndex;
+      } else {
+        moduleIndex = typesSeen++;
+        typeToId->Insert(constructName,moduleIndex);
+      }
+
+      for(String typeName : subtypesUsed){
+        int index = -1;
+
+        int* possibleIndex = typeToId->Get(typeName);
+        
+        if(possibleIndex){
+          index = *possibleIndex;
+        } else {
+          index = typesSeen++;
+          typeToId->Insert(typeName,index);
+        }
+
+        bool notFound = true;
+        for(Pair<int,int> p : edgeList){
+          if(p.first == moduleIndex && p.second == index){
+            notFound = false;
+            break;
+          }
+        }
+
+        if(notFound){
+          *edgeList->PushElem() = {moduleIndex,index};
         }
       }
     }
-    Array<Pair<int,int>> edges = EndArray(arr);
+    Array<Pair<int,int>> edges = PushArray<Pair<int,int>>(perm,edgeList);
+
+    topLevelTypeStr = trueTopName;
     
     // Basically using a simple DAG approach to detect the modules that we only care about. We do not process modules that are not needed
-    Array<int> order = CalculateDAG(size,edges,typeToId->GetOrFail(topLevelTypeStr),temp);
+    Array<int> order = CalculateDAG(edges,*typeToId->Get(trueTopName),temp);
 
     // Represents all the work that we need to do.
     Hashmap<String,Work>* typeToWork = PushHashmap<String,Work>(temp,order.size);
 
     for(int i : order){
       Work work = {};
-      Token name = modules[i].base.name;
-      work.definition = modules[i];
+
+      String mangledName = *typeToId->GetReverse(i);
+      DECL_UnmangleResult unmangled = DECL_UnmangleName(mangledName,temp);
       
-      typeToWork->Insert(name.identifier,work);
-    }
-    
-    for(int i : order){
-      ConstructDef type = modules[i];
-      GetSubWorkRequirement(typeToWork,type);
+      String name = unmangled.name;
+      work.params = unmangled.params;
+
+      for(int i = 0; i < modules.size; i++){
+        ConstructDef def = modules[i];
+        if(def.base.name.identifier == name){
+          work.definition = def;
+          break;
+        }
+      }
+
+      work.calculateDelayFixedGraph = true;
+      work.flattenWithMapping = true;
+
+      typeToWork->Insert(mangledName,work);
+
+      printf("Work to do: %.*s\n",UN(mangledName));
     }
 
     // We first validity check merge and if the types they are merging actually exist.
@@ -561,16 +687,40 @@ int main(int argc,char* argv[]){
     if(anyError){
       return -1;
     }
-    
+
+    printf("Ordered work to do: \n"); 
+    for(Pair<String,Work*> p : typeToWork){
+      String name = p.first;
+      printf("%.*s\n",UN(name));
+    }    
+    printf("\n");
+
     // For the TOP unit, currently we do everything:
     Work* topWork = &typeToWork->GetOrFail(topLevelTypeStr);
     topWork->calculateDelayFixedGraph = true;
     topWork->flattenWithMapping = true;
       
-    for(auto p : typeToWork){
-      Work work = *p.second;
+    for(Pair<String,Work*> p : typeToWork){
+      String typeName = p.first;
+      
+      // TODO: We should not have to do this.
+      // Check if unit is already registered.
+      if(GetTypeByName(typeName) != nullptr){
+        printf("Skipping %.*s\n",UN(typeName));
+        continue;
+      } else {
+        printf("Gonna process %.*s\n",UN(typeName));
+      }
 
-      FUDeclaration* decl = InstantiateSpecifications(content,p.second->definition);
+      Work work = *p.second;
+      ConstructDef def = work.definition;
+
+      FUDeclaration* decl = nullptr;
+      if(def.type == ConstructType_MODULE){
+        decl = InstantiateModule(content,def.module,work.params);
+      } else {
+        decl = InstantiateSpecifications(content,p.second->definition);
+      }
       decl->singleInterfaces |= SingleInterfaces_SIGNAL_LOOP;
       
 #if 0
@@ -620,14 +770,14 @@ int main(int argc,char* argv[]){
     }
   }
 
-  FUDeclaration* type = GetTypeByName(topLevelTypeStr);
+  FUDeclaration* type = GetTypeByName(globalOptions.topName);
+
   if(!type && !CompareString(topLevelTypeStr,"VERSAT_RESERVED_ALL_UNITS")){
     printf("Did not find the top level type: %.*s\n",UN(topLevelTypeStr));
     return -1;
   }
 
   Accelerator* accel = nullptr;
-  //FUInstance* TOP = nullptr;
 
   // NOTE: Was used to help with linting, since we want to produce an accelerator that utilizes everything.
   if(CompareString(topLevelTypeStr,"VERSAT_RESERVED_ALL_UNITS")){
@@ -842,8 +992,11 @@ int main(int argc,char* argv[]){
     fs::copy(path,hardwareDestinationPath,options);
   }
 
+  // MARK
+#if 1
   // This should be the last thing that we do, no further file creation can occur after this point
   ReportFileCreation();
+#endif
 
   return 0;
 }

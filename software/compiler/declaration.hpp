@@ -40,7 +40,13 @@ struct Parameter{
 
 struct ParamNameAndValue{
   String name;
-  SYM_Expr value;
+  int value;
+};
+
+// TODO: This is kinda stupid but really want something working right now.
+struct DECL_UnmangleResult{
+  String name;
+  Array<ParamNameAndValue> params;
 };
 
 // TODO: A lot of duplicated data exists since the change to merge.
@@ -177,7 +183,10 @@ FUDeclaration* RegisterFU(FUDeclaration declaration);
 FUDeclaration* GetTypeByName(String str);
 FUDeclaration* GetTypeByNameOrFail(String name);
 
+FUDeclaration* GetTypeByName(String str,Array<ParamNameAndValue> params);
+
 String DECL_MangleName(String typeName,Array<ParamNameAndValue> params,Arena* out);
+DECL_UnmangleResult DECL_UnmangleName(String name,Arena* out);
 
 void InitializeSimpleDeclarations();
 bool HasMultipleConfigs(FUDeclaration* decl);

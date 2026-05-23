@@ -7,6 +7,7 @@
 #include <cstdarg>
 
 #include "intrinsics.hpp"
+#include "utilsCore.hpp"
 
 #if defined(__SANITIZE_ADDRESS__)
 #pragma message "Using address sanitizer"
@@ -157,7 +158,7 @@ Arena* GetArena2(Arena* diff,Arena* diff2){
   }
 
   printf("Ran out of temporary arenas\n");
-  DEBUG_BREAK();
+  ENTER_DEBUG();
   return nullptr;
 }
 
@@ -173,7 +174,7 @@ Arena* GetSingleUseArena(){
   }
 
   printf("Ran out of single use arenas\n");
-  DEBUG_BREAK();
+  ENTER_DEBUG();
   return nullptr;
 }
 

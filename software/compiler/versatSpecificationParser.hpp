@@ -40,6 +40,23 @@ struct VarGroup{
   Array<Var> vars;
 };
 
+enum SpecOperation{
+  SpecOperation_NIL,
+
+  SpecOperation_ADD,
+  SpecOperation_SUB,
+  SpecOperation_MUL,
+  SpecOperation_DIV,
+  SpecOperation_NOT,
+  SpecOperation_AND,
+  SpecOperation_OR,
+  SpecOperation_XOR,
+  SpecOperation_RHR,
+  SpecOperation_SHR,
+  SpecOperation_RHL,
+  SpecOperation_SHL
+};
+
 enum SpecType{
   SpecType_OPERATION,
   SpecType_VAR,
@@ -50,17 +67,28 @@ enum SpecType{
   SpecType_FUNCTION_CALL
 };
 
+// NOTE: Other than binary and unary operations, common to most languages, we also support "reduced" forms of binary operations.
+//       This is operations like '+(a[0..10])' that perform a reduce like operation. For these we do not store expressions, instead we only support this for Vars. This means that expressions has a size of 0 for these ones.
+
 struct SpecExpression{
   Array<SpecExpression*> expressions;
-  union{
-    const char* op;
-    Var var;
-    int val;
-    Token name;
-  };
+
+  SpecOperation op;
+  Var var;
+  int val;
+  Token name;
   
   // NOTE: If array access, expressions is an array of the expressions in order and var contains the array name.
   SpecType type;
+};
+
+enum MathOperation{
+  MathOperation_NIL,
+
+  MathOperation_ADD,
+  MathOperation_SUB,
+  MathOperation_MUL,
+  MathOperation_DIV
 };
 
 enum MathType{
@@ -74,11 +102,10 @@ enum MathType{
 
 struct MathExpression{
   Array<MathExpression*> expressions;
-  union{
-    const char* op;
-    int val;
-    Token name;
-  };
+
+  MathOperation op;
+  int val;
+  Token name;
   
   MathType type;
 };
@@ -116,7 +143,6 @@ struct InstanceDeclaration{
   // NOTE: We could create a different expression type 
   Array<Pair<String,MathExpression*>> parameters;
 
-  Array<Token> addressGenUsed; // NOTE: We do not check if address gen exists at parse time, we check it later.
   Array<Token> shareNames;
   bool negateShareNames;
   bool debug;
@@ -184,6 +210,8 @@ bool IsModuleLike(ConstructDef def);
 Array<Token> TypesUsed(ConstructDef def,Arena* out);
 
 Array<ConstructDef> ParseVersatSpecification(String content,Arena* out);
+
+FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAndValue> params = {});
 
 // TODO: Move this function to a better place, no reason to be inside spec parser
 FUDeclaration* InstantiateSpecifications(String content,ConstructDef def);

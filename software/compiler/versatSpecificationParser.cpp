@@ -31,8 +31,21 @@ readOnly Entity Entity_Nil = {.inst = &FUInstance_NilInst,.func = &ConfigFunctio
 SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower = 99);
 MathExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower = 99);
 
-String GetUniqueName(String name,Arena* out,InstanceTable* names){
+int 
+GetUniqueIndex(String baseName,InstanceTable* names){
+  TEMP_REGION(temp,nullptr);
+
   int counter = 0;
+  String uniqueName = baseName;
+  while(names->Exists(uniqueName)){
+    uniqueName = PushString(temp,"%.*s_%d",UN(baseName),counter++);
+  }
+
+  return counter;
+}
+
+String GetUniqueName(String name,Arena* out,InstanceTable* names,int counterStart = 0){
+  int counter = counterStart;
   String uniqueName = name;
   auto mark = MarkArena(out);
   while(names->Exists(uniqueName)){
@@ -178,7 +191,7 @@ int NumberOfConnections(Env* env,VarGroup group){
 }
 
 // TODO: Merge this function with the RegisterSubUnit function. There is no purpose to having this be separated.
-FUDeclaration* InstantiateModule(String content,ModuleDef def){
+FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAndValue> topLevelParams){
   Arena* perm = globalPermanent;
   TEMP_REGION(temp,perm);
 
@@ -216,7 +229,19 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def){
 
   auto paramList = PushList<ParameterDef>(temp);
   for(ParameterDeclaration param : def.params){
-    int val = env->CalculateConstantExpression(param.defaultValue);
+    int val = 0;
+   
+    bool topOverride = false;
+    for(ParamNameAndValue p : topLevelParams){
+      if(p.name == param.name.identifier){
+        val = p.value;
+        topOverride = true;
+      }
+    }
+
+    if(!topOverride){
+      val = env->CalculateConstantExpression(param.defaultValue);
+    }
 
     env->AddParam(param.name,val);
 
@@ -289,8 +314,6 @@ bool IsModuleLike(ConstructDef def){
 }
 
 Array<Token> TypesUsed(ConstructDef def,Arena* out){
-  TEMP_REGION(temp,out);
-
   FULL_SWITCH(def.type){
   case ConstructType_MERGE: {
     // TODO: How do we deal with same types being used?
@@ -300,7 +323,7 @@ Array<Token> TypesUsed(ConstructDef def,Arena* out){
     return result;
   } break;
   case ConstructType_MODULE: {
-    Array<Token> result = Extract(def.module.declarations,temp,&InstanceDeclaration::typeName);
+    Array<Token> result = Extract(def.module.declarations,out,&InstanceDeclaration::typeName);
 
     // nocheckin: TODO: Check repetition
     return result;
@@ -474,8 +497,8 @@ Entity Env::GetEntity(Token name){
 void Env::PushEntity(Token name,Entity ent){
   auto res = this->scopes[this->currentScope]->variable->GetOrAllocate(name.identifier);
   if(res.alreadyExisted){
-    DEBUG_BREAK();
     ReportError(name,"An entity with this name already exists");
+    ENTER_DEBUG();
   }
   
   *res.data = ent;
@@ -633,7 +656,7 @@ Array<Entity> Env::GetEntity(ConfigIdentifier* id,Arena* out){
 
         if(!found){
           NOT_IMPLEMENTED("Probably gonna need to generate the 'variable' name");
-          DEBUG_BREAK();
+          ENTER_DEBUG();
         }
       }
 
@@ -686,7 +709,7 @@ Array<Entity> Env::GetEntity(ConfigIdentifier* id,Arena* out){
       *accessList->PushElem() = next;
       current = next;
     } else {
-      DEBUG_BREAK();
+      ENTER_DEBUG();
     }
   }
 
@@ -796,18 +819,24 @@ Array<Entity> Env::GetEntity(MathExpression* spec,Arena* out){
       Entity right = Recurse(Recurse,top->expressions[1],false);
 
       SYM_Expr symVal = SYM_Zero;
-      if(top->op[0] == '+'){
+
+      FULL_SWITCH(top->op){
+      case MathOperation_NIL:{
+        // Nothing
+      } break;
+      case MathOperation_ADD:{
         symVal = left.sym + right.sym;
-      }
-      if(top->op[0] == '-'){
+      } break;
+      case MathOperation_SUB:{
         symVal = left.sym - right.sym;
-      }
-      if(top->op[0] == '*'){
+      } break;
+      case MathOperation_MUL:{
         symVal = left.sym * right.sym;
-      }
-      if(top->op[0] == '/'){
+      } break;
+      case MathOperation_DIV:{
         symVal = left.sym / right.sym;
-      }
+      } break;
+    };
 
       ent.type = EntityType_SYM;
       ent.sym = symVal;
@@ -948,10 +977,26 @@ void Env::AddInput(VarDeclaration var){
 void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
   TEMP_REGION(temp,nullptr);
 
-  FUDeclaration* type = GetTypeByName(decl.typeName.identifier);
+  auto l = PushList<ParamNameAndValue>(temp);
+  for(Pair<String,MathExpression*> p : decl.parameters){
+    String paramName = p.first;
+
+    bool topLevelOverride = false;
+
+    int val = 0;
+    val = CalculateConstantExpression(p.second);
+
+    ParamNameAndValue* v = l->PushElem();
+    v->name = paramName;
+    v->value = val;
+  }
+  Array<ParamNameAndValue> params = PushArray(temp,l);
+
+  FUDeclaration* type = GetTypeByName(decl.typeName.identifier,params);
   
   if(!type){
     ReportError(decl.typeName,"Typename does not exist");
+    Assert(false);
   }
 
   Entity ent = Entity_Nil;
@@ -1023,11 +1068,11 @@ void Env::AddConnection(ConnectionDef decl){
   }
 
   if(out.Size() != in.Size()){
-    DEBUG_BREAK();
     ReportError(decl.output.vars[0].name,"Different size on connection");
     ReportError(decl.input.vars[0].name,"Different size on connection");
     printf("Left side has size: %d\n",out.Size());
     printf("Right side has size: %d\n",in.Size());
+    ENTER_DEBUG();
     return;
   }
 
@@ -1229,26 +1274,119 @@ PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
     res.extra = var.extra;
   } break;
   case SpecType_OPERATION:{
-    PortExpression expr0 = InstantiateSpecExpression(root->expressions[0]);
+    bool isReduceForm = (root->expressions.size == 0);
+    bool isUnary = (root->expressions.size == 1);
+    bool isBinary = (root->expressions.size == 2);
 
-    // Assuming right now very simple cases, no port range and no delay range
-    Assert(expr0.extra.port.start == expr0.extra.port.end);
-    Assert(expr0.extra.delay.start == expr0.extra.delay.end);
+    PortExpression expr0 = {};
+    if(isUnary || isBinary){
+      expr0 = InstantiateSpecExpression(root->expressions[0]);
+    }
+    PortExpression expr1 = {};
+    if(isBinary){
+      expr1 = InstantiateSpecExpression(root->expressions[1]);
+    }
 
-    if(root->expressions.size == 1){
-      Assert(root->op[0] == '~' || root->op[0] == '-');
+    String typeName = {};
+    FULL_SWITCH(root->op){
+    case SpecOperation_NIL:{
+      // Nothing. Parser should report error already so no need to do anything more in here.
+    } break;
+    case SpecOperation_ADD:{
+      typeName = "ADD";
+    } break;
+    case SpecOperation_SUB:{
+      typeName = "SUB";
+    } break;
+    case SpecOperation_MUL:{
+      typeName = "MUL";
+    } break;
+    case SpecOperation_DIV:{
+      typeName = "DIV";
+    } break;
+    case SpecOperation_NOT:{
+      typeName = "NOT";
+    } break;
+    case SpecOperation_AND:{
+      typeName = "AND";
+    } break;
+    case SpecOperation_OR:{
+      typeName = "OR";
+    } break;
+    case SpecOperation_XOR:{
+      typeName = "XOR";
+    } break;
+    case SpecOperation_RHR:{
+      typeName = "RHR";
+    } break;
+    case SpecOperation_SHR:{
+      typeName = "SHR";
+    } break;
+    case SpecOperation_RHL:{
+      typeName = "RHL";
+    } break;
+    case SpecOperation_SHL:{
+      typeName = "SHL";
+    } break;
+    }
 
-      String typeName = {};
+    if(isReduceForm){
+      Assert(root->op == SpecOperation_ADD || root->op == SpecOperation_MUL);
 
-      switch(root->op[0]){
-      case '~':{
-        typeName = "NOT";
-      }break;
-      case '-':{
-        typeName = "NEG";
-      }break;
+      Var var = root->var;
+      FUDeclaration* type = GetTypeByName(typeName);
+      
+      int start = CalculateConstantExpression(var.index[0].start);
+      int end = CalculateConstantExpression(var.index[0].end);
+      int size = end - start;
+
+      int uniqueIndex = GetUniqueIndex(typeName,table);
+      Array<FUInstance*> buffer = PushArray<FUInstance*>(temp,size);
+
+      for(int i = 0; i < size; i++){
+        String name = GetActualArrayName(var.name.identifier,i,globalPermanent);
+        buffer[i] = table->GetOrFail(name);
       }
+      
+      Array<FUInstance*> buffer2 = PushArray<FUInstance*>(temp,size);
+      
+      // Tree shaped instanciation of units.
+      int amountOfUnits = size;
+      while(amountOfUnits > 1){
+        int newAmountOfUnits = 0;
+        
+        int index = 0;
+        while(index < amountOfUnits){
+          if(index + 2 <= amountOfUnits){
+            FUInstance* first = buffer[index];
+            FUInstance* second = buffer[index + 1];
 
+            String uniqueName = GetUniqueName(typeName,perm,table,uniqueIndex);
+            FUInstance* newUnit = CreateInstance(type,uniqueName);
+            
+            ConnectUnits(first,0,newUnit,0);
+            ConnectUnits(second,0,newUnit,1);
+          
+            buffer2[newAmountOfUnits++] = newUnit;
+            index += 2;
+          } else {
+            buffer2[newAmountOfUnits++] = buffer[index];
+            index += 1;
+          }
+        }
+        
+        amountOfUnits = newAmountOfUnits;
+        buffer = buffer2;
+      }
+      
+      res.inst = buffer[0];
+      res.extra.port.end  = res.extra.port.start  = &MATH_LITERAL_0;
+      res.extra.delay.end = res.extra.delay.start = &MATH_LITERAL_0;
+    }
+
+    if(isUnary){
+      Assert(root->op == SpecOperation_NOT || root->op == SpecOperation_SUB);
+      
       String permName = GetUniqueName(typeName,perm,table);
       FUInstance* inst = CreateInstance(GetTypeByName(typeName),permName);
       table->Insert(inst->name,inst);
@@ -1260,65 +1398,33 @@ PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
       res.inst = inst;
       res.extra.port.end  = res.extra.port.start  = &MATH_LITERAL_0;
       res.extra.delay.end = res.extra.delay.start = &MATH_LITERAL_0;
-
-      return res;
-    } else {
-      Assert(root->expressions.size == 2);
     }
 
-    PortExpression expr1 = InstantiateSpecExpression(root->expressions[1]);
+    if(isBinary){
+      // Assuming right now very simple cases, no port range and no delay range
+      Assert(expr1.extra.port.start == expr1.extra.port.end);
+      Assert(expr1.extra.delay.start == expr1.extra.delay.end);
 
-    // Assuming right now very simple cases, no port range and no delay range
-    Assert(expr1.extra.port.start == expr1.extra.port.end);
-    Assert(expr1.extra.delay.start == expr1.extra.delay.end);
+      String typeStr = typeName;
+      FUDeclaration* type = GetTypeByName(typeStr);
+      String uniqueName = GetUniqueName(type->name,perm,table);
 
-    String op = root->op;
-    const char* typeName;
-    if(CompareString(op,"&")){
-      typeName = "AND";
-    } else if(CompareString(op,"|")){
-      typeName = "OR";
-    } else if(CompareString(op,"^")){
-      typeName = "XOR";
-    } else if(CompareString(op,">><")){
-      typeName = "RHR";
-    } else if(CompareString(op,">>")){
-      typeName = "SHR";
-    } else if(CompareString(op,"><<")){
-      typeName = "RHL";
-    } else if(CompareString(op,"<<")){
-      typeName = "SHL";
-    } else if(CompareString(op,"+")){
-      typeName = "ADD";
-    } else if(CompareString(op,"-")){
-      typeName = "SUB";
-    } else {
+      FUInstance* inst = CreateInstance(type,uniqueName);
+      table->Insert(inst->name,inst);
 
-      
-      // TODO: Proper error reporting
-      printf("%.*s\n",UN(op));
-      Assert(false);
+      int start0 = CalculateConstantExpression(expr0.extra.port.start);
+      int delay0 = CalculateConstantExpression(expr0.extra.delay.start);
+
+      int start1 = CalculateConstantExpression(expr1.extra.port.start);
+      int delay1 = CalculateConstantExpression(expr1.extra.delay.start);
+
+      ConnectUnits(expr0.inst,start0,inst,0,delay0);
+      ConnectUnits(expr1.inst,start1,inst,1,delay1);
+
+      res.inst = inst;
+      res.extra.port.end  = res.extra.port.start  = &MATH_LITERAL_0;
+      res.extra.delay.end = res.extra.delay.start = &MATH_LITERAL_0;
     }
-
-    String typeStr = typeName;
-    FUDeclaration* type = GetTypeByName(typeStr);
-    String uniqueName = GetUniqueName(type->name,perm,table);
-
-    FUInstance* inst = CreateInstance(type,uniqueName);
-    table->Insert(inst->name,inst);
-
-    int start0 = CalculateConstantExpression(expr0.extra.port.start);
-    int delay0 = CalculateConstantExpression(expr0.extra.delay.start);
-
-    int start1 = CalculateConstantExpression(expr1.extra.port.start);
-    int delay1 = CalculateConstantExpression(expr1.extra.delay.start);
-
-    ConnectUnits(expr0.inst,start0,inst,0,delay0);
-    ConnectUnits(expr1.inst,start1,inst,1,delay1);
-
-    res.inst = inst;
-    res.extra.port.end  = res.extra.port.start  = &MATH_LITERAL_0;
-    res.extra.delay.end = res.extra.delay.start = &MATH_LITERAL_0;
   } break;
   }
 
@@ -1335,7 +1441,7 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
     switch(top->type){
     case MathType_OPERATION:{
       if(top->expressions.size == 1){
-        if(top->op[0] == '-' || top->op[0] == '~'){
+        if(top->op == MathOperation_SUB){
           SYM_Expr left  = Recurse(Recurse,top->expressions[0]);
           res = -left;
         } else {
@@ -1345,17 +1451,22 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
         SYM_Expr left  = Recurse(Recurse,top->expressions[0]);
         SYM_Expr right = Recurse(Recurse,top->expressions[1]);
 
-        if(top->op[0] == '+'){
+        FULL_SWITCH(top->op){
+        case MathOperation_NIL:{
+          // Nothing
+        } break;
+        case MathOperation_ADD:{
           res = left + right;
-        }
-        if(top->op[0] == '-'){
+        } break;
+        case MathOperation_SUB:{
           res = left - right;
-        }
-        if(top->op[0] == '*'){
+        } break;
+        case MathOperation_MUL:{
           res = left * right;
-        }
-        if(top->op[0] == '/'){
+        } break;
+        case MathOperation_DIV:{
           res = left / right;
+        } break;
         }
       }
     } break;
@@ -1414,10 +1525,31 @@ MathExpression* ParseNumberOnly(Parser* parser,Arena* out){
   return res;
 }
 
+MathExpression* ParseNumberOrSingleIdentifier(Parser* parser,Arena* out){
+  MathExpression* res = PushStruct<MathExpression>(out);
+
+  Token tok = parser->NextToken();
+
+  if(tok.type != TokenType_IDENTIFIER && tok.type != TokenType_NUMBER){
+    parser->ReportError("Unexpected token");
+  }
+
+  if(tok.type == TokenType_IDENTIFIER){
+    res->name = tok;
+    res->type = MathType_NAME;
+  }
+  if(tok.type == TokenType_NUMBER){
+    res->val = tok.number;
+    res->type = MathType_LITERAL;
+  }
+
+  return res;
+}
+
 Range<MathExpression*> ParseRange(Parser* parser,Arena* out){
   Range<MathExpression*> res = {};
 
-  MathExpression* n1 = ParseNumberOnly(parser,out); //ParseNumberOnly(parser,out);
+  MathExpression* n1 = ParseNumberOnly(parser,out);
 
   res.start = n1;
   res.end = n1;
@@ -1702,7 +1834,7 @@ MathExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
     MathExpression* parsed = nullptr;
     if(!parsed &&  parser->IfNextToken('-')){
       parsed = PushStruct<MathExpression>(out);
-      parsed->op = "-";
+      parsed->op = MathOperation_SUB;
     }
 
     if(parsed){
@@ -1812,7 +1944,7 @@ MathExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
   struct OpInfo{
     TokenType type;
     int bindingPower;
-    const char* op;
+    MathOperation op;
   };
 
   // TODO: This should be outside the function itself.
@@ -1820,11 +1952,11 @@ MathExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
 
   // TODO: Need to double check binding power
   auto infos = PushArray<OpInfo>(temp,4);
-  infos[0] = {TOK_TYPE('/'),0,"/"};
-  infos[1] = {TOK_TYPE('*'),0,"*"};
+  infos[0] = {TOK_TYPE('/'),0,MathOperation_DIV};
+  infos[1] = {TOK_TYPE('*'),0,MathOperation_MUL};
 
-  infos[2] = {TOK_TYPE('+'),1,"+"};
-  infos[3] = {TOK_TYPE('-'),1,"-"};
+  infos[2] = {TOK_TYPE('+'),1,MathOperation_ADD};
+  infos[3] = {TOK_TYPE('-'),1,MathOperation_SUB};
   
   // Parse binary ops.
   while(!parser->Done()){
@@ -1873,11 +2005,11 @@ SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower){
     SpecExpression* parsed = nullptr;
     if(!parsed && parser->IfNextToken('~')){
       parsed = PushStruct<SpecExpression>(out);
-      parsed->op = "~";
+      parsed->op = SpecOperation_NOT;
     }
-    if(!parsed &&  parser->IfNextToken('-')){
+    if(!parsed && parser->IfNextToken('-')){
       parsed = PushStruct<SpecExpression>(out);
-      parsed->op = "-";
+      parsed->op = SpecOperation_SUB;
     }
 
     if(parsed){
@@ -1902,7 +2034,33 @@ SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower){
 
   // Parse atom
   Token atom = parser->PeekToken();
-  if(atom.type == '('){
+
+  if(atom.type == '+' || atom.type == '*'){
+    // Unary addition
+    Token peek = parser->PeekToken(0);
+    Token peek2 = parser->PeekToken(1);
+
+    if(peek.type == '+' && peek2.type == '('){
+      parser->NextToken();
+      parser->NextToken();
+
+      res = PushStruct<SpecExpression>(out);
+      res->op = SpecOperation_ADD;
+      res->var = ParseVar(parser,out);
+
+      parser->ExpectNext(')');
+    }
+    if(peek.type == '*' && peek2.type == '('){
+      parser->NextToken();
+      parser->NextToken();
+
+      res = PushStruct<SpecExpression>(out);
+      res->op = SpecOperation_MUL;
+      res->var = ParseVar(parser,out);
+        
+      parser->ExpectNext(')');
+    }
+  } else if(atom.type == '('){
     parser->ExpectNext('(');
 
     res = ParseSpecExpression(parser,out);
@@ -1937,7 +2095,7 @@ SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower){
   struct OpInfo{
     TokenType type;
     int bindingPower;
-    const char* op;
+    SpecOperation op;
   };
 
   // TODO: This should be outside the function itself.
@@ -1945,20 +2103,20 @@ SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower){
   auto infos = PushArray<OpInfo>(temp,11);
 
   // TODO: Need to double check binding power
-  infos[0] = {TOK_TYPE('&'),0,"&"};
-  infos[1] = {TOK_TYPE('|'),0,"|"};
-  infos[2] = {TOK_TYPE('^'),0,"^"};
+  infos[0] = {TOK_TYPE('&'),0,SpecOperation_AND};
+  infos[1] = {TOK_TYPE('|'),0,SpecOperation_OR};
+  infos[2] = {TOK_TYPE('^'),0,SpecOperation_XOR};
 
-  infos[3] = {TokenType_ROTATE_LEFT,1,"><<"};
-  infos[4] = {TokenType_ROTATE_RIGHT,1,">><"};
-  infos[5] = {TokenType_SHIFT_LEFT,1,"<<"};
-  infos[6] = {TokenType_SHIFT_RIGHT,1,">>"};
+  infos[3] = {TokenType_ROTATE_LEFT,1,SpecOperation_RHL};
+  infos[4] = {TokenType_ROTATE_RIGHT,1,SpecOperation_RHR};
+  infos[5] = {TokenType_SHIFT_LEFT,1,SpecOperation_SHL};
+  infos[6] = {TokenType_SHIFT_RIGHT,1,SpecOperation_SHR};
 
-  infos[7]  = {TOK_TYPE('*'),2,"*"};
-  infos[8] = {TOK_TYPE('/'),2,"/"};
+  infos[7]  = {TOK_TYPE('*'),2,SpecOperation_MUL};
+  infos[8] = {TOK_TYPE('/'),2,SpecOperation_DIV};
 
-  infos[9] = {TOK_TYPE('+'),3,"+"};
-  infos[10] = {TOK_TYPE('-'),3,"-"};
+  infos[9] = {TOK_TYPE('+'),3,SpecOperation_ADD};
+  infos[10] = {TOK_TYPE('-'),3,SpecOperation_SUB};
   
   // Parse binary ops.
   while(!parser->Done()){

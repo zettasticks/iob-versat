@@ -98,8 +98,9 @@ struct ConfigAssignment{
   String lhs;
   SYM_Expr rhs;
   String rhsId;
-  
+
   String special;
+  bool noAccess; // TODO: For now this is used to indicate that we do not want to access 
 };
 
 struct ConfigStuff{

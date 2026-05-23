@@ -189,7 +189,7 @@ AccelInfoIterator StartIteration(AccelInfo* info,int mergeIndex){
 }
 
 Array<InstanceInfo*> GetAllSameLevelUnits(AccelInfo* info,int level,int mergeIndex,Arena* out){
-  auto builder = StartArray<InstanceInfo*>(out);
+  auto builder = StartGrowableArray<InstanceInfo*>(out);
 
   AccelInfoIterator iter = StartIteration(info,mergeIndex);
 
@@ -277,7 +277,7 @@ static bool Next(Array<Partition> arr){
 }
 
 Array<Partition> GenerateInitialPartitions(Accelerator* accel,Arena* out){
-  auto partitionsArr = StartArray<Partition>(out);
+  auto partitionsArr = StartGrowableArray<Partition>(out);
   int mergedPossibility = 0;
   for(FUInstance* node : accel->allocated){
     FUDeclaration* decl = node->declaration;
@@ -486,7 +486,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     }
   };
   
-  auto build = StartArray<InstanceInfo>(out);
+  auto build = StartGrowableArray<InstanceInfo>(out);
   Function(Function,build,accel,0,partitions,out);
   Array<InstanceInfo> res = EndArray(build);
 

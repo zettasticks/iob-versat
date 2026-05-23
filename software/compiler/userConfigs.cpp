@@ -55,6 +55,12 @@ struct DecompConfigStatement{
   } rhs;
 };
 
+// TODO: While I think this was worthwhile, it is also not a good way of doing things. We started by 
+//       trying to make the code generic instead of just doing the work that we actually need and then
+//       compressing it back into a single portion.
+
+// NOTE: For now we will keep this approach but eventually I want to remove this and do the proper logic in 
+//       config state and mem portions; 
 DecompConfigStatement DecomposeConfigStatement(Env* env,ConfigStatement* stmt,Arena* out){
   DecompConfigStatement res = {};
 
@@ -613,6 +619,16 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         assign->assign.rhsId = PushString(out,"%.*s.%.*s",UN(varName),UN(wireName));
       }
 
+      if(rhsMain.type == EntityType_SYM){
+        found = true;
+
+        ConfigStuff* assign = list->PushElem();
+        assign->type = ConfigStuffType_ASSIGNMENT;
+        assign->assign.lhs = lhsName;
+        assign->assign.rhsId = SYM_Repr(rhsMain.sym,out);
+        assign->assign.noAccess = true;
+      }
+
       if(!found){
         // TODO: Improved error messages
         printf("Error, did not find an expected type\n");
@@ -647,6 +663,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       bool singleStatement = (stmts.size == 1);
 
       DecompConfigStatement decomp = DecomposeConfigStatement(env,simple,temp);
+      DEBUG_BREAK();
 
       if(decomp.isFunctionInvoc){
         ConfigFunction* func = decomp.func;

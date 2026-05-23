@@ -132,6 +132,14 @@ FUDeclaration* GetTypeByNameOrFail(String name){
   return decl;
 }
 
+FUDeclaration* GetTypeByName(String str,Array<ParamNameAndValue> params){
+  TEMP_REGION(temp,nullptr);
+
+  String mangledName = DECL_MangleName(str,params,temp);
+  FUDeclaration* res = GetTypeByName(mangledName);
+  return res;
+}
+
 void InitializeSimpleDeclarations(){
   RegisterOperators();
   RegisterCircuitInput();
@@ -160,6 +168,8 @@ Wire* GetConfigWireByName(FUDeclaration* decl,String name){
 String DECL_MangleName(String typeName,Array<ParamNameAndValue> params,Arena* out){
   TEMP_REGION(temp,out);
 
+  return typeName;
+
   Array<ParamNameAndValue> ordered = CopyArray(params,temp);
   
   for(int i = 0; i < ordered.size; i++){
@@ -174,12 +184,40 @@ String DECL_MangleName(String typeName,Array<ParamNameAndValue> params,Arena* ou
   b->PushString(typeName);
 
   for(ParamNameAndValue val : ordered){
-    b->PushString("_");
+    b->PushString("@");
     b->PushString(val.name);
-    b->PushString("_");
-    SYM_Repr(b,val.value);
+    b->PushString("@");
+    b->PushString("%d",val.value);
   }
 
   String res = EndString(out,b);
+  return res;
+}
+
+DECL_UnmangleResult DECL_UnmangleName(String name,Arena* out){
+  TEMP_REGION(temp,out);
+  if(1){
+    DECL_UnmangleResult res = {};
+    res.name = name;
+    return res;
+  }  
+
+  Array<String> splitted = Split(name,'@',temp);
+
+  String typeName = splitted[0];
+
+  auto l = PushList<ParamNameAndValue>(temp);
+  for(int i = 1; i < splitted.size; i += 2){
+    String paramName = splitted[i];
+    String value = splitted[i+1];
+
+    ParamNameAndValue* v = l->PushElem();
+    v->name = PushString(out,paramName);
+    v->value = ParseInt(value);
+  }
+  
+  DECL_UnmangleResult res = {};
+  res.name = PushString(out,typeName);
+  res.params = PushArray(out,l);
   return res;
 }
