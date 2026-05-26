@@ -104,7 +104,7 @@ void PrintExpression(VExpr* exp){
 }
 
 SYM_Expr SymbolicExpressionFromVerilog(VExpr* topExpr){
-  SYM_Expr res = SYM_Zero;
+  SYM_Expr res = SYM_Nil;
 
   FULL_SWITCH(topExpr->type){
   case VExpr::UNDEFINED: {

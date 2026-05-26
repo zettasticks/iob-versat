@@ -15,7 +15,7 @@ struct TestCase{
 LoopLinearSum* PushLoopLinearSumEmpty(Arena* out){
   LoopLinearSum* res = PushStruct<LoopLinearSum>(out);
 
-  // NOTE: Everything is simpler is freeTerm is already initialized to zero.
+  // NOTE: Everything is simpler if freeTerm is already initialized to zero.
   res->freeTerm = SYM_Zero;
   return res;
 }
@@ -79,7 +79,7 @@ LoopLinearSum* AddLoopLinearSum(LoopLinearSum* inner,LoopLinearSum* outer,Arena*
     res->terms[i + innerSize].loopEnd = outer->terms[i].loopEnd;
   }
 
-  res->freeTerm += outer->freeTerm;
+  res->freeTerm = inner->freeTerm + outer->freeTerm;
 
   return res;
 }
@@ -190,7 +190,7 @@ static struct {
   SYM_Node* hashTable[1024];
 } SYM_State;
 
-SYM_Expr SYM_Nil = {};
+SYM_Expr SYM_Nil = {.node = nullptr};
 SYM_Expr SYM_Zero;
 SYM_Expr SYM_One;
 SYM_Expr SYM_Two;
@@ -207,7 +207,7 @@ SYM_Expr SYM_DataStrobeW;
 
 inline SYM_Type GetType(SYM_Node* node){
   if(node == nullptr){
-    return SYM_Type_LITERAL;
+    return SYM_Type_NIL;
   }
 
   return node->type;
@@ -219,12 +219,7 @@ SYM_Type GetType(SYM_Expr in){
 }
 
 bool IsLiteral(SYM_Expr in){
-  SYM_Node* node = GetPointer(in.node);
-  if(node == nullptr){
-    return true;
-  }
-
-  bool res = (GetType(node) == SYM_Type_LITERAL);
+  bool res = (GetType(in) == SYM_Type_LITERAL);
   return res;
 }
 
@@ -382,10 +377,6 @@ Array<SYM_Expr> GetChildrenOfSum(SYM_Expr top,Arena* out){
 }
 
 SYM_Expr GetOrAllocateLiteral(int input){
-  if(input == 0){
-    return {};
-  }
-
   int literal = input;
   
   bool negative = false;
@@ -554,6 +545,10 @@ int Compare(SYM_Expr left,SYM_Expr right){
   SYM_Type type = GetType(left);
 
   FULL_SWITCH(type){
+  case SYM_Type_NIL:{
+    return 0;
+  } break;
+
   case SYM_Type_LITERAL:{
     int leftLit = LiteralValue(left);
     int rightLit = LiteralValue(right);
@@ -616,6 +611,10 @@ u64 Hash(SYM_Expr expr){
 
   int64_t res = 0;
   FULL_SWITCH(GetType(node)){
+    case SYM_Type_NIL:{
+      res = 0;
+    } break;
+
     case SYM_Type_LITERAL: {
       res += (int64_t) LiteralValue(node);
     } break;
@@ -881,6 +880,10 @@ SYM_Expr SYM_PosMax(SYM_Expr leftIn,SYM_Expr rightIn){
   SYM_Expr left = SYM_Normalize(leftIn);
   SYM_Expr right = SYM_Normalize(rightIn);
 
+  if(SYM_IsNil(left) || SYM_IsNil(right)){
+    return SYM_Nil;
+  }
+
   if(IsNegative(left) && IsNegative(right)){
     return SYM_Zero;
   }
@@ -930,11 +933,12 @@ SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<SYM_Expr,SYM_Expr>* replacements){
 
     SYM_Expr* possibleReplace = replacements->Get(top);
 
-    SYM_Expr res = SYM_Nil;
+    SYM_Expr res = top;
     if(possibleReplace){
       res = *possibleReplace;
     } else {
       FULL_SWITCH(GetType(node)){
+      case SYM_Type_NIL:
       case SYM_Type_LITERAL: 
       case SYM_Type_VARIABLE: return top;
       case SYM_Type_FUNC:
@@ -944,7 +948,7 @@ SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<SYM_Expr,SYM_Expr>* replacements){
         SYM_Expr left = SYM_Replace(node->left,replacements);
         SYM_Expr right = SYM_Replace(node->right,replacements);
 
-        SWITCH(GetType(node)){
+        switch(GetType(node)){
         case SYM_Type_FUNC: res = SYM_Func(node->name,left,right); break;
         case SYM_Type_MUL: res = left * right; break;
         case SYM_Type_DIV: res = left / right; break;
@@ -1010,7 +1014,7 @@ SYM_Expr ParseSYM_Expr(Parser* parser,int bindingPower = -1){
   }
 
   // Parse atom
-  SYM_Expr res = {};
+  SYM_Expr res = SYM_Nil;
   
   Token atom = parser->PeekToken();
   if(atom.type == '('){
@@ -1133,6 +1137,7 @@ SYM_Expr SYM_Parse(String content){
 
 int TypeToBindingStrength(SYM_Type type){
   FULL_SWITCH(type){
+  case SYM_Type_NIL: return 0;
   case SYM_Type_LITERAL: return 1;
   case SYM_Type_VARIABLE: return 1;
   case SYM_Type_SUM: return 2;
@@ -1174,6 +1179,7 @@ String SYM_ReprHier(SYM_Expr expr,Arena* out){
     }
     
     FULL_SWITCH(GetType(node)){
+    case SYM_Type_NIL: b->PushString("(NIL)");
     case SYM_Type_LITERAL: b->PushString("%d",LiteralValue(node)); break;
     case SYM_Type_VARIABLE: b->PushString("%.*s",UN(node->name)); break;
     case SYM_Type_FUNC:
@@ -1183,6 +1189,7 @@ String SYM_ReprHier(SYM_Expr expr,Arena* out){
       b->PushString("(");
 
       FULL_SWITCH(GetType(node)){
+      case SYM_Type_NIL: break;
       case SYM_Type_LITERAL: break;
       case SYM_Type_VARIABLE: break;
       case SYM_Type_MUL: b->PushString("*"); break;
@@ -1221,6 +1228,7 @@ void SYM_Repr(StringBuilder* b,SYM_Expr expr){
     bool bind = (parentBindingStrength > bindingStrength) || negate;
 
     FULL_SWITCH(GetType(node)){
+    case SYM_Type_NIL: b->PushString("(NIL)"); break;
     case SYM_Type_LITERAL: b->PushString("%d",LiteralValue(node)); break;
     case SYM_Type_VARIABLE: b->PushString(node->name); break;
     case SYM_Type_MUL:
@@ -1307,6 +1315,8 @@ SYM_Expr RemoveParenthesis(SYM_Expr in){
 
   SYM_Expr res = Abs(in);
   SWITCH(GetType(node)){
+  case SYM_Type_NIL: res = in; break;
+
   case SYM_Type_SUM:{
     SYM_Expr left = RemoveParenthesis(CondNegate(node->left,negate));
     SYM_Expr right = RemoveParenthesis(CondNegate(node->right,negate));
@@ -1349,9 +1359,7 @@ void SYM_Print(SYM_MultPartition part){
 SYM_MultPartition GetMultPartition(SYM_Expr expr,Arena* out){
   TEMP_REGION(temp,out);
 
-  SYM_MultPartition res = {};
-
-  res.literal = SYM_One;
+  SYM_MultPartition res = {.literal = SYM_One};
 
   bool negateLiteral = false;
 
@@ -1362,6 +1370,8 @@ SYM_MultPartition GetMultPartition(SYM_Expr expr,Arena* out){
     SYM_Node* node = GetPointer(top.node);
 
     FULL_SWITCH(GetType(node)){
+    case SYM_Type_NIL: break;
+
     case SYM_Type_LITERAL: res.literal = DoMul(res.literal,top); break;
     case SYM_Type_SUM: 
     case SYM_Type_DIV: 
@@ -1391,7 +1401,6 @@ SYM_MultPartition GetMultPartition(SYM_Expr expr,Arena* out){
   SortInPlace(result);
 
   res.literal = CondNegate(res.literal,negateLiteral);
-
   res.mults.terms = result;
 
   return res;
@@ -1412,6 +1421,7 @@ SYM_Partition SplitExpressionBasedOn(SYM_Expr expression,SYM_Expr base){
   SYM_Expr leftovers = SYM_One;
 
   FULL_SWITCH(GetType(node)){
+  case SYM_Type_NIL: break;
   case SYM_Type_LITERAL:{
   } break;
   case SYM_Type_VARIABLE:{
@@ -1456,64 +1466,6 @@ SYM_Partition SplitExpressionBasedOn(SYM_Expr expression,SYM_Expr base){
   return res;
 }
 
-#if 0
-SYM_Expr SYM_Normalize2(SYM_Expr in){
-  TEMP_REGION(temp,nullptr);
-
-  SYM_Expr expr = in;
-
-  expr = GetNormalized(expr);
-
-  bool negate = IsNegative(expr.node);
-  SYM_Node* node = GetPointer(expr.node);
-
-  if(node->isNormalized){
-    return in;
-  }
-
-  bool isMul = false;
-  FULL_SWITCH(GetType(node)){
-    case SYM_Type_LITERAL: 
-    case SYM_Type_VARIABLE: break; 
-    case SYM_Type_MUL: isMul = true;
-    case SYM_Type_SUM: {
-      Array<SYM_Expr> children = {};
-
-      if(isMul){
-        children = GetChildrenOfMul(expr,temp);
-      } else {
-        children = GetChildrenOfSum(expr,temp);
-      }
-      
-      SortInPlace(children);
-
-      SYM_Expr start = (isMul ? SYM_One : SYM_Zero);
-      
-      for(SYM_Expr child : children){
-        if(isMul){
-          start = start * child;
-        } else {
-          start = start + child;
-        }
-      }
-
-      expr = start;
-    } break;
-
-    // TODO: We probably need to implement this. Disabled for now while we check if this approach makes sense
-    case SYM_Type_DIV: break;
-    case SYM_Type_FUNC: break;
-  }
-
-  node->isNormalizedNodeValid = true;
-  node->normalizedNode = GetPointer(expr);
-
-  expr = CondNegate(expr,negate);
-
-  return expr;
-}
-#endif
-
 SYM_Expr NormalizeLiterals(SYM_Expr in){
   TEMP_REGION(temp,nullptr);
 
@@ -1522,6 +1474,7 @@ SYM_Expr NormalizeLiterals(SYM_Expr in){
 
   SYM_Expr res = Abs(in);
   SWITCH(GetType(node)){
+  case SYM_Type_NIL: break;
   case SYM_Type_SUM:{
     Array<SYM_Expr> children = GetChildrenOfSum(res,temp);
 
@@ -1696,6 +1649,7 @@ SYM_Expr OrderTerms(SYM_Expr in){
   SYM_Expr res = Abs(in);
 
   FULL_SWITCH(GetType(node)){
+  case SYM_Type_NIL: break;
   case SYM_Type_MUL: isMul = true; // fallthrough
   case SYM_Type_SUM:{
     Array<SYM_Expr> children = {}; //GetChildrenOfSum(res,temp);
@@ -1712,7 +1666,7 @@ SYM_Expr OrderTerms(SYM_Expr in){
 
     SortInPlace(children);
 
-    SYM_Expr ptr = {};
+    SYM_Expr ptr = SYM_Nil;
     if(isMul){
       ptr = SYM_One;
     } else {
@@ -1750,9 +1704,8 @@ SYM_Expr SYM_Derivate(SYM_Expr expr,String var){
 
   SYM_Expr res = SYM_Zero;
   FULL_SWITCH(GetType(node)){
-    case SYM_Type_LITERAL:{
-      res = SYM_Zero;
-    } break;
+    case SYM_Type_NIL: break;
+    case SYM_Type_LITERAL: break;
     case SYM_Type_VARIABLE:{
       res = SYM_Zero;
       
@@ -1797,6 +1750,7 @@ SYM_Expr SYM_Factor(SYM_Expr expr,SYM_Expr commonFactor){
   SYM_Expr absCommon = Abs(commonFactor);
 
   FULL_SWITCH(GetType(node)){
+    case SYM_Type_NIL: res = expr; break;
     case SYM_Type_LITERAL:{
       if(res == absCommon){
         res = absCommon;
@@ -1856,6 +1810,11 @@ SYM_Expr SYM_Factor(SYM_Expr expr,SYM_Expr commonFactor){
   return res;
 }
 
+bool SYM_IsNil(SYM_Expr expr){
+  bool res = (expr.node == nullptr);
+  return res;
+}
+
 bool SYM_IsZeroValue(SYM_Expr expr){
   SYM_Expr normalized = SYM_Normalize(expr);
   bool res = (normalized == SYM_Zero);
@@ -1885,6 +1844,7 @@ SYM_EvaluateResult SYM_DebugEvaluate(SYM_Expr top,TrieMap<String,SYM_Expr>* valu
 
     float res = 0;
     FULL_SWITCH(GetType(node)){
+    case SYM_Type_NIL: break;
     case SYM_Type_LITERAL:{
       res = (float) LiteralValue(node);
     } break;
@@ -1949,55 +1909,75 @@ SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top){
 
   bool divByZero = false;
   bool nonConstantValue = false;
+  bool nilValue = false;
+
+  struct Value{
+    int val;
+    bool isInvalid;
+  };
 
   // NOTE: Evaluation is performed in floating point otherwise the division would cause problems 
   //       simply by the order of evaluation. 4 * 9 / 4 is 9 but if we evaluate the 9 / 4 first as integers
   //       it becomes 9 / 4 = 2 and the final result is 8
   //       Also remember that this is used for debugging purposes. A proper evaluator would just do things in integers
   //       because it would start from a normalized expression.
-  auto Recurse = [&divByZero,&nonConstantValue](auto Recurse,SYM_Expr expr) -> int {
+  auto Recurse = [&nilValue,&divByZero,&nonConstantValue](auto Recurse,SYM_Expr expr) -> Value {
     bool negate = IsNegative(expr.node);
     SYM_Node* node = GetPointer(expr.node);
 
+    bool isInvalid = false;
     int res = 0;
     FULL_SWITCH(GetType(node)){
+    case SYM_Type_NIL: {
+      nilValue = true;
+      isInvalid = true;
+    } break;
     case SYM_Type_LITERAL:{
       res = LiteralValue(node);
     } break;
     case SYM_Type_VARIABLE:{
       nonConstantValue = true;
+      isInvalid = true;
     } break;
     case SYM_Type_SUM:{
-      int left = Recurse(Recurse,node->left);
-      int right = Recurse(Recurse,node->right);
+      Value left = Recurse(Recurse,node->left);
+      Value right = Recurse(Recurse,node->right);
 
-      res = left + right;
+      res = left.val + right.val;
+      isInvalid = left.isInvalid || right.isInvalid;
     } break;
     case SYM_Type_MUL:{
-      int left = Recurse(Recurse,node->left);
-      int right = Recurse(Recurse,node->right);
+      Value left = Recurse(Recurse,node->left);
+      Value right = Recurse(Recurse,node->right);
 
-      res = left * right;
+      res = left.val * right.val;
+      isInvalid = left.isInvalid || right.isInvalid;
     } break;
     case SYM_Type_DIV:{
-      int top = Recurse(Recurse,node->top);
-      int bottom = Recurse(Recurse,node->bottom);
+      Value top = Recurse(Recurse,node->top);
+      Value bottom = Recurse(Recurse,node->bottom);
       
-      if(bottom == 0){
-        divByZero = true;
-        res = 1;
+      if(bottom.isInvalid){
+        res = 0;
       } else {
-        res = top / bottom;
+        if(bottom.val == 0){
+          divByZero = true;
+          res = 1;
+        } else {
+          res = top.val / bottom.val;
+        }
       }
+      isInvalid = top.isInvalid || bottom.isInvalid;
     } break;
     case SYM_Type_FUNC:{
       res = 0;
       
       if(node->name == "PosMax"){
-        int first = Recurse(Recurse,node->first);
-        int second = Recurse(Recurse,node->second);
+        Value first = Recurse(Recurse,node->first);
+        Value second = Recurse(Recurse,node->second);
 
-        res = MAX(first,second);
+        res = MAX(first.val,second.val);
+        isInvalid = first.isInvalid || second.isInvalid;
       } else {
         NOT_IMPLEMENTED();
       }
@@ -2008,15 +1988,20 @@ SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top){
       res = -res;
     }
 
-    return res;
+    Value result = {};
+    result.val = res;
+    result.isInvalid = isInvalid;
+
+    return result;
   };
   
-  int result = Recurse(Recurse,top);
+  Value result = Recurse(Recurse,top);
 
   SYM_EvaluateResult res = {};
-  res.result = (int) result;
+  res.result = (int) result.val;
   res.divByZero = divByZero;
   res.nonConstantValue = nonConstantValue;
+  res.nilValue = nilValue;
   
   return res;
 }
@@ -2030,6 +2015,7 @@ Array<String> SYM_GetAllVariables(SYM_Expr top,Arena* out){
     SYM_Node* node = GetPointer(expr.node);
 
     FULL_SWITCH(GetType(node)){
+    case SYM_Type_NIL: break;
     case SYM_Type_VARIABLE:{
       varSet->Insert(node->name);
     } break;
@@ -2088,6 +2074,7 @@ NormalizeResult NormalizeWhileChecking(SYM_Expr in){
 
   if(evaluation.Error()){
     NormalizeResult res = {};
+    res.res = SYM_Nil;
     res.failedEvaluation = true;
     res.failedFromDivZero = evaluation.divByZero;
     return res;

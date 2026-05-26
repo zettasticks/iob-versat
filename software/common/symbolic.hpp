@@ -7,6 +7,8 @@ struct Arena;
 void SYM_Init();
 
 enum SYM_Type{
+  SYM_Type_NIL,
+
   // Order is important, it encodes the order of the way terms should be displayed (literals first then variables and so on)
   SYM_Type_LITERAL,
   SYM_Type_VARIABLE,
@@ -16,36 +18,12 @@ enum SYM_Type{
   SYM_Type_FUNC // We only care about 2 args functions so no need to support more than that.
 };
 
-inline String META_Repr(SYM_Type val){
-  switch(val){
-    case SYM_Type_LITERAL : {
-      return String("SYM_Type_LITERAL");
-    } break;
-    case SYM_Type_VARIABLE : {
-      return String("SYM_Type_VARIABLE");
-    } break;
-    case SYM_Type_SUM : {
-      return String("SYM_Type_SUM");
-    } break;
-    case SYM_Type_MUL : {
-      return String("SYM_Type_MUL");
-    } break;
-    case SYM_Type_DIV : {
-      return String("SYM_Type_DIV");
-    } break;
-    case SYM_Type_FUNC : {
-      return String("SYM_Type_FUNC");
-    } break;
-  }
-  Assert(false);
-  return {};
-}
-
 struct SYM_Node;
 struct SYM_Expr{
   SYM_Node* node;
 };
 
+extern SYM_Expr SYM_Nil;
 extern SYM_Expr SYM_Zero;
 extern SYM_Expr SYM_One;
 extern SYM_Expr SYM_Two;
@@ -138,6 +116,7 @@ SYM_Expr SYM_Derivate(SYM_Expr expr,String var);
 SYM_Expr SYM_Factor(SYM_Expr expr,SYM_Expr commonFactor);
 Array<String> SYM_GetAllVariables(SYM_Expr top,Arena* out);
 
+bool SYM_IsNil(SYM_Expr expr);
 bool SYM_IsZeroValue(SYM_Expr expr);
 bool SYM_IsOneValue(SYM_Expr expr);
 
@@ -156,8 +135,9 @@ struct SYM_EvaluateResult{
   // TODO: Replace with a big flag approach
   bool divByZero;
   bool nonConstantValue;
+  bool nilValue;
 
-  bool Error(){return (divByZero || nonConstantValue);}
+  bool Error(){return (divByZero || nonConstantValue || nilValue);}
 };
 
 SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr in);

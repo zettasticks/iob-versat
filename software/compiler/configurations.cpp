@@ -234,7 +234,7 @@ String GetEntityMemName(InstanceInfo* info,Arena* out){
 Array<Pair<String,int>> ExtractMem(Array<InstanceInfo> info,Arena* out){
   int count = 0;
   for(InstanceInfo& in : info){
-    if(!in.isComposite && !SYM_IsZeroValue(in.memMapSym)){
+    if(!in.isComposite && !SYM_IsNil(in.memMapSym)){
       count += 1;
     }
   }
@@ -242,9 +242,9 @@ Array<Pair<String,int>> ExtractMem(Array<InstanceInfo> info,Arena* out){
   Array<Pair<String,int>> res = PushArray<Pair<String,int>>(out,count);
   int index = 0;
   for(InstanceInfo& in : info){
-    if(!in.isComposite && !SYM_IsZeroValue(in.memMapSym)){
+    if(!in.isComposite && !SYM_IsNil(in.memMapSym)){
       String name = GetEntityMemName(&in,out); 
-      res[index++] = {name,(int) in.memMapped.value()};
+      res[index++] = {name,(int) in.memMapped};
     }
   }
 
@@ -558,9 +558,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     for(Wire& w : info->states){
       w.sizeExpr = SYM_Replace(w.sizeExpr,map);
     }
-    if(!SYM_IsZeroValue(info->memMapSym)){
-      info->memMapSym = SYM_Replace(info->memMapSym,map);
-    }
+    info->memMapSym = SYM_Replace(info->memMapSym,map);
     for(int i = 0; i < info->externalMemory.size; i++){
       info->externalMemory[i] = Replace(info->externalMemory[i],map);
     }
@@ -593,9 +591,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     for(Wire& w : info->states){
       w.sizeExpr = SYM_Replace(w.sizeExpr,map);
     }
-    if(!SYM_IsZeroValue(info->memMapSym)){
-      info->memMapSym = SYM_Replace(info->memMapSym,map);
-    }
+    info->memMapSym = SYM_Replace(info->memMapSym,map);
     for(int i = 0; i < info->externalMemory.size; i++){
       info->externalMemory[i] = Replace(info->externalMemory[i],map);
     }
@@ -931,7 +927,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
     for(auto iter = initialIter; iter.IsValid(); iter = iter.Step()){
       InstanceInfo* info = iter.CurrentUnit();
 
-      if(!SYM_IsZeroValue(info->memMapSym) && !info->isComposite){
+      if(!SYM_IsNil(info->memMapSym) && !info->isComposite){
         info->memGlobalIndex = memGlobalIndex++;
         info->memSize = 1;
       }
@@ -954,6 +950,9 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
         
         firstIndex = MIN(child->memGlobalIndex,firstIndex);
         size += child->memSize;
+      }
+      if(firstIndex == 9999999){
+        firstIndex = 0;
       }
 
       info->memGlobalIndex = firstIndex;
@@ -986,11 +985,21 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
       }
 
       SYM_Expr maximum = SYM_Zero;
-
+      bool allNil = true;
       for(AccelInfoIterator it = iter.StepInsideOnly(); it.IsValid(); it = it.Next()){
         InstanceInfo* unit = it.CurrentUnit();
-
-        maximum = SYM_PosMax(maximum,unit->memMapSym);
+        
+        SYM_Expr unitExpr = unit->memMapSym;
+        if(SYM_IsNil(unitExpr)){
+          unitExpr = SYM_Zero;
+        } else {
+          allNil = false;
+        }
+        
+        maximum = SYM_PosMax(maximum,unitExpr);
+      }
+      if(allNil){
+        maximum = SYM_Nil;
       }
 
       unit->memMapSym = maximum;
@@ -1185,11 +1194,23 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
   TrieSet<int>* configsSeen = PushTrieSet<int>(temp);
 
   SYM_Expr maximum = SYM_Zero;
+  bool allNil = true;
   for(AccelInfoIterator it = StartIteration(info); it.IsValid(); it = it.Next()){
     InstanceInfo* unit = it.CurrentUnit();
 
-    maximum = SYM_PosMax(maximum,unit->memMapSym);
+    SYM_Expr unitExpr = unit->memMapSym;
+    if(SYM_IsNil(unitExpr)){
+      unitExpr = SYM_Zero;
+    } else {
+      allNil = false;
+    }
+
+    maximum = SYM_PosMax(maximum,unitExpr);
   }
+  if(allNil){
+    maximum = SYM_Nil;
+  }
+
   info->memMapBitsSym = maximum;
 
   for(AccelInfoIterator iter = StartIteration(info) ;iter.IsValid(); iter = iter.Next()){
@@ -1210,7 +1231,7 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
     FUInstance* inst = ptr;
     FUDeclaration* type = inst->declaration;
     
-    if(!SYM_IsZeroValue(type->info.memMapBitsSym)){
+    if(!SYM_IsNil(type->info.memMapBitsSym)){
       info->isMemoryMapped = true;
 
       unitsMapped += 1;
@@ -1501,9 +1522,7 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
       for(Wire& w : topUnit->states){
         w.sizeExpr = SYM_Replace(w.sizeExpr,map);
       }
-      if(!SYM_IsZeroValue(topUnit->memMapSym)){
-        topUnit->memMapSym = SYM_Replace(topUnit->memMapSym,map);
-      }
+      topUnit->memMapSym = SYM_Replace(topUnit->memMapSym,map);
       for(int i = 0; i <  topUnit->externalMemory.size; i++){
         topUnit->externalMemory[i] = Replace(topUnit->externalMemory[i],map);
       }
@@ -1524,9 +1543,7 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
           w.sizeExpr = SYM_Replace(w.sizeExpr,map);
         }
 
-        if(!SYM_IsZeroValue(subUnit->memMapSym)){
-          subUnit->memMapSym = SYM_Replace(subUnit->memMapSym,map);
-        }
+        subUnit->memMapSym = SYM_Replace(subUnit->memMapSym,map);
 
         for(int i = 0; i <  subUnit->externalMemory.size; i++){
           subUnit->externalMemory[i] = Replace(subUnit->externalMemory[i],map);
@@ -1614,9 +1631,7 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
       }
 #endif
 
-      if(!SYM_IsZeroValue(info->memMapSym)){
-        info->memMapSym = SYM_Replace(info->memMapSym,map);
-      }
+      info->memMapSym = SYM_Replace(info->memMapSym,map);
     }    
   }
 

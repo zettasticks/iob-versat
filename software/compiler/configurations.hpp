@@ -113,11 +113,10 @@ struct InstanceInfo{
   Array<bool> isSpecificConfigShared;
   
   Opt<int> statePos;
-
+  
+  // Nil if no mem map, 0 if mem mapped with no address bits and any positive number is the number of bits.
   SYM_Expr memMapSym;
-
-  // TODO: See if this is still useful. Need to reorganize stuff asap.
-  Opt<iptr> memMapped; // After parameter instantiation and this only makes sense for the top level.
+  iptr memMapped; // If memMapSym is non nil then this contains the start address
 
   int memGlobalIndex;
   int memSize;

@@ -599,16 +599,15 @@ Array<Entity> Env::GetEntity(ConfigIdentifier* id,Arena* out){
   ArenaList<Entity>* accessList = PushList<Entity>(temp);
 
   Entity current = Entity_Nil;
-
   for(ConfigIdentifier* ptr = id; ptr; ptr = ptr->next){
     Entity next = Entity_Nil;
 
     FULL_SWITCH(ptr->type){
     case ConfigIdentifierType_BASE:{
-      next = GetEntity(id->name);
+      next = GetEntity(ptr->name);
     } break;
     case ConfigIdentifierType_ARRAY:{
-      MathExpression* expr = ptr->arrayExpr2;
+      MathExpression* expr = ptr->arrayExpr;
 
       bool found = false;
       if(!found && current.type == EntityType_FU_ARRAY){
@@ -818,7 +817,7 @@ Array<Entity> Env::GetEntity(MathExpression* spec,Arena* out){
       Entity left = Recurse(Recurse,top->expressions[0],false);
       Entity right = Recurse(Recurse,top->expressions[1],false);
 
-      SYM_Expr symVal = SYM_Zero;
+      SYM_Expr symVal = SYM_Nil;
 
       FULL_SWITCH(top->op){
       case MathOperation_NIL:{
@@ -874,6 +873,83 @@ Array<Entity> Env::GetEntity(MathExpression* spec,Arena* out){
 
   Array<Entity> accesses = PushArray<Entity>(out,accessList);
   return accesses;
+}
+
+FUAccess Env::ResolveFU(MathExpression* ptr,Arena* out){
+  TEMP_REGION(temp,out);
+
+  Entity entity = Entity_Nil;
+
+  auto list = PushList<MathExpression*>(temp);
+  
+  FULL_SWITCH(ptr->type){
+  case MathType_NAME: {
+    entity = GetEntity(ptr->name);
+  } break;
+  case MathType_ARRAY_ACCESS: {
+    entity = GetEntity(ptr->name);
+
+    bool outsideArray = false;
+    for(MathExpression* expr : ptr->expressions){
+      // If we stopped seeing array expressions to peel away a FU array than just
+      // push everything that remains into the leftovers array
+      if(entity.type != EntityType_FU_ARRAY){
+        outsideArray = true;
+      }
+      if(outsideArray){
+        *list->PushElem() = expr;
+        continue;
+      }
+
+      if(entity.type == EntityType_FU_ARRAY){
+        if(MathType_IsSymbolic(expr->type)){
+          int index = CalculateConstantExpression(expr);
+        
+          if(index < 0 || index >= entity.dims[0]){
+            ReportError({},"Outside array bounds");
+          }
+
+          String arrayName = PushString(out,"%.*s_%d",UN(entity.name.identifier),index);
+        
+          Array<int> newDims = Offset(entity.dims,1);
+
+          if(newDims.size > 0){
+            entity.type = EntityType_FU_ARRAY;
+          
+            // TODO-2
+            entity.name = {};
+            entity.name.type = TokenType_IDENTIFIER;
+            entity.name.identifier = arrayName;
+            entity.name.originalData = arrayName;
+
+            entity.dims = newDims;
+          } else {
+            FUInstance** possibleInst = table->Get(arrayName);
+
+            if(!possibleInst){
+              ReportError({},"Inst does not exist");
+            } else {
+              entity = MakeEntity(*possibleInst);
+            }
+          }
+        } else {
+          outsideArray = true;
+          *list->PushElem() = expr;
+        }
+      }
+    }
+  } break;
+  case MathType_LITERAL:
+  case MathType_OPERATION:
+  case MathType_SINGLE_ACCESS:
+  case MathType_FUNCTION_CALL: {
+  } break;
+  }
+
+  FUAccess result = {};
+  result.entity = entity;
+  result.leftovers = PushArray(out,list);
+  return result;
 }
 
 Array<int> Env::CalculateArraySize(Array<MathExpression*> exprs){
@@ -1436,7 +1512,7 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
   TEMP_REGION(temp,nullptr);
 
   auto Recurse = [temp,this](auto Recurse,MathExpression* top) -> SYM_Expr{
-    SYM_Expr res = SYM_Zero;
+    SYM_Expr res = SYM_Nil;
 
     switch(top->type){
     case MathType_OPERATION:{
@@ -2633,7 +2709,7 @@ static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
       parsed = PushStruct<ConfigIdentifier>(out);
       parsed->type = ConfigIdentifierType_ARRAY;
 
-      parsed->arrayExpr2 = expr;
+      parsed->arrayExpr = expr;
     }
 
     if(parsed){

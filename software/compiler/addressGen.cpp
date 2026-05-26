@@ -363,7 +363,7 @@ Array<Pair<String,String>> InstantiateRead(AddressAccess* access,int highestExte
   
   // NOTE: We push the start term to the ext pointer in order to save memory inside the unit. This is being done in a  kinda hacky way, but nothing major.
   String ext_addr = extVarName;
-  if(freeTerm != SYM_Zero){
+  if(!SYM_IsNil(freeTerm) &&  freeTerm != SYM_Zero){
     String repr = SYM_Repr(freeTerm,temp);
 
     ext_addr = PushString(out,"(((float*) %.*s) + (%.*s))",UN(extVarName),UN(repr));

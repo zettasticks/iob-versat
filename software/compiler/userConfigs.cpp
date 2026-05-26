@@ -416,18 +416,248 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           env->SetGenVariable(gen.name,gen.val);
         }
 
-        DecompConfigStatement decomp = DecomposeConfigStatement(env,simple,temp);
+        bool isLhsWireAccess = false;
+        bool isLhsWireVirtual = false;
+        bool isLhsFunctionCall = false;
+        bool lhsError = false;
 
-        String lhsName = decomp.lhs.name;
+        Entity baseEntity = Entity_Nil;
+        Entity subEntity = Entity_Nil;
+        Array<MathExpression*> funcArgs = {};
 
-        Entity entity = decomp.lhs.entity;
-        Entity wirePortEnt = decomp.lhs.subEntity;
+        // Decompose lhs side =========================================================
+        {
+          bool nameAlreadySeen = false;
 
+          ConfigIdentifier* ptr = simple->lhs;
+          
+          for(; ptr; ptr = ptr->next){
+            FULL_SWITCH(ptr->type){
+            case ConfigIdentifierType_BASE:{
+              // Parser should never allow this
+              Assert(!nameAlreadySeen);
+
+              baseEntity = env->GetEntity(ptr->name);
+              nameAlreadySeen = true;
+            } break;
+            case ConfigIdentifierType_ARRAY:{
+              if(!Nil(subEntity)){
+                env->ReportError(baseEntity.name,"Cannot have array access expressions at this point");
+                lhsError = true;
+              }
+
+              if(isLhsFunctionCall){
+                env->ReportError({},"Cannot have array access after a function expression");
+                lhsError = true;
+              }
+
+              MathExpression* expr = ptr->arrayExpr;
+
+              bool found = false;
+              if(!found && baseEntity.type == EntityType_FU_ARRAY){
+                found = true;
+        
+                int index = env->CalculateConstantExpression(expr);
+        
+                if(index < 0 || index >= baseEntity.dims[0]){
+                  env->ReportError({},"Outside array bounds");
+                  lhsError = true;
+                }
+
+                String arrayName = PushString(out,"%.*s_%d",UN(baseEntity.name.identifier),index);
+        
+                Array<int> newDims = Offset(baseEntity.dims,1);
+
+                if(newDims.size > 0){
+                  baseEntity.type = EntityType_FU_ARRAY;
+          
+                  // TODO-2
+                  baseEntity.name = {};
+                  baseEntity.name.type = TokenType_IDENTIFIER;
+                  baseEntity.name.identifier = arrayName;
+                  baseEntity.name.originalData = arrayName;
+
+                  baseEntity.dims = newDims;
+                } else {
+                  FUInstance** possibleInst = env->table->Get(arrayName);
+
+                  if(!possibleInst){
+                    //ReportError({},"Inst does not exist");
+                  } else {
+                    baseEntity = MakeEntity(*possibleInst);
+                  }
+                }
+              }
+
+              if(!found){
+                env->ReportError(baseEntity.name,"Did not find entity referenced by this");
+                lhsError = true;
+              }
+            } break;
+            case ConfigIdentifierType_ACCESS:{
+              isLhsWireAccess = true;
+
+              Token accessName = ptr->name;
+              String access = accessName.identifier;
+
+              if(baseEntity.type != EntityType_FU){
+                env->ReportError(accessName,"Trying to access entity that does not support member access");
+              }
+
+              if(baseEntity.type == EntityType_FU){
+                subEntity = env->GetEntityFromAccess(baseEntity,accessName);
+
+                if(Nil(subEntity)){
+                  env->ReportError(accessName,"Not found");
+                  lhsError = true;
+                }
+              }
+              
+              isLhsWireVirtual = (subEntity.type == EntityType_MEM_PORT);
+            } break;
+            case ConfigIdentifierType_FUNC_CALL:{
+              isLhsFunctionCall = true;
+
+              Token funcName = ptr->functionName;
+              FUDeclaration* decl = baseEntity.decl;
+
+              bool found = false;
+              for(MergePartition part : decl->info.infos){
+                for(ConfigFunction* func : part.userFunctions){
+                  if(func->individualName == funcName.identifier){
+                    subEntity.type = EntityType_FUNCTION;
+                    subEntity.func = func;
+            
+                    if(found){
+                      // TODO-1
+                      env->ReportError(funcName,"Multiple functions with same name detected\n");
+                      lhsError = true;
+                    }
+                    found = true;
+                  }
+                }
+              }
+              
+              if(found){
+                funcArgs = ptr->arguments;
+              }
+            } break;
+          }
+          }
+        }
+
+        bool isRhsArrayAccess = false; // Entire thing is A[...];
+        bool isRhsExpressionOnly = false; // Is only a mathematical expression.
+        Entity rhsEntity = {};
+        SYM_Expr rhsExpr = SYM_Nil;
+        bool rhsError = false;
+
+        // Decompose rhs side =========================================================
+        if(!isLhsFunctionCall){
+          MathExpression* ptr = simple->rhs;
+          
+          FULL_SWITCH(ptr->type){
+          case MathType_FUNCTION_CALL:{
+            rhsError = true;
+            Assert(false);
+          } break;
+          case MathType_NAME:
+          case MathType_LITERAL:
+          case MathType_OPERATION: {
+            rhsExpr = env->SymbolicFromMathExpression(ptr);
+            isRhsExpressionOnly = true;
+          } break;
+
+          // We do not support accesses on rhs of config functions ====================
+          case MathType_SINGLE_ACCESS: {
+            rhsError = true;
+            Assert(false);
+          } break;
+
+          // Array accesses only supports constant expressions (for now) ================
+          case MathType_ARRAY_ACCESS: {
+            isRhsArrayAccess = true;
+
+            rhsEntity = env->GetEntity(ptr->name);
+
+            for(int i = 0; i < ptr->expressions.size; i++){
+              MathExpression* expr = ptr->expressions[i];
+
+              FULL_SWITCH(expr->type){
+              case MathType_NAME:
+              case MathType_LITERAL:
+              case MathType_OPERATION:{
+                SYM_Expr asSym = env->SymbolicFromMathExpression(expr);
+                SYM_EvaluateResult res = SYM_ConstantEvaluate(asSym);
+                
+                if(res.divByZero){
+                  printf("Division by zero while trying to calculate array index\n");
+                  rhsError = true;
+                }
+
+                int val = res.result;
+                bool isExpressionConstant = !res.nonConstantValue;
+                bool found = false;
+                bool isExpression = false;
+                Entity newEntity = {};
+                
+                if(!found && !rhsError){
+                  bool isVarInput = rhsEntity.type == EntityType_VARIABLE_INPUT;
+                  bool isAddress = (rhsEntity.flags & EntityVarFlags_ADDRESS);
+                  bool isArray = rhsEntity.arrayDims > 0;
+
+                  bool isVarInputAddressable = (isVarInput && isAddress && isArray);
+
+                  if(!found && isExpressionConstant && isVarInputAddressable){
+                    found = true;
+                    String trueName = PushString(temp,"%.*s[%d]",UN(newEntity.name.identifier),val);
+                    newEntity.type = EntityType_SYM;
+                    newEntity.sym = SYM_Var(trueName);
+                  }
+
+                  if(!found && (!isExpressionConstant || !isVarInputAddressable)){
+                    if(!SYM_IsNil(rhsExpr)){
+                      rhsError = true;
+                    }
+                    isExpression = true;
+                    rhsExpr = asSym;
+                  }
+                }
+
+                if(!found && !isExpression){
+                  rhsError = true;
+                }
+
+                if(found){
+                  rhsEntity = newEntity;
+                }
+              } break;
+              case MathType_SINGLE_ACCESS:
+              case MathType_ARRAY_ACCESS:
+              case MathType_FUNCTION_CALL: {
+                rhsError = true;
+                //Assert(false);
+              } break;
+            }
+            }
+          } break;
+        }
+        }
+
+        String lhsName = baseEntity.name.identifier;
+
+        Entity entity = baseEntity;
+        Entity wirePortEnt = subEntity;
+
+        if(rhsError){
+          printf("\n\n\nRHS decomp failed\n\n\n");
+        }
+          
         // Function invocation is basically argument instantiation and replacing the 
         // statements with the new version.
-        if(decomp.isFunctionInvoc){
-          Array<MathExpression*> args = decomp.args;
-          ConfigFunction* function = decomp.func;
+        if(isLhsFunctionCall){
+          Array<MathExpression*> args = funcArgs;
+          ConfigFunction* function = subEntity.func;
 
           // TODO: Not an assert, should be a proper error
           Assert(function->type == ConfigFunctionType_CONFIG);
@@ -497,17 +727,17 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
             } break;
           }
           }
-        } else if(decomp.lhs.isSingleWire){
+        } else if(isLhsWireAccess && !isLhsWireVirtual){
           // We are setting a value to a constant wire.
           String wireName = wirePortEnt.name.identifier;
 
           ConfigStuff* assign = list->PushElem();
           assign->type = ConfigStuffType_ASSIGNMENT;
           assign->assign.lhs = PushString(out,"%.*s.%.*s",UN(lhsName),UN(wireName));
-          assign->assign.rhs = decomp.rhs.expr;
-        } else if(decomp.lhs.isVirtualWire || decomp.rhs.isExpr || decomp.rhs.isArray){
+          assign->assign.rhs = rhsExpr;
+        } else if(isLhsWireVirtual || isRhsExpressionOnly || isRhsArrayAccess){
           // Is Address gen expression. Including array accesses for VUnits
-          AddressAccess* access = CompileAddressGen(env,variableNames,forLoops,decomp.rhs.expr,content);
+          AddressAccess* access = CompileAddressGen(env,variableNames,forLoops,rhsExpr,content);
           AddressGenInst supported = entity.decl->supportedAddressGen;
 
           // TODO: Need to check if the decomp expression matches what is actually supported by the entity.
@@ -520,7 +750,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           newAssign->access.dir = wirePortEnt.dir;
           newAssign->access.port = wirePortEnt.port;
 
-          newAssign->pointerVarName = PushString(out,decomp.rhs.entity.name.identifier);
+          newAssign->pointerVarName = PushString(out,rhsEntity.name.identifier);
           newAssign->lhs = lhsName;
         } else {
           // Decomp failed. Error already reported.
@@ -553,69 +783,83 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   if(def->type == UserConfigType_STATE){
     type = ConfigFunctionType_STATE;
 
-    CEmitter* c = StartCCode(temp);
-    
-    String structName = PushString(out,"%.*s_%.*s_Struct",UN(declaration->name),UN(def->name.identifier));
-    structToReturnName = structName;
-
-    c->Struct(structName);
+    auto lhsSideMembers = PushList<Token>(temp);
     for(ConfigStatement* stmt : def->statements){
-      // TODO: Remove this since we want to rely on the decomp stuff
-      String name = GetBase(stmt->lhs)->name.identifier;
-          
-      String wireName = {};
-      
-      ConfigIdentifier* before = GetBeforeBase(stmt->lhs);
-      if(before){
-        wireName = before->name.identifier;
-      }      
 
-      // TODO: Proper error reporting. 
-      Assert(Empty(wireName));
+      // Decompose lhs side =========================================================
+      ConfigIdentifier* id = stmt->lhs;
+      Token lhsName = id->name;
 
-      c->Member("int",name);
-    }
-    c->EndStruct();
+      if(id->type != ConfigIdentifierType_BASE){
+        env->ReportError(lhsName,"State expressions can only contain simple names on lhs");
+      }
 
-    stateStructContent = PushASTRepr(c,out,false);
+      for(Token alreadyExist : lhsSideMembers){
+        if(lhsName.identifier == alreadyExist.identifier){
+          env->ReportError(lhsName,"Cannot repeat name of state element");
+        }
+      }
+      *lhsSideMembers->PushElem() = lhsName;
 
-    for(ConfigStatement* stmt : def->statements){
-      env->PushScope();
+      // Decompose rhs side =========================================================
+      Entity rhsEntity = Entity_Nil;
+      Entity rhsSubEntity = Entity_Nil;
+      bool rhsError = false;
 
-      Entity ent = Entity_Nil;
-      ent.type = EntityType_VARIABLE_SPECIAL;
-      ent.name = stmt->lhs->name;
-      env->PushEntity(ent.name,ent);
+      MathExpression* ptr = stmt->rhs;
+      FULL_SWITCH(ptr->type){
+      case MathType_NAME:
+      case MathType_LITERAL:
+      case MathType_OPERATION:{
+        SYM_Expr sym = env->SymbolicFromMathExpression(ptr);
+      } break;
 
-      DecompConfigStatement decomp = DecomposeConfigStatement(env,stmt,temp);
+      case MathType_ARRAY_ACCESS: {
+        rhsError = true;
+      } break;
 
-      String lhsName = decomp.lhs.name;
-      Entity rhsMain = decomp.rhs.entity;
-      Entity wireOrFunction = decomp.rhs.subEntity;
+      case MathType_FUNCTION_CALL:
+      case MathType_SINGLE_ACCESS:{
+        MathExpression* shouldBeFU = ptr->expressions[0];
+        
+        FUAccess access = env->ResolveFU(shouldBeFU,temp);
+        
+        if(access.leftovers.size > 0){
+          rhsError = true;
+        }
+        
+        if(access.entity.type == EntityType_FU){
+          rhsEntity = access.entity;
+          rhsSubEntity = env->GetEntityFromAccess(rhsEntity,ptr->name);
+        }
+      } break;
+      }
+
+      Entity rhsMain = rhsEntity;
 
       bool found = false;
-      if(wireOrFunction.type == EntityType_FUNCTION){
+      if(rhsSubEntity.type == EntityType_FUNCTION){
         found = true;
 
         String varName = rhsMain.name.identifier;
         
-        for(ConfigStuff stmt : wireOrFunction.func->stuff){
+        for(ConfigStuff stmt : rhsSubEntity.func->stuff){
           ConfigStuff* assign = list->PushElem();
           assign->type = ConfigStuffType_ASSIGNMENT;
-          assign->assign.lhs = lhsName;
+          assign->assign.lhs = lhsName.identifier;
           assign->assign.rhsId = PushString(out,"%.*s.%.*s",UN(varName),UN(stmt.assign.rhsId));
         }      
       }
 
-      if(wireOrFunction.type == EntityType_STATE_WIRE){
+      if(rhsSubEntity.type == EntityType_STATE_WIRE){
         found = true;
 
-        String wireName = wireOrFunction.name.identifier;
+        String wireName = rhsSubEntity.name.identifier;
         String varName = rhsMain.name.identifier;
 
         ConfigStuff* assign = list->PushElem();
         assign->type = ConfigStuffType_ASSIGNMENT;
-        assign->assign.lhs = lhsName;
+        assign->assign.lhs = lhsName.identifier;
         assign->assign.rhsId = PushString(out,"%.*s.%.*s",UN(varName),UN(wireName));
       }
 
@@ -624,7 +868,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
         ConfigStuff* assign = list->PushElem();
         assign->type = ConfigStuffType_ASSIGNMENT;
-        assign->assign.lhs = lhsName;
+        assign->assign.lhs = lhsName.identifier;
         assign->assign.rhsId = SYM_Repr(rhsMain.sym,out);
         assign->assign.noAccess = true;
       }
@@ -634,9 +878,21 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         printf("Error, did not find an expected type\n");
         ENTER_DEBUG();
       }
-
-      env->PopScope();
     }
+
+    // Generate C struct ==========================================================
+    CEmitter* c = StartCCode(temp);
+    
+    String structName = PushString(out,"%.*s_%.*s_Struct",UN(declaration->name),UN(def->name.identifier));
+    structToReturnName = structName;
+
+    c->Struct(structName);
+    for(Token names : lhsSideMembers){
+      c->Member("int",names.identifier);
+    }
+    c->EndStruct();
+
+    stateStructContent = PushASTRepr(c,out,false);
   }
   
   if(def->type == UserConfigType_MEM){
@@ -663,7 +919,6 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       bool singleStatement = (stmts.size == 1);
 
       DecompConfigStatement decomp = DecomposeConfigStatement(env,simple,temp);
-      DEBUG_BREAK();
 
       if(decomp.isFunctionInvoc){
         ConfigFunction* func = decomp.func;

@@ -841,8 +841,6 @@ int main(int argc,char* argv[]){
 
   AccelInfo info = CalculateAcceleratorInfo(accel,true,temp,true);
 
-  DEBUG_BREAK();
-
   InstantiateParameters(&info,temp);
   FillStaticInfo(&info,temp);
 
@@ -858,21 +856,17 @@ int main(int argc,char* argv[]){
         continue;
       }
     
-      if(SYM_IsZeroValue(unit->memMapSym)){
+      if(SYM_IsNil(unit->memMapSym)){
         continue;
       }
 
       // This is after parameter instantiation which means that we can actually calculate this.
       SYM_EvaluateResult eval = SYM_ConstantEvaluate(unit->memMapSym);
-      
-      // nocheckin
-      // TODO: Properly check the result 
 
-      Opt<int> memMapBits = eval.result;
-      Assert(memMapBits.has_value());
+      int memMapBits = eval.result;
       
-      int start = unit->memMapped.value();
-      int end = start + (1 << memMapBits.value()) - 1;
+      int start = unit->memMapped;
+      int end = start + (1 << memMapBits) - 1;
 
       unit->memStart = start;
       unit->memEnd = end;

@@ -623,7 +623,7 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
     }
 
     // Memory mapping
-    if(!SYM_IsZeroValue(unit->memMapSym)){
+    if(!SYM_IsNil(unit->memMapSym)){
       m->PortConnect("wstrb","wstrb");
       
       // nocheckin
@@ -801,7 +801,7 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
     }
 
     // Memory mapping
-    if(!SYM_IsZeroValue(unit->memMapSym)){
+    if(!SYM_IsNil(unit->memMapSym)){
       m->PortConnect("wstrb","data_wstrb");
 
       if(!SYM_IsZeroValue(unit->memMapSym)){
@@ -1003,7 +1003,7 @@ VerilogModuleInterface* GenerateModuleInterface(FUDeclaration* decl,Arena* out){
   }
   m->EndGroup();
 
-  if(!SYM_IsZeroValue(decl->info.memMapBitsSym)){
+  if(!SYM_IsNil(decl->info.memMapBitsSym)){
     m->StartGroup("MemoryMapped");
     m->AddPort("valid",SYM_One,WireDir_INPUT);
 
@@ -1174,7 +1174,7 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
     }
   }
 
-  if(!SYM_IsZeroValue(module->info.memMapBitsSym)){
+  if(!SYM_IsNil(module->info.memMapBitsSym)){
     // nocheckin : TODO: PROPER ERROR CHECKING
     SYM_EvaluateResult eval = SYM_ConstantEvaluate(module->info.memMapBitsSym);
     Opt<int> p = eval.result;
@@ -1520,7 +1520,7 @@ static Array<TypeStructInfoElement> GenerateAddressStructFromType(FUDeclaration*
   for(FUInstance* node : decl->fixedDelayCircuit->allocated){
     FUDeclaration* decl = node->declaration;
 
-    if(SYM_IsZeroValue(decl->info.memMapBitsSym)){
+    if(SYM_IsNil(decl->info.memMapBitsSym)){
       continue;
     }
 
@@ -1533,7 +1533,7 @@ static Array<TypeStructInfoElement> GenerateAddressStructFromType(FUDeclaration*
   for(FUInstance* node : decl->fixedDelayCircuit->allocated){
     FUDeclaration* decl = node->declaration;
 
-    if(SYM_IsZeroValue(decl->info.memMapBitsSym)){
+    if(SYM_IsNil(decl->info.memMapBitsSym)){
       continue;
     }
 
@@ -4053,7 +4053,7 @@ static iptr WRITE_@{0} = 0;)FOO";
   {
     CEmitter* c = StartCCode(temp);
 
-    if(!SYM_IsZeroValue(info.memMapBitsSym)){
+    if(!SYM_IsNil(info.memMapBitsSym)){
       c->Define("HAS_MEMORY_MAP");
 
       String repr = SYM_Repr(info.memMapBitsSym,temp);
@@ -4074,7 +4074,7 @@ static iptr WRITE_@{0} = 0;)FOO";
       if(unit->isComposite){
         continue;
       }
-      if(SYM_IsZeroValue(unit->memMapSym)){
+      if(SYM_IsNil(unit->memMapSym)){
         continue;
       }
 
@@ -4377,7 +4377,7 @@ void Output_VerilatorTopUnit(String topLevelTypeName,FUDeclaration* topLevelDecl
     }
   }
 
-  if(!SYM_IsZeroValue(module->info.memMapBitsSym)){
+  if(!SYM_IsNil(module->info.memMapBitsSym)){
     SYM_EvaluateResult eval = SYM_ConstantEvaluate(module->info.memMapBitsSym);
     Opt<int> p = eval.result;
 
@@ -4532,7 +4532,7 @@ void Output_VerilatorTopUnit(String topLevelTypeName,FUDeclaration* topLevelDecl
     }
   }
 
-  if(!SYM_IsZeroValue(module->info.memMapBitsSym)){
+  if(!SYM_IsNil(module->info.memMapBitsSym)){
     SYM_EvaluateResult eval = SYM_ConstantEvaluate(module->info.memMapBitsSym);
     Opt<int> p = eval.result;
 

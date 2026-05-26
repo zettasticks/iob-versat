@@ -96,9 +96,11 @@ enum MathType{
   MathType_NAME,
   MathType_LITERAL,
   MathType_SINGLE_ACCESS,
-  MathType_ARRAY_ACCESS,
+  MathType_ARRAY_ACCESS, // Array access contains the all the accesses in a row (A[1][2][3] will contain 3 expressions)
   MathType_FUNCTION_CALL
 };
+
+static inline bool MathType_IsSymbolic(MathType in){return (in == MathType_NAME || in == MathType_LITERAL || in == MathType_OPERATION);}
 
 struct MathExpression{
   Array<MathExpression*> expressions;
@@ -109,7 +111,6 @@ struct MathExpression{
   
   MathType type;
 };
-
 
 //nocheckin - TODO: We probably want to remove this after we move more logic to Env
 Array<Token> AccumTokens(MathExpression* top,Arena* out);
@@ -228,8 +229,7 @@ enum ConfigIdentifierType{
 };
 
 // TODO: Probably rename this.
-// ConfigIdentifier is parsed in reverse order than expected. Name appears first and access expressions appear after.
-// 
+// ConfigIdentifier is parsed in reverse order than a normal AST. Name appears first and expressions appear after.
 struct ConfigIdentifier{
   ConfigIdentifierType type;
   ConfigIdentifier* next;
@@ -239,9 +239,7 @@ struct ConfigIdentifier{
     Token functionName;
   }; 
 
-  //Array<MathExpression*> arrayExpr;
-  MathExpression* arrayExpr2;
-
+  MathExpression* arrayExpr;
   Array<MathExpression*> arguments;
 };
 
@@ -331,6 +329,11 @@ struct EntityAccess{
   MathExpression* leftover;
 };
 
+struct FUAccess{
+  Entity entity;
+  Array<MathExpression*> leftovers;
+};
+
 struct Env{
   Arena* scopeArena;
   Arena* miscArena;
@@ -369,6 +372,9 @@ struct Env{
   Entity GetEntity(Token name);
   Array<Entity> GetEntity(ConfigIdentifier* id,Arena* out);
   Array<Entity> GetEntity(MathExpression* spec,Arena* out);
+
+  // Only called in a context where we expect an FU. Does not try to peel until it finds one, it already expects one.
+  FUAccess ResolveFU(MathExpression* spec,Arena* out);
 
   Array<int> ConvertRangeToStart(Array<Range<MathExpression*>> range,Arena* out);
   Array<int> ConvertRangeToEnd(Array<Range<MathExpression*>> range,Arena* out);
