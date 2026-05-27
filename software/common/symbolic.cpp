@@ -1724,7 +1724,13 @@ SYM_Expr SYM_Derivate(SYM_Expr expr,String var){
     //       So this is more likely an error than a missing feature. If we ever reach this point need to investigate
     //       why
     case SYM_Type_DIV:{
-      NOT_IMPLEMENTED();
+      SYM_Expr topDerive = SYM_Derivate(node->top,var);
+      SYM_Expr bottomDerive = SYM_Derivate(node->bottom,var);
+
+      SYM_Expr topExpr = topDerive * node->bottom + bottomDerive * node->top;
+      SYM_Expr bottomExpr = node->bottom * node->bottom;
+      
+      res = topExpr / bottomExpr;
     } break;
     case SYM_Type_FUNC:{
       res = SYM_Zero;

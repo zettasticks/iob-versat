@@ -66,7 +66,7 @@ struct ConfigFunctionDef{
 
 // TODO: We probably want to remove the need for the user to specify this. Stupid to force the user to have to provide a switch when we can just figure out on our side. Still need to take care about the differences between config/mem and state.
 enum ConfigFunctionType{
-  ConfigFunctionType_NIL,
+  //ConfigFunctionType_NIL,
 
   ConfigFunctionType_CONFIG,
   ConfigFunctionType_STATE,
@@ -110,6 +110,12 @@ struct ConfigStuff{
   HIER_Name lhs;
 
   String pointerVarName;
+
+  bool extra;
+  String trueStart;
+  String trueEnd;
+  String unitCount;
+  String index;
 
   union{
     ConfigAssignment assign;

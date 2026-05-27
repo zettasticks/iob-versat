@@ -3301,9 +3301,6 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
         }
         
         FULL_SWITCH(func->type){
-        case ConfigFunctionType_NIL:{
-          Assert(false);
-        } break;
         case ConfigFunctionType_MEM:{
           for(ConfigStuff assign : func->stuff){
             Assert(assign.type == ConfigStuffType_MEMORY_TRANSFER);
@@ -3363,6 +3360,37 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
             } break;
             case ConfigStuffType_ADDRESS_GEN:{
               c->RawLine("{");
+
+              if(assign.extra){
+                String repr = PushString(temp,R"FOO(
+  int trueStart = %.*s;
+  int trueEnd = %.*s;
+
+  int A = trueEnd - trueStart;
+  int B = %.*s;
+  int N = %.*s;
+
+  int mod = A %% B;
+  int size = N + 1 <= mod ? (A/B) + 1 : (A/B);
+  int firstVal = mod >= (N+1) ?  N * size : N * size + mod;
+
+  if(amount <= index){
+    firstVal = 0;
+  }
+
+  if(size < 0){
+    size = 0;
+  }
+  if(firstVal < 0){
+    firstVal = 0;
+  }
+
+  int loopStart = firstVal;
+  int loopEnd = firstVal + size;
+                            )FOO",UN(assign.trueStart),UN(assign.trueEnd),UN(assign.unitCount),UN(assign.index));
+
+                c->RawLine(repr);
+              }
               
               AccessAndType access = assign.access;
               AddressGenInst inst = access.inst;

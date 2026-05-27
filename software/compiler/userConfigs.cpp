@@ -421,8 +421,8 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         bool isLhsFunctionCall = false;
         bool lhsError = false;
 
-        Entity baseEntity = Entity_Nil;
-        Entity subEntity = Entity_Nil;
+        Entity lhsBase = Entity_Nil;
+        Entity lhsSub = Entity_Nil;
         Array<MathExpression*> funcArgs = {};
 
         // Decompose lhs side =========================================================
@@ -437,12 +437,12 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
               // Parser should never allow this
               Assert(!nameAlreadySeen);
 
-              baseEntity = env->GetEntity(ptr->name);
+              lhsBase = env->GetEntity(ptr->name);
               nameAlreadySeen = true;
             } break;
             case ConfigIdentifierType_ARRAY:{
-              if(!Nil(subEntity)){
-                env->ReportError(baseEntity.name,"Cannot have array access expressions at this point");
+              if(!Nil(lhsSub)){
+                env->ReportError(lhsBase.name,"Cannot have array access expressions at this point");
                 lhsError = true;
               }
 
@@ -454,43 +454,43 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
               MathExpression* expr = ptr->arrayExpr;
 
               bool found = false;
-              if(!found && baseEntity.type == EntityType_FU_ARRAY){
+              if(!found && lhsBase.type == EntityType_FU_ARRAY){
                 found = true;
         
                 int index = env->CalculateConstantExpression(expr);
         
-                if(index < 0 || index >= baseEntity.dims[0]){
+                if(index < 0 || index >= lhsBase.dims[0]){
                   env->ReportError({},"Outside array bounds");
                   lhsError = true;
                 }
 
-                String arrayName = PushString(out,"%.*s_%d",UN(baseEntity.name.identifier),index);
+                String arrayName = PushString(out,"%.*s_%d",UN(lhsBase.name.identifier),index);
         
-                Array<int> newDims = Offset(baseEntity.dims,1);
+                Array<int> newDims = Offset(lhsBase.dims,1);
 
                 if(newDims.size > 0){
-                  baseEntity.type = EntityType_FU_ARRAY;
+                  lhsBase.type = EntityType_FU_ARRAY;
           
                   // TODO-2
-                  baseEntity.name = {};
-                  baseEntity.name.type = TokenType_IDENTIFIER;
-                  baseEntity.name.identifier = arrayName;
-                  baseEntity.name.originalData = arrayName;
+                  lhsBase.name = {};
+                  lhsBase.name.type = TokenType_IDENTIFIER;
+                  lhsBase.name.identifier = arrayName;
+                  lhsBase.name.originalData = arrayName;
 
-                  baseEntity.dims = newDims;
+                  lhsBase.dims = newDims;
                 } else {
                   FUInstance** possibleInst = env->table->Get(arrayName);
 
                   if(!possibleInst){
                     //ReportError({},"Inst does not exist");
                   } else {
-                    baseEntity = MakeEntity(*possibleInst);
+                    lhsBase = MakeEntity(*possibleInst);
                   }
                 }
               }
 
               if(!found){
-                env->ReportError(baseEntity.name,"Did not find entity referenced by this");
+                env->ReportError(lhsBase.name,"Did not find entity referenced by this");
                 lhsError = true;
               }
             } break;
@@ -500,33 +500,33 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
               Token accessName = ptr->name;
               String access = accessName.identifier;
 
-              if(baseEntity.type != EntityType_FU){
+              if(lhsBase.type != EntityType_FU){
                 env->ReportError(accessName,"Trying to access entity that does not support member access");
               }
 
-              if(baseEntity.type == EntityType_FU){
-                subEntity = env->GetEntityFromAccess(baseEntity,accessName);
+              if(lhsBase.type == EntityType_FU){
+                lhsSub = env->GetEntityFromAccess(lhsBase,accessName);
 
-                if(Nil(subEntity)){
+                if(Nil(lhsSub)){
                   env->ReportError(accessName,"Not found");
                   lhsError = true;
                 }
               }
               
-              isLhsWireVirtual = (subEntity.type == EntityType_MEM_PORT);
+              isLhsWireVirtual = (lhsSub.type == EntityType_MEM_PORT);
             } break;
             case ConfigIdentifierType_FUNC_CALL:{
               isLhsFunctionCall = true;
 
               Token funcName = ptr->functionName;
-              FUDeclaration* decl = baseEntity.decl;
+              FUDeclaration* decl = lhsBase.decl;
 
               bool found = false;
               for(MergePartition part : decl->info.infos){
                 for(ConfigFunction* func : part.userFunctions){
                   if(func->individualName == funcName.identifier){
-                    subEntity.type = EntityType_FUNCTION;
-                    subEntity.func = func;
+                    lhsSub.type = EntityType_FUNCTION;
+                    lhsSub.func = func;
             
                     if(found){
                       // TODO-1
@@ -548,9 +548,11 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
         bool isRhsArrayAccess = false; // Entire thing is A[...];
         bool isRhsExpressionOnly = false; // Is only a mathematical expression.
-        Entity rhsEntity = {};
+        bool isRhsFunctionCall = false;
+        Entity rhsEntity = Entity_Nil;
         SYM_Expr rhsExpr = SYM_Nil;
         bool rhsError = false;
+        MathExpression* rhsFunctionCall = {};
 
         // Decompose rhs side =========================================================
         if(!isLhsFunctionCall){
@@ -558,8 +560,18 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           
           FULL_SWITCH(ptr->type){
           case MathType_FUNCTION_CALL:{
-            rhsError = true;
-            Assert(false);
+            if(ptr->name.identifier == "Range"){
+              isRhsFunctionCall = true;
+              rhsFunctionCall = ptr;
+            }
+            if(ptr->name.identifier == "RangeSize"){
+              isRhsFunctionCall = true;
+              rhsFunctionCall = ptr;
+            }
+
+            if(!isRhsFunctionCall){
+              rhsError = true;
+            }
           } break;
           case MathType_NAME:
           case MathType_LITERAL:
@@ -599,7 +611,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
                 bool isExpressionConstant = !res.nonConstantValue;
                 bool found = false;
                 bool isExpression = false;
-                Entity newEntity = {};
+                Entity newEntity = Entity_Nil;
                 
                 if(!found && !rhsError){
                   bool isVarInput = rhsEntity.type == EntityType_VARIABLE_INPUT;
@@ -610,9 +622,11 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
                   if(!found && isExpressionConstant && isVarInputAddressable){
                     found = true;
-                    String trueName = PushString(temp,"%.*s[%d]",UN(newEntity.name.identifier),val);
-                    newEntity.type = EntityType_SYM;
-                    newEntity.sym = SYM_Var(trueName);
+                    String trueName = PushString(temp,"%.*s[%d]",UN(rhsEntity.name.identifier),val);
+                    newEntity.type = EntityType_VARIABLE_INPUT;
+                    newEntity.name.identifier = trueName;
+                    newEntity.flags = rhsEntity.flags;
+                    newEntity.arrayDims = rhsEntity.arrayDims - 1;
                   }
 
                   if(!found && (!isExpressionConstant || !isVarInputAddressable)){
@@ -644,10 +658,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         }
         }
 
-        String lhsName = baseEntity.name.identifier;
-
-        Entity entity = baseEntity;
-        Entity wirePortEnt = subEntity;
+        String lhsName = lhsBase.name.identifier;
 
         if(rhsError){
           printf("\n\n\nRHS decomp failed\n\n\n");
@@ -655,9 +666,69 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           
         // Function invocation is basically argument instantiation and replacing the 
         // statements with the new version.
-        if(isLhsFunctionCall){
+        if(isRhsFunctionCall){
+          Array<MathExpression*> args = rhsFunctionCall->expressions;
+
+          MathExpression* start = args[0];
+          MathExpression* end = args[1];
+          MathExpression* unitCount = args[2];
+          MathExpression* index = args[3];
+
+          SYM_Expr startSym = env->SymbolicFromMathExpression(start);
+          SYM_Expr endSym = env->SymbolicFromMathExpression(end);
+          SYM_Expr unitCountSym = env->SymbolicFromMathExpression(unitCount);
+          SYM_Expr indexSym = env->SymbolicFromMathExpression(index);
+
+          /*
+            Ok, the current objective is to move as much as this logic to runtime first.
+            Afterwards we can try to figure out how to proceeed.
+           */
+
+          AddressGenForDef def = {};
+
+          def.startSym = PushStruct<MathExpression>(temp);
+          def.startSym->type = MathType_NAME;
+          def.startSym->name.identifier = "loopStart";
+
+          def.endSym = PushStruct<MathExpression>(temp);
+          def.endSym->type = MathType_NAME;
+          def.endSym->name.identifier = "loopEnd";
+
+          def.loopVariable.identifier = "_";
+
+          Array<AddressGenForDef> loopArray = PushArray<AddressGenForDef>(temp,1);
+          loopArray[0] = def;
+
+          SYM_Expr varStuff = SYM_Var("_");
+
+          Array<Token> variables = PushArray<Token>(temp,1);
+          variables[0] = def.loopVariable;
+
+          AddressAccess* access = CompileAddressGen(env,variables,loopArray,varStuff,{});
+          AddressGenInst supported = lhsBase.decl->supportedAddressGen;
+
+          // TODO: Need to check if the decomp expression matches what is actually supported by the entity.
+          //       Ex: An expression of the form a = array[i] is not supported if 'a' is a Generator.
+          ConfigStuff* newAssign = list->PushElem();
+
+          newAssign->extra = true;
+          newAssign->trueStart = SYM_Repr(startSym,out);
+          newAssign->trueEnd = SYM_Repr(endSym,out);
+          newAssign->unitCount = SYM_Repr(unitCountSym,out);
+          newAssign->index = SYM_Repr(indexSym,out);
+
+          newAssign->type = ConfigStuffType_ADDRESS_GEN;
+          newAssign->access.access = access;
+          newAssign->access.inst = supported;
+          newAssign->access.dir = lhsSub.dir;
+          newAssign->access.port = lhsSub.port;
+
+          newAssign->pointerVarName = PushString(out,rhsEntity.name.identifier);
+          newAssign->lhs = lhsName;
+
+        } else if(isLhsFunctionCall){
           Array<MathExpression*> args = funcArgs;
-          ConfigFunction* function = subEntity.func;
+          ConfigFunction* function = lhsSub.func;
 
           // TODO: Not an assert, should be a proper error
           Assert(function->type == ConfigFunctionType_CONFIG);
@@ -729,7 +800,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           }
         } else if(isLhsWireAccess && !isLhsWireVirtual){
           // We are setting a value to a constant wire.
-          String wireName = wirePortEnt.name.identifier;
+          String wireName = lhsSub.name.identifier;
 
           ConfigStuff* assign = list->PushElem();
           assign->type = ConfigStuffType_ASSIGNMENT;
@@ -738,7 +809,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         } else if(isLhsWireVirtual || isRhsExpressionOnly || isRhsArrayAccess){
           // Is Address gen expression. Including array accesses for VUnits
           AddressAccess* access = CompileAddressGen(env,variableNames,forLoops,rhsExpr,content);
-          AddressGenInst supported = entity.decl->supportedAddressGen;
+          AddressGenInst supported = lhsBase.decl->supportedAddressGen;
 
           // TODO: Need to check if the decomp expression matches what is actually supported by the entity.
           //       Ex: An expression of the form a = array[i] is not supported if 'a' is a Generator.
@@ -747,8 +818,8 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           newAssign->type = ConfigStuffType_ADDRESS_GEN;
           newAssign->access.access = access;
           newAssign->access.inst = supported;
-          newAssign->access.dir = wirePortEnt.dir;
-          newAssign->access.port = wirePortEnt.port;
+          newAssign->access.dir = lhsSub.dir;
+          newAssign->access.port = lhsSub.port;
 
           newAssign->pointerVarName = PushString(out,rhsEntity.name.identifier);
           newAssign->lhs = lhsName;
@@ -812,6 +883,9 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       case MathType_LITERAL:
       case MathType_OPERATION:{
         SYM_Expr sym = env->SymbolicFromMathExpression(ptr);
+
+        rhsEntity.type = EntityType_SYM;
+        rhsEntity.sym = sym;
       } break;
 
       case MathType_ARRAY_ACCESS: {
@@ -835,13 +909,11 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       } break;
       }
 
-      Entity rhsMain = rhsEntity;
-
       bool found = false;
       if(rhsSubEntity.type == EntityType_FUNCTION){
         found = true;
 
-        String varName = rhsMain.name.identifier;
+        String varName = rhsEntity.name.identifier;
         
         for(ConfigStuff stmt : rhsSubEntity.func->stuff){
           ConfigStuff* assign = list->PushElem();
@@ -855,7 +927,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         found = true;
 
         String wireName = rhsSubEntity.name.identifier;
-        String varName = rhsMain.name.identifier;
+        String varName = rhsEntity.name.identifier;
 
         ConfigStuff* assign = list->PushElem();
         assign->type = ConfigStuffType_ASSIGNMENT;
@@ -863,13 +935,13 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         assign->assign.rhsId = PushString(out,"%.*s.%.*s",UN(varName),UN(wireName));
       }
 
-      if(rhsMain.type == EntityType_SYM){
+      if(rhsEntity.type == EntityType_SYM){
         found = true;
 
         ConfigStuff* assign = list->PushElem();
         assign->type = ConfigStuffType_ASSIGNMENT;
         assign->assign.lhs = lhsName.identifier;
-        assign->assign.rhsId = SYM_Repr(rhsMain.sym,out);
+        assign->assign.rhsId = SYM_Repr(rhsEntity.sym,out);
         assign->assign.noAccess = true;
       }
 

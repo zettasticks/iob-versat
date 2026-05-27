@@ -546,8 +546,9 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
   // TODO: Issue a warning if a variable is declared but not used.
   // TODO: Better error reporting by allowing code to call the ReportError from the spec parser 
   bool anyError = false;
+#if 0
   for(AddressGenForDef loop : loops){
-    Opt<String> sameNameAsInput = Find(asString,loop.loopVariable.originalData);
+    Opt<String> sameNameAsInput = Find(asString,loop.loopVariable.identifier);
 
     if(sameNameAsInput.has_value()){
       //ReportErrorGoodTokenExists(content,loop.loopVariable,sameNameAsInput.value(),"Loop variable","Overshadows input variable");
@@ -576,7 +577,8 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
     }
 #endif
   }
-  
+#endif
+
   if(anyError){
     return nullptr;
   }
@@ -585,7 +587,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
   for(int i = 0; i < loops.size; i++){
     AddressGenForDef loop = loops[i];
 
-    *loopVarBuilder->PushElem() = PushString(temp,loop.loopVariable.originalData);
+    *loopVarBuilder->PushElem() = PushString(temp,loop.loopVariable.identifier);
   }
   Array<String> loopVars = PushArray(out,loopVarBuilder);
 
@@ -606,7 +608,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
     if(start != SYM_Zero){
       loopEnd[i] = loopEnd[i] - start;
 
-      SYM_Expr loopVar = SYM_Var(loop.loopVariable.originalData);
+      SYM_Expr loopVar = SYM_Var(loop.loopVariable.identifier);
       symbolicExpr = SYM_Replace(symbolicExpr,loopVar,loopVar + start);
     }
 
@@ -633,7 +635,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
 
     AddressGenForDef loop = loops[i];
     
-    LoopLinearSum* sum = PushLoopLinearSumSimpleVar(loop.loopVariable.originalData,term,SYM_Zero,loopEnd[i],temp);
+    LoopLinearSum* sum = PushLoopLinearSumSimpleVar(loop.loopVariable.identifier,term,SYM_Zero,loopEnd[i],temp);
     expr = AddLoopLinearSum(sum,expr,temp);
   }
   
@@ -644,6 +646,10 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
     toCalcConst = SYM_Replace(toCalcConst,SYM_Var(str),SYM_Zero);
   }
   toCalcConst = toCalcConst;
+
+  if(!SYM_IsNil(dutyDiv) && !SYM_IsZeroValue(dutyDiv)){
+    toCalcConst = toCalcConst / dutyDiv;
+  }
 
   LoopLinearSum* freeTerm = PushLoopLinearSumFreeTerm(toCalcConst,temp);
       
