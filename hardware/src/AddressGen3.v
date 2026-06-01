@@ -43,6 +43,9 @@ module AddressGen3 #(
    output [ADDR_W - 1:0] addr_o,
    output                store_o,
 
+   output wire doneDatabus,
+   output wire doneAddress,
+
    output  done_o
 );
 
@@ -82,8 +85,8 @@ module AddressGen3 #(
       .iter3_i(iter3_i),
       .shift3_i(shift3_i),
 
-      .doneDatabus(),
-      .doneAddress(),
+      .doneDatabus(doneDatabus),
+      .doneAddress(doneAddress),
 
       //outputs 
       .valid_o(valid_o),

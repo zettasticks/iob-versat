@@ -3113,19 +3113,21 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
       NOT_POSSIBLE();
     };
 
-    for(int mergeIndex = 0; mergeIndex <  info.infos.size; mergeIndex++){
-      MergePartition part = info.infos[mergeIndex];
-      for(ConfigFunction* func : part.userFunctions){
-        if(func->type != ConfigFunctionType_CONFIG){
-          continue;
-        }
-        if(!func->supportsSizeCalc){
-          continue;
-        }
+    // Generate size function =====================================================
+    if(true){
+      for(int mergeIndex = 0; mergeIndex <  info.infos.size; mergeIndex++){
+        MergePartition part = info.infos[mergeIndex];
+        for(ConfigFunction* func : part.userFunctions){
+          if(func->type != ConfigFunctionType_CONFIG){
+            continue;
+          }
+          if(!func->supportsSizeCalc){
+            continue;
+          }
 
-        // TODO: Only output this if used. Address gen with fixed addresses do not generate this ever.
-        once {
-          c->Struct("VersatVarSpec");
+          // TODO: Only output this if used. Address gen with fixed addresses do not generate this ever.
+          once {
+            c->Struct("VersatVarSpec");
           c->Comment("Inputs, fill these with the min/max and the order of the variable");
           c->Member("int","min");
           c->Member("int","max");
@@ -3162,6 +3164,19 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
             
             Assert(info);
 
+            if(stuff.extra){
+              static int d = 0;
+
+              String values[3] = {
+                PushString(temp,"T%d",d++),
+                PushString(temp,"T%d",d++),
+                PushString(temp,"T%d",d++)
+              };
+
+              String repr = TE_Substitute(stuff.extraLoopStartAndEndTemplate,values,temp);
+              c->RawLine(repr);
+            }
+
             // TODO: Currently this is hardcoded for the VUnits. Need to actually start modelling the concept of address interface size and do it right.
             Opt<SYM_Expr> valOpt = GetParameterValue(info,"ADDR_W");
             Assert(valOpt.has_value());
@@ -3179,13 +3194,13 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
                 symb = SYM_Replace(symb,SYM_Var(var.name),varSym);
               }
             }
-                
+
             String repr = SYM_Repr(symb,temp);
 
             *bothList->PushElem() = {maxSize,repr};
           }
         }
-      
+
         String varDeclareList = JoinStrings(list,",",temp);
         String varDeclare = PushString(temp,"{%.*s}",UN(varDeclareList));
       
@@ -3200,7 +3215,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
       _VERSAT_index += 1;
       continue;    
     }
-)FOO",UN(p.second),UN(p.first),UN(p.second));
+                         )FOO",UN(p.second),UN(p.first),UN(p.second));
         }
         String allStuff = EndString(temp,b);
 
@@ -3236,7 +3251,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
 
     _VERSAT_totalSize = bytesUsed;
   }
-)FOO";
+                       )FOO";
 
         TE_PushScope();
 
@@ -3253,6 +3268,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
         c->EndBlock();
       }
     }
+  }
 
     for(MergePartition part : info.infos){
       String mergeName = part.name;
@@ -3362,33 +3378,15 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
               c->RawLine("{");
 
               if(assign.extra){
-                String repr = PushString(temp,R"FOO(
-  int trueStart = %.*s;
-  int trueEnd = %.*s;
+                static int d = 0;
 
-  int A = trueEnd - trueStart;
-  int B = %.*s;
-  int N = %.*s;
+                String values[3] = {
+                  PushString(temp,"T%d",d++),
+                  PushString(temp,"T%d",d++),
+                  PushString(temp,"T%d",d++)
+                };
 
-  int mod = A %% B;
-  int size = N + 1 <= mod ? (A/B) + 1 : (A/B);
-  int firstVal = mod >= (N+1) ?  N * size : N * size + mod;
-
-  if(amount <= index){
-    firstVal = 0;
-  }
-
-  if(size < 0){
-    size = 0;
-  }
-  if(firstVal < 0){
-    firstVal = 0;
-  }
-
-  int loopStart = firstVal;
-  int loopEnd = firstVal + size;
-                            )FOO",UN(assign.trueStart),UN(assign.trueEnd),UN(assign.unitCount),UN(assign.index));
-
+                String repr = TE_Substitute(assign.extraLoopStartAndEndTemplate,values,temp);
                 c->RawLine(repr);
               }
               

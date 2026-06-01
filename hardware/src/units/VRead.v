@@ -69,14 +69,14 @@ module VRead #(
 
    // output databus
    wire              transferDone;
-   reg               doneOutput;
-   wire              doneOutput_int;
+   wire              doneOutput;
 
    assign done = (transferDone  & doneOutput);
 
    wire data_valid,data_ready;
    wire [AXI_DATA_W-1:0] data_data;
 
+   /*
    always @(posedge clk, posedge rst) begin
       if (rst) begin
          doneOutput <= 1'b1;
@@ -86,6 +86,7 @@ module VRead #(
          if (doneOutput_int) doneOutput <= 1'b1;
       end
    end
+   */
 
    // Ping pong and related logic for the initial address
    reg pingPongState;
@@ -236,12 +237,15 @@ assign data_data = databus_rdata_0;
       .iter3_i(iter3),
       .shift3_i(shift3),
 
+      .doneAddress(doneOutput),
+      .doneDatabus(),
+
       //outputs 
       .valid_o(output_enabled),
       .ready_i(1'b1),
       .addr_o (output_addr_temp),
       .store_o(),
-      .done_o (doneOutput_int)
+      .done_o ()
    );
 
    wire [ADDR_W-1:0] true_output_addr = output_addr_temp;
@@ -313,9 +317,35 @@ assign data_data = databus_rdata_0;
       end  // if(AXI_DATA_W > DATA_W)
    endgenerate
 
+   // Need to delay done output to match memory latency
+   reg doneOutput_0,doneOutput_1;
+
+   always @(posedge clk) begin
+      doneOutput_0 <= doneOutput;
+      doneOutput_1 <= doneOutput_0;
+   end
+
    always @(posedge clk) begin
       out0 <= out0_temp;
+      if(doneOutput_1) begin
+         out0 <= 0;
+      end
    end
+
+/*
+   reg [DATA_W-1:0] out0_temp2;
+
+   always @* begin
+      out0_temp2 = out0_temp;
+      if(doneOutput) begin
+         out0_temp2 = 0;
+      end
+   end
+
+   always @(posedge clk) begin
+      out0 <= out0_temp2;
+   end
+*/
 
    assign ext_2p_write_0    = write_en;
    assign ext_2p_addr_out_0 = write_addr;

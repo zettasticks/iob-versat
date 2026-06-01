@@ -2,7 +2,6 @@
 
 // Unit that computes both databus address and memory address for reading and writing operations.
 // This unit is the source of truth for how the address gen interface generates the addresses for accessing memory.
-// As such, in order to obtain the addresses for a given set of values given, we use verilator to tranform the hardware into software and simulate this unit.
 
 // Take care when changing this. This unit is verilated in order to simulate address gen independently of the accelerator at pc-emul-run time.
 module SuperAddress #(
@@ -108,6 +107,8 @@ reg ignore;
 
 assign store_o = (per < duty_i && !ignore);
 
+wire isZero = (per_i == 0);
+
 always @(posedge clk_i,posedge rst_i) begin
    if (rst_i) begin
       delay_counter <= 0;
@@ -137,11 +138,23 @@ always @(posedge clk_i,posedge rst_i) begin
       doneAddress   <= 1'b0;
       ignore        <= ignore_first_i;
       if (delay_i == 0) begin
-         valid_o <= 1'b1;
+         if(isZero) begin
+            doneAddress <= 1'b1;
+         end else begin
+            valid_o <= 1'b1;
+         end
       end
    end else if (|delay_counter) begin
       delay_counter <= delay_counter - 1;
-      valid_o       <= (delay_counter == 1);
+      if(delay_counter == 1) begin
+         if(isZero) begin
+            doneAddress <= 1'b1;
+         end else begin
+            valid_o <= 1'b1;
+         end
+      end
+
+      //valid_o       <= (delay_counter == 1);
    end else if (valid_o && ready_i) begin
       casez(cases)
       6'b?????0: begin

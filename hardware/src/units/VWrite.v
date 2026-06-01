@@ -74,8 +74,9 @@ module VWrite #(
 
    //reg  doneWrite; // Databus write part
    wire transferDone;
-   reg  doneStore;
-   wire doneStore_int;
+   wire doneStore;
+   //reg  doneStore;
+   //wire doneStore_int;
    assign done = (transferDone & doneStore);
 
    wire data_valid, data_ready;
@@ -92,6 +93,7 @@ module VWrite #(
       end
    endgenerate
 
+   /*
    always @(posedge clk, posedge rst) begin
       if (rst) begin
          doneStore <= 1'b1;
@@ -101,6 +103,7 @@ module VWrite #(
          doneStore <= doneStore_int;
       end
    end
+   */
 
    // Ping pong and related logic for the initial address
    reg pingPongState;
@@ -248,12 +251,15 @@ module VWrite #(
       .iter3_i (iter3),
       .shift3_i(shift3),
 
+      .doneDatabus(),
+      .doneAddress(doneStore),
+
       //outputs 
       .valid_o(store_en),
       .ready_i(1'b1),
       .addr_o (store_addr_temp),
       .store_o(do_store),
-      .done_o (doneStore_int)
+      .done_o ()
    );
 
    wire [ADDR_W-1:0] store_addr = {

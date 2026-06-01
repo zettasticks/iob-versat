@@ -111,11 +111,13 @@ struct ConfigStuff{
 
   String pointerVarName;
 
+  String extraLoopStartAndEndTemplate;
+
   bool extra;
-  String trueStart;
-  String trueEnd;
-  String unitCount;
-  String index;
+  SYM_Expr trueStart;
+  SYM_Expr trueEnd;
+  SYM_Expr unitCount;
+  SYM_Expr index;
 
   union{
     ConfigAssignment assign;

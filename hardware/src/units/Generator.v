@@ -81,6 +81,9 @@ module Generator #(
 
       .delay_i(delay0),
 
+      .doneDatabus(),
+      .doneAddress(),
+
       //outputs 
       .valid_o(),
       .ready_i(running),

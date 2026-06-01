@@ -11,6 +11,7 @@
 
 #include "CEmitter.hpp"
 #include "versatSpecificationParser.hpp"
+#include "templateEngine.hpp"
 
 readOnly ConfigFunction ConfigFunction_Nil = {};
 
@@ -549,6 +550,8 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         bool isRhsArrayAccess = false; // Entire thing is A[...];
         bool isRhsExpressionOnly = false; // Is only a mathematical expression.
         bool isRhsFunctionCall = false;
+        bool isRangeSize = false;
+        
         Entity rhsEntity = Entity_Nil;
         SYM_Expr rhsExpr = SYM_Nil;
         bool rhsError = false;
@@ -567,6 +570,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
             if(ptr->name.identifier == "RangeSize"){
               isRhsFunctionCall = true;
               rhsFunctionCall = ptr;
+              isRangeSize = true;
             }
 
             if(!isRhsFunctionCall){
@@ -590,12 +594,30 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           case MathType_ARRAY_ACCESS: {
             isRhsArrayAccess = true;
 
+            DEBUG_BREAK();
+
             rhsEntity = env->GetEntity(ptr->name);
 
             for(int i = 0; i < ptr->expressions.size; i++){
               MathExpression* expr = ptr->expressions[i];
 
               FULL_SWITCH(expr->type){
+              case MathType_FUNCTION_CALL: {
+                if(expr->name.identifier == "Range"){
+                  isRhsFunctionCall = true;
+                  rhsFunctionCall = expr;
+                }
+                if(expr->name.identifier == "RangeSize"){
+                  isRhsFunctionCall = true;
+                  rhsFunctionCall = expr;
+                  isRangeSize = true;
+                }
+
+                if(!isRhsFunctionCall){
+                  rhsError = true;
+                }
+              } break;
+
               case MathType_NAME:
               case MathType_LITERAL:
               case MathType_OPERATION:{
@@ -647,11 +669,11 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
                 }
               } break;
               case MathType_SINGLE_ACCESS:
-              case MathType_ARRAY_ACCESS:
-              case MathType_FUNCTION_CALL: {
+              case MathType_ARRAY_ACCESS: {
                 rhsError = true;
                 //Assert(false);
               } break;
+
             }
             }
           } break;
@@ -669,10 +691,41 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         if(isRhsFunctionCall){
           Array<MathExpression*> args = rhsFunctionCall->expressions;
 
+/*
+  The best way of doing this is to make a simple language that describes the things that need to happen on runtime.
+  I basically need to describe the things that I want to happen at runtime.
+*/
+
           MathExpression* start = args[0];
           MathExpression* end = args[1];
           MathExpression* unitCount = args[2];
           MathExpression* index = args[3];
+
+          // Update the variables used.
+          {
+            auto tokens = AccumTokens(start,temp);
+            for(Token tok : tokens){
+              variablesUsedOnLoopExpressions->Insert(tok.identifier); 
+            }
+          }
+          {
+            auto tokens = AccumTokens(end,temp);
+            for(Token tok : tokens){
+              variablesUsedOnLoopExpressions->Insert(tok.identifier); 
+            }
+          }
+          {
+            auto tokens = AccumTokens(unitCount,temp);
+            for(Token tok : tokens){
+              variablesUsedOnLoopExpressions->Insert(tok.identifier); 
+            }
+          }
+          {
+            auto tokens = AccumTokens(index,temp);
+            for(Token tok : tokens){
+              variablesUsedOnLoopExpressions->Insert(tok.identifier); 
+            }
+          }
 
           SYM_Expr startSym = env->SymbolicFromMathExpression(start);
           SYM_Expr endSym = env->SymbolicFromMathExpression(end);
@@ -686,13 +739,29 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
           AddressGenForDef def = {};
 
+          static int d = 0;
+
+          String values[3] = {
+            PushString(out,"T%d",d++),
+            PushString(out,"T%d",d++),
+            PushString(out,"T%d",d++)
+          };
+
           def.startSym = PushStruct<MathExpression>(temp);
           def.startSym->type = MathType_NAME;
-          def.startSym->name.identifier = "loopStart";
+          def.startSym->name.identifier = values[0]; // "loopStart";
 
           def.endSym = PushStruct<MathExpression>(temp);
           def.endSym->type = MathType_NAME;
-          def.endSym->name.identifier = "loopEnd";
+          def.endSym->name.identifier = values[1]; // "loopEnd";
+
+          if(isRangeSize){
+            def.startSym->type = MathType_LITERAL;
+            def.startSym->val = 0;
+          }
+          if(isRangeSize){
+            def.endSym->name.identifier = values[2];
+          }
 
           def.loopVariable.identifier = "_";
 
@@ -712,10 +781,46 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           ConfigStuff* newAssign = list->PushElem();
 
           newAssign->extra = true;
-          newAssign->trueStart = SYM_Repr(startSym,out);
-          newAssign->trueEnd = SYM_Repr(endSym,out);
-          newAssign->unitCount = SYM_Repr(unitCountSym,out);
-          newAssign->index = SYM_Repr(indexSym,out);
+          newAssign->trueStart = startSym;
+          newAssign->trueEnd = endSym;
+          newAssign->unitCount = unitCountSym;
+          newAssign->index = indexSym;
+
+          String startRepr = SYM_Repr(startSym,temp);
+          String endRepr = SYM_Repr(endSym,temp);
+          String unitCountRepr = SYM_Repr(unitCountSym,temp);
+          String indexRepr = SYM_Repr(indexSym,temp);
+
+          String templ = PushString(out,R"FOO(
+  int @{0};
+  int @{1};
+  int @{2};
+
+{
+  int trueStart = %.*s;
+  int trueEnd = %.*s;
+  int A = trueEnd - trueStart;
+  int B = %.*s;
+  int N = %.*s;
+  int mod = A %% B;
+  int size = N + 1 <= mod ? (A/B) + 1 : (A/B);
+  int firstVal = mod >= (N+1) ?  N * size : N * size + mod;
+  if(amount <= index){
+    firstVal = 0;
+  }
+  if(size < 0){
+    size = 0;
+  }
+  if(firstVal < 0){
+    firstVal = 0;
+  }
+  @{0} = firstVal;
+  @{1} = firstVal + size;
+  @{2} = size;
+}
+                            )FOO",UN(startRepr),UN(endRepr),UN(unitCountRepr),UN(indexRepr));
+          String fullTemplate = TE_Substitute(templ,values,out);
+          newAssign->extraLoopStartAndEndTemplate = fullTemplate;
 
           newAssign->type = ConfigStuffType_ADDRESS_GEN;
           newAssign->access.access = access;
