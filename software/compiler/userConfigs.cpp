@@ -103,6 +103,7 @@ DecompConfigStatement DecomposeConfigStatement(Env* env,ConfigStatement* stmt,Ar
       Assert(false);
     } break;
 
+    case EntityType_RUNTIME_COMPUTATION:
     case EntityType_VARIABLE_SPECIAL:
     case EntityType_VARIABLE_INPUT:
     case EntityType_FUNCTION:
@@ -216,7 +217,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
   String stateStructContent = {};
 
-  env->PushScope();
+  env->PushScope(EnvScopeType_FUNCTION);
 
   for(ConfigVarDeclaration varDecl : variables){
     EntityVarFlags flags = {};
@@ -392,8 +393,8 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       };
       Array<GenLoopState> genState = PushArray<GenLoopState>(temp,genLoops.size);
 
-      // We are now inside the loops scope.
-      env->PushScope();
+      // We are now inside the gen loops scope.
+      env->PushScope(EnvScopeType_FOR_LOOP);
       for(int i = 0; i <  genLoops.size; i++){
         AddressGenForDef gen = genLoops[i];
 
@@ -549,8 +550,6 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
         bool isRhsArrayAccess = false; // Entire thing is A[...];
         bool isRhsExpressionOnly = false; // Is only a mathematical expression.
-        bool isRhsFunctionCall = false;
-        bool isRangeSize = false;
         
         Entity rhsEntity = Entity_Nil;
         SYM_Expr rhsExpr = SYM_Nil;
@@ -562,21 +561,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           MathExpression* ptr = simple->rhs;
           
           FULL_SWITCH(ptr->type){
-          case MathType_FUNCTION_CALL:{
-            if(ptr->name.identifier == "Range"){
-              isRhsFunctionCall = true;
-              rhsFunctionCall = ptr;
-            }
-            if(ptr->name.identifier == "RangeSize"){
-              isRhsFunctionCall = true;
-              rhsFunctionCall = ptr;
-              isRangeSize = true;
-            }
-
-            if(!isRhsFunctionCall){
-              rhsError = true;
-            }
-          } break;
+          case MathType_FUNCTION_CALL:
           case MathType_NAME:
           case MathType_LITERAL:
           case MathType_OPERATION: {
@@ -594,30 +579,13 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           case MathType_ARRAY_ACCESS: {
             isRhsArrayAccess = true;
 
-            DEBUG_BREAK();
-
             rhsEntity = env->GetEntity(ptr->name);
 
             for(int i = 0; i < ptr->expressions.size; i++){
               MathExpression* expr = ptr->expressions[i];
 
               FULL_SWITCH(expr->type){
-              case MathType_FUNCTION_CALL: {
-                if(expr->name.identifier == "Range"){
-                  isRhsFunctionCall = true;
-                  rhsFunctionCall = expr;
-                }
-                if(expr->name.identifier == "RangeSize"){
-                  isRhsFunctionCall = true;
-                  rhsFunctionCall = expr;
-                  isRangeSize = true;
-                }
-
-                if(!isRhsFunctionCall){
-                  rhsError = true;
-                }
-              } break;
-
+              case MathType_FUNCTION_CALL: 
               case MathType_NAME:
               case MathType_LITERAL:
               case MathType_OPERATION:{
@@ -680,6 +648,8 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         }
         }
 
+        
+
         String lhsName = lhsBase.name.identifier;
 
         if(rhsError){
@@ -688,150 +658,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           
         // Function invocation is basically argument instantiation and replacing the 
         // statements with the new version.
-        if(isRhsFunctionCall){
-          Array<MathExpression*> args = rhsFunctionCall->expressions;
-
-/*
-  The best way of doing this is to make a simple language that describes the things that need to happen on runtime.
-  I basically need to describe the things that I want to happen at runtime.
-*/
-
-          MathExpression* start = args[0];
-          MathExpression* end = args[1];
-          MathExpression* unitCount = args[2];
-          MathExpression* index = args[3];
-
-          // Update the variables used.
-          {
-            auto tokens = AccumTokens(start,temp);
-            for(Token tok : tokens){
-              variablesUsedOnLoopExpressions->Insert(tok.identifier); 
-            }
-          }
-          {
-            auto tokens = AccumTokens(end,temp);
-            for(Token tok : tokens){
-              variablesUsedOnLoopExpressions->Insert(tok.identifier); 
-            }
-          }
-          {
-            auto tokens = AccumTokens(unitCount,temp);
-            for(Token tok : tokens){
-              variablesUsedOnLoopExpressions->Insert(tok.identifier); 
-            }
-          }
-          {
-            auto tokens = AccumTokens(index,temp);
-            for(Token tok : tokens){
-              variablesUsedOnLoopExpressions->Insert(tok.identifier); 
-            }
-          }
-
-          SYM_Expr startSym = env->SymbolicFromMathExpression(start);
-          SYM_Expr endSym = env->SymbolicFromMathExpression(end);
-          SYM_Expr unitCountSym = env->SymbolicFromMathExpression(unitCount);
-          SYM_Expr indexSym = env->SymbolicFromMathExpression(index);
-
-          /*
-            Ok, the current objective is to move as much as this logic to runtime first.
-            Afterwards we can try to figure out how to proceeed.
-           */
-
-          AddressGenForDef def = {};
-
-          static int d = 0;
-
-          String values[3] = {
-            PushString(out,"T%d",d++),
-            PushString(out,"T%d",d++),
-            PushString(out,"T%d",d++)
-          };
-
-          def.startSym = PushStruct<MathExpression>(temp);
-          def.startSym->type = MathType_NAME;
-          def.startSym->name.identifier = values[0]; // "loopStart";
-
-          def.endSym = PushStruct<MathExpression>(temp);
-          def.endSym->type = MathType_NAME;
-          def.endSym->name.identifier = values[1]; // "loopEnd";
-
-          if(isRangeSize){
-            def.startSym->type = MathType_LITERAL;
-            def.startSym->val = 0;
-          }
-          if(isRangeSize){
-            def.endSym->name.identifier = values[2];
-          }
-
-          def.loopVariable.identifier = "_";
-
-          Array<AddressGenForDef> loopArray = PushArray<AddressGenForDef>(temp,1);
-          loopArray[0] = def;
-
-          SYM_Expr varStuff = SYM_Var("_");
-
-          Array<Token> variables = PushArray<Token>(temp,1);
-          variables[0] = def.loopVariable;
-
-          AddressAccess* access = CompileAddressGen(env,variables,loopArray,varStuff,{});
-          AddressGenInst supported = lhsBase.decl->supportedAddressGen;
-
-          // TODO: Need to check if the decomp expression matches what is actually supported by the entity.
-          //       Ex: An expression of the form a = array[i] is not supported if 'a' is a Generator.
-          ConfigStuff* newAssign = list->PushElem();
-
-          newAssign->extra = true;
-          newAssign->trueStart = startSym;
-          newAssign->trueEnd = endSym;
-          newAssign->unitCount = unitCountSym;
-          newAssign->index = indexSym;
-
-          String startRepr = SYM_Repr(startSym,temp);
-          String endRepr = SYM_Repr(endSym,temp);
-          String unitCountRepr = SYM_Repr(unitCountSym,temp);
-          String indexRepr = SYM_Repr(indexSym,temp);
-
-          String templ = PushString(out,R"FOO(
-  int @{0};
-  int @{1};
-  int @{2};
-
-{
-  int trueStart = %.*s;
-  int trueEnd = %.*s;
-  int A = trueEnd - trueStart;
-  int B = %.*s;
-  int N = %.*s;
-  int mod = A %% B;
-  int size = N + 1 <= mod ? (A/B) + 1 : (A/B);
-  int firstVal = mod >= (N+1) ?  N * size : N * size + mod;
-  if(amount <= index){
-    firstVal = 0;
-  }
-  if(size < 0){
-    size = 0;
-  }
-  if(firstVal < 0){
-    firstVal = 0;
-  }
-  @{0} = firstVal;
-  @{1} = firstVal + size;
-  @{2} = size;
-}
-                            )FOO",UN(startRepr),UN(endRepr),UN(unitCountRepr),UN(indexRepr));
-          String fullTemplate = TE_Substitute(templ,values,out);
-          newAssign->extraLoopStartAndEndTemplate = fullTemplate;
-
-          newAssign->type = ConfigStuffType_ADDRESS_GEN;
-          newAssign->access.access = access;
-          newAssign->access.inst = supported;
-          newAssign->access.dir = lhsSub.dir;
-          newAssign->access.port = lhsSub.port;
-
-          newAssign->pointerVarName = PushString(out,rhsEntity.name.identifier);
-          newAssign->lhs = lhsName;
-
-        } else if(isLhsFunctionCall){
+        if(isLhsFunctionCall){
           Array<MathExpression*> args = funcArgs;
           ConfigFunction* function = lhsSub.func;
 
@@ -1058,7 +885,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     }
 
     // Generate C struct ==========================================================
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
     
     String structName = PushString(out,"%.*s_%.*s_Struct",UN(declaration->name),UN(def->name.identifier));
     structToReturnName = structName;
@@ -1076,7 +903,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     type = ConfigFunctionType_MEM;
 
     for(Array<ConfigStatement*> stmts : individualStatements){
-      env->PushScope();
+      env->PushScope(EnvScopeType_FOR_LOOP);
 
       auto forList = PushList<AddressGenForDef>(temp);
       for(int i = 0; i < stmts.size - 1; i++){
@@ -1156,6 +983,84 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     varInfo[i].usedOnLoopExpressions = variablesUsedOnLoopExpressions->Exists(varInfo[i].name);
   }
 
+  // Handle extra computations ==================================================
+
+  // TODO:
+  // This is kinda "stupid" in a way since we are treating computations like a function level 
+  // type of logic when it should be more scope level. What if a function is called with arguments
+  // of a for loop variable? It is possible that the code is not capable of handling this
+  // since we only support a certain type of loops but regardless our code is not capable
+  // of reporting errors or correctly informing the user if we do not associate these 
+  // to the correct scope.
+  Array<Entity> extraCompEnts = env->GetAllComputations(temp);
+
+  auto compList = PushList<ConfigComputation>(temp);
+  for(int i = 0; i <  extraCompEnts.size; i++){
+    Entity ent = extraCompEnts[i];
+    String funcName = ent.functionName;
+    Array<SYM_Expr> args = ent.args;
+    String varName = ent.name.identifier;
+
+    ConfigComputation* comp = compList->PushElem();
+    
+    comp->outputName = PushString(out,varName);
+
+    FREE_ARENA(emitter);
+    CEmitter* c = StartCCode(out,emitter);
+
+    c->VarDeclare("int",comp->outputName);
+    c->StartScope();
+    if(funcName == "RangeSize"){
+      c->VarDeclare("int","V_trueStart",SYM_Repr(args[0],temp));
+      c->VarDeclare("int","V_trueEnd",SYM_Repr(args[1],temp));
+      c->VarDeclare("int","V_count",SYM_Repr(args[2],temp));
+
+      c->VarDeclare("int","V_trueSize","V_trueEnd - V_trueStart");
+      c->VarDeclare("int","V_mod","V_trueSize % V_count");
+      c->VarDeclare("int","V_workSize","V_mod != 0 ? (V_trueSize/V_count) + 1 : (V_trueSize/V_count)");
+
+      c->Assignment(comp->outputName,"V_workSize");
+    }
+    if(funcName == "RangeLow"){
+      c->VarDeclare("int","V_trueStart",SYM_Repr(args[0],temp));
+      c->VarDeclare("int","V_trueEnd",SYM_Repr(args[1],temp));
+      c->VarDeclare("int","V_count",SYM_Repr(args[2],temp));
+      c->VarDeclare("int","V_index",SYM_Repr(args[3],temp));
+
+      c->VarDeclare("int","V_trueSize","V_trueEnd - V_trueStart");
+      c->VarDeclare("int","V_mod","V_trueSize % V_count");
+      c->VarDeclare("int","V_workSize","V_index + 1 <= V_mod ? (V_trueSize/V_count) + 1 : (V_trueSize/V_count)");
+      c->VarDeclare("int","V_firstVal","V_mod >= (V_index+1) ?  V_index * V_workSize : V_index * V_workSize + V_mod");
+
+      c->If("V_trueSize <= V_index");
+      c->Assignment("V_firstVal","0");
+      c->EndIf();
+
+      c->Assignment(comp->outputName,"V_firstVal");
+    }
+    if(funcName == "RangeHigh"){
+      c->VarDeclare("int","V_trueStart",SYM_Repr(args[0],temp));
+      c->VarDeclare("int","V_trueEnd",SYM_Repr(args[1],temp));
+      c->VarDeclare("int","V_count",SYM_Repr(args[2],temp));
+      c->VarDeclare("int","V_index",SYM_Repr(args[3],temp));
+
+      c->VarDeclare("int","V_trueSize","V_trueEnd - V_trueStart");
+      c->VarDeclare("int","V_mod","V_trueSize % V_count");
+      c->VarDeclare("int","V_workSize","V_index + 1 <= V_mod ? (V_trueSize/V_count) + 1 : (V_trueSize/V_count)");
+      c->VarDeclare("int","V_firstVal","V_mod >= (V_index+1) ?  V_index * V_workSize : V_index * V_workSize + V_mod");
+
+      c->If("V_trueSize <= V_index");
+      c->Assignment("V_firstVal","0");
+      c->EndIf();
+
+      c->Assignment(comp->outputName,"V_firstVal + V_workSize");
+    }
+    
+    c->EndScope();
+
+    comp->cCode = EndCCode(c);
+  }
+
   ConfigFunction* func = PushStruct<ConfigFunction>(out);
   func->type = type;
   func->decl = declaration;
@@ -1167,6 +1072,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   func->stateStructContent = stateStructContent;
   func->debug = def->debug;
   func->supportsSizeCalc = supportsSizeCalc;
+  func->extraComputations = PushArray(out,compList);
 
   env->PopScope();
   

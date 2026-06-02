@@ -664,7 +664,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
 };
 
 static void EmitDebugAddressGenInfo(AddressAccess* access,CEmitter* c){
-  TEMP_REGION(temp,c->arena);
+  TEMP_REGION(temp,c->castArena);
 
   auto builder = StartString(temp);
   Repr(builder,access->internal);
@@ -687,7 +687,7 @@ void EmitReadStatements(CEmitter* m,AccessAndType access,String varName,String e
   int maxLoops = access.inst.loopsSupported;
   
   auto EmitStoreAddressGenIntoConfig = [varName](CEmitter* emitter,Array<Pair<String,String>> params) -> void{
-    TEMP_REGION(temp,emitter->arena);
+    TEMP_REGION(temp,emitter->castArena);
           
     for(int i = 0; i < params.size; i++){
       String str = params[i].first;
@@ -705,7 +705,7 @@ void EmitReadStatements(CEmitter* m,AccessAndType access,String varName,String e
   };
 
   auto EmitDoubleOrSingleLoopCode = [extVarName,maxLoops,EmitStoreAddressGenIntoConfig](CEmitter* c,int loopIndex,AddressAccess* access){
-    TEMP_REGION(temp,c->arena);
+    TEMP_REGION(temp,c->castArena);
     
     // TODO: The way we handle the free term is kinda sketchy.
     // NOTE: The problem is that the convert access functions do not know how to handle duty.
@@ -813,7 +813,7 @@ void EmitMemStatements(CEmitter* m,AccessAndType access,String varName){
   AddressAccess* initial = access.access;
   
   auto EmitStoreAddressGenIntoConfig = [varName](CEmitter* emitter,Array<Pair<String,String>> params) -> void{
-    TEMP_REGION(temp,emitter->arena);
+    TEMP_REGION(temp,emitter->castArena);
           
     for(int i = 0; i < params.size; i++){
       String str = params[i].first;
@@ -841,7 +841,7 @@ void EmitGenStatements(CEmitter* m,AccessAndType access,String varName){
   AddressAccess* initial = access.access;
   
   auto EmitStoreAddressGenIntoConfig = [varName](CEmitter* emitter,Array<Pair<String,String>> params) -> void{
-    TEMP_REGION(temp,emitter->arena);
+    TEMP_REGION(temp,emitter->castArena);
           
     for(int i = 0; i < params.size; i++){
       String str = params[i].first;

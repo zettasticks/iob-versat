@@ -6,6 +6,7 @@
 struct FUDeclaration;
 struct AddressAccess;
 struct ConfigIdentifier;
+struct CAST;
 
 // Move user configuration functions here.
 
@@ -140,8 +141,15 @@ struct ConfigVariable{
   bool usedOnLoopExpressions;
 };
 
+struct ConfigComputation{
+  String outputName;
+  CAST* cCode;
+};
+
 struct ConfigFunction{
   ConfigFunctionType type;
+
+  Array<ConfigComputation> extraComputations;
 
   String individualName;
   String fullName;

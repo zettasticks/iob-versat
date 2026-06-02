@@ -8,6 +8,7 @@
 
 struct ConfigFunctionDef;
 struct SpecExpression;
+struct CAST;
 
 typedef TrieMap<String,FUInstance*> InstanceTable;
 
@@ -255,7 +256,7 @@ inline ConfigIdentifier* GetBeforeBase(ConfigIdentifier* top){
 }
 
 // ======================================
-// Hierarchical access (WIP)
+// Environment
 
 // Map from name in hierarchical access (ex: a.b.c[0].d) to an entity.
 
@@ -272,7 +273,8 @@ enum EntityType{
   EntityType_FUNCTION,
   EntityType_VARIABLE_INPUT,
   EntityType_VARIABLE_SPECIAL, // For variables that exist "by default"
-  EntityType_SYM
+  EntityType_SYM,
+  EntityType_RUNTIME_COMPUTATION // Special values that need extensive runtime computation are replaced by a simple identifier which is then used in the symbolic expressions, while we retain info about the type of computation which is then perform at runtime.
 };
 
 enum EntityVarFlags{
@@ -284,6 +286,7 @@ struct Entity{
   EntityType type;
   EntityVarFlags flags;
 
+  // TODO: Would really help if we separated token into a text position and the string part since there are a lot of entities that do not have a text position but have a name 
   Token name;
   //String name;
   Direction dir;
@@ -293,6 +296,10 @@ struct Entity{
   FUDeclaration* decl;
   SYM_Expr sym;
   Array<int> dims;
+  
+  String functionName;
+  Array<SYM_Expr> args;
+
   int arrayDims; // This is probably just a symptom of trying to only support 1D arrays. But since we need to generate C code this is probably for the best.
   int port;
   int val;
@@ -312,9 +319,17 @@ extern Entity Entity_Nil;
 
 bool Nil(Entity ent);
 
+enum EnvScopeType{
+  EnvScopeType_GLOBAL,
+  EnvScopeType_FUNCTION,
+  EnvScopeType_FOR_LOOP
+};
+
 struct EnvScope{
   ArenaMark mark;
+  EnvScopeType type;
 
+  int currentComputationIndex;
   TrieMap<String,Entity>* variable;
 };
 
@@ -351,7 +366,7 @@ struct Env{
   void ReportError(Token badToken,String msg);
 
   // By default we are inside a module scope.
-  void PushScope();
+  void PushScope(EnvScopeType type);
   void PopScope();
 
   FUInstance* CreateInstance(FUDeclaration* type,String name);
@@ -392,6 +407,9 @@ struct Env{
 
   void AddParam(Token name,int val);
   void AddVariable(Token name,MathExpression* arraySize = nullptr,EntityVarFlags flags = {});
+  
+  Entity AddComputation(String functionName,Array<SYM_Expr> expressions);
+  Array<Entity> GetAllComputations(Arena* out);
 
   void SetGenVariable(Token name,int value);
 

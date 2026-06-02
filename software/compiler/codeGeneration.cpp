@@ -3028,7 +3028,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
     }
     }      
     
-    CEmitter* m = StartCCode(temp);
+    CEmitter* m = StartCCode(temp,temp);
     m->Struct("AddressVArguments");
     for(String str : META_AddressVParameters_Members){
       m->Member("iptr",str);
@@ -3095,7 +3095,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
 
   {
     FREE_ARENA(emitterArena);
-    CEmitter* c = StartCCode(emitterArena);
+    CEmitter* c = StartCCode(emitterArena,emitterArena);
 
     bool isMerge = false;
     if(info.infos.size > 1){
@@ -3377,6 +3377,11 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
             case ConfigStuffType_ADDRESS_GEN:{
               c->RawLine("{");
 
+              // MARK
+              for(ConfigComputation comp : func->extraComputations){
+                c->InsertCode(comp.cCode);
+              }
+
               if(assign.extra){
                 static int d = 0;
 
@@ -3438,7 +3443,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   DEFER_CLOSE_FILE(f);
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
 
     if(structs.size == 0){
       c->Struct(PushString(temp,"%.*sConfig",UN(typeName)));
@@ -3476,7 +3481,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
 
     if(stateStructs.size == 0){
       c->Struct(PushString(temp,"%.*sState",UN(typeName)));
@@ -3513,7 +3518,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
     
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
 
     c->Struct("AcceleratorState");
     for(String name : allStates){
@@ -3526,7 +3531,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
 
     Array<TypeStructInfo> addressStructures = GetMemMappedStructInfo(&info,temp2);
 
@@ -3547,7 +3552,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
     c->Struct("AcceleratorConfig");
 
     for(auto elem : structuredConfigs){
@@ -3570,7 +3575,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
     c->Struct("AcceleratorStatic");
 
     for(auto elem : allStaticsVerilatorSide){
@@ -3583,7 +3588,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
     
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
     c->Struct("AcceleratorDelay");
     {
       c->Union();
@@ -3604,7 +3609,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
     
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
 
     for(Pair<String,int> p : allMem){
       c->Define(p.first,PushString(temp,"((void*) (versat_base + memMappedStart + 0x%x))",p.second));
@@ -3615,7 +3620,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
 
     c->VarBlock();
     for(Pair<String,int> p : allMem){
@@ -3639,7 +3644,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   Array<int> delays = EndArray(arr);
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
 
     c->VarBlock();
     for(auto d : delays){
@@ -3652,7 +3657,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
 
     for(auto elem : allStaticsVerilatorSide){
       c->Define(PushString(temp,"ACCEL_%.*s",UN(elem.name)),PushString(temp,"accelStatic->%.*s",UN(elem.name)));
@@ -3663,7 +3668,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
 
     bool hasVariableDelay = false;
 
@@ -3832,7 +3837,7 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
   TE_SetNumber("numberDelays",info.delays);
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
 
     // TODO: BAD
     c->RawLine("AcceleratorConfig* config = (AcceleratorConfig*) &configBuffer;\n");
@@ -3844,7 +3849,7 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
   }
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
 
     if(globalDebug.outputVCD){
       c->Define("TRACE");
@@ -3869,7 +3874,7 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
   }
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
 
     for(int i = 0; i < info.delays; i++){
       c->Assignment(PushString(temp,"self->delay%d",i),PushString(temp,"delayBuffer[%d]",i));
@@ -3881,7 +3886,7 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
   }
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
 
     for(int i = 0; i < info.inputs; i++){
       c->Assignment(PushString(temp,"self->in%d",i),"0");
@@ -3948,7 +3953,7 @@ if(SimulateDatabus){
   }
     
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
     c->Comment("Extract state from model");
       
     if(info.states){
@@ -3966,7 +3971,7 @@ if(SimulateDatabus){
   }
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
 
     if(allConfigsVerilatorSide.size){
       c->RawLine(R"FOO(
@@ -4026,7 +4031,7 @@ if(SimulateDatabus){
   }
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
     for(auto wire : allConfigsVerilatorSide){
       if(wire.w.stage == VersatStage_COMPUTE){
         String format = "  COMPUTED_@{0} = 0;";
@@ -4054,7 +4059,7 @@ if(SimulateDatabus){
   }
   
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
     for(auto wire : allConfigsVerilatorSide){
       if(wire.w.stage == VersatStage_COMPUTE){
         String format = "static iptr COMPUTED_@{0} = 0;";
@@ -4077,7 +4082,7 @@ static iptr WRITE_@{0} = 0;)FOO";
   }
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
 
     if(!SYM_IsNil(info.memMapBitsSym)){
       c->Define("HAS_MEMORY_MAP");
@@ -4091,7 +4096,7 @@ static iptr WRITE_@{0} = 0;)FOO";
   }
   
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
 
     int varIndex = 0;
     for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
@@ -4119,7 +4124,7 @@ static iptr WRITE_@{0} = 0;)FOO";
   }
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
     
     for(int i = 0; i < info.amountOfMemMappedInterfaces; i++){
       c->Assignment(SF("    self->unit_valid_%d",i),SF("unit_valid_%d",i));
@@ -4130,7 +4135,7 @@ static iptr WRITE_@{0} = 0;)FOO";
   }
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
     
     for(int i = 0; i < info.amountOfMemMappedInterfaces; i++){
       c->Assignment(SF("    self->unit_valid_%d",i),"0");
@@ -4159,7 +4164,7 @@ static iptr WRITE_@{0} = 0;)FOO";
     Array<Array<MuxInfo>> muxInfo = CalculateMuxInformation(&iter,temp);
 
     // From accel config, obtain the merge index.
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
 
     // MergeTypeFromConfig
     if(iter.MergeSize() > 1 && muxInfo.size > 0){
@@ -4331,9 +4336,7 @@ static iptr WRITE_@{0} = 0;)FOO";
 void Output_VerilatorTopUnit(String topLevelTypeName,FUDeclaration* topLevelDecl,FILE* file){
   TEMP_REGION(temp,nullptr);
 
-  // MARK1
   // Same interface as top unit.
-
   FUDeclaration* module = topLevelDecl;
   AccelInfo info = module->info;
 
@@ -4622,7 +4625,7 @@ void Output_IobVersatFirmware(String softwarePath,VersatComputedValues val){
   FILE* file = OpenFileAndCreateDirectories(PushString(temp,"%.*s/src/iob-versat.c",UN(softwarePath)),"w",FilePurpose_SOFTWARE);
   DEFER_CLOSE_FILE(file);
 
-  CEmitter* c = StartCCode(temp);
+  CEmitter* c = StartCCode(temp,temp);
   
   for(VersatRegister reg : VersatRegisters){
     Opt<int> index = GetOptIndex(val,reg);
@@ -4634,7 +4637,7 @@ void Output_IobVersatFirmware(String softwarePath,VersatComputedValues val){
   }
 
   {
-    CEmitter* c = StartCCode(temp);
+    CEmitter* c = StartCCode(temp,temp);
 
     // TODO: BAD
     c->RawLine("AcceleratorConfig* config = (AcceleratorConfig*) accelConfig;\n");
@@ -4827,7 +4830,7 @@ void Output_PCEmulDefs(AccelInfo info,String softwarePath){
   TEMP_REGION(temp,nullptr);
   TEMP_REGION(temp2,temp);
   
-  CEmitter* c = StartCCode(temp);
+  CEmitter* c = StartCCode(temp,temp);
 
   Array<Array<InstanceInfo*>> unitInfoPerMerge = VUnitInfoPerMerge(info,temp);
 

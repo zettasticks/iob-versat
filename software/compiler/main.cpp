@@ -986,11 +986,8 @@ int main(int argc,char* argv[]){
     fs::copy(path,hardwareDestinationPath,options);
   }
 
-  // MARK
-#if 1
   // This should be the last thing that we do, no further file creation can occur after this point
   ReportFileCreation();
-#endif
 
   return 0;
 }
@@ -1000,12 +997,9 @@ We should move graph stuff to a separate file (or keep it in accelerator.hpp and
 Remove the dynamic arena and just share memory between the nodes.
 
 Memory mapped transfers do not check for sizes and report errors if too big.
-
 */
 
 #if 0
-LEFT HERE - 
-
 Was in the process of cleaning up header stuff and the likes. Realize that this is kinda more demanding than simply going one by one removing a header, compilation seeing if we broke stuff and then putting it back if so.
 
 I think what I really need to do is to take a look at the way things are organized and do a proper cleanup.
@@ -1023,8 +1017,6 @@ What I need to do is:
 -- Potentially remove the Pool from Accelerator. Make the accelerator a proper layer and everything is just stored on that side.
 
 After this "organizational" cleanup, finish cleaning up the code, mainly the parser part. I want to remove the old parser completely. The new parser is the way to go.
-
-This should be enough for a good workday.
 #endif
 
 /*

@@ -365,7 +365,7 @@ Env* StartEnvironment(Arena* freeUse,Arena* freeUse2){
   env->scopes = PushArray<EnvScope*>(freeUse,99);
 
   env->currentScope = -1;
-  env->PushScope();
+  env->PushScope(EnvScopeType_GLOBAL);
 
   env->errors = PushList<String>(freeUse2);
   env->table = PushTrieMap<String,FUInstance*>(freeUse2);
@@ -379,11 +379,12 @@ void Env::ReportError(Token badToken,String msg){
   *this->errors->PushElem() = error;
 }
 
-void Env::PushScope(){
+void Env::PushScope(EnvScopeType type){
   this->currentScope += 1;
 
   ArenaMark mark = MarkArena(this->scopeArena);
   this->scopes[this->currentScope] = PushStruct<EnvScope>(this->scopeArena);
+  this->scopes[this->currentScope]->type = type;
   this->scopes[this->currentScope]->mark = mark;
   this->scopes[this->currentScope]->variable = PushTrieMap<String,Entity>(this->scopeArena);
 }
@@ -1238,6 +1239,100 @@ void Env::AddVariable(Token name,MathExpression* arraySize,EntityVarFlags flags)
   PushEntity(name,ent);
 }
 
+#define RESERVED_COMP_TMPL "VERSAT_COMP_%d"
+
+Entity Env::AddComputation(String functionName,Array<SYM_Expr> expressions){
+  TEMP_REGION(temp,scopeArena);
+
+  int compScope = -1;
+
+  for(int i = this->currentScope; i >= 0; i--){
+    if(this->scopes[i]->type == EnvScopeType_FUNCTION){
+      compScope = i;
+    }
+  }
+
+  Assert(compScope != -1 && "We always associate a computation entity to a function scope");
+
+  EnvScope* scope = this->scopes[compScope];
+
+  /// Check if entity already exists =============================================
+  for(int index = 0; index < scope->currentComputationIndex; index++){
+    String name = PushString(temp,RESERVED_COMP_TMPL,index);
+
+    Entity* alreadyExists = scope->variable->Get(name);
+    if(!alreadyExists){
+      continue;
+    }
+
+    // Check if parameters match, otherwise not equal =============================
+    bool found = true;
+    if(found && alreadyExists->type != EntityType_RUNTIME_COMPUTATION){
+      ReportError({},"Reserved name detected for something not allowed");
+      found = false;
+    }
+    if(found && alreadyExists->functionName != functionName){
+      // TODO: If we do end up implementing partial functions we need to put the logic in here.
+      found = false;
+    }
+    if(found && alreadyExists->args.size != expressions.size){
+      // TODO: If we do end up implementing partial functions we need to put the logic in here.
+      found = false;
+    }
+    if(found){
+      for(int ii = 0; ii < alreadyExists->args.size; ii++){
+        if(alreadyExists->args[ii] != expressions[ii]){
+          found = false;
+        }
+      }
+    }
+
+    if(found){
+      return *alreadyExists;
+    }
+  }
+
+  int currentCompIndex = scope->currentComputationIndex++;
+  String entityName = PushString(scopeArena,RESERVED_COMP_TMPL,currentCompIndex);
+
+  Entity newEntity = Entity_Nil;
+  newEntity.type = EntityType_RUNTIME_COMPUTATION;
+  newEntity.name.identifier = entityName;
+  newEntity.name.originalData = entityName;
+  newEntity.args = CopyArray(expressions,scopeArena);
+  newEntity.functionName = PushString(scopeArena,functionName);
+
+  Entity* res = scope->variable->Insert(entityName,newEntity);
+  return *res;
+}
+
+Array<Entity> Env::GetAllComputations(Arena* out){
+  TEMP_REGION(temp,scopeArena);
+  
+  int compScope = -1;
+
+  for(int i = this->currentScope; i >= 0; i--){
+    if(this->scopes[i]->type == EnvScopeType_FUNCTION){
+      compScope = i;
+    }
+  }
+
+  Assert(compScope != -1 && "We always associate a computation entity to a function scope");
+
+  EnvScope* scope = this->scopes[compScope];
+
+  auto list = PushList<Entity>(temp);
+  for(int index = 0; index < scope->currentComputationIndex; index++){
+    String name = PushString(temp,RESERVED_COMP_TMPL,index);
+
+    Entity ent = scope->variable->GetOrFail(name);
+    *list->PushElem() = ent;
+  }
+
+  Array<Entity> res = PushArray(out,list);
+  return res;
+}
+
 void Env::SetGenVariable(Token name,int value){
   Entity* alreadyExists;
   for(int i = this->currentScope; i >= 0; i--){
@@ -1581,8 +1676,19 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
       }
     } break;
 
-    case MathType_SINGLE_ACCESS:
-    case MathType_FUNCTION_CALL: Assert(false);
+    case MathType_FUNCTION_CALL: {
+      Array<MathExpression*> args = top->expressions;
+
+      Array<SYM_Expr> expressions = PushArray<SYM_Expr>(temp,args.size);
+      for(int i = 0; i <  args.size; i++){
+        expressions[i] = SymbolicFromMathExpression(args[i]);
+      }
+
+      Entity funcEnt = AddComputation(top->name.identifier,expressions);
+      res = SYM_Var(funcEnt.name.identifier);
+    } break;
+
+    case MathType_SINGLE_ACCESS:  Assert(false);
     }
 
     return res;

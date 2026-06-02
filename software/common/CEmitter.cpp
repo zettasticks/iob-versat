@@ -84,6 +84,11 @@ void CEmitter::InsertStatement(CAST* statementCAST){
     case CASTType_MEMBER_DECL:;
     case CASTType_VAR_DECL: continue; 
       
+    case CASTType_SCOPE: {
+      *cast->scope.statements->PushElem() = statementCAST;
+      return;
+    } break;
+
     case CASTType_VAR_BLOCK:{
       *cast->varBlock.varElems->PushElem() = statementCAST;
       return;
@@ -250,30 +255,30 @@ String CEmitter::EndExpressionAsString(Arena* out){
 }
 
 void CEmitter::Struct(String structName){
-  CAST* structAST = PushCAST(CASTType_STRUCT_DEF,arena);
+  CAST* structAST = PushCAST(CASTType_STRUCT_DEF,castArena);
 
-  structAST->structDef.name = PushString(arena,structName);
-  structAST->structDef.declarations = PushList<CAST*>(arena);
+  structAST->structDef.name = PushString(castArena,structName);
+  structAST->structDef.declarations = PushList<CAST*>(castArena);
   
   InsertStatement(structAST);
   PushLevel(structAST);
 }
 
 void CEmitter::Union(String unionName){
-  CAST* unionAST = PushCAST(CASTType_UNION_DEF,arena);
+  CAST* unionAST = PushCAST(CASTType_UNION_DEF,castArena);
 
-  unionAST->structDef.name = PushString(arena,unionName);
-  unionAST->structDef.declarations = PushList<CAST*>(arena);
+  unionAST->structDef.name = PushString(castArena,unionName);
+  unionAST->structDef.declarations = PushList<CAST*>(castArena);
   
   InsertStatement(unionAST);
   PushLevel(unionAST);
 }
 
 void CEmitter::Member(String type,String memberName,int arraySize){
-  CAST* argument = PushCAST(CASTType_MEMBER_DECL,arena);
+  CAST* argument = PushCAST(CASTType_MEMBER_DECL,castArena);
 
-  argument->varDecl.typeName = PushString(arena,type);
-  argument->varDecl.varName = PushString(arena,memberName);
+  argument->varDecl.typeName = PushString(castArena,type);
+  argument->varDecl.varName = PushString(castArena,memberName);
   argument->varDecl.arraySize = arraySize;
   
   InsertStatement(argument);
@@ -284,10 +289,10 @@ void CEmitter::EndStruct(){
 }
 
 void CEmitter::Enum(String name){
-  CAST* enumAST = PushCAST(CASTType_ENUM_DEF,arena);
+  CAST* enumAST = PushCAST(CASTType_ENUM_DEF,castArena);
 
-  enumAST->enumDef.name = PushString(arena,name);
-  enumAST->enumDef.nameAndValue = PushList<Pair<String,String>>(arena);
+  enumAST->enumDef.name = PushString(castArena,name);
+  enumAST->enumDef.nameAndValue = PushList<Pair<String,String>>(castArena);
   
   InsertStatement(enumAST);
   PushLevel(enumAST);
@@ -296,7 +301,7 @@ void CEmitter::Enum(String name){
 void CEmitter::EnumMember(String name,String value){
   CAST* enumDecl = FindFirstCASTType(CASTType_ENUM_DEF,false);
 
-  *enumDecl->enumDef.nameAndValue->PushElem() = {PushString(arena,name),PushString(arena,value)};
+  *enumDecl->enumDef.nameAndValue->PushElem() = {PushString(castArena,name),PushString(castArena,value)};
 }
 
 void CEmitter::EndEnum(){
@@ -304,23 +309,27 @@ void CEmitter::EndEnum(){
 }
 
 void CEmitter::Extern(String typeName,String name){
-  CAST* externDecl = PushCAST(CASTType_VAR_DECL_STMT,arena);
+  CAST* externDecl = PushCAST(CASTType_VAR_DECL_STMT,castArena);
 
-  externDecl->varDecl.typeName = PushString(arena,typeName);
-  externDecl->varDecl.varName = PushString(arena,name);
+  externDecl->varDecl.typeName = PushString(castArena,typeName);
+  externDecl->varDecl.varName = PushString(castArena,name);
   externDecl->varDecl.isExtern = true;
   
   InsertStatement(externDecl);
+}
+
+void CEmitter::InsertCode(CAST* cast){
+  InsertStatement(cast);
 }
 
 void CEmitter::FunctionDeclOnlyBlock(String returnType,String functionName){
   // TODO: C does not support nested functions
   Assert(!FindFirstCASTType(CASTType_FUNCTION,false));
 
-  CAST* function = PushCAST(CASTType_FUNCTION,arena);
-  function->funcDecl.returnType = PushString(arena,returnType);
-  function->funcDecl.functionName = PushString(arena,functionName);
-  function->funcDecl.arguments = PushList<CAST*>(arena);
+  CAST* function = PushCAST(CASTType_FUNCTION,castArena);
+  function->funcDecl.returnType = PushString(castArena,returnType);
+  function->funcDecl.functionName = PushString(castArena,functionName);
+  function->funcDecl.arguments = PushList<CAST*>(castArena);
   function->funcDecl.statements = nullptr; // 
   
   InsertStatement(function);
@@ -331,11 +340,11 @@ void CEmitter::FunctionBlock(String returnType,String functionName){
   // TODO: C does not support nested functions
   Assert(!FindFirstCASTType(CASTType_FUNCTION,false));
 
-  CAST* function = PushCAST(CASTType_FUNCTION,arena);
-  function->funcDecl.returnType = PushString(arena,returnType);
-  function->funcDecl.functionName = PushString(arena,functionName);
-  function->funcDecl.arguments = PushList<CAST*>(arena);
-  function->funcDecl.statements = PushList<CAST*>(arena);
+  CAST* function = PushCAST(CASTType_FUNCTION,castArena);
+  function->funcDecl.returnType = PushString(castArena,returnType);
+  function->funcDecl.functionName = PushString(castArena,functionName);
+  function->funcDecl.arguments = PushList<CAST*>(castArena);
+  function->funcDecl.statements = PushList<CAST*>(castArena);
   
   InsertStatement(function);
 
@@ -345,31 +354,44 @@ void CEmitter::FunctionBlock(String returnType,String functionName){
 void CEmitter::Argument(String type,String name,int arraySize){
   CAST* function = FindFirstCASTType(CASTType_FUNCTION);
   
-  CAST* argument = PushCAST(CASTType_VAR_DECL,arena);
+  CAST* argument = PushCAST(CASTType_VAR_DECL,castArena);
 
-  argument->varDecl.typeName = PushString(arena,type);
-  argument->varDecl.varName = PushString(arena,name);
+  argument->varDecl.typeName = PushString(castArena,type);
+  argument->varDecl.varName = PushString(castArena,name);
   argument->varDecl.arraySize = arraySize;
   
   *function->funcDecl.arguments->PushElem() = argument;
 }
 
-void CEmitter::VarDeclare(String type,String name,String initialValue){
-  CAST* declaration = PushCAST(CASTType_VAR_DECL_STMT,arena);
+void CEmitter::StartScope(){
+  CAST* scope = PushCAST(CASTType_SCOPE,castArena);
 
-  declaration->varDecl.typeName = PushString(arena,type);
-  declaration->varDecl.varName = PushString(arena,name);
-  declaration->varDecl.defaultValue = PushString(arena,initialValue);
+  scope->scope.statements = PushList<CAST*>(castArena);
+  InsertStatement(scope);
+
+  PushLevel(scope);
+}
+
+void CEmitter::EndScope(){
+  PopLevel();
+}
+
+void CEmitter::VarDeclare(String type,String name,String initialValue){
+  CAST* declaration = PushCAST(CASTType_VAR_DECL_STMT,castArena);
+
+  declaration->varDecl.typeName = PushString(castArena,type);
+  declaration->varDecl.varName = PushString(castArena,name);
+  declaration->varDecl.defaultValue = PushString(castArena,initialValue);
 
   InsertStatement(declaration);
 }
 
 void CEmitter::VarDeclareBlock(String type,String name,bool isStatic){
-  CAST* varBlock = PushCAST(CASTType_VAR_DECL_BLOCK,arena);
+  CAST* varBlock = PushCAST(CASTType_VAR_DECL_BLOCK,castArena);
 
-  varBlock->varDeclBlock.type = PushString(arena,type);
-  varBlock->varDeclBlock.name = PushString(arena,name);
-  varBlock->varDeclBlock.arrayElems = PushList<CAST*>(arena);
+  varBlock->varDeclBlock.type = PushString(castArena,type);
+  varBlock->varDeclBlock.name = PushString(castArena,name);
+  varBlock->varDeclBlock.arrayElems = PushList<CAST*>(castArena);
   varBlock->varDeclBlock.isStatic = isStatic;
 
   InsertStatement(varBlock);
@@ -377,11 +399,11 @@ void CEmitter::VarDeclareBlock(String type,String name,bool isStatic){
 }
 
 void CEmitter::ArrayDeclareBlock(String type,String name,bool isStatic){
-  CAST* varBlock = PushCAST(CASTType_VAR_DECL_BLOCK,arena);
+  CAST* varBlock = PushCAST(CASTType_VAR_DECL_BLOCK,castArena);
 
-  varBlock->varDeclBlock.type = PushString(arena,type);
-  varBlock->varDeclBlock.name = PushString(arena,name);
-  varBlock->varDeclBlock.arrayElems = PushList<CAST*>(arena);
+  varBlock->varDeclBlock.type = PushString(castArena,type);
+  varBlock->varDeclBlock.name = PushString(castArena,name);
+  varBlock->varDeclBlock.arrayElems = PushList<CAST*>(castArena);
   varBlock->varDeclBlock.isStatic = isStatic;
   varBlock->varDeclBlock.isArray = true;
   
@@ -390,52 +412,52 @@ void CEmitter::ArrayDeclareBlock(String type,String name,bool isStatic){
 }
 
 void CEmitter::StringElem(String value){
-  CAST* elem = PushCAST(CASTType_ELEM,arena);
+  CAST* elem = PushCAST(CASTType_ELEM,castArena);
 
-  elem->content = PushString(arena,"String(\"%.*s\")",UN(value));
+  elem->content = PushString(castArena,"String(\"%.*s\")",UN(value));
   
   InsertStatement(elem);
 }
 
 void CEmitter::ForEachBlock(String type,String iterName,String data){
-  CAST* forBlock = PushCAST(CASTType_FOREACH_BLOCK,arena);
+  CAST* forBlock = PushCAST(CASTType_FOREACH_BLOCK,castArena);
 
-  forBlock->foreachDecl.type = PushString(arena,type);
-  forBlock->foreachDecl.iterName = PushString(arena,iterName);
-  forBlock->foreachDecl.data = PushString(arena,data);
-  forBlock->foreachDecl.statements = PushList<CAST*>(arena);
+  forBlock->foreachDecl.type = PushString(castArena,type);
+  forBlock->foreachDecl.iterName = PushString(castArena,iterName);
+  forBlock->foreachDecl.data = PushString(castArena,data);
+  forBlock->foreachDecl.statements = PushList<CAST*>(castArena);
   
   InsertStatement(forBlock);
   PushLevel(forBlock);
 }
 
 void CEmitter::VarBlock(){
-  CAST* varBlock = PushCAST(CASTType_VAR_BLOCK,arena);
+  CAST* varBlock = PushCAST(CASTType_VAR_BLOCK,castArena);
 
-  varBlock->varBlock.varElems = PushList<CAST*>(arena);
+  varBlock->varBlock.varElems = PushList<CAST*>(castArena);
 
   InsertStatement(varBlock);
   PushLevel(varBlock);
 }
 
 void CEmitter::Elem(String value){
-  CAST* elem = PushCAST(CASTType_ELEM,arena);
+  CAST* elem = PushCAST(CASTType_ELEM,castArena);
 
-  elem->content = PushString(arena,value);
+  elem->content = PushString(castArena,value);
   
   InsertStatement(elem);
 }
 
 void CEmitter::If(String expression){
-  CAST* ifAst = PushCAST(CASTType_IF,arena);
+  CAST* ifAst = PushCAST(CASTType_IF,castArena);
 
   // Pushes the list for the expr+statement combo
-  ifAst->ifDecl.ifExpressions = PushList<CASTIf>(arena);
+  ifAst->ifDecl.ifExpressions = PushList<CASTIf>(castArena);
 
   // Pushes the first expr+statement combo
   CASTIf expr = {};
-  expr.ifExpression = PushString(arena,expression);
-  expr.statements = PushList<CAST*>(arena);
+  expr.ifExpression = PushString(castArena,expression);
+  expr.statements = PushList<CAST*>(castArena);
 
   *ifAst->ifDecl.ifExpressions->PushElem() = expr;
   
@@ -452,8 +474,8 @@ void CEmitter::ElseIf(String expression){
   CAST* ifAst = buffer[top-1];
   
   CASTIf expr = {};
-  expr.ifExpression = PushString(arena,expression);
-  expr.statements = PushList<CAST*>(arena);
+  expr.ifExpression = PushString(castArena,expression);
+  expr.statements = PushList<CAST*>(castArena);
 
   *ifAst->ifDecl.ifExpressions->PushElem() = expr;
 }
@@ -476,7 +498,7 @@ void CEmitter::Else(){
     ifAst = buffer[top-1];
   }
   
-  ifAst->ifDecl.elseStatements = PushList<CAST*>(arena);
+  ifAst->ifDecl.elseStatements = PushList<CAST*>(castArena);
 }
 
 void CEmitter::EndIf(){
@@ -496,19 +518,19 @@ void CEmitter::IfOrElseIf(String expression){
 }
 
 void CEmitter::IfFromExpression(){
-  TEMP_REGION(temp,arena);
+  TEMP_REGION(temp,castArena);
   String content = EndExpressionAsString(temp);
   If(content);
 }
 
 void CEmitter::ElseIfFromExpression(){
-  TEMP_REGION(temp,arena);
+  TEMP_REGION(temp,castArena);
   String content = EndExpressionAsString(temp);
   ElseIf(content);
 }
 
 void CEmitter::IfOrElseIfFromExpression(){
-  TEMP_REGION(temp,arena);
+  TEMP_REGION(temp,castArena);
   String content = EndExpressionAsString(temp);
   IfOrElseIf(content);
 }
@@ -516,7 +538,7 @@ void CEmitter::IfOrElseIfFromExpression(){
 void CEmitter::StartExpression(){
   Assert2(expressionList == nullptr,"Already inside an expression, likely an error");
   
-  expressionList = PushList<CExpr>(arena);
+  expressionList = PushList<CExpr>(castArena);
 }
 
 void CEmitter::Var(String name){
@@ -550,20 +572,20 @@ void CEmitter::GreaterThan(){
 }
 
 void CEmitter::SwitchBlock(String switchExpr){
-  CAST* switchBlock = PushCAST(CASTType_SWITCH_BLOCK,arena);
+  CAST* switchBlock = PushCAST(CASTType_SWITCH_BLOCK,castArena);
 
-  switchBlock->switchBlock.expr = PushString(arena,switchExpr);
-  switchBlock->switchBlock.cases = PushList<CAST*>(arena);  
+  switchBlock->switchBlock.expr = PushString(castArena,switchExpr);
+  switchBlock->switchBlock.cases = PushList<CAST*>(castArena);  
   
   InsertStatement(switchBlock);
   PushLevel(switchBlock);
 }
 
 void CEmitter::CaseBlock(String caseExpr){
-  CAST* caseBlock = PushCAST(CASTType_CASE_BLOCK,arena);
+  CAST* caseBlock = PushCAST(CASTType_CASE_BLOCK,castArena);
 
-  caseBlock->caseBlock.caseExpr = PushString(arena,caseExpr);
-  caseBlock->caseBlock.statements = PushList<CAST*>(arena);
+  caseBlock->caseBlock.caseExpr = PushString(castArena,caseExpr);
+  caseBlock->caseBlock.statements = PushList<CAST*>(castArena);
   
   CAST* switchBlock = FindFirstCASTType(CASTType_SWITCH_BLOCK);
 
@@ -585,14 +607,14 @@ void CEmitter::Once(){
 }
 
 void CEmitter::Include(String filename){
-  CAST* include = PushCAST(CASTType_RAW_STATEMENT,arena);
+  CAST* include = PushCAST(CASTType_RAW_STATEMENT,castArena);
 
-  include->rawData = PushString(arena,"#include \"%.*s\"",UN(filename));
+  include->rawData = PushString(castArena,"#include \"%.*s\"",UN(filename));
   InsertStatement(include);
 }
 
 void CEmitter::Line(){
-  CAST* emptyLine = PushCAST(CASTType_RAW_STATEMENT,arena);
+  CAST* emptyLine = PushCAST(CASTType_RAW_STATEMENT,castArena);
 
   emptyLine->rawData = {};
   
@@ -600,49 +622,49 @@ void CEmitter::Line(){
 }
 
 void CEmitter::RawLine(String val){
-  CAST* rawLine = PushCAST(CASTType_RAW_STATEMENT,arena);
+  CAST* rawLine = PushCAST(CASTType_RAW_STATEMENT,castArena);
 
-  rawLine->rawData = PushString(arena,val);
+  rawLine->rawData = PushString(castArena,val);
   
   InsertStatement(rawLine);
 }
 
 void CEmitter::Define(String name){
-  CAST* emptyLine = PushCAST(CASTType_RAW_STATEMENT,arena);
+  CAST* emptyLine = PushCAST(CASTType_RAW_STATEMENT,castArena);
 
-  emptyLine->rawData = PushString(arena,"#define %.*s",UN(name));
+  emptyLine->rawData = PushString(castArena,"#define %.*s",UN(name));
   
   InsertStatement(emptyLine);
 }
 
 void CEmitter::Define(String name,String content){
-  CAST* emptyLine = PushCAST(CASTType_RAW_STATEMENT,arena);
+  CAST* emptyLine = PushCAST(CASTType_RAW_STATEMENT,castArena);
 
-  emptyLine->rawData = PushString(arena,"#define %.*s %.*s",UN(name),UN(content));
+  emptyLine->rawData = PushString(castArena,"#define %.*s %.*s",UN(name),UN(content));
   
   InsertStatement(emptyLine);
 }
 
 void CEmitter::Comment(String comment){
-  CAST* commentAst = PushCAST(CASTType_COMMENT,arena);
-  commentAst->comment = PushString(arena,comment);
+  CAST* commentAst = PushCAST(CASTType_COMMENT,castArena);
+  commentAst->comment = PushString(castArena,comment);
 
   InsertStatement(commentAst);
 }
 
 void CEmitter::Statement(String statement){
-  CAST* stmt = PushCAST(CASTType_STATEMENT,arena);
+  CAST* stmt = PushCAST(CASTType_STATEMENT,castArena);
 
-  stmt->simpleStatement = PushString(arena,statement);
+  stmt->simpleStatement = PushString(castArena,statement);
   InsertStatement(stmt);
 }
 
 void CEmitter::Assignment(String lhs,String rhs){
   // All these functions must be able to be inserted inside the 
-  CAST* assign = PushCAST(CASTType_ASSIGNMENT,arena);
+  CAST* assign = PushCAST(CASTType_ASSIGNMENT,castArena);
 
-  assign->assign.lhs = PushString(arena,lhs);
-  assign->assign.rhs = PushString(arena,rhs);
+  assign->assign.lhs = PushString(castArena,lhs);
+  assign->assign.rhs = PushString(castArena,rhs);
 
   InsertStatement(assign);
 }
@@ -651,21 +673,21 @@ void CEmitter::Return(String varToReturn){
   if(Empty(varToReturn)){
     Statement("return");
   } else {
-    TEMP_REGION(temp,arena);
+    TEMP_REGION(temp,castArena);
     
     String stmt = PushString(temp,"return %.*s",UN(varToReturn));
     Statement(stmt);
   }
 }
 
-CEmitter* StartCCode(Arena* freeArena){
+CEmitter* StartCCode(Arena* outputArena,Arena* freeArena){
   CEmitter* res = PushStruct<CEmitter>(freeArena);
 
-  res->arena = freeArena;
+  res->castArena = outputArena;
+
   res->buffer = PushArray<CAST*>(freeArena,16); // NOTE: Can always change to a dynamic array or something similar
-  
-  res->topLevel = PushCAST(CASTType_TOP_LEVEL,freeArena);
-  res->topLevel->top.declarations = PushList<CAST*>(freeArena);
+  res->topLevel = PushCAST(CASTType_TOP_LEVEL,res->castArena);
+  res->topLevel->top.declarations = PushList<CAST*>(res->castArena);
   
   return res;
 }
@@ -709,6 +731,19 @@ void Repr(CAST* top,StringBuilder* b,bool cppStyle,int level){
     }
   } break;
 
+  case CASTType_SCOPE: {
+    b->PushSpaces(level * 2);
+    b->PushString("{\n");
+
+    bool first = true;
+    for(SingleLink<CAST*>* iter = top->top.declarations->head; iter; iter = iter->next){
+      Repr(iter->elem,b,cppStyle,level + 1);
+      b->PushString("\n");
+    }
+
+    b->PushSpaces(level * 2);
+    b->PushString("}\n");
+  } break;
   case CASTType_ENUM_DEF:{
     b->PushSpaces(level * 2);
 
