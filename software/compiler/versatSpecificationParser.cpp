@@ -300,7 +300,7 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAnd
   //       modules that we have.
   if(!Empty(env->errors)){
     printf("[Error] On environment\n");
-    exit(0);
+    //exit(0);
   }
   
   return res;
