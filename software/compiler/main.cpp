@@ -18,8 +18,6 @@
 #include "declaration.hpp"
 #include "templateEngine.hpp"
 #include "codeGeneration.hpp"
-#include "addressGen.hpp"
-#include "hierName.hpp"
 
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -758,7 +756,8 @@ int main(int argc,char* argv[]){
         DebugRegionOutputDotGraph(p.accel,"FlattenReconAttemp0");
       }
 #endif
-      
+
+#if 1
       // Flatten with mapping seems to be specific to modules.
       // Merge circuits are already flatten by the way the merge is performed.
       if(work.definition.type != ConstructType_MERGE && work.flattenWithMapping){
@@ -767,6 +766,8 @@ int main(int argc,char* argv[]){
         decl->flattenedBaseCircuit = p.first;
         decl->flattenMapping = p.second;
       }
+#endif
+
     }
   }
 
@@ -992,6 +993,12 @@ int main(int argc,char* argv[]){
   return 0;
 }
 
+#if 0
+- LEFT HERE - Now that we have proper work division for a single loop, need to test if we can do a 2D computation.
+-             A simple convolution like operation would be enough to check if we are in the right path.
+-             Afterwards need to handle proper parameter passing and potentially use name mangling to handle struct generation all stuff like that.
+#endif
+
 /*
 We should move graph stuff to a separate file (or keep it in accelerator.hpp and make it the proper place for it).
 Remove the dynamic arena and just share memory between the nodes.
@@ -1059,46 +1066,11 @@ All the info that is calculated from the accelerator should pass to AccelInfo.
 */
 
 /*
-
-Parameters handling:
-
-- Right now the way we handle parameters is kinda adhoc. Need to figure out exactly what we need and maybe improve the approach that we are taking.
-
-- What I absolutely need:
--- Units like VRead and VWrite might have parameterizable address gen wires. Because I want the firmware to be able to abstract the size of the address gen stuff, I need to have the value of the parameter at software compile time.
----- This means that either I find a way of having the parameter be free at the verilog level and find someway of extracting it from the verilog code into the software code during the build process.
----- OR (simpler) I force Versat to instantiate the needed value at compile time, force the user to not be able to change that parameter without passing it through Versat (no more verilog only changes, only Versat changes).
-
--- This also applies to stuff like memory size and the likes. We solved this problem at the pc-emul level by having a script that extracts the wire sizes from the Verilator generated code before compiling the wrapper, but I do not want to do the same for the 
-
--- Ultimately, If I cannot find a way of allowing the user to change parameters easily, we might as well force them to change stuff at the Versat level and recompiling stuff again. 
-
----- That means that I need to have Versat instantiate the proper values for things. I cannot just let the parameters flow through.
-
----- For the second option, I do not need to force everything to pass through Versat. For example, stuff like 
-
--- What parameters can we just let through?
----- ADDR_W is fine to just let through. We are probably never gonna care about ADDR_W at pc-emul levels.
----- DATA_W is probably fine? If we can have the software use the proper type stuff (iptr and the likes) then we can probably let it pass through.
----- AXI_ADDR_W is also fine to pass through. 
-
----- The problem is the following. What If I have a memory or an address gen that depends on that stuff? If address gen wires depend on ADDR_W then we cannot let ADDR_W be a proper parameter since then 
-
----- What do we lose from forcing instantiation of things? The generated hardware code cannot be parameterizable in Verilog. That's it. 
-
----- Of course, the best way of progressing is making the code in such a way that we do not have to chose. If we can make the code depend on SymbolicExpressions and then we implement param instantiation by symbolic instantiation and have the code generation depend on symbolic expressions, then later on we can always let the params go through by not performing the symbolic instantiation.
-
--- Params are obtained by calling the GetParametersOfUnit function.
---- This function either returns the default value or the value of the parameter of the unit (instance node).
---- We probably want to start putting this stuff in the acceleratorInfo struct. 
-
-*/
-
-/*
   Proper merge user configs:
 
   Right now we assume that we can just use the same name for the user configs after performing merge but things change if we ever end up merging the same module. In this case, the things become more complicated.
 -- We can always force the user in this cases to define some user configs on the merge level that "resolve" the naming conflict.
+-- Basically it is as if we inherited all the functions from the merged instances whose only job is to call into the specified instance function.
 
 */
 

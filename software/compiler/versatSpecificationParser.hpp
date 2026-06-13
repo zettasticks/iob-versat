@@ -148,6 +148,7 @@ struct InstanceDeclaration{
   Array<Token> shareNames;
   bool negateShareNames;
   bool debug;
+  bool sim;
   
   // Set later
   int shareIndex;
@@ -243,17 +244,6 @@ struct ConfigIdentifier{
   MathExpression* arrayExpr;
   Array<MathExpression*> arguments;
 };
-
-inline ConfigIdentifier* GetBase(ConfigIdentifier* top){
-  return top;
-}
-
-inline ConfigIdentifier* GetBeforeBase(ConfigIdentifier* top){
-  if(top){
-    return top->next;
-  }
-  return nullptr;
-}
 
 // ======================================
 // Environment

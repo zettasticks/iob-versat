@@ -174,3 +174,4 @@ void OutputIterativeSource(FUDeclaration* decl,FILE* file);
 void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topLevelDecl,String hardwarePath,String softwarePath,VersatComputedValues val);
 
 void OutputTestbench(FUDeclaration* decl,FILE* file);
+

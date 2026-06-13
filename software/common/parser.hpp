@@ -50,6 +50,7 @@ enum TokenType : u16{
   TokenType_KEYWORD_SHARE,
   TokenType_KEYWORD_STATIC,
   TokenType_KEYWORD_DEBUG,
+  TokenType_KEYWORD_SIM, // TODO: This and debug should not be a keyword. They can just be identifiers.
   TokenType_KEYWORD_CONFIG,
   TokenType_KEYWORD_STATE,
   TokenType_KEYWORD_MEM,
@@ -231,7 +232,7 @@ struct Parser{
   Token ExpectNext(TokenType type);
   Token ExpectNext(char singleChar);
 
-  void ExpectIdentifier(String expectedContent);
+  Token ExpectIdentifier(String expectedContent);
 
   void Synch(BracketList<TokenType> possibleTypes);
 

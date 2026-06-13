@@ -379,6 +379,16 @@ void StringBuilder::vPushString(const char* format,va_list args){
   PushString(toPush);
 }
 
+char StringBuilder::GetLastCharacter(){
+  StringNode* ptr = this->tail;
+
+  if(ptr && ptr->used > 0){
+    return ptr->buffer[ptr->used];
+  }
+
+  return '\0';
+}
+
 void StringBuilder::PushSpaces(int amount){
   for(int i = 0; i < amount; i++){
     this->PushChar(' ');

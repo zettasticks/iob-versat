@@ -195,7 +195,6 @@ FUInstance* CopyInstance(Accelerator* accel,FUInstance* oldInstance,bool preserv
     newInst->id = oldInstance->id;
   }
   newInst->isMergeMultiplexer = oldInstance->isMergeMultiplexer;
-  newInst->addressGenUsed = oldInstance->addressGenUsed;
   newInst->debug = oldInstance->debug;
   
   return newInst;
@@ -569,22 +568,6 @@ Hashmap<StaticId,StaticData>* CollectStaticUnits(AccelInfo* info,Arena* out){
   }
 
   return staticUnits;
-}
-
-// Checks wether the external memory conforms to the expected interface or not (has valid values)
-bool VerifyExternalMemory(ExternalMemoryInterface* inter){
-  bool res = false;
-
-  switch(inter->type){
-  case ExternalMemoryType::ExternalMemoryType_2P:{
-    res = (inter->tp.bitSizeIn == inter->tp.bitSizeOut);
-  }break;
-  case ExternalMemoryType::ExternalMemoryType_DP:{
-    res = (inter->dp[0].bitSize == inter->dp[1].bitSize);
-  }break;
-  }
-
-  return res;
 }
 
 // Function that calculates byte offset from size of data_w

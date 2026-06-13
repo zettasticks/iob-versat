@@ -176,8 +176,6 @@ struct FUInstance{
   ConnectionNode* allOutputs;
   Array<PortInstance> inputs;
   Array<bool> outputs;
-
-  Array<String> addressGenUsed;
   
   bool multipleSamePortInputs;
   NodeType type;
@@ -430,10 +428,6 @@ String GenerateNewValidName(Accelerator* accel,String base,Arena* out);
 Array<FUDeclaration*> MemSubTypes(AccelInfo* info,Arena* out);
 
 Hashmap<StaticId,StaticData>* CollectStaticUnits(AccelInfo* info,Arena* out);
-
-// TODO: We kinda want to "remove" this since memories should be able to depend on parameters, but we currently calculate and instantiate memories because we cannot export memory info.
-int ExternalMemoryByteSize(ExternalMemoryInterface* inter);
-int ExternalMemoryByteSize(Array<ExternalMemoryInterface> interfaces); // Size of a simple memory mapping.
 
 // This computes the values for the top accelerator only.
 // Different of a regular accelerator because it can add more configs for DMA and other top level things

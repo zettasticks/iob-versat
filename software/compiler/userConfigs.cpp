@@ -233,14 +233,13 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
   // Break apart every for loop + statement into individual statements.
   // NOTE: Kinda slow but should not be a problem anytime soon.
-  TrieMap<ConfigStatement*,ConfigStatement*>* nodeToParent = PushTrieMap<ConfigStatement*,ConfigStatement*>(temp);
   auto simpleStmtList = PushList<ConfigStatement*>(temp);
 
-  auto Recurse = [nodeToParent,simpleStmtList](auto Recurse,ConfigStatement* top) -> void{
+  auto Recurse = [simpleStmtList](auto Recurse,ConfigStatement* top) -> void{
     if(IsLoop(top->type)){
-      for(ConfigStatement* child : top->childs){
-        nodeToParent->Insert(child,top);
-        Recurse(Recurse,child);
+      for(ConfigStatement* ptr = top->child; ptr; ptr = ptr->next){
+        ptr->parent = top;
+        Recurse(Recurse,ptr);
       }
     }
     if(IsLeaf(top->type)){
@@ -248,10 +247,13 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     }
   };
 
-  for(ConfigStatement* top : def->statements){
-    Recurse(Recurse,top);
+  for(ConfigStatement* ptr = def->stmts; ptr; ptr = ptr->next){
+    Recurse(Recurse,ptr);
   }
 
+  // Separate all statements into individuals. Each array contains all the loops that affect
+  // the single leaf statement.
+  // Every N sized array is composed of N-1 FOR_LOOP types and 1 STATEMENT type.
   auto stmtList = PushList<Array<ConfigStatement*>>(temp);
   for(ConfigStatement* stmt : simpleStmtList){
     auto list = PushList<ConfigStatement*>(temp);
@@ -259,21 +261,16 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     ConfigStatement* ptr = stmt;
     while(ptr){
       *list->PushElem() = ptr;
-
-      ConfigStatement** possibleParent = nodeToParent->Get(ptr);
-      ConfigStatement* parent = possibleParent ? *possibleParent : nullptr;
-
-      ptr = parent;
+      ptr = ptr->parent;
     }
 
     Array<ConfigStatement*> asArray = PushArray(temp,list);
     ReverseInPlace(asArray);
     *stmtList->PushElem() = asArray;
   }
-
-  // From this point on use this. Every N sized array is composed of N-1 FOR_LOOP types and 1 STATEMENT type.
-  // TODO: Remember, after pushing every statement into an individual loop, we need to do error checking and check if the variable still exists. We cannot do variable checking globally since some statements might not be inside one of the loops.
   Array<Array<ConfigStatement*>> individualStatements = PushArray(temp,stmtList);
+
+  // TODO: Remember, after pushing every statement into an individual loop, we need to do error checking and check if the variable still exists. We cannot do variable checking globally since some statements might not be inside one of the loops.
 
   // Pass all gen loops to outer loops.
   for(Array<ConfigStatement*>& individual : individualStatements){
@@ -288,6 +285,44 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     }
   }
 
+  /*
+    If we have variables a,b,c.
+    I want to produce a table like output like:
+
+    If we have something like:
+    
+for a in range{
+  x = ...
+  for b in range{
+    y = ...
+    for c in range{
+      z = ...
+    }
+  }
+}
+
+then I want to produce the equivalent C code:
+
+int index = 0;
+for(int a = rangeStart; a < rangeEnd; a++){
+  int x = ...; // The content in here can be the address gen symbolic expression directly.
+  for(int b = rangeStart; b < rangeEnd; b++){
+    int y = ...;
+    for(int c = rangeStart; c < rangeEnd; c++){
+      int z = ...;
+
+      printf("%d | %d | %d | %d | %d | %d | %d\n",index,a,b,c,x,y,z);
+      index += 1;
+    }
+  }
+}
+
+    index | A | B | C and so on.
+
+
+   */
+
+  
   // TODO: Kinda stupid calculating things this way but the rest of the code needs to collapse into a simpler form for the more robust approach first.
   auto variablesUsedOnLoopExpressions = PushTrieSet<String>(temp);
 
@@ -649,7 +684,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         }
 
         
-
+        
         String lhsName = lhsBase.name.identifier;
 
         if(rhsError){
@@ -740,6 +775,17 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           assign->assign.rhs = rhsExpr;
         } else if(isLhsWireVirtual || isRhsExpressionOnly || isRhsArrayAccess){
           // Is Address gen expression. Including array accesses for VUnits
+
+          // TODO: We are not handling hierarchical instantiation.
+          //       Need to test things more before deciding how to progress.
+          // Store data needed inside ConfigStatement to help build simulation function later if needed.
+          simple->lhsName = lhsName;
+          simple->addressGenExpr = rhsExpr;
+          for(ConfigStatement* ptr = simple; ptr; ptr = ptr->parent){
+            ptr->neededBySimulationFunction = true;
+          }
+
+          // Compile address access and store it 
           AddressAccess* access = CompileAddressGen(env,variableNames,forLoops,rhsExpr,content);
           AddressGenInst supported = lhsBase.decl->supportedAddressGen;
 
@@ -787,7 +833,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     type = ConfigFunctionType_STATE;
 
     auto lhsSideMembers = PushList<Token>(temp);
-    for(ConfigStatement* stmt : def->statements){
+    for(ConfigStatement* stmt = def->stmts; stmt; stmt = stmt->next){
 
       // Decompose lhs side =========================================================
       ConfigIdentifier* id = stmt->lhs;
@@ -1061,6 +1107,53 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     comp->cCode = EndCCode(c);
   }
 
+  // Build simulation function if needed ========================================
+  static ConfigSimStatement ConfigSimStatement_NIL = {};
+  ConfigSimStatement* simStmt = &ConfigSimStatement_NIL;
+  if(def->sim){
+    auto Recurse = [env](auto Recurse,ConfigStatement* stmt,Arena* out) -> ConfigSimStatement*{
+      ConfigSimStatement* start = &ConfigSimStatement_NIL;
+      ConfigSimStatement* ptr = nullptr;
+
+      for(; stmt; stmt = stmt->next){
+        if(!stmt->neededBySimulationFunction){
+          continue;
+        }
+
+        ConfigSimStatement* node = PushStruct<ConfigSimStatement>(out);
+        
+        if(stmt->type == ConfigStatementType_FOR_LOOP){
+          node->type = ConfigSimStatementType_LOOP;
+          node->varName = PushString(out,stmt->def.loopVariable.identifier);
+          node->start = env->SymbolicFromMathExpression(stmt->def.startSym);
+          node->end = env->SymbolicFromMathExpression(stmt->def.endSym);
+
+          env->PushScope(EnvScopeType_FOR_LOOP);
+          env->AddVariable(stmt->def.loopVariable);
+          node->child = Recurse(Recurse,stmt->child,out);
+          env->PopScope();
+        } else {
+          node->type = ConfigSimStatementType_LHSName;
+          node->lhsName = PushString(out,stmt->lhsName);
+          node->expression = stmt->addressGenExpr;
+        }
+        
+        if(ptr){
+          ptr->next = node;
+          ptr = ptr->next;
+        }
+
+        if(!ptr){
+          start = ptr = node;
+        }
+      }
+
+      return start;
+    };
+
+    simStmt = Recurse(Recurse,def->stmts,out);
+  }
+  
   ConfigFunction* func = PushStruct<ConfigFunction>(out);
   func->type = type;
   func->decl = declaration;
@@ -1071,6 +1164,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   func->structToReturnName = structToReturnName;
   func->stateStructContent = stateStructContent;
   func->debug = def->debug;
+  func->simLoops = simStmt;
   func->supportsSizeCalc = supportsSizeCalc;
   func->extraComputations = PushArray(out,compList);
 

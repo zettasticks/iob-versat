@@ -22,6 +22,7 @@ enum UserConfigType{
 };
 
 enum ConfigStatementType{
+  ConfigStatementType_EMPTY = 0,
   ConfigStatementType_FOR_LOOP,
   ConfigStatementType_GEN_LOOP,
   ConfigStatementType_EQUALITY,
@@ -33,6 +34,11 @@ inline bool IsLeaf(ConfigStatementType type){return (type == ConfigStatementType
 inline bool IsLoop(ConfigStatementType type){return (type == ConfigStatementType_FOR_LOOP || type == ConfigStatementType_GEN_LOOP);}
 
 struct ConfigStatement{
+  ConfigStatement* next;
+  ConfigStatement* child;
+
+  ConfigStatement* parent; // Only set after parsing, helps building simulation function
+
   ConfigStatementType type;
 
   // Why have a ConfigIdentifier and a SpecExpression?
@@ -44,7 +50,11 @@ struct ConfigStatement{
 
   // Loops
   AddressGenForDef def;
-  Array<ConfigStatement*> childs; // Only for loops contains these right now.
+
+// To help build the simulation function. The ConfigStatement node format and the final C code for loop expressions are the exact same meaning that it is easier to mantain the ConfigStatement node structure and store data directly rather than rebuilding the same structure .
+  SYM_Expr addressGenExpr;
+  String lhsName;
+  bool neededBySimulationFunction;
 };
 
 struct ConfigVarDeclaration{
@@ -58,8 +68,10 @@ struct ConfigFunctionDef{
   
   Token name;
   Array<ConfigVarDeclaration> variables;
-  Array<ConfigStatement*> statements;
+  ConfigStatement* stmts;
+  //Array<ConfigStatement*> statements;
   bool debug;
+  bool sim;
 };
 
 // ============================================================================
@@ -146,6 +158,28 @@ struct ConfigComputation{
   CAST* cCode;
 };
 
+enum ConfigSimStatementType{
+  ConfigSimStatementType_NIL,
+  ConfigSimStatementType_LHSName,
+  ConfigSimStatementType_LOOP,
+};
+
+struct ConfigSimStatement{
+  ConfigSimStatementType type;
+
+  ConfigSimStatement* next;
+  ConfigSimStatement* child;
+
+  // Loop
+  String varName;
+  SYM_Expr start;
+  SYM_Expr end;
+
+  // Address statement
+  String lhsName;
+  SYM_Expr expression;
+};
+
 struct ConfigFunction{
   ConfigFunctionType type;
 
@@ -157,6 +191,9 @@ struct ConfigFunction{
 
   Array<ConfigStuff> stuff;
   Array<ConfigVariable> variables;
+
+  ConfigSimStatement* simLoops;
+
   String structToReturnName;
   String stateStructContent;
 

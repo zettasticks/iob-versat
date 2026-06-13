@@ -103,14 +103,11 @@ struct InstanceInfo{
   
   Array<ParamAndValue> params;
 
-  int isConfigStatic; // Static must be handle separately, for the top level accelerator. 
-
   bool isStatic;
   bool isGloballyStatic;
   
   bool isShared;
   int sharedIndex;
-  Array<bool> isSpecificConfigShared;
   
   Opt<int> statePos;
   
@@ -149,14 +146,12 @@ struct InstanceInfo{
   FUInstance* inst; // Points to the recon instance for merge declarations.
   bool debug;
 
-  NodeType connectionType;
   Array<int> inputDelays;
   Array<int> outputLatencies;
   Array<int> portDelay;
   int partitionIndex; // TODO: What does this do? Probably a remnant from the old implementation.
 
   Array<SimplePortConnection> inputs; 
-  Array<SimplePortConnection> outputs;
 
   Array<SimplePortInstance> inputsDirectly;
   Array<bool> outputIsConnected;

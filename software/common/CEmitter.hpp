@@ -72,7 +72,9 @@ struct CAST{
     struct{
       String type;
       String iterName;
-      String data;
+      String iterStart;
+      String iterCond;
+      String iterUpdate;
       ArenaList<CAST*>* statements;
     } foreachDecl;
     
@@ -211,7 +213,7 @@ struct CEmitter{
   void Elem(String value);
   void StringElem(String value);
 
-  void ForEachBlock(String type,String iterName,String data);
+  void ForEachBlock(String type,String iterName,String iterStart,String iterCond,String iterUpdate);
 
   void If(String expression);
   void ElseIf(String expression);

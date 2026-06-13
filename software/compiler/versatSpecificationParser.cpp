@@ -295,6 +295,13 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAnd
   for(String error : env->errors){
     printf("%.*s\n",UN(error));
   }
+
+  // TODO: We probably want to keep going and only print errors and exit at the top level after processing all the
+  //       modules that we have.
+  if(!Empty(env->errors)){
+    printf("[Error] On environment\n");
+    exit(0);
+  }
   
   return res;
 }
@@ -2691,6 +2698,7 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
       if(id == "share")      type = TokenType_KEYWORD_SHARE;
       if(id == "static")     type = TokenType_KEYWORD_STATIC;
       if(id == "debug")      type = TokenType_KEYWORD_DEBUG;
+      if(id == "sim")        type = TokenType_KEYWORD_SIM;
       if(id == "config")     type = TokenType_KEYWORD_CONFIG;
       if(id == "state")      type = TokenType_KEYWORD_STATE;
       if(id == "mem")        type = TokenType_KEYWORD_MEM;
@@ -2830,79 +2838,89 @@ static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
   return base;
 }
 
-static ConfigStatement* ParseConfigStatement(Parser* parser,Arena* out){
+static ConfigStatement* ParseConfigStatements(Parser* parser,Arena* out){
   TEMP_REGION(temp,out);
+
+  static ConfigStatement ConfigStatement_NIL = {};
   
-  ConfigStatement* stmt = PushStruct<ConfigStatement>(out);
+  ConfigStatement* head = &ConfigStatement_NIL;
+  ConfigStatement* ptr = nullptr;
+  
+  while(!parser->Done()){
+    bool isLoop = false;
+    bool isGen = false;
+    if(!isLoop && parser->IfNextToken(TokenType_KEYWORD_GEN)){
+      isLoop = true;
+      isGen = true;
+    }
+    if(!isLoop && parser->IfNextToken(TokenType_KEYWORD_FOR)){
+      isLoop = true;
+    }
 
-  if(parser->IfNextToken(TokenType_KEYWORD_GEN)){
-    Token loopVariable = parser->ExpectNext(TokenType_IDENTIFIER);
- 
-    MathExpression* start = ParseMathExpression(parser,out);
-    parser->ExpectNext(TokenType_DOUBLE_DOT);
-    MathExpression* end = ParseMathExpression(parser,out);
+    ConfigStatementType type = ConfigStatementType_EMPTY;
+    ConfigIdentifier* lhs = nullptr;
+    MathExpression* rhs = nullptr;
+    Token loopVariable = {};
+    MathExpression* start = nullptr;
+    MathExpression* end = nullptr;
+    ConfigStatement* child = nullptr;
 
-    parser->ExpectNext('{');
+    if(isLoop){
+      loopVariable = parser->ExpectNext(TokenType_IDENTIFIER);
+      
+      start = ParseMathExpression(parser,out);
+      parser->ExpectNext(TokenType_DOUBLE_DOT);
+      end = ParseMathExpression(parser,out);
 
-    auto list = PushList<ConfigStatement*>(temp);
-    while(!parser->Done()){
-      ConfigStatement* child = ParseConfigStatement(parser,out);
-      *list->PushElem() = child;
+      parser->ExpectNext('{');
+      child = ParseConfigStatements(parser,out);
+      parser->ExpectNext('}');
 
-      if(parser->IfPeekToken('}')){
-        break;
+      if(isGen){
+        type = ConfigStatementType_GEN_LOOP;
+      } else {
+        type = ConfigStatementType_FOR_LOOP;
+      }
+    }
+    
+    if(!isLoop){
+      if(parser->IfPeekToken(TokenType_IDENTIFIER)){
+        lhs = ParseConfigIdentifier(parser,out);
+
+        if(parser->IfNextToken('=')){
+          rhs = ParseMathExpression(parser,out);
+          parser->ExpectNext(';');
+          type = ConfigStatementType_EQUALITY;
+        }
+        if(parser->IfNextToken(';')){
+          type = ConfigStatementType_FUNCTION_CALL;
+        }
       }
     }
 
-    parser->ExpectNext('}');
-    
-    stmt->def.loopVariable = loopVariable;
-    stmt->def.startSym = start;
-    stmt->def.endSym = end;
-    stmt->childs = PushArray(out,list);
-    stmt->type = ConfigStatementType_GEN_LOOP;
-  } else if(parser->IfNextToken(TokenType_KEYWORD_FOR)){
-    Token loopVariable = parser->ExpectNext(TokenType_IDENTIFIER);
- 
-    MathExpression* start = ParseMathExpression(parser,out);
-    parser->ExpectNext(TokenType_DOUBLE_DOT);
-    MathExpression* end = ParseMathExpression(parser,out);
+    ConfigStatement* parsed = PushStruct<ConfigStatement>(out);
+    parsed->type = type;
+    parsed->lhs = lhs;
+    parsed->rhs = rhs;
+    parsed->def.loopVariable = loopVariable;
+    parsed->def.startSym = start;
+    parsed->def.endSym = end;
+    parsed->child = child;
 
-    parser->ExpectNext('{');
-
-    auto list = PushList<ConfigStatement*>(temp);
-    while(!parser->Done()){
-      ConfigStatement* child = ParseConfigStatement(parser,out);
-      *list->PushElem() = child;
-
-      if(parser->IfPeekToken('}')){
-        break;
-      }
+    if(type == ConfigStatementType_EMPTY){
+      break;
     }
-
-    parser->ExpectNext('}');
     
-    stmt->def.loopVariable = loopVariable;
-    stmt->def.startSym = start;
-    stmt->def.endSym = end;
-    stmt->childs = PushArray(out,list);
-    stmt->type = ConfigStatementType_FOR_LOOP;
-  } else if(parser->IfPeekToken(TokenType_IDENTIFIER)) {
-    stmt->lhs = ParseConfigIdentifier(parser,out);
-
-    if(parser->IfNextToken('=')){
-      stmt->rhs = ParseMathExpression(parser,out);
-      parser->ExpectNext(';');
-      stmt->type = ConfigStatementType_EQUALITY;
-    } else {
-      parser->ExpectNext(';');
-      stmt->type = ConfigStatementType_FUNCTION_CALL;
+    if(ptr){
+      ptr->next = parsed;
+      ptr = ptr->next;
     }
-  } else {
-    parser->ReportUnexpectedToken(parser->NextToken(),{});
+    if(!ptr){
+      head = ptr = parsed;
+    }
   }
 
-  return stmt;
+  return head;
 }
 
 static ConfigVarDeclaration ParseConfigVarDeclaration(Parser* parser,Arena* out){
@@ -2971,6 +2989,7 @@ ConfigFunctionDef* ParseConfigFunction(Parser* parser,Arena* out){
   }
 
   bool debug = parser->IfNextToken(TokenType_KEYWORD_DEBUG);
+  bool sim = parser->IfNextToken(TokenType_KEYWORD_SIM);
     
   Token configName = parser->ExpectNext(TokenType_IDENTIFIER);
 
@@ -2981,6 +3000,9 @@ ConfigFunctionDef* ParseConfigFunction(Parser* parser,Arena* out){
 
   parser->ExpectNext('{');
 
+  ConfigStatement* config = ParseConfigStatements(parser,out);
+  
+#if 0
   auto stmts = PushList<ConfigStatement*>(temp);
   while(!parser->Done()){
     Token peek = parser->PeekToken();
@@ -2992,16 +3014,19 @@ ConfigFunctionDef* ParseConfigFunction(Parser* parser,Arena* out){
     ConfigStatement* config = ParseConfigStatement(parser,out);
     *stmts->PushElem() = config;
   }
-
+#endif
+  
   parser->ExpectNext('}');
 
   ConfigFunctionDef* res = PushStruct<ConfigFunctionDef>(out);
   res->type = type;
   res->name = configName;
   res->variables = functionVars;
-  res->statements = PushArray(out,stmts);
+  res->stmts = config;
+  //res->statements = PushArray(out,stmts);
   res->debug = debug;
-
+  res->sim = sim;
+  
   return res;
 }
 

@@ -394,7 +394,6 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     elem->debug = inst->debug;
     elem->isGloballyStatic = inst->isStatic;
     elem->isShared = inst->sharedEnable;
-    elem->isSpecificConfigShared = inst->isSpecificConfigShared;
     elem->sharedIndex = inst->sharedIndex;
     elem->isMergeMultiplexer = inst->isMergeMultiplexer;
     elem->special = inst->literal;
@@ -402,7 +401,6 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     elem->id = inst->id;
     elem->inputDelays = decl->GetInputDelays();
     elem->outputLatencies = decl->GetOutputLatencies();
-    elem->connectionType = inst->type;
     elem->partitionIndex = 0;
     elem->individualWiresShared = inst->isSpecificConfigShared;
     elem->numberDelays = decl->NumberDelays();
@@ -645,7 +643,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
         portInst->port = ptr->port;
       }
 
-      info->outputs = PushArray(out,list);
+      //info->outputs = PushArray(out,list);
     }
     
     info->outputIsConnected = CopyArray(inst->outputs,out);

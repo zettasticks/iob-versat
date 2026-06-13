@@ -288,6 +288,8 @@ struct StringBuilder{
   void PushString(const char* format,...) __attribute__ ((format (printf, 2, 3)));
   void vPushString(const char* format,va_list args);
 
+  char GetLastCharacter();
+  
   void PushSpaces(int amount);
 };
 

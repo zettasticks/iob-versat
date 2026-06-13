@@ -84,6 +84,7 @@ String PushRepr(Arena* out,TokenType type){
   SIMPLE(TokenType_KEYWORD_SHARE,"Keyword","share");
   SIMPLE(TokenType_KEYWORD_STATIC,"Keyword","static");
   SIMPLE(TokenType_KEYWORD_DEBUG,"Keyword","debug");
+  SIMPLE(TokenType_KEYWORD_SIM,"Keyword","sim");
   SIMPLE(TokenType_KEYWORD_CONFIG,"Keyword","config");
   SIMPLE(TokenType_KEYWORD_STATE,"Keyword","state");
   SIMPLE(TokenType_KEYWORD_MEM,"Keyword","mem");
@@ -145,6 +146,7 @@ String PARSE_PushDebugRepr(Arena* out,Token token){
   SIMPLE(TokenType_KEYWORD_SHARE,"Keyword","share");
   SIMPLE(TokenType_KEYWORD_STATIC,"Keyword","static");
   SIMPLE(TokenType_KEYWORD_DEBUG,"Keyword","debug");
+  SIMPLE(TokenType_KEYWORD_SIM,"Keyword","sim");
   SIMPLE(TokenType_KEYWORD_CONFIG,"Keyword","config");
   SIMPLE(TokenType_KEYWORD_STATE,"Keyword","state");
   SIMPLE(TokenType_KEYWORD_MEM,"Keyword","mem");
@@ -372,7 +374,7 @@ Token Parser::ExpectNext(char singleChar){
   return ExpectNext(TOK_TYPE(singleChar));
 }
 
-void Parser::ExpectIdentifier(String expectedContent){
+Token Parser::ExpectIdentifier(String expectedContent){
   Token token = NextToken();
 
   if(token.type == TokenType_IDENTIFIER){
@@ -383,7 +385,7 @@ void Parser::ExpectIdentifier(String expectedContent){
     ReportError("Expected identifier, got instead");
   }
 
-  return;
+  return token;
 }
 
 void Parser::Synch(BracketList<TokenType> possibleTypes){

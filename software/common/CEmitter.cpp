@@ -419,12 +419,14 @@ void CEmitter::StringElem(String value){
   InsertStatement(elem);
 }
 
-void CEmitter::ForEachBlock(String type,String iterName,String data){
+void CEmitter::ForEachBlock(String type,String iterName,String iterStart,String iterCond,String iterUpdate){
   CAST* forBlock = PushCAST(CASTType_FOREACH_BLOCK,castArena);
 
   forBlock->foreachDecl.type = PushString(castArena,type);
   forBlock->foreachDecl.iterName = PushString(castArena,iterName);
-  forBlock->foreachDecl.data = PushString(castArena,data);
+  forBlock->foreachDecl.iterStart = PushString(castArena,iterStart);
+  forBlock->foreachDecl.iterCond = PushString(castArena,iterCond);
+  forBlock->foreachDecl.iterUpdate = PushString(castArena,iterUpdate);
   forBlock->foreachDecl.statements = PushList<CAST*>(castArena);
   
   InsertStatement(forBlock);
@@ -871,7 +873,7 @@ void Repr(CAST* top,StringBuilder* b,bool cppStyle,int level){
   case CASTType_FOREACH_BLOCK: {
     b->PushSpaces(level * 2);
 
-    b->PushString("for(%.*s %.*s : %.*s){\n",UN(top->foreachDecl.type),UN(top->foreachDecl.iterName),UN(top->foreachDecl.data));
+    b->PushString("for(%.*s %.*s = %.*s ; %.*s; %.*s){\n",UN(top->foreachDecl.type),UN(top->foreachDecl.iterName),UN(top->foreachDecl.iterStart),UN(top->foreachDecl.iterCond),UN(top->foreachDecl.iterUpdate));
     for(SingleLink<CAST*>* subIter = top->foreachDecl.statements->head; subIter; subIter = subIter->next){
       CAST* ast = subIter->elem;
 

@@ -1570,7 +1570,7 @@ Array<TypeStructInfoElement> ExtractStructuredConfigs(Array<InstanceInfo> info,A
   
   int maxConfig = 0;
   for(InstanceInfo& in : info){
-    if(in.isComposite || !in.globalConfigPos.has_value() || in.isConfigStatic){
+    if(in.isComposite || !in.globalConfigPos.has_value()){
       continue;
     }
     
@@ -3273,6 +3273,123 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
     for(MergePartition part : info.infos){
       String mergeName = part.name;
 
+      // MARK
+      // Output simulation functions if they exist
+      for(ConfigFunction* func : part.userFunctions){
+        if(func->simLoops->type != ConfigSimStatementType_NIL){
+          String fullFunctionName = PushString(temp,"%.*s_SIMULATE",UN(func->fullName));
+          c->FunctionBlock("static inline void",fullFunctionName);
+          
+          for(ConfigVariable var : func->variables){
+            c->Argument(ConfigVarTypeToName(var.type),var.name,var.arraySize);
+          }
+
+          c->VarDeclare("int","__VERSAT_INDEX","0");
+
+          auto vars = PushList<String>(temp);
+          auto GetVars = [c,vars](auto GetVars,ConfigSimStatement* head) -> void{
+            for(ConfigSimStatement* ptr = head; ptr; ptr = ptr->next){
+              FULL_SWITCH(ptr->type){
+              case ConfigSimStatementType_LOOP:{
+                GetVars(GetVars,ptr->child);
+              } break;
+              case ConfigSimStatementType_LHSName:{
+                *vars->PushElem() = ptr->lhsName;
+              } break;
+              case ConfigSimStatementType_NIL:{
+                // Nothing
+              } break;
+            }
+            }
+          };
+          GetVars(GetVars,func->simLoops);
+
+          Array<String> allVars = PushArray(temp,vars);
+          
+          {
+            auto b = StartString(temp);
+
+            b->PushString("versat_printf(\"%%15s");
+            for(String name : allVars){
+              b->PushString(",");
+              b->PushString("%%15s");
+            }
+
+            b->PushString("\\n\",\"Index\"");
+            for(String name : allVars){
+              b->PushString(",\"");
+              b->PushString(name);
+              b->PushString("\"");
+            }
+
+            b->PushString(");");
+            c->RawLine(EndString(temp,b));
+          }
+
+          auto Recurse = [c](auto Recurse,ConfigSimStatement* head) -> void{
+            TEMP_REGION(temp,nullptr);
+
+            bool anyVar = false;
+            for(ConfigSimStatement* ptr = head; ptr; ptr = ptr->next){
+              if(ptr->type == ConfigSimStatementType_LHSName){
+                anyVar = true;
+              }
+            }
+            
+            for(ConfigSimStatement* ptr = head; ptr; ptr = ptr->next){
+              FULL_SWITCH(ptr->type){
+              case ConfigSimStatementType_LOOP:{
+                String start = SYM_Repr(ptr->start,temp);
+                String end = SYM_Repr(ptr->end,temp);
+                
+                c->ForEachBlock("int",ptr->varName,start,SF("%.*s < %.*s",UN(ptr->varName),UN(end)),SF("%.*s++",UN(ptr->varName)));
+                Recurse(Recurse,ptr->child);
+                c->EndBlock();
+              } break;
+              case ConfigSimStatementType_LHSName:{
+                String expr = SYM_Repr(ptr->expression,temp);
+                c->VarDeclare("int",ptr->lhsName,expr);
+                anyVar = true;
+              } break;
+              case ConfigSimStatementType_NIL:{
+                // Nothing
+              } break;
+            }
+            }
+
+            if(anyVar){
+              auto b = StartString(temp);
+
+              b->PushString("versat_printf(\"%%15d");
+              
+              for(ConfigSimStatement* ptr = head; ptr; ptr = ptr->next){
+                if(ptr->type == ConfigSimStatementType_LHSName){
+                  b->PushString(",%%15d");
+                }
+              }
+
+              b->PushString("\\n\",__VERSAT_INDEX");
+              for(ConfigSimStatement* ptr = head; ptr; ptr = ptr->next){
+                if(ptr->type == ConfigSimStatementType_LHSName){
+                  b->PushString(",");
+                  b->PushString(ptr->lhsName);
+                }
+              }
+              b->PushString(");");
+
+              c->RawLine(EndString(temp,b));
+              c->RawLine("__VERSAT_INDEX++;");
+            }
+            
+          }; 
+          
+          Recurse(Recurse,func->simLoops);
+
+          c->EndBlock();
+        }
+      }
+
+      // Output 
       for(ConfigFunction* func : part.userFunctions){
         bool isState = (func->type == ConfigFunctionType_STATE);
 
@@ -3286,7 +3403,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
         for(ConfigVariable var : func->variables){
           c->Argument(ConfigVarTypeToName(var.type),var.name,var.arraySize);
         }
-
+        
         if(func->debug){
           String str = PushString(temp,"versat_printf(\"[DEBUG] [%.*s]\\n\")",UN(func->fullName));
           c->Statement(str);
@@ -3296,7 +3413,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
             c->Statement(printVar);
           }
         }
-
+        
         String assignStarter = "accelConfig";
         if(isState){
           assignStarter = "accelState";
@@ -3377,7 +3494,6 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
             case ConfigStuffType_ADDRESS_GEN:{
               c->RawLine("{");
 
-              // MARK
               for(ConfigComputation comp : func->extraComputations){
                 c->InsertCode(comp.cCode);
               }
@@ -4159,177 +4275,6 @@ static iptr WRITE_@{0} = 0;)FOO";
   FILE* output = OpenFileAndCreateDirectories(wrapperPath,"w",FilePurpose_SOFTWARE);
   DEFER_CLOSE_FILE(output);
 
-  if(1){
-    AccelInfoIterator iter = StartIteration(&info);
-    Array<Array<MuxInfo>> muxInfo = CalculateMuxInformation(&iter,temp);
-
-    // From accel config, obtain the merge index.
-    CEmitter* c = StartCCode(temp,temp);
-
-    // MergeTypeFromConfig
-    if(iter.MergeSize() > 1 && muxInfo.size > 0){
-      c->FunctionBlock("MergeType","MergeTypeFromConfig");
-      c->Argument("AcceleratorConfig*","config");
-
-      for(int i = 0; i <  muxInfo.size; i++){
-        Array<MuxInfo> info = muxInfo[i];
-
-        c->StartExpression();
-        for(int j = 0; j <  info.size; j++){
-          MuxInfo mux  =  info[j];
-
-          if(j != 0){
-            c->And();
-          }
-        
-          c->Var(PushString(temp,"config->%.*s_sel",UN(mux.fullName)));
-          c->IsEqual();
-          c->Literal(mux.val);
-        }
-
-        c->IfOrElseIfFromExpression();
-
-        c->Return(PushString(temp,"(MergeType) %d",i));
-      }
-
-      c->Else();
-      c->Statement("Assert(false && \"Error recovering MergeType from current configuration\")");
-      c->EndIf();
-      c->EndBlock();
-    }
-
-    Array<Array<InstanceInfo*>> unitInfoPerMerge = VUnitInfoPerMerge(info,temp);
-    
-    bool containsMerge = (iter.MergeSize() > 1 && muxInfo.size > 0);
-
-    c->FunctionBlock("Array<VUnitInfo>","ExtractVArguments");
-    c->Argument("AcceleratorConfig*","config");
-    c->Argument("int","mergeIndex");
-    c->VarDeclare("int","index","0");
-
-    int maxMergeInfo = 0;
-    for(Array<InstanceInfo*> units : unitInfoPerMerge){
-      maxMergeInfo = MAX(maxMergeInfo,units.size);
-    }
-
-    c->VarDeclare("static VUnitInfo",PushString(temp,"data[%d]",maxMergeInfo));
-    
-    if(containsMerge){
-      for(int i = 0; i <  unitInfoPerMerge.size; i++){
-        Array<InstanceInfo*> units  =  unitInfoPerMerge[i];
-        c->IfOrElseIf(PushString(temp,"mergeIndex == %d",i));
-
-        for(InstanceInfo* unit : units){
-          String fullName = unit->fullName;
-          String unitName = unit->baseName;
-
-          c->Assignment("data[index].unitName",PushString(temp,"\"%.*s\"",UN(unitName)));
-          c->Assignment("data[index].mergeIndex",PushString(temp,"%d",i));
-        
-          for(Wire w : unit->configs){
-            String left = PushString(temp,"data[index].%.*s",UN(w.name));
-            String right = PushString(temp,"config->%.*s_%.*s",UN(fullName),UN(w.name));
-
-            c->Assignment(left,right);
-          }
-
-          c->Statement("index += 1");
-        }
-      }
-      c->EndIf();
-    } else {
-      Array<InstanceInfo*> units  =  unitInfoPerMerge[0];
-
-      for(InstanceInfo* unit : units){
-        String fullName = unit->fullName;
-        String unitName = unit->baseName;
-
-        c->Assignment("data[0].unitName",PushString(temp,"\"%.*s\"",UN(unitName)));
-        c->Assignment("data[0].mergeIndex","0");
-        
-        for(Wire w : unit->configs){
-          String left = PushString(temp,"data[0].%.*s",UN(w.name));
-          String right = PushString(temp,"config->%.*s_%.*s",UN(fullName),UN(w.name));
-
-          c->Assignment(left,right);
-        }
-      }
-      c->Statement("index += 1");
-    }
-
-    c->Return("(Array<VUnitInfo>){data,index}");
-
-    c->EndBlock();
-
-    c->FunctionBlock("void","SimulateVUnits");
-    c->Statement("AcceleratorConfig* config = (AcceleratorConfig*) &configBuffer");
-
-    if(containsMerge){
-      c->VarDeclare("int","mergeIndex","MergeTypeFromConfig(config)");
-    } else {
-      c->VarDeclare("int","mergeIndex","0");
-    }
-
-    for(int i = 0; i <  unitInfoPerMerge.size; i++){
-      Array<InstanceInfo*> merge = unitInfoPerMerge[i];
-      c->If(PushString(temp,"mergeIndex == %d",i));
-      c->VarDeclare("Array<VUnitInfo>","data","ExtractVArguments(config,mergeIndex)");
-
-      for(int k = 0; k <  merge.size; k++){
-        {
-          InstanceInfo* inst = merge[k];
-          String sim = PushString(temp,"SIMULATE_MERGE_%d_%.*s",i,UN(inst->baseName));
-
-          c->If(sim);
-
-          c->VarDeclare("VUnitInfo","info",PushString(temp,"data.data[%d]",k));
-          c->VarDeclare("AddressVArguments","args","{}");
-
-          for(String str : META_AddressVParameters_Members){
-            String left = PushString(temp,"args.%.*s",UN(str));
-            String right = PushString(temp,"info.%.*s",UN(str));
-            c->Assignment(left,right);
-          }
-
-          c->Statement("versat_printf(\"Simulating addresses for unit '%s' in merge config: %d\\n\",info.unitName,info.mergeIndex)");
-          c->Statement("SimulateAndPrintAddressGen(args)");
-
-          c->EndIf();
-        }
-        {
-          InstanceInfo* inst  =  merge[k];
-          String sim = PushString(temp,"EFFICIENCY_MERGE_%d_%.*s",i,UN(inst->baseName));
-
-          c->If(sim);
-
-          c->VarDeclare("VUnitInfo","info",PushString(temp,"data.data[%d]",k));
-          c->VarDeclare("AddressVArguments","args","{}");
-
-          for(String str : META_AddressVParameters_Members){
-            String left = PushString(temp,"args.%.*s",UN(str));
-            String right = PushString(temp,"info.%.*s",UN(str));
-            c->Assignment(left,right);
-          }
-
-          c->Statement("SimulateVReadResult sim = SimulateVRead(args)");
-          c->Statement("float percent = ((float) sim.amountOfInternalValuesUsed) / ((float) sim.amountOfExternalValuesRead)");
-          c->Statement("versat_printf(\"Efficiency: %2f (%d/%d)\\n\",percent,sim.amountOfInternalValuesUsed,sim.amountOfExternalValuesRead)");
-          
-          c->EndIf();
-        }
-      }
-      
-      c->EndIf();
-    }
-    
-    c->EndBlock();
-    
-    c->EndBlock();
-    
-    String content = PushASTRepr(c,temp);
-    TE_SetString("simulationStuff",content);
-  }
-
   TE_ProcessTemplate(output,META_WrapperTemplate_Content);
 }
 
@@ -4423,7 +4368,7 @@ void Output_VerilatorTopUnit(String topLevelTypeName,FUDeclaration* topLevelDecl
  
   Array<ExternalMemorySymbolic> external = module->externalMemorySymbol;
 
-  // MARK: Repeated code. Compress.
+  // TODO: Repeated code. Compress.
   for(int i = 0; i < external.size; i++){
     ExternalMemorySymbolic ext = external[i];
 
@@ -4576,7 +4521,7 @@ void Output_VerilatorTopUnit(String topLevelTypeName,FUDeclaration* topLevelDecl
     m->PortConnect("rdata","rdata");
   }
 
-  // MARK: Repeated code. Compress.
+  // TODO: Repeated code. Compress.
   for(int i = 0; i < external.size; i++){
     ExternalMemorySymbolic ext = external[i];
 
@@ -4826,47 +4771,6 @@ void VersatPrintProfile(VersatProfile p){
   TE_ProcessTemplate(file,META_FirmwareTemplate_Content);
 }
 
-void Output_PCEmulDefs(AccelInfo info,String softwarePath){
-  TEMP_REGION(temp,nullptr);
-  TEMP_REGION(temp2,temp);
-  
-  CEmitter* c = StartCCode(temp,temp);
-
-  Array<Array<InstanceInfo*>> unitInfoPerMerge = VUnitInfoPerMerge(info,temp);
-
-  bool debug = false;
-  for(int i = 0; i <  unitInfoPerMerge.size; i++){
-    Array<InstanceInfo*> merge  =  unitInfoPerMerge[i];
-    for(int k = 0; k <  merge.size; k++){
-      InstanceInfo* unit =  merge[k];
-      debug |= unit->debug;
-    }
-  }
-
-  String debugVal = debug ? "true" : "false";
-  c->VarDeclare("bool","debugging",debugVal);
-
-  for(int i = 0; i <  unitInfoPerMerge.size; i++){
-    Array<InstanceInfo*> merge  =  unitInfoPerMerge[i];
-    c->Comment(PushString(temp,"Merge %d",i)); 
-    for(int k = 0; k <  merge.size; k++){
-      InstanceInfo* unit =  merge[k];
-      String sim = PushString(temp,"SIMULATE_MERGE_%d_%.*s",i,UN(unit->baseName));
-
-      String debugVal = unit->debug ? "true" : "false";
-      c->VarDeclare("bool",sim,debugVal);
-      String eff = PushString(temp,"EFFICIENCY_MERGE_%d_%.*s",i,UN(unit->baseName));
-      c->VarDeclare("bool",eff,"false");
-    }
-  }
-  
-  FILE* file = OpenFileAndCreateDirectories(PushString(temp,"%.*s/pcEmulDefs.h",UN(softwarePath)),"w",FilePurpose_SOFTWARE);
-  DEFER_CLOSE_FILE(file);
-  
-  String content = PushASTRepr(c,temp,true);
-  fprintf(file,"%.*s",UN(content));
-}
-
 void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topDecl,String hardwarePath,String softwarePath,VersatComputedValues val){
   AccelInfo info = *val.info;
 
@@ -5006,7 +4910,6 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topDecl,String hardwa
   Output_Header(structuredConfigs,info,softwarePath,val,typeName);
   Output_VerilatorWrapper(typeName,info,topDecl,structuredConfigs,softwarePath,val);
   Output_Makefile(val,typeName,softwarePath);
-  Output_PCEmulDefs(info,softwarePath);
   Output_IobVersatFirmware(softwarePath,val);
 
   {
