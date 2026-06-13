@@ -66,7 +66,7 @@ module AXITransferController #(
 
    wire [AXI_DATA_W-1:0] OFFSET_MASK = (0 | {OFFSET_W{1'b1}});
 
-   function [15:0] min(input [15:0] a, b);
+   function [LEN_W-1:0] min(input [LEN_W-1:0] a, b);
       begin
          min = (a < b) ? a : b;
       end
