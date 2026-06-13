@@ -42,7 +42,7 @@ Array<int> CalculateDAG(Array<Pair<int,int>> edges,int start,Arena* out){
   int WAIT_CHILDREN = 1;
   int PERMANENT = 2;
 
-  int size = maxNode;
+  int size = maxNode + 1;
   Stack<int>* toSee = PushQueue<int>(temp,size * 2);
   Array<int> marked = PushArray<int>(temp,size);
   Memset(marked,NOT_SEEN);

@@ -629,7 +629,8 @@ void InitDebug(const char* exeName){
 
   abfd = bfd_openr(exeName,NULL);
   if(abfd == nullptr){
-    printf("Failed bfd_open call\n");
+    printf("%s\n",exeName);
+    printf("Failed bfd_open call %d\n",bfd_error());
     return;
   }
   abfd->flags |= BFD_DECOMPRESS;
