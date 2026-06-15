@@ -284,6 +284,10 @@ inline u64 Hash(int in){
   return (u64) in;
 }
 
+inline u64 Hash(u32 in){
+  return (u64) in;
+}
+
 inline u64 Hash(bool b){
   return (b ? 1 : 0);
 }

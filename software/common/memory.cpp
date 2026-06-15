@@ -442,11 +442,10 @@ String PushString(Arena* arena,String ss){
 }
 
 String vPushString(Arena* arena,const char* format,va_list args){
-  int extraBuffer; // Just to make sure that vsnprintf with 0 size does not cause problems with a nullptr we pass it just a bit of memory.
-  
   va_list copy;
   va_copy(copy,args);
 
+  int extraBuffer; // Just to make sure that vsnprintf with 0 size does not cause problems with a nullptr we pass it just a bit of memory.
   int stringSizeWithTerm = vsnprintf((char*) &extraBuffer,0,format,copy);
   char* buffer = (char*) PushBytes(arena,stringSizeWithTerm + 1);
 

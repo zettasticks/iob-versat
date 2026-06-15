@@ -22,8 +22,11 @@ TOOL_BUILD_DIR:=$(VERSAT_DIR)/tool_build
 _b := $(shell mkdir -p $(TOOL_BUILD_DIR)) # Creates the folder
 
 #Tools
-EMBED := $(TOOL_BUILD_DIR)/embedData
-HASH  := $(TOOL_BUILD_DIR)/calculateHash
+EMBED     := $(TOOL_BUILD_DIR)/embedData
+HASH      := $(TOOL_BUILD_DIR)/calculateHash
+VCD2SAIF  := $(TOOL_BUILD_DIR)/vcd2saif
+FST2SAIF  := $(TOOL_BUILD_DIR)/fst2saif
+
 
 VERSAT_COMMON_HEADERS := $(wildcard $(VERSAT_COMMON_DIR)/*.hpp)
 VERSAT_COMMON_SOURCES := $(wildcard $(VERSAT_COMMON_DIR)/*.cpp)
@@ -70,6 +73,15 @@ $(HASH): $(VERSAT_TOOLS_DIR)/calculateHash.cpp $(VERSAT_COMMON_TOOLS_OBJS) $(VER
 $(EMBED): $(VERSAT_TOOLS_DIR)/embedData.cpp $(VERSAT_COMMON_TOOLS_OBJS) $(VERSAT_COMMON_HEADERS)
 	$(COMPILE_TOOL_NO_D)
 
+$(VERSAT_TOOLS_DIR)/libfst/src/%.o: $(VERSAT_TOOLS_DIR)/libfst/src/%.c
+	gcc $< -c -o $@ -I$(VERSAT_TOOLS_DIR)/libfst/src
+
+ALL_FST_C = $(wildcard $(VERSAT_TOOLS_DIR)/libfst/src/*.c)
+ALL_FST_O = $(patsubst $(VERSAT_TOOLS_DIR)/libfst/src/%.c,$(VERSAT_TOOLS_DIR)/libfst/src/%.o,$(ALL_FST_C))
+
+$(FST2SAIF): $(VERSAT_TOOLS_DIR)/fst2saif.cpp $(ALL_FST_O)
+	g++ -g -std=c++17 $(VERSAT_COMMON_FLAGS) -MMD -MP -DVERSAT_DEBUG $(VERSAT_COMMON_INCLUDE) $(VERSAT_COMMON_TOOLS_OBJS) -o $(FST2SAIF) $(VERSAT_TOOLS_DIR)/fst2saif.cpp $(wildcard $(VERSAT_TOOLS_DIR)/libfst/src/*.o) -I$(VERSAT_TOOLS_DIR)/libfst/src -lz -lbfd
+
 # Generate meta code
 $(BUILD_DIR)/embeddedData.hpp $(BUILD_DIR)/embeddedData.cpp: $(VERSAT_SW_DIR)/versat_defs.txt $(EMBED)
 	$(EMBED) $(VERSAT_SW_DIR)/versat_defs.txt $(BUILD_DIR)/embeddedData
@@ -105,6 +117,8 @@ clean:
 
 clean-all: clean
 	-rm -fr $(TOOL_BUILD_DIR)
+
+fst2saif: $(TOOL_BUILD_DIR)/fst2saif
 
 .PHONY: versat $(BUILD_DIR)/embeddedData.d
 
