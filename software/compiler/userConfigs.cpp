@@ -978,8 +978,8 @@ for(int a = rangeStart; a < rangeEnd; a++){
           ConfigStuff* assign = list->PushElem();
           assign->type = ConfigStuffType_MEMORY_TRANSFER;
 
-          //nocheckin: This probably only currently works because variable have the same names
           // TODO: Need to create more complex tests to force the issue
+          //       This probably only currently works because variable have the same names
           assign->transfer = stuff.transfer;
           assign->transfer.name = simple->lhs->name.identifier + assign->transfer.name;
         }
@@ -1052,34 +1052,8 @@ for(int a = rangeStart; a < rangeEnd; a++){
     FREE_ARENA(emitter);
     CEmitter* c = StartCCode(out,emitter);
 
-    c->VarDeclare("int",comp->outputName);
-    c->StartScope();
+    String varValue = {};
     if(funcName == "RangeSize"){
-      c->VarDeclare("int","V_trueStart",SYM_Repr(args[0],temp));
-      c->VarDeclare("int","V_trueEnd",SYM_Repr(args[1],temp));
-      c->VarDeclare("int","V_count",SYM_Repr(args[2],temp));
-
-      c->VarDeclare("int","V_trueSize","V_trueEnd - V_trueStart");
-      c->VarDeclare("int","V_mod","V_trueSize % V_count");
-      c->VarDeclare("int","V_workSize","V_mod != 0 ? (V_trueSize/V_count) + 1 : (V_trueSize/V_count)");
-
-      c->Assignment(comp->outputName,"V_workSize");
-    }
-    if(funcName == "RangeLow"){
-      c->VarDeclare("int","V_trueStart",SYM_Repr(args[0],temp));
-      c->VarDeclare("int","V_trueEnd",SYM_Repr(args[1],temp));
-      c->VarDeclare("int","V_count",SYM_Repr(args[2],temp));
-      c->VarDeclare("int","V_index",SYM_Repr(args[3],temp));
-
-      c->VarDeclare("int","V_trueSize","V_trueEnd - V_trueStart");
-      c->VarDeclare("int","V_mod","V_trueSize % V_count");
-      c->VarDeclare("int","V_workSize","V_index + 1 <= V_mod ? (V_trueSize/V_count) + 1 : (V_trueSize/V_count)");
-      c->VarDeclare("int","V_firstVal","V_mod >= (V_index+1) ?  V_index * V_workSize : V_index * V_workSize + V_mod");
-
-      c->If("V_trueSize <= V_index");
-      c->Assignment("V_firstVal","0");
-      c->EndIf();
-
       SYM_Expr trueStart = args[0];
       SYM_Expr trueEnd = args[1];
       SYM_Expr count = args[2];
@@ -1088,60 +1062,42 @@ for(int a = rangeStart; a < rangeEnd; a++){
       SYM_Expr trueSize = trueEnd - trueStart;
       SYM_Expr mod = trueSize % count;
       SYM_Expr workSize = SYM_FloorDiv(trueSize,count) + (index + SYM_1 <= mod);
-      SYM_Expr firstValNoMod = index * workSize;
+
+      varValue = SYM_Repr(workSize,temp);
+    }
+    if(funcName == "RangeLow"){
+      SYM_Expr trueStart = args[0];
+      SYM_Expr trueEnd = args[1];
+      SYM_Expr count = args[2];
+      SYM_Expr index = args[3];
+      
+      SYM_Expr trueSize = trueEnd - trueStart;
+      SYM_Expr mod = trueSize % count;
+      SYM_Expr workSize = SYM_FloorDiv(trueSize,count) + (index + SYM_1 <= mod);
       SYM_Expr firstVal = index * workSize + mod * (mod < (index + SYM_1));
 
       SYM_Expr final = SYM_Max(firstVal,SYM_0);
-     
-#if 0
-      SYM_Print(firstValNoMod);
-      printf("\n");
-      
-      SYM_Print(args[0]);
-      printf("\n");
-      SYM_Print(args[1]);
-      printf("\n");
-      SYM_Print(args[2]);
-      printf("\n");
-      SYM_Print(args[3]);
-      printf("\n");
 
-      SYM_Print(trueSize);
-      printf("\n");
-      SYM_Print(mod);
-      printf("\n");
-      SYM_Print(workSize);
-      printf("\n");
-      SYM_Print(firstVal);
-      printf("\n");
-      SYM_Print(final);
-      printf("\n");
-      //exit(0);
-#endif
-
-      //c->Assignment(comp->outputName,"V_firstVal");
-      String r = SYM_Repr(final,temp);
-      c->Assignment(comp->outputName,r);
+      varValue = SYM_Repr(final,temp);
     }
     if(funcName == "RangeHigh"){
-      c->VarDeclare("int","V_trueStart",SYM_Repr(args[0],temp));
-      c->VarDeclare("int","V_trueEnd",SYM_Repr(args[1],temp));
-      c->VarDeclare("int","V_count",SYM_Repr(args[2],temp));
-      c->VarDeclare("int","V_index",SYM_Repr(args[3],temp));
+      SYM_Expr trueStart = args[0];
+      SYM_Expr trueEnd = args[1];
+      SYM_Expr count = args[2];
+      SYM_Expr index = args[3];
+      
+      SYM_Expr trueSize = trueEnd - trueStart;
+      SYM_Expr mod = trueSize % count;
+      SYM_Expr workSize = SYM_FloorDiv(trueSize,count) + (index + SYM_1 <= mod);
+      //SYM_Expr firstValNoMod = index * workSize;
+      SYM_Expr firstVal = index * workSize + mod * (mod < (index + SYM_1));
 
-      c->VarDeclare("int","V_trueSize","V_trueEnd - V_trueStart");
-      c->VarDeclare("int","V_mod","V_trueSize % V_count");
-      c->VarDeclare("int","V_workSize","V_index + 1 <= V_mod ? (V_trueSize/V_count) + 1 : (V_trueSize/V_count)");
-      c->VarDeclare("int","V_firstVal","V_mod >= (V_index+1) ?  V_index * V_workSize : V_index * V_workSize + V_mod");
+      SYM_Expr final = SYM_Max(firstVal,SYM_0);
+      SYM_Expr plusSize = final + workSize;
 
-      c->If("V_trueSize <= V_index");
-      c->Assignment("V_firstVal","0");
-      c->EndIf();
-
-      c->Assignment(comp->outputName,"V_firstVal + V_workSize");
+      varValue = SYM_Repr(plusSize,temp);
     }
-    
-    c->EndScope();
+    c->VarDeclare("int",comp->outputName,varValue);
 
     comp->cCode = EndCCode(c);
   }

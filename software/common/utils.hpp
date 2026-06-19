@@ -39,7 +39,7 @@ String JoinStrings(Array<String> strings,String separator,Arena* out);
 
 String PushBinaryRepr(Arena* out,int number);
 
-// nocheckin: Reorganize
+// TODO Reorganize
 String PushPointingString(Arena* out,int startPos,int size);
 Array<Value> ExtractValues(const char* format,String tok,Arena* arena);
 

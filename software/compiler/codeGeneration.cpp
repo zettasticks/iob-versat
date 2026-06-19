@@ -626,7 +626,6 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
     if(!SYM_IsNil(unit->memMapSym)){
       m->PortConnect("wstrb","wstrb");
       
-      // nocheckin
       // TODO: Proper checking before reaching this point
       SYM_EvaluateResult res = SYM_ConstantEvaluate(unit->memMapSym);
       int p = res.result;
@@ -805,7 +804,7 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
       m->PortConnect("wstrb","data_wstrb");
 
       if(!SYM_IsZeroValue(unit->memMapSym)){
-        // nocheckin : TODO: CHECK errors
+        // TODO: CHECK errors
         SYM_EvaluateResult eval = SYM_ConstantEvaluate(unit->memMapSym);
         Opt<int> memMapBits = eval.result;
 
@@ -1007,7 +1006,7 @@ VerilogModuleInterface* GenerateModuleInterface(FUDeclaration* decl,Arena* out){
     m->StartGroup("MemoryMapped");
     m->AddPort("valid",SYM_1,WireDir_INPUT);
 
-    // nocheckin: TODO: PROPER ERROR REPORT
+    // TODO: PROPER ERROR REPORT
     SYM_EvaluateResult eval = SYM_ConstantEvaluate(decl->info.memMapBitsSym);
     Opt<int> p = eval.result;
 
@@ -1175,7 +1174,7 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
   }
 
   if(!SYM_IsNil(module->info.memMapBitsSym)){
-    // nocheckin : TODO: PROPER ERROR CHECKING
+    // TODO: PROPER ERROR CHECKING
     SYM_EvaluateResult eval = SYM_ConstantEvaluate(module->info.memMapBitsSym);
     Opt<int> p = eval.result;
     //Opt<int> p = ConstantEvaluate(module->info.memMapBitsSym);
@@ -2283,7 +2282,7 @@ static void Output_Makefile(VersatComputedValues val,String typeName,String soft
       TE_SetString("moduleUnits",EndString(temp,s));
     }
 
-    // nocheckin : TODO: PROPER ERROR CHECK
+    // TODO: PROPER ERROR CHECK
     SYM_EvaluateResult eval = SYM_ConstantEvaluate(info->memMapBitsSym);
     Opt<int> p = eval.result;
     
@@ -3164,19 +3163,6 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
             
             Assert(info);
 
-            if(stuff.extra){
-              static int d = 0;
-
-              String values[3] = {
-                PushString(temp,"T%d",d++),
-                PushString(temp,"T%d",d++),
-                PushString(temp,"T%d",d++)
-              };
-
-              String repr = TE_Substitute(stuff.extraLoopStartAndEndTemplate,values,temp);
-              c->RawLine(repr);
-            }
-
             // TODO: Currently this is hardcoded for the VUnits. Need to actually start modelling the concept of address interface size and do it right.
             Opt<SYM_Expr> valOpt = GetParameterValue(info,"ADDR_W");
             Assert(valOpt.has_value());
@@ -3185,7 +3171,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
             String maxSize = PushString(temp,"(1 << %.*s)",UN(symRepr));
 
             AddressAccess* access = stuff.access.access;
-            SYM_Expr symb = GetLoopLinearSumTotalSize(access->internal,temp);
+            SYM_Expr symb = GetLoopLinearSumTotalSize(access->internal);
 
             for(ConfigVariable var : func->variables){
               if(var.type == ConfigVarType_DYN){
@@ -3273,7 +3259,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
     for(MergePartition part : info.infos){
       String mergeName = part.name;
 
-      // MARK
+      // MARK1
       // Output simulation functions if they exist
       for(ConfigFunction* func : part.userFunctions){
         if(func->simLoops->type != ConfigSimStatementType_NIL){
@@ -3432,6 +3418,10 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
           
           c->Statement(stmt);
         }
+
+        for(ConfigComputation comp : func->extraComputations){
+          c->InsertCode(comp.cCode);
+        }
         
         FULL_SWITCH(func->type){
         case ConfigFunctionType_MEM:{
@@ -3493,24 +3483,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
             } break;
             case ConfigStuffType_ADDRESS_GEN:{
               c->RawLine("{");
-
-              for(ConfigComputation comp : func->extraComputations){
-                c->InsertCode(comp.cCode);
-              }
-
-              if(assign.extra){
-                static int d = 0;
-
-                String values[3] = {
-                  PushString(temp,"T%d",d++),
-                  PushString(temp,"T%d",d++),
-                  PushString(temp,"T%d",d++)
-                };
-
-                String repr = TE_Substitute(assign.extraLoopStartAndEndTemplate,values,temp);
-                c->RawLine(repr);
-              }
-              
+             
               AccessAndType access = assign.access;
               AddressGenInst inst = access.inst;
               
@@ -3527,7 +3500,47 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
               } break;
               case AddressGenType_READ: {
                 String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(fullLhs));
-                EmitReadStatements(c,access,lhs,assign.pointerVarName);
+                //EmitReadStatements(c,access,lhs,assign.pointerVarName);
+
+                auto Recurse = [lhs,c,temp](auto Recurse,CodeNode* top) -> void{
+                  for(CodeNode* ptr = top; ptr; ptr = ptr->next){
+                    String repr = SYM_Repr(ptr->expr,temp);
+
+                    FULL_SWITCH(ptr->type){
+                    case CodeNodeType_EMPTY:{
+                      Assert(false);
+                    } break;
+                    case CodeNodeType_IF:{
+                      c->If(repr);
+                      Recurse(Recurse,ptr->child);
+                      c->EndIf();
+                    } break;
+                    case CodeNodeType_ASSIGN:{
+                      String fullName = PushString(temp,"%.*s.%.*s",UN(lhs),UN(ptr->name));
+
+                      if(ptr->name == "ext_addr"){
+                        repr = PushString(temp,"(iptr) (%.*s)",UN(repr));
+                      }
+                      if(ptr->name == "length"){
+                        repr = PushString(temp,"(%.*s) * sizeof(float)",UN(repr));
+                      }
+                      if(ptr->name == "addr_shift"){
+                        repr = PushString(temp,"(%.*s) * sizeof(float)",UN(repr));
+                      }
+
+                      c->Assignment(fullName,repr);
+                    } break;
+                  }
+                  }
+                };
+
+                // MARK
+                CodeNode* top = EmitReadStatements2(access,assign.pointerVarName,temp);
+                Recurse(Recurse,top);
+
+                //DEBUG_BREAK();
+                
+                //EmitReadStatements2(c,access,lhs,assign.pointerVarName);
               } break;
             }
 
@@ -3942,7 +3955,7 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
   TE_SetNumber("nInputs",info.inputs);
   TE_SetBool("implementsDone",info.implementsDone);
 
-  // nocheckin TODO: PROPER ERROR CHECK
+  // TODO: PROPER ERROR CHECK
   SYM_EvaluateResult eval = SYM_ConstantEvaluate(info.memMapBitsSym);
   Opt<int> p = eval.result;
 

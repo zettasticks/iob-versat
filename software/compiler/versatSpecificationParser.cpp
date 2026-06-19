@@ -332,7 +332,7 @@ Array<Token> TypesUsed(ConstructDef def,Arena* out){
   case ConstructType_MODULE: {
     Array<Token> result = Extract(def.module.declarations,out,&InstanceDeclaration::typeName);
 
-    // nocheckin: TODO: Check repetition
+    // TODO: Check repetition
     return result;
     ///return Unique(result,out);
   } break;
@@ -1771,10 +1771,13 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
       
         SYM_Expr trueSize = trueEnd - trueStart;
         SYM_Expr mod = trueSize % count;
-        SYM_Expr workSize = (trueSize/count) + (index + SYM_1 <= mod);
-        SYM_Expr firstVal = index * workSize + mod * (mod >= (index + SYM_1));
+        SYM_Expr workSize = SYM_FloorDiv(trueSize,count) + (index + SYM_1 <= mod);
+        //SYM_Expr firstValNoMod = index * workSize;
+        SYM_Expr firstVal = index * workSize + mod * (mod < (index + SYM_1));
 
         res = SYM_Max(firstVal,SYM_0);
+      
+        res = SYM_Wrapper(res);
       } else {
         Entity funcEnt = AddComputation(top->name.identifier,expressions);
         res = SYM_Var(funcEnt.name.identifier);
@@ -2490,7 +2493,7 @@ ConnectionDef ParseConnection(Parser* parser,Arena* out){
   return def;
 }
 
-// TODO: nocheckin - remove forward decl
+// TODO: remove forward decl
 ConfigFunctionDef* ParseConfigFunction(Parser* parser,Arena* out);
 
 ParameterDeclaration ParseParameterDeclaration(Parser* parser,Arena* out){
@@ -2587,10 +2590,9 @@ ModuleDef ParseModuleDef(Parser* parser,Arena* out){
 
   auto configFunctions = PushList<ConfigFunctionDef>(temp);
 
-  // nocheckin
   if(parser->IfNextToken(TokenType_DOUBLE_HASHTAG)){
     while(!parser->Done()){
-      // nocheckin TODO: Probably remove this and move the logic from the function to here
+      // TODO: Probably remove this and move the logic from the function to here
       
       bool isConfigFunctionStart = false;
       
@@ -2842,8 +2844,8 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
   Parser* parser = StartParsing(TokenizeFunction,content,parseArena,ParsingOptions_DEFAULT);
 
   // TODO:
-  // nocheckin: Kinda hacky way of doing this.
-  //            We cannot put filesystem stuff on the parser since parser is common.
+  // Kinda hacky way of doing this.
+  // We cannot put filesystem stuff on the parser since parser is common.
   DefaultTokenizerState* state = (DefaultTokenizerState*) parser->tokenizerState;
   FileContent contentAsFile = FILE_GetFileContentFromString(content);
   state->content = contentAsFile;

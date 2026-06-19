@@ -13,6 +13,7 @@
 #define VERSAT_MAX(A,B) ((A) > (B) ? (A) : (B))
 #define VERSAT_ARRAY_SIZE(ARR) (sizeof(ARR) / sizeof(ARR[0]))
 #define VERSAT_FLOOR_DIV(A,B) ((A) / (B))
+#define VERSAT_WRAPPER(A) (A)
 
 typedef intptr_t iptr;
 
@@ -175,6 +176,8 @@ static bool forceSingleLoop = false;
 
 #undef VERSAT_MAX
 #undef VERSAT_ARRAY_SIZE
+#undef VERSAT_FLOOR_DIV
+#undef VERSAT_WRAPPER
 
 #endif // INCLUDED_VERSAT_ACCELERATOR_HEADER
 

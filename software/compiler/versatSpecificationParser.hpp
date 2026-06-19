@@ -114,7 +114,7 @@ struct MathExpression{
   MathType type;
 };
 
-//nocheckin - TODO: We probably want to remove this after we move more logic to Env
+//TODO: We probably want to remove this after we move more logic to Env
 Array<Token> AccumTokens(MathExpression* top,Arena* out);
 
 struct VarDeclaration{
@@ -221,7 +221,7 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAnd
 FUDeclaration* InstantiateSpecifications(String content,ConstructDef def);
 
 
-// nocheckin Move to a better place after we probably remove the userConfigs.hpp file.
+// TODO Move to a better place after we probably remove the userConfigs.hpp file.
 // TODO: We cannot represent an array access followed by a wireOrPort access.
 //       This is probably not the best way to proceed.
 enum ConfigIdentifierType{

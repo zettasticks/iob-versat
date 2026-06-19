@@ -126,12 +126,6 @@ struct ConfigStuff{
 
   String extraLoopStartAndEndTemplate;
 
-  bool extra;
-  SYM_Expr trueStart;
-  SYM_Expr trueEnd;
-  SYM_Expr unitCount;
-  SYM_Expr index;
-
   union{
     ConfigAssignment assign;
     FunctionMemoryTransfer transfer;

@@ -2715,9 +2715,9 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
       for(int i = 0; i < decl->parameters.size; i++){
         Parameter param = decl->parameters[i];
 
-        // nocheckin: TODO: Need to finish this and do it properly. 
-        //                  Also we might need to rethink our approach to merge and the best way of making sure that 
-        //                  parameters are properly handled.
+        // TODO: Need to finish this and do it properly. 
+        //       Also we might need to rethink our approach to merge and the best way of making sure that 
+        //       parameters are properly handled.
         if(param.flags & ParamFlags_Order){
           Opt<SYM_Expr> flatValOpt = flattenInst->parameterValues[i].val;
           Opt<SYM_Expr> mergeValOpt = mergedInst->parameterValues[i].val;

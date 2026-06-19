@@ -23,9 +23,9 @@ struct AddressGenForDef{
   MathExpression* endSym;
 };
 
-// nocheckin: TODO: Is there a point to separating the internal and external stuff at this point?
-//                  We could just store a single loop and only do the separating afterwards.
-//                  We would probably simplify a bunch of things
+// TODO: Is there a point to separating the internal and external stuff at this point?
+//       We could just store a single loop and only do the separating afterwards.
+//       We would probably simplify a bunch of things
 struct AddressAccess{
   String name;
   LoopLinearSum* internal;
@@ -42,6 +42,13 @@ struct ExternalMemoryAccess{
   String length;
   String amountMinusOne;
   String addrShift;
+};
+
+struct ExternalMemoryAccess2{
+  SYM_Expr totalTransferSize;
+  SYM_Expr length;
+  SYM_Expr amountMinusOne;
+  SYM_Expr addrShift;
 };
 
 struct InternalMemoryAccess{
@@ -75,10 +82,31 @@ struct AccessAndType{
   Direction dir;
 };
 
+// nocheckin
+enum CodeNodeType{
+  CodeNodeType_EMPTY,
+  CodeNodeType_IF,
+  CodeNodeType_ASSIGN,
+};
+
+struct CodeNode{
+  CodeNodeType type;
+
+  String name;
+
+  SYM_Expr expr;
+  
+  CodeNode* next;
+  CodeNode* child;
+};
+
 // ======================================
 // Misc (Probably gonna move these around eventually)
 
 Array<Pair<String,String>> InstantiateRead(AddressAccess* access,int highestExternalLoop,bool doubleLoop,int maxLoops,String extVarName,Arena* out);
+
+// nocheckin
+Array<Pair<String,SYM_Expr>> InstantiateRead2(AddressAccess* access,int highestExternalLoop,bool doubleLoop,int maxLoops,String extVarName,Arena* out);
 
 // ======================================
 // Representation
@@ -107,6 +135,9 @@ AddressAccess* ReplaceVariables(AddressAccess* in,TrieMap<String,SYM_Expr>* varR
 // Code emission
 
 void EmitReadStatements(CEmitter* m,AccessAndType access,String varName,String extVarName);
+
+CodeNode* EmitReadStatements2(AccessAndType access,String extVarName,Arena* out);
+
 void EmitMemStatements(CEmitter* m,AccessAndType access,String varName);
 void EmitGenStatements(CEmitter* m,AccessAndType access,String varName);
 

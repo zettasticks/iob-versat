@@ -827,7 +827,7 @@ int main(int argc,char* argv[]){
     accel = CreateAccelerator(topLevelTypeStr,AcceleratorPurpose_MODULE);
     CreateFUInstance(accel,type,"TOP");
   } else {
-    // nocheckin: We might want to remove this. Check what happens if we do.
+    // TODO: We might want to remove this. Check what happens if we do.
 #if 0
     accel = type->fixedDelayCircuit;
 #else
@@ -921,7 +921,7 @@ int main(int argc,char* argv[]){
   }
 
 #if 0
-  // nocheckin: We might just remove the mem used otherwise need to reimplement all the stuff needed to calculate this  printf("MEM_USED: ");
+  // TODO: We might just remove the mem used otherwise need to reimplement all the stuff needed to calculate this  printf("MEM_USED: ");
   String content = ReprMemorySize(val.totalExternalMemory,temp);
   printf("%.*s",UN(content));
   printf("\n");

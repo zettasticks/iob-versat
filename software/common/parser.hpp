@@ -64,7 +64,7 @@ enum TokenType : u16{
   TokenType_VERILOG_UNDEF,
   TokenType_VERILOG_TIMESCALE,
   TokenType_VERILOG_INCLUDE,
-  // nocheckin: Missing (timescale, resetall, undefineall)
+  // TODO: Missing (timescale, resetall, undefineall)
   TokenType_VERILOG_IFDEF,
   TokenType_VERILOG_IFNDEF,
   TokenType_VERILOG_ELSE,

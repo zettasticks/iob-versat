@@ -587,7 +587,7 @@ int DataWidthToByteOffset(int dataWidth){
   return res;
 }
 
-// nocheckin: We appear to only use this for displaying the size of memories just to inform the user. It is not mandatory to have this working, it was just nice to have.
+// TODO: We appear to only use this for displaying the size of memories just to inform the user. It is not mandatory to have this working, it was just nice to have.
 #if 0
 int ExternalMemoryByteSize(ExternalMemoryInterface* inter){
   Assert(VerifyExternalMemory(inter));

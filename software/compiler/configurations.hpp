@@ -65,14 +65,14 @@ enum SpecialUnitType{
 //                  3) All the codeGeneration data is provided from InstanceInfo meaning that if something is 
 //                     miss calculated the problem is in here not in codeGeneration.cpp.
 
-// nocheckin - A bunch of members have different purposes and we are not keeping track of it.
-//             Some members are extracted directly from the inst so not important.
-//             Some members are symbolic expressions because they might depend on parameters and such.
-//             Some members are instantiation of symbolic expressions. These members only make sense 
-//               for the final AccelInfo, the one used to generate the Verilog/C code.
-//             Either we separate stuff into proper structures (which I do not like since I prefer to have
-//               every in the same place) or we divide the members into groups according to how they are used
-//               and put some comments explaining stuff.
+// TODO - A bunch of members have different purposes and we are not keeping track of it.
+//        Some members are extracted directly from the inst so not important.
+//        Some members are symbolic expressions because they might depend on parameters and such.
+//        Some members are instantiation of symbolic expressions. These members only make sense 
+//          for the final AccelInfo, the one used to generate the Verilog/C code.
+//        Either we separate stuff into proper structures (which I do not like since I prefer to have
+//          every in the same place) or we divide the members into groups according to how they are used
+//          and put some comments explaining stuff.
 struct InstanceInfo{
   int level;
   FUDeclaration* decl;
@@ -346,8 +346,8 @@ Opt<Wire*> CONF_GetEnableWire(InstanceInfo* info); // Memory accessing units mig
 String GetStaticFullName(InstanceInfo* info,Arena* out);
 String GetStaticWireFullName(InstanceInfo* info,Wire wire,Arena* out);
 
-// nocheckin: Reorganize, must be to a better place.
+// TODO: Reorganize, must be to a better place.
 void InstantiateParameters(AccelInfo* info,Arena* temp);
 
-// nocheckin: Reorganize
+// TODO: Reorganize
 InstanceInfo* Find(AccelInfoIterator iter,HIER_Name hierarchicalNames);

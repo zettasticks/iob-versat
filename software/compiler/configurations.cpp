@@ -358,7 +358,7 @@ String GetName(Array<Partition> partitions,Arena* out){
   return EndString(out,builder);
 }
 
-// nocheckin
+// TODO: Check if we can remove or move to someplace else
 bool IsGlobalParameter(String name);
 
 // TODO: Move this function to a better place
@@ -488,8 +488,8 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
   Function(Function,build,accel,0,partitions,out);
   Array<InstanceInfo> res = EndArray(build);
 
-  // nocheckin - Look at this code and the InstantiateParameters functions and reorganize/cleanup this part.
-  //             A lot of "duplicated" code could potentially be removed.
+  // TODO - Look at this code and the InstantiateParameters functions and reorganize/cleanup this part.
+  //        A lot of "duplicated" code could potentially be removed.
 
   // We instantiate parameters in here.
   AccelInfo info;
@@ -919,7 +919,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
 
   CalculateState(CalculateState,initialIter,0);
   
-  // nocheckin - Maybe slower than needed and 
+  // TODO - Maybe slower than needed and 
   {
     int memGlobalIndex = 0;
     for(auto iter = initialIter; iter.IsValid(); iter = iter.Step()){

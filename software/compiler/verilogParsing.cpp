@@ -851,7 +851,7 @@ VExpr* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower){
   TEMP_REGION(temp,out);
   auto infos = PushArray<OpInfo>(temp,7);
 
-  // nocheckin: TODO: We are missing a couple of operations and need to double check 
+  // TODO: We are missing a couple of operations and need to double check 
   // TODO: Need to double check binding power
   infos[0] = {TOK_TYPE('&'),0,"&"};
   infos[1] = {TOK_TYPE('|'),0,"|"};
@@ -1256,7 +1256,7 @@ Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths
 
   VerilogTokenizerState* state = PushStruct<VerilogTokenizerState>(tokenizer);
 
-  // nocheckin: TODO: Since we now have the filesystem return the file content, we can just rewrite this function to receive a filepath instead of receiving the content directly.
+  // TODO: Since we now have the filesystem return the file content, we can just rewrite this function to receive a filepath instead of receiving the content directly.
 
   state->arena = tokenizer;
   state->definesMap = PushTrieMap<String,DefineInfo>(parsing);
@@ -1561,7 +1561,7 @@ void ParseVerilogFileTest(){
   state->stageBuffer[0].type = VerilogTokenizerStageType_FILE;
 
   String tests[] = {
-#if 0
+#if 1
 {R"FOO(`define A
 B
 )FOO"},
@@ -1619,6 +1619,5 @@ B
       String res = PARSE_PushDebugRepr(temp,t);
       printf("%.*s\n",UN(res));
     }
-
   }
 }

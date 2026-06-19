@@ -8,6 +8,26 @@
 #include <cstdint>
 #include <cmath>
 
+String SYM_Func_To_Name[] = {
+"(NIL)",
+"VERSAT_MAX",
+"POSMAX",
+"ALIGN",
+"VERSAT_FLOOR_DIV",
+"VERSAT_WRAPPER",
+"(COUNT)"
+};
+
+int SYM_Func_ArgCount[]{
+0,
+2,
+2,
+2,
+2,
+1,
+0
+};
+
 struct TestCase{
   String input;
   String expectedNormalized;
@@ -93,9 +113,7 @@ LoopLinearSum* RemoveLoop(LoopLinearSum* in,int index,Arena* out){
   return res;
 }
 
-SYM_Expr TransformIntoSymbolicExpression(LoopLinearSum* sum,Arena* out){
-  TEMP_REGION(temp,out);
-
+SYM_Expr TransformIntoSymbolicExpression(LoopLinearSum* sum){
   SYM_Expr res = SYM_0;
   for(LoopLinearSumTerm term : sum->terms){
     res += term.term * SYM_Var(term.var);
@@ -105,17 +123,15 @@ SYM_Expr TransformIntoSymbolicExpression(LoopLinearSum* sum,Arena* out){
   return res;
 }
 
-SYM_Expr LoopLinearSumTermSize(LoopLinearSumTerm* term,Arena* out){
+SYM_Expr LoopLinearSumTermSize(LoopLinearSumTerm* term){
   SYM_Expr expr = term->loopEnd - term->loopStart;
   return expr;
 }
 
-SYM_Expr GetLoopLinearSumTotalSize(LoopLinearSum* in,Arena* out){
-  TEMP_REGION(temp,out);
-
+SYM_Expr GetLoopLinearSumTotalSize(LoopLinearSum* in){
   SYM_Expr expr = SYM_1; 
   for(LoopLinearSumTerm term : in->terms){
-    SYM_Expr loopSize = LoopLinearSumTermSize(&term,temp);
+    SYM_Expr loopSize = LoopLinearSumTermSize(&term);
     expr = expr * loopSize;
   }
   
@@ -140,8 +156,6 @@ LoopLinearSum* ReplaceVariables(LoopLinearSum* in,TrieMap<String,SYM_Expr>* varR
 }
 
 void Print(LoopLinearSum* sum,bool printNewLine){
-  TEMP_REGION(temp,nullptr);
-
   int size = sum->terms.size;
 
   for(int i = size - 1; i >= 0; i--){
@@ -152,7 +166,7 @@ void Print(LoopLinearSum* sum,bool printNewLine){
     printf("\n");
   }
 
-  SYM_Expr fullExpression = TransformIntoSymbolicExpression(sum,temp);
+  SYM_Expr fullExpression = TransformIntoSymbolicExpression(sum);
   SYM_Print(fullExpression);
 
   if(printNewLine){
@@ -173,7 +187,7 @@ void Repr(StringBuilder* builder,LoopLinearSum* sum){
     builder->PushString("\n");
   }
 
-  SYM_Expr fullExpression = TransformIntoSymbolicExpression(sum,temp);
+  SYM_Expr fullExpression = TransformIntoSymbolicExpression(sum);
   SYM_Repr(builder,fullExpression);
 }
 
@@ -451,15 +465,15 @@ SYM_Expr GetOrAllocateVariable(String name){
   return result;
 }
 
-SYM_Expr GetOrAllocateFunc(String name,SYM_Expr first,SYM_Expr second){
-  u64 hash = (Hash(name) + Hash(first) + Hash(second)) % 1024;
+SYM_Expr GetOrAllocateFunc(SYM_Func funcType,SYM_Expr first,SYM_Expr second){
+  u64 hash = (((int) funcType) + Hash(first) + Hash(second)) % 1024;
 
   SYM_Node* ptr = SYM_State.hashTable[hash];
   SYM_Node* previous = ptr;
 
   SYM_Node* res = nullptr;
   for(; ptr; previous = ptr,ptr = ptr->hashNext){
-    if(ptr->type == SYM_Type_VARIABLE && ptr->name == name){
+    if(ptr->type == SYM_Type_VARIABLE && ptr->funcType == funcType){
       res = ptr;
       break;
     }
@@ -468,9 +482,10 @@ SYM_Expr GetOrAllocateFunc(String name,SYM_Expr first,SYM_Expr second){
   if(!res){
     res = PushStruct<SYM_Node>(SYM_State.arena);
     res->type = SYM_Type_FUNC;
+    res->funcType = funcType;
     res->first = first;
     res->second = second;
-    res->name = PushString(SYM_State.arena,name);
+    res->name = SYM_Func_To_Name[funcType];
 
     if(previous){
       previous->hashNext = res;
@@ -619,6 +634,9 @@ int Compare(SYM_Expr left,SYM_Expr right){
     return Compare(childrenLeft,childrenRight);
   } break;
 
+  case SYM_Type_AND:
+  case SYM_Type_OR:
+  case SYM_Type_DIV:
   case SYM_Type_MOD:{
     SYM_Node* modLeft = GetPointer(left);
     SYM_Node* modRight = GetPointer(right);
@@ -631,20 +649,6 @@ int Compare(SYM_Expr left,SYM_Expr right){
     }
 
     return first;
-  } break;
-
-  case SYM_Type_DIV: {
-    SYM_Node* divLeft = GetPointer(left);
-    SYM_Node* divRight = GetPointer(right);
-
-    int top = Compare(divLeft->top,divRight->top);
-    int bottom = Compare(divLeft->bottom,divRight->bottom);
-
-    if(top == 0 && bottom == 0){
-      return 0;
-    }
-
-    return top;
   } break;
 
   case SYM_Type_COMP: {
@@ -678,30 +682,19 @@ bool GreaterThan(SYM_Expr left,SYM_Expr right){
 }
 
 u64 Hash(SYM_Expr expr){
-  //bool negate = IsNegative(expr.node);
   SYM_Node* node = GetPointer(expr.node);
 
-  int64_t res = 0;
-  FULL_SWITCH(GetType(node)){
-    case SYM_Type_NIL:{
-      res = 0;
-    } break;
-
-    case SYM_Type_LITERAL: {
-      res += (int64_t) LiteralValue(node);
-    } break;
-    case SYM_Type_VARIABLE: {
-      res += Hash(node->name);
-    } break;
-    case SYM_Type_FUNC: res += Hash(node->name);
-    case SYM_Type_COMP: res += ((int) node->compType);
-    case SYM_Type_MUL:
-    case SYM_Type_DIV:
-    case SYM_Type_MOD:
-    case SYM_Type_SUM: {
-      res += Hash(node->left) + Hash(node->right);
-    } break;
+  if(Equal(expr,SYM_Nil)){
+    return 0;
   }
+
+  int64_t res = 0;
+  res += (int64_t) node->type;
+  res += (int64_t) node->compType;
+  res += (int64_t) node->funcType;
+  res += Hash(node->name);
+  res += (int64_t) node->literal;
+  res += Hash(node->left) + Hash(node->right);
 
   return res;
 }
@@ -826,7 +819,7 @@ SYM_Expr DoAdd(SYM_Expr left,SYM_Expr right){
     return ((topLeft * divRight->bottom) + (topRight * divLeft->bottom)) / (divLeft->bottom * divRight->bottom);
   }
 
-  return GetOrAllocateOp(SYM_Type_SUM,left,right);;
+  return GetOrAllocateOp(SYM_Type_SUM,left,right);
 }
 
 SYM_Expr DoSub(SYM_Expr left,SYM_Expr right){
@@ -979,8 +972,6 @@ SYM_Expr DoDiv(SYM_Expr top,SYM_Expr bottom){
   return GetOrAllocateOp(SYM_Type_DIV,top,bottom);
 }
 
-
-
 SYM_Expr DoMod(SYM_Expr top,SYM_Expr bottom){
   // TODO: Need to add normalization stuff
 
@@ -1034,6 +1025,30 @@ SYM_Expr operator%(SYM_Expr top,SYM_Expr bottom){
   return res;
 }
 
+SYM_Expr DoAnd(SYM_Expr top,SYM_Expr bottom){
+  // TODO: Need to add normalization stuff
+
+  return GetOrAllocateOp(SYM_Type_AND,top,bottom);
+}
+
+SYM_Expr DoOr(SYM_Expr top,SYM_Expr bottom){
+  // TODO: Need to add normalization stuff
+
+  return GetOrAllocateOp(SYM_Type_OR,top,bottom);
+}
+
+SYM_Expr operator&&(SYM_Expr left,SYM_Expr right){
+  SYM_Expr res = DoAnd(left,right);
+  res = SYM_Normalize(res);
+  return res;
+}
+
+SYM_Expr operator||(SYM_Expr left,SYM_Expr right){
+  SYM_Expr res = DoOr(left,right);
+  res = SYM_Normalize(res);
+  return res;
+}
+
 SYM_Expr operator>(SYM_Expr first,SYM_Expr second){
   SYM_Expr res = GetOrAllocateComp(SYM_CompType_GT,first,second);
   return res;
@@ -1067,10 +1082,8 @@ SYM_Expr operator!=(SYM_Expr first,SYM_Expr second){
 
 #endif
 
-static SYM_Expr SYM_Func(String name,SYM_Expr first,SYM_Expr second);
-
 SYM_Expr SYM_Max(SYM_Expr left,SYM_Expr right){
-  return SYM_Func("VERSAT_MAX",left,right);
+  return GetOrAllocateFunc(SYM_Func_MAX,left,right);
 }
 
 SYM_Expr SYM_PosMax(SYM_Expr leftIn,SYM_Expr rightIn){
@@ -1103,24 +1116,23 @@ SYM_Expr SYM_PosMax(SYM_Expr leftIn,SYM_Expr rightIn){
     return SYM_Lit(MAX(LiteralValue(left),LiteralValue(right)));
   }
 
-  return SYM_Func("PosMax",left,right);
+  return GetOrAllocateFunc(SYM_Func_POSMAX,right,SYM_Nil);
 }
 
 SYM_Expr SYM_Align(SYM_Expr left,SYM_Expr right){
-  // TODO: This name is hardcoded and must match the header generated code.
-  return SYM_Func("ALIGN",left,right);
+  return GetOrAllocateFunc(SYM_Func_ALIGN,left,right);
 }
 
 SYM_Expr SYM_FloorDiv(SYM_Expr top,SYM_Expr bottom){
-  return SYM_Func("VERSAT_FLOOR_DIV",top,bottom);
+  return GetOrAllocateFunc(SYM_Func_FLOOR_DIV,top,bottom);
+}
+
+SYM_Expr SYM_Wrapper(SYM_Expr in){
+  return GetOrAllocateFunc(SYM_Func_WRAPPER,in,SYM_Nil);
 }
 
 SYM_Expr SYM_Var(String name){
   return GetOrAllocateVariable(name);
-}
-
-SYM_Expr SYM_Func(String name,SYM_Expr first,SYM_Expr second){
-  return GetOrAllocateFunc(name,first,second);
 }
 
 SYM_Expr SYM_Lit(int value){
@@ -1145,6 +1157,8 @@ SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<SYM_Expr,SYM_Expr>* replacements){
       case SYM_Type_COMP:
       case SYM_Type_FUNC:
       case SYM_Type_MOD:
+      case SYM_Type_AND:
+      case SYM_Type_OR:
       case SYM_Type_MUL:
       case SYM_Type_DIV:
       case SYM_Type_SUM: {
@@ -1152,7 +1166,7 @@ SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<SYM_Expr,SYM_Expr>* replacements){
         SYM_Expr right = SYM_Replace(node->right,replacements);
 
         switch(GetType(node)){
-        case SYM_Type_FUNC: res = SYM_Func(node->name,left,right); break;
+        case SYM_Type_FUNC: res = GetOrAllocateFunc(node->funcType,left,right); break;
         case SYM_Type_MUL: res = left * right; break;
         case SYM_Type_DIV: res = left / right; break;
         case SYM_Type_SUM: res = left + right; break;
@@ -1226,14 +1240,17 @@ SYM_Expr ParseSYM_Expr(Parser* parser,int bindingPower = -1){
     parser->NextToken();
 
     if(parser->IfNextToken('(')){
+#if 0
       SYM_Expr first = ParseSYM_Expr(parser);
       parser->IfNextToken(',');
       SYM_Expr second = ParseSYM_Expr(parser);
       parser->ExpectNext(')');
 
-      SYM_Expr func = GetOrAllocateFunc(atom.identifier,first,second);
+      SYM_Expr func = SYM_Nil;//GetOrAllocateFunc(atom.identifier,first,second);
 
       res = func;
+#endif
+      res = SYM_Nil;
     } else {
       res = GetOrAllocateVariable(atom.identifier);
     }
@@ -1334,11 +1351,15 @@ SYM_Expr SYM_Parse(String content){
 int TypeToBindingStrength(SYM_Type type){
   FULL_SWITCH(type){
   case SYM_Type_NIL: return 0;
-  case SYM_Type_LITERAL: return 3;
-  case SYM_Type_VARIABLE: return 3;
-  case SYM_Type_SUM: return 4;
-  case SYM_Type_MUL: return 5;
-  case SYM_Type_DIV: return 6;
+  case SYM_Type_LITERAL: return 4;
+  case SYM_Type_VARIABLE: return 4;
+  case SYM_Type_SUM: return 5;
+  case SYM_Type_MUL: return 6;
+  case SYM_Type_DIV: return 7;
+
+  case SYM_Type_AND: return 3;
+  case SYM_Type_OR: return 3;
+
   case SYM_Type_FUNC: return 7;
   case SYM_Type_MOD: return 1;
   case SYM_Type_COMP: return 2;
@@ -1382,6 +1403,8 @@ String SYM_ReprHier(SYM_Expr expr,Arena* out){
     case SYM_Type_VARIABLE: b->PushString("%.*s",UN(node->name)); break;
     case SYM_Type_FUNC:
     case SYM_Type_MUL:
+    case SYM_Type_AND:
+    case SYM_Type_OR:
     case SYM_Type_MOD:
     case SYM_Type_COMP:
     case SYM_Type_DIV:
@@ -1392,6 +1415,8 @@ String SYM_ReprHier(SYM_Expr expr,Arena* out){
       case SYM_Type_NIL: break;
       case SYM_Type_LITERAL: break;
       case SYM_Type_VARIABLE: break;
+      case SYM_Type_AND: b->PushString("&&"); break;
+      case SYM_Type_OR: b->PushString("||"); break;
       case SYM_Type_MUL: b->PushString("*"); break;
       case SYM_Type_DIV: b->PushString("/"); break;
       case SYM_Type_SUM: b->PushString("+"); break;
@@ -1448,13 +1473,14 @@ void SYM_Repr(StringBuilder* b,SYM_Expr expr){
 
     int bindingStrength = TypeToBindingStrength(GetType(node));
     bool bind = (parentBindingStrength > bindingStrength) || negate;
-    //bind = true; // nocheckin: TODO: Right now bind everything to make sure that we do not have precedence problems.
 
     FULL_SWITCH(GetType(node)){
     case SYM_Type_NIL: b->PushString("(NIL)"); break;
     case SYM_Type_LITERAL: b->PushString("%d",LiteralValue(node)); break;
     case SYM_Type_VARIABLE: b->PushString(node->name); break;
     case SYM_Type_MUL:
+    case SYM_Type_AND:
+    case SYM_Type_OR:
     case SYM_Type_MOD:
     case SYM_Type_COMP:
     case SYM_Type_DIV:
@@ -1468,6 +1494,8 @@ void SYM_Repr(StringBuilder* b,SYM_Expr expr){
           op = "-";
         }
       } break;
+      case SYM_Type_AND: op = "&&"; break;
+      case SYM_Type_OR: op = "||"; break;
       case SYM_Type_MUL: op = "*"; break;
       case SYM_Type_DIV: op = "/"; break;
       case SYM_Type_MOD: op = "%"; break;
@@ -1516,12 +1544,23 @@ void SYM_Repr(StringBuilder* b,SYM_Expr expr){
     } break;
 
     case SYM_Type_FUNC:{
+      int argCount = SYM_Func_ArgCount[node->funcType];
+
+      Assert(argCount > 0);
+
       b->PushString(node->name);
       b->PushString("(");
-      Recurse(Recurse,node->first,0);
-      b->PushString(",");
-      Recurse(Recurse,node->second,0);
+      if(argCount == 1){
+        Recurse(Recurse,node->first,0);
+      } else if(argCount == 2){
+        Recurse(Recurse,node->first,0);
+        b->PushString(",");
+        Recurse(Recurse,node->second,0);
+      } else {
+        NOT_IMPLEMENTED();
+      }
       b->PushString(")");
+
     } break;
   }
   };
@@ -1629,6 +1668,8 @@ SYM_MultPartition GetMultPartition(SYM_Expr expr,Arena* out){
     case SYM_Type_LITERAL: res.literal = DoMul(res.literal,top); break;
     case SYM_Type_SUM:
     case SYM_Type_DIV:
+    case SYM_Type_AND:
+    case SYM_Type_OR:
     case SYM_Type_MOD:
     case SYM_Type_COMP:
     case SYM_Type_FUNC: 
@@ -1707,12 +1748,11 @@ SYM_Partition SplitExpressionBasedOn(SYM_Expr expression,SYM_Expr base){
       exists = true;
     }
   } break;
-  case SYM_Type_DIV:{
-  } break;
-  case SYM_Type_COMP:{
-  } break;
-  case SYM_Type_MOD:{
-  } break;
+  case SYM_Type_AND:
+  case SYM_Type_OR:
+  case SYM_Type_DIV:
+  case SYM_Type_COMP:
+  case SYM_Type_MOD:
   case SYM_Type_FUNC:{
   } break;
   }
@@ -1890,7 +1930,7 @@ SYM_Expr NormalizeLiterals(SYM_Expr in){
     }
   } break;
   case SYM_Type_FUNC:{
-    // Max is already normalized
+    res = GetOrAllocateFunc(node->funcType,NormalizeLiterals(node->top),NormalizeLiterals(node->bottom));
   } break;
 }
 
@@ -1943,6 +1983,12 @@ SYM_Expr OrderTerms(SYM_Expr in){
 
     res = ptr;
   } break;
+  case SYM_Type_AND:{
+    res = DoAnd(OrderTerms(node->top),OrderTerms(node->bottom));
+  } break;
+  case SYM_Type_OR:{
+    res = DoOr(OrderTerms(node->top),OrderTerms(node->bottom));
+  } break;
   case SYM_Type_DIV:{
     res = DoDiv(OrderTerms(node->top),OrderTerms(node->bottom));
   } break;
@@ -1950,7 +1996,7 @@ SYM_Expr OrderTerms(SYM_Expr in){
     res = DoMod(OrderTerms(node->top),OrderTerms(node->bottom));
   } break;
   case SYM_Type_FUNC:{
-    res = SYM_Func(node->name,OrderTerms(node->top),OrderTerms(node->bottom));
+    res = GetOrAllocateFunc(node->funcType,OrderTerms(node->top),OrderTerms(node->bottom));
   } break;
   case SYM_Type_COMP:{
     res = GetOrAllocateComp(node->compType,OrderTerms(node->first),OrderTerms(node->second));
@@ -2011,9 +2057,17 @@ SYM_Expr SYM_Derivate(SYM_Expr expr,String var){
       NOT_IMPLEMENTED();
     } break;
     case SYM_Type_FUNC:{
+      // TODO: Do we actually implement this?
       res = SYM_0;
       //NOT_IMPLEMENTED();
     } break;
+    case SYM_Type_AND:{
+      NOT_IMPLEMENTED();
+    } break;
+    case SYM_Type_OR:{
+      NOT_IMPLEMENTED();
+    } break;
+    
   }
 
   res = CondNegate(res,negate);
@@ -2093,6 +2147,13 @@ SYM_Expr SYM_Factor(SYM_Expr expr,SYM_Expr commonFactor){
     case SYM_Type_FUNC:{
       res = expr;
     } break;
+    case SYM_Type_AND:{
+      NOT_IMPLEMENTED();
+    } break;
+    case SYM_Type_OR:{
+      NOT_IMPLEMENTED();
+    } break;
+
   }
 
   res = CondNegate(res,negate);
@@ -2183,6 +2244,8 @@ SYM_EvaluateResult SYM_DebugEvaluate(SYM_Expr top,TrieMap<String,SYM_Expr>* valu
         res = fmod(top,bottom);
       }
     } break;
+    case SYM_Type_AND:
+    case SYM_Type_OR:
 
     case SYM_Type_COMP:{
       NOT_IMPLEMENTED();      
@@ -2306,17 +2369,43 @@ SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top){
       }
       isInvalid = top.isInvalid || bottom.isInvalid;
     } break;
+
+    case SYM_Type_AND:{
+      Value top = Recurse(Recurse,node->top);
+      Value bottom = Recurse(Recurse,node->bottom);
+
+      res = (top.val && bottom.val);
+
+      isInvalid = top.isInvalid || bottom.isInvalid;
+    } break;
+
+    case SYM_Type_OR:{
+      Value top = Recurse(Recurse,node->top);
+      Value bottom = Recurse(Recurse,node->bottom);
+
+      res = (top.val || bottom.val);
+
+      isInvalid = top.isInvalid || bottom.isInvalid;
+    } break;
+
     case SYM_Type_FUNC:{
       res = 0;
-      
-      if(node->name == "PosMax"){
+
+      SWITCH(node->funcType){
+      case SYM_Func_POSMAX:{
         Value first = Recurse(Recurse,node->first);
         Value second = Recurse(Recurse,node->second);
 
         res = MAX(first.val,second.val);
         isInvalid = first.isInvalid || second.isInvalid;
-      } else {
-        NOT_IMPLEMENTED();
+      } break;
+      case SYM_Func_WRAPPER:{
+        Value val = Recurse(Recurse,node->first);
+
+        res = val.val;
+        isInvalid = val.isInvalid;
+      } break;
+      default: NOT_IMPLEMENTED();
       }
     } break;
     case SYM_Type_COMP:{
@@ -2398,6 +2487,8 @@ Array<String> SYM_GetAllVariables(SYM_Expr top,Arena* out){
     case SYM_Type_FUNC: // fallthrough
     case SYM_Type_COMP:  // fallthrough
     case SYM_Type_MOD:  // fallthrough
+    case SYM_Type_AND:  // fallthrough
+    case SYM_Type_OR:  // fallthrough
     case SYM_Type_DIV: {
       Recurse(Recurse,node->left);
       Recurse(Recurse,node->right);

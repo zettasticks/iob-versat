@@ -680,7 +680,7 @@ struct Value{
   };
 };
 
-// nocheckin: TODO: Reorganize
+// TODO: Reorganize
 bool Contains(String str,String toCheck);
 int ParseInt(String str);
 

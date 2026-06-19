@@ -11,7 +11,7 @@ struct SymbolicExpression;
 struct VExpr{
   const char* op;
   
-  // nocheckin: TODO: Should be a Token instead of just a string
+  // TODO: Should be a Token instead of just a string
   String id;
   Array<VExpr*> expressions;
   Value val;

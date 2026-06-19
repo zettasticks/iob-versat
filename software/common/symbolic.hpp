@@ -7,7 +7,7 @@ struct Arena;
 void SYM_Init();
 
 enum SYM_Type{
-  SYM_Type_NIL,
+  SYM_Type_NIL = 0,
 
   // Order is important, it encodes the order of the way terms should be displayed (literals first then variables and so on)
   SYM_Type_LITERAL,
@@ -16,9 +16,24 @@ enum SYM_Type{
   SYM_Type_MUL,
   SYM_Type_DIV,
   SYM_Type_MOD,
+  SYM_Type_AND,
+  SYM_Type_OR,
   SYM_Type_COMP,
   SYM_Type_FUNC // We only care about 2 args functions so no need to support more than that.
 };
+
+enum SYM_Func{
+  SYM_Func_NIL = 0,
+  SYM_Func_MAX,
+  SYM_Func_POSMAX,
+  SYM_Func_ALIGN,
+  SYM_Func_FLOOR_DIV,
+  SYM_Func_WRAPPER,
+  SYM_Func_COUNT
+};
+
+extern String SYM_Func_To_Name[];
+extern int SYM_Func_ArgCount[];
 
 // Negative inverts.
 enum SYM_CompType{
@@ -38,24 +53,20 @@ struct SYM_Expr{
 struct SYM_Node{
   SYM_Type type;
   SYM_CompType compType;
+  SYM_Func funcType;
 
   String name;
+  int literal;
 
   union{
-    int literal;
-
-    struct {
-      union{
-        SYM_Expr top;
-        SYM_Expr left;
-        SYM_Expr first;
-      };
-      union {
-        SYM_Expr bottom;
-        SYM_Expr right;
-        SYM_Expr second;
-      };
-    };
+    SYM_Expr top;
+    SYM_Expr left;
+    SYM_Expr first;
+  };
+  union {
+    SYM_Expr bottom;
+    SYM_Expr right;
+    SYM_Expr second;
   };
   
   SYM_Node* hashNext;
@@ -138,6 +149,9 @@ SYM_Expr operator*(SYM_Expr left,SYM_Expr right);
 SYM_Expr operator/(SYM_Expr left,SYM_Expr right);
 SYM_Expr operator%(SYM_Expr left,SYM_Expr right);
 
+SYM_Expr operator&&(SYM_Expr left,SYM_Expr right);
+SYM_Expr operator||(SYM_Expr left,SYM_Expr right);
+
 SYM_Expr operator>(SYM_Expr left,SYM_Expr right);
 SYM_Expr operator>=(SYM_Expr left,SYM_Expr right);
 SYM_Expr operator<(SYM_Expr left,SYM_Expr right);
@@ -149,6 +163,7 @@ SYM_Expr SYM_Max(SYM_Expr left,SYM_Expr right);
 SYM_Expr SYM_PosMax(SYM_Expr left,SYM_Expr right); // Assumes final value is positive always.
 SYM_Expr SYM_Align(SYM_Expr left,SYM_Expr right);
 SYM_Expr SYM_FloorDiv(SYM_Expr top,SYM_Expr bottom);
+SYM_Expr SYM_Wrapper(SYM_Expr in);
 
 SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<String,SYM_Expr>* replacements);
 SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<SYM_Expr,SYM_Expr>* replacements);
@@ -185,7 +200,7 @@ SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr in);
 // Implementation helpers
 
 SYM_Expr GetOrAllocateOp(SYM_Type type,SYM_Expr topIn,SYM_Expr bottomIn);
-SYM_Expr GetOrAllocateFunc(String name,SYM_Expr first,SYM_Expr second);
+SYM_Expr GetOrAllocateFunc(SYM_Func funcType,SYM_Expr first,SYM_Expr second);
 SYM_Expr GetOrAllocateVariable(String name);
 SYM_Expr GetOrAllocateLiteral(int input);
 
@@ -236,9 +251,9 @@ LoopLinearSum* PushLoopLinearSumSimpleVar(String loopVarName,SYM_Expr term,SYM_E
 LoopLinearSum* Copy(LoopLinearSum* in,Arena* out);
 LoopLinearSum* AddLoopLinearSum(LoopLinearSum* inner,LoopLinearSum* outer,Arena* out);
 LoopLinearSum* RemoveLoop(LoopLinearSum* in,int index,Arena* out);
-SYM_Expr TransformIntoSymbolicExpression(LoopLinearSum* sum,Arena* out);
+SYM_Expr TransformIntoSymbolicExpression(LoopLinearSum* sum);
 
-SYM_Expr GetLoopLinearSumTotalSize(LoopLinearSum* in,Arena* out);
+SYM_Expr GetLoopLinearSumTotalSize(LoopLinearSum* in);
 
 LoopLinearSum* ReplaceVariables(LoopLinearSum* in,TrieMap<String,SYM_Expr>* varReplace,Arena* out);
 
