@@ -152,7 +152,7 @@ SYM_Expr SymbolicExpressionFromVerilog(ExpressionRange range){
   SYM_Expr top = SymbolicExpressionFromVerilog(range.top);
   SYM_Expr bottom = SymbolicExpressionFromVerilog(range.bottom);
 
-  SYM_Expr res = top - bottom + SYM_One;
+  SYM_Expr res = top - bottom + SYM_1;
 
   return res;
 }

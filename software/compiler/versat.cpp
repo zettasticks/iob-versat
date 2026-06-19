@@ -123,12 +123,12 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
 
   if(info->memoryMapped) {
     if(info->memoryMappedBits.high == nullptr || info->memoryMappedBits.low == nullptr){
-      decl.info.memMapBitsSym = SYM_Zero;
+      decl.info.memMapBitsSym = SYM_0;
     } else {
       SYM_Expr high = SymbolicExpressionFromVerilog(info->memoryMappedBits.high);
       SYM_Expr low = SymbolicExpressionFromVerilog(info->memoryMappedBits.low);
 
-      decl.info.memMapBitsSym = SYM_Normalize(high - low + SYM_One);
+      decl.info.memMapBitsSym = SYM_Normalize(high - low + SYM_1);
     }
   }
 
@@ -741,7 +741,7 @@ Array<WireInformation> CalculateWireInformation(Pool<FUInstance> nodes,Hashmap<S
   
   auto list = PushList<WireInformation>(temp);
 
-  SYM_Expr expr = SYM_Zero;
+  SYM_Expr expr = SYM_0;
   
   int addr = addrOffset;
   for(auto n : nodes){

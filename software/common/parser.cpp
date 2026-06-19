@@ -309,8 +309,8 @@ bool Parser::IfNextToken(char singleChar){
   return IfNextToken(TOK_TYPE(singleChar));
 }
 
-bool Parser::IfPeekToken(TokenType type){
-  Token tok = PeekToken();
+bool Parser::IfPeekToken(TokenType type,int lookahead){
+  Token tok = PeekToken(lookahead);
   if(tok.type == type){
     return true;
   }
@@ -318,10 +318,10 @@ bool Parser::IfPeekToken(TokenType type){
   return false;
 }
 
-bool Parser::IfPeekToken(char singleChar){
+bool Parser::IfPeekToken(char singleChar,int lookahead){
   Assert(IsCharSingleToken(singleChar));
 
-  return IfPeekToken(TOK_TYPE(singleChar));
+  return IfPeekToken(TOK_TYPE(singleChar),lookahead);
 }
 
 Token Parser::ExpectNext(TokenType type){
@@ -756,8 +756,7 @@ TokenizeResult ParseCString(const char* start,const char* end){
   };
 
   // TODO: Not doing anything with this but we could report as error if we define a token type for unterminated escape sequences (like we do with unterminated comments).
-  bool unterminatedEscapeSequence = false;
-  bool foundString = false;
+  IGNORE_UNUSED bool unterminatedEscapeSequence = false;
 
   for(; ptr < end; ){
     const char* loopStart = ptr;
@@ -811,7 +810,6 @@ TokenizeResult ParseCString(const char* start,const char* end){
 
     if(*ptr == '\"'){
       ptr += 1;
-      foundString = true;
       break;
     }
 

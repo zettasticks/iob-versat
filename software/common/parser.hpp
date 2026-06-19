@@ -226,8 +226,8 @@ struct Parser{
   bool IfNextToken(TokenType type);
   bool IfNextToken(char singleChar);
 
-  bool IfPeekToken(TokenType type);
-  bool IfPeekToken(char singleChar);
+  bool IfPeekToken(TokenType type,int lookahead = 0);
+  bool IfPeekToken(char singleChar,int lookahead = 0);
   
   Token ExpectNext(TokenType type);
   Token ExpectNext(char singleChar);

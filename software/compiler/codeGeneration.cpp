@@ -735,7 +735,7 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
       }
     }
 
-    SYM_Expr configDataExpr = SYM_Zero;
+    SYM_Expr configDataExpr = SYM_0;
     for(Wire w : unit->configs){
       String repr = SYM_Repr(configDataExpr,temp);
       String size = SYM_Repr(w.sizeExpr,temp);
@@ -765,7 +765,7 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
     }
     
     // State
-    SYM_Expr stateIndex = SYM_Zero;
+    SYM_Expr stateIndex = SYM_0;
     for(Wire w : unit->states){
       String repr = SYM_Repr(stateIndex,temp);
       String size = SYM_Repr(w.sizeExpr,temp);
@@ -953,22 +953,22 @@ VerilogModuleInterface* GenerateModuleInterface(FUDeclaration* decl,Arena* out){
 
   m->StartGroup("Control");
   if(decl->singleInterfaces & SingleInterfaces_SIGNAL_LOOP){
-    m->AddPort("signal_loop",SYM_One,WireDir_INPUT);
+    m->AddPort("signal_loop",SYM_1,WireDir_INPUT);
   }
   if(decl->singleInterfaces & SingleInterfaces_RUNNING){
-    m->AddPort("running",SYM_One,WireDir_INPUT);
+    m->AddPort("running",SYM_1,WireDir_INPUT);
   }
   if(decl->singleInterfaces & SingleInterfaces_RUN){
-    m->AddPort("run",SYM_One,WireDir_INPUT);
+    m->AddPort("run",SYM_1,WireDir_INPUT);
   }
   if(decl->singleInterfaces & SingleInterfaces_DONE){
-    m->AddPort("done",SYM_One,WireDir_OUTPUT);
+    m->AddPort("done",SYM_1,WireDir_OUTPUT);
   }
   if(decl->singleInterfaces & SingleInterfaces_CLK){
-    m->AddPort("clk",SYM_One,WireDir_INPUT,SpecialPortProperties_IsClock);
+    m->AddPort("clk",SYM_1,WireDir_INPUT,SpecialPortProperties_IsClock);
   }
   if(decl->singleInterfaces & SingleInterfaces_RESET){
-    m->AddPort("rst",SYM_One,WireDir_INPUT,SpecialPortProperties_IsReset);
+    m->AddPort("rst",SYM_1,WireDir_INPUT,SpecialPortProperties_IsReset);
   }
   m->EndGroup();
 
@@ -1005,7 +1005,7 @@ VerilogModuleInterface* GenerateModuleInterface(FUDeclaration* decl,Arena* out){
 
   if(!SYM_IsNil(decl->info.memMapBitsSym)){
     m->StartGroup("MemoryMapped");
-    m->AddPort("valid",SYM_One,WireDir_INPUT);
+    m->AddPort("valid",SYM_1,WireDir_INPUT);
 
     // nocheckin: TODO: PROPER ERROR REPORT
     SYM_EvaluateResult eval = SYM_ConstantEvaluate(decl->info.memMapBitsSym);
@@ -1020,7 +1020,7 @@ VerilogModuleInterface* GenerateModuleInterface(FUDeclaration* decl,Arena* out){
     }
     m->AddPort("wstrb",SYM_DataStrobeW,WireDir_INPUT);
     m->AddPort("wdata",SYM_DataW,WireDir_INPUT);
-    m->AddPort("rvalid",SYM_One,WireDir_OUTPUT);
+    m->AddPort("rvalid",SYM_1,WireDir_OUTPUT);
     m->AddPort("rdata",SYM_DataW,WireDir_OUTPUT);
     m->EndGroup();
   }
@@ -1033,19 +1033,19 @@ VerilogModuleInterface* GenerateModuleInterface(FUDeclaration* decl,Arena* out){
       m->AddPortIndexed("ext_dp_addr_%d_port_0",i,ext.dp[0].bitSize,WireDir_OUTPUT);
       m->AddPortIndexed("ext_dp_out_%d_port_0",i,ext.dp[0].dataSizeOut,WireDir_OUTPUT);
       m->AddPortIndexed("ext_dp_in_%d_port_0",i,ext.dp[0].dataSizeIn,WireDir_INPUT);
-      m->AddPortIndexed("ext_dp_enable_%d_port_0",i,SYM_One,WireDir_OUTPUT);
-      m->AddPortIndexed("ext_dp_write_%d_port_0",i,SYM_One,WireDir_OUTPUT);
+      m->AddPortIndexed("ext_dp_enable_%d_port_0",i,SYM_1,WireDir_OUTPUT);
+      m->AddPortIndexed("ext_dp_write_%d_port_0",i,SYM_1,WireDir_OUTPUT);
       m->AddPortIndexed("ext_dp_addr_%d_port_1",i,ext.dp[1].bitSize,WireDir_OUTPUT);
       m->AddPortIndexed("ext_dp_out_%d_port_1",i,ext.dp[1].dataSizeOut,WireDir_OUTPUT);
       m->AddPortIndexed("ext_dp_in_%d_port_1",i,ext.dp[1].dataSizeIn,WireDir_INPUT);
-      m->AddPortIndexed("ext_dp_enable_%d_port_1",i,SYM_One,WireDir_OUTPUT);
-      m->AddPortIndexed("ext_dp_write_%d_port_1",i,SYM_One,WireDir_OUTPUT);
+      m->AddPortIndexed("ext_dp_enable_%d_port_1",i,SYM_1,WireDir_OUTPUT);
+      m->AddPortIndexed("ext_dp_write_%d_port_1",i,SYM_1,WireDir_OUTPUT);
     } break;
     case ExternalMemoryType_2P: {
       m->AddPortIndexed("ext_2p_addr_out_%d",i,ext.tp.bitSizeOut,WireDir_OUTPUT);
       m->AddPortIndexed("ext_2p_addr_in_%d",i,ext.tp.bitSizeIn,WireDir_OUTPUT);
-      m->AddPortIndexed("ext_2p_write_%d",i,SYM_One,WireDir_OUTPUT);
-      m->AddPortIndexed("ext_2p_read_%d",i,SYM_One,WireDir_OUTPUT);
+      m->AddPortIndexed("ext_2p_write_%d",i,SYM_1,WireDir_OUTPUT);
+      m->AddPortIndexed("ext_2p_read_%d",i,SYM_1,WireDir_OUTPUT);
       m->AddPortIndexed("ext_2p_data_in_%d",i,ext.tp.dataSizeIn,WireDir_INPUT);
       m->AddPortIndexed("ext_2p_data_out_%d",i,ext.tp.dataSizeOut,WireDir_OUTPUT);
     } break;
@@ -2408,7 +2408,7 @@ void Output_VersatInstance(AccelInfo info,FUDeclaration* topLevelDecl,Array<Type
   if(globalOptions.insertProfilingRegisters){
     VEmitter* m = StartVCode(temp);
     
-    SYM_Expr doubleDataW = SYM_DataW * SYM_Two;
+    SYM_Expr doubleDataW = SYM_DataW * SYM_2;
 
     m->Reg("profile_runCount",doubleDataW);
     m->Reg("profile_cycles",doubleDataW);
@@ -2878,7 +2878,7 @@ assign data_wstrb = csr_wstrb;
     m->Set("stateRead","32'h0");
     m->If("csr_valid & !we & !memoryMappedAddr");
 
-    SYM_Expr stateBitsSeen = SYM_Zero;
+    SYM_Expr stateBitsSeen = SYM_0;
     int addr = val.versatStates;
     for(int i = 0; i < topLevelDecl->states.size; i++){
       Wire wire  = topLevelDecl->states[i];
@@ -3310,7 +3310,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
             auto b = StartString(temp);
 
             b->PushString("versat_printf(\"%%15s");
-            for(String name : allVars){
+            for(int i = 0; i < allVars.size; i++){
               b->PushString(",");
               b->PushString("%%15s");
             }

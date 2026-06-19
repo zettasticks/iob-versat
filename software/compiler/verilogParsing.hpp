@@ -70,6 +70,9 @@ inline bool operator==(Wire lhs,Wire rhs){
   bool res = (lhs.name == rhs.name);
   return res;
 }
+inline bool Equal(Wire lhs,Wire rhs){
+  return (lhs == rhs);
+}
 
 struct WireExpression{
   String name;
@@ -141,6 +144,9 @@ inline u64 Hash(ExternalMemoryID id){
 inline bool operator==(ExternalMemoryID lhs,ExternalMemoryID rhs){
   bool res = (memcmp(&lhs,&rhs,sizeof(ExternalMemoryID)) == 0);
   return res;
+}
+inline bool Equal(ExternalMemoryID lhs,ExternalMemoryID rhs){
+  return (lhs == rhs);
 }
 
 struct ExternalInfoTwoPorts : public ExternalMemoryTwoPortsExpression{

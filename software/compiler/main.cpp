@@ -621,9 +621,18 @@ int main(int argc,char* argv[]){
     Array<Pair<int,int>> edges = PushArray<Pair<int,int>>(perm,edgeList);
 
     topLevelTypeStr = trueTopName;
+
     
+    
+    int* topLevelId = typeToId->Get(trueTopName);
+    if(!topLevelId){
+      // TODO: We could implement a 'did you mean'.
+      printf("[Error] Module named '%.*s' does not exist\n",UN(trueTopName));
+      return -1;
+    }
+
     // Basically using a simple DAG approach to detect the modules that we only care about. We do not process modules that are not needed
-    Array<int> order = CalculateDAG(edges,*typeToId->Get(trueTopName),temp);
+    Array<int> order = CalculateDAG(edges,*topLevelId,temp);
 
     // Represents all the work that we need to do.
     Hashmap<String,Work>* typeToWork = PushHashmap<String,Work>(temp,order.size);

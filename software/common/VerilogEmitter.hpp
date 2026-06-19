@@ -292,7 +292,7 @@ struct VEmitter{
   void Module(String name);
   void ModuleParam(String name,int value); // A global param of a module
   void ModuleParam(String name,String value);
-  void ModuleParam(String name,SYM_Expr expr = SYM_One);
+  void ModuleParam(String name,SYM_Expr expr = SYM_1);
   void EndModule();
 
   void Task(String name);
@@ -305,30 +305,30 @@ struct VEmitter{
   // TODO: We also want to remove all the const char* and only use String
   void Input(String name,int bitsize);
   void Input(String name,String expr);
-  void Input(String name,SYM_Expr expr = SYM_One);
+  void Input(String name,SYM_Expr expr = SYM_1);
   void InputIndexed(const char* format,int index,int bitsize);
   void InputIndexed(const char* format,int index,String expr);
-  void InputIndexed(const char* format,int index,SYM_Expr expr = SYM_One);
+  void InputIndexed(const char* format,int index,SYM_Expr expr = SYM_1);
 
   void Output(String name,int bitsize);
   void Output(String name,String expr);
-  void Output(String name,SYM_Expr expr = SYM_One);
+  void Output(String name,SYM_Expr expr = SYM_1);
   void OutputIndexed(const char* format,int index,int bitsize);
   void OutputIndexed(const char* format,int index,String expr);
-  void OutputIndexed(const char* format,int index,SYM_Expr expr = SYM_One);
+  void OutputIndexed(const char* format,int index,SYM_Expr expr = SYM_1);
   
   // Module declarations
   void Wire(String name,int bitsize);
   void Wire(String name,String bitsizeExpr);
-  void Wire(String name,SYM_Expr expr = SYM_One);
+  void Wire(String name,SYM_Expr expr = SYM_1);
   void WireArray(String name,int count,int bitsize);
   void WireArray(String name,int count,String bitsizeExpr);
-  void WireArray(String name,int count,SYM_Expr expr = SYM_One);
+  void WireArray(String name,int count,SYM_Expr expr = SYM_1);
   void WireAndAssignJoinBlock(String name,String joinElem,int bitsize = 1);
   void WireAndAssignJoinBlock(String name,String joinElem,String bitsize);
   void Reg(String name,int bitsize);
   void Reg(String name,String expr);
-  void Reg(String name,SYM_Expr expr = SYM_One);
+  void Reg(String name,SYM_Expr expr = SYM_1);
   void Assign(String name,String expr); // Uses the actual "assign" operation. Do not use inside a comb/seq block.
   void Integer(String name);
   void LocalParam(String name,String defaultValue = {});

@@ -20,7 +20,7 @@ AddressAccess* Copy(AddressAccess* in,Arena* out){
 }
 
 SYM_Expr LoopMaximumValue(LoopLinearSumTerm term){
-  SYM_Expr maxVal = term.loopEnd - SYM_One;
+  SYM_Expr maxVal = term.loopEnd - SYM_1;
 
   return maxVal;
 }
@@ -80,15 +80,15 @@ AddressAccess* ConvertAccessTo1External(AddressAccess* access,Arena* out){
   SYM_Expr freeTerm = access->external->freeTerm;
   
   AddressAccess* result = Copy(access,out);
-  result->external->freeTerm = SYM_Zero; // Pretend that the free term does not exist
+  result->external->freeTerm = SYM_0; // Pretend that the free term does not exist
   
   result->internal = Copy(result->external,out);
   result->external = PushLoopLinearSumEmpty(out);
   
   SYM_Expr maxLoopValue = EvaluateMaxLinearSumValue(result->internal);
-  maxLoopValue += SYM_One;
+  maxLoopValue += SYM_1;
 
-  result->external = PushLoopLinearSumSimpleVar("x",SYM_One,SYM_Zero,maxLoopValue,out);
+  result->external = PushLoopLinearSumSimpleVar("x",SYM_1,SYM_0,maxLoopValue,out);
   result->external->freeTerm = freeTerm;
   result->dutyDivExpr = access->dutyDivExpr;
   
@@ -102,7 +102,7 @@ AddressAccess* ConvertAccessTo2External(AddressAccess* access,int biggestLoopInd
   
   // We pretent that the free term does not exist and then shift the initial address of the final external expression by the free term.
   SYM_Expr freeTerm = external->freeTerm;
-  external->freeTerm = SYM_Zero;
+  external->freeTerm = SYM_0;
   
   int highestConstantIndex = biggestLoopIndex;
   SYM_Expr highestConstant = access->external->terms[biggestLoopIndex].term;
@@ -113,17 +113,17 @@ AddressAccess* ConvertAccessTo2External(AddressAccess* access,int biggestLoopInd
 
   // We perform a loop "evaluation" here. 
   SYM_Expr val = EvaluateMaxLinearSumValue(&oneSort);
-  SYM_Expr maxLoopValueExpr = val + SYM_One;
+  SYM_Expr maxLoopValueExpr = val + SYM_1;
 
   maxLoopValueExpr = SYM_Align(maxLoopValueExpr,SYM_Var("VERSAT_DIFF_W"));
   
   result->internal = Copy(external,out);
   result->internal->terms[highestConstantIndex].term = maxLoopValueExpr; //PushLiteral(out,maxLoopValue);
   
-  LoopLinearSum* innermostExternal = PushLoopLinearSumSimpleVar("x",SYM_One,SYM_Zero,maxLoopValueExpr,out);
+  LoopLinearSum* innermostExternal = PushLoopLinearSumSimpleVar("x",SYM_1,SYM_0,maxLoopValueExpr,out);
 
   // NOTE: Not sure about the end of this loop. We carry it directly but need to do further tests to make sure that this works fine.
-  LoopLinearSum* outerMostExternal = PushLoopLinearSumSimpleVar("y",highestConstant,SYM_Zero,external->terms[highestConstantIndex].loopEnd,out);
+  LoopLinearSum* outerMostExternal = PushLoopLinearSumSimpleVar("y",highestConstant,SYM_0,external->terms[highestConstantIndex].loopEnd,out);
   
   result->external = AddLoopLinearSum(innermostExternal,outerMostExternal,out);
   result->external->freeTerm = freeTerm;
@@ -153,7 +153,7 @@ SYM_Expr GetLoopSize(LoopLinearSumTerm def,bool removeOne = false){
   SYM_Expr diff = def.loopEnd - def.loopStart;
     
   if(removeOne){
-    diff = diff - SYM_One;
+    diff = diff - SYM_1;
   }
     
   return diff;
@@ -217,8 +217,8 @@ static CompiledAccess CompileAccess(LoopLinearSum* access,SYM_Expr dutyDiv,Arena
       }
 
       newLoops[0].var = "NONE";
-      newLoops[0].term = SYM_One;
-      newLoops[0].loopStart = SYM_Zero;
+      newLoops[0].term = SYM_1;
+      newLoops[0].loopStart = SYM_0;
       newLoops[0].loopEnd = dutyDiv;
       
       loops = newLoops;
@@ -241,7 +241,7 @@ static CompiledAccess CompileAccess(LoopLinearSum* access,SYM_Expr dutyDiv,Arena
       
       SYM_Expr firstEndSym = l0.loopEnd;
 
-      res.shiftWithoutRemovingIncrement = SYM_Zero; // By default
+      res.shiftWithoutRemovingIncrement = SYM_0; // By default
       if(i * 2 + 1 < loops.size){
         LoopLinearSumTerm l1 = loops[i*2 + 1];
 
@@ -254,10 +254,10 @@ static CompiledAccess CompileAccess(LoopLinearSum* access,SYM_Expr dutyDiv,Arena
         // That way we just have to calculate the derivative in relation to the shift, instead of calculating the change from a period term to a iteration term.
         // We need to subtract 1 because the period increment is only applied (period - 1) times.
 
-        res.shiftExpression = -(firstDerived * (firstEndSym - SYM_One)) + derived;
+        res.shiftExpression = -(firstDerived * (firstEndSym - SYM_1)) + derived;
       } else {
-        res.iterationExpression = SYM_Zero;
-        res.shiftExpression = SYM_Zero;
+        res.iterationExpression = SYM_0;
+        res.shiftExpression = SYM_0;
       }
 
       if(i == 0){
@@ -348,11 +348,11 @@ Array<Pair<String,String>> InstantiateRead(AddressAccess* access,int highestExte
   
   SYM_Expr freeTerm = access->external->freeTerm;
     
-  if(freeTerm == SYM_Zero){
+  if(SYM_Equal(freeTerm,SYM_0)){
     freeTerm = access->internal->freeTerm;
   } else {
     // NOTE: I do not think it is possible for both external and internal to have free terms.
-    Assert(access->internal->freeTerm == SYM_Zero);
+    Assert(SYM_Equal(access->internal->freeTerm,SYM_0));
   }
 
   // ======================================
@@ -363,7 +363,7 @@ Array<Pair<String,String>> InstantiateRead(AddressAccess* access,int highestExte
   
   // NOTE: We push the start term to the ext pointer in order to save memory inside the unit. This is being done in a  kinda hacky way, but nothing major.
   String ext_addr = extVarName;
-  if(!SYM_IsNil(freeTerm) && freeTerm != SYM_Zero){
+  if(!SYM_IsNil(freeTerm) && !Equal(freeTerm,SYM_0)){
     String repr = SYM_Repr(freeTerm,temp);
 
     ext_addr = PushString(out,"(((float*) %.*s) + (%.*s))",UN(extVarName),UN(repr));
@@ -372,7 +372,7 @@ Array<Pair<String,String>> InstantiateRead(AddressAccess* access,int highestExte
   // TODO: No need for a list, we already know all the memory that we are gonna need
   ArenaList<Pair<String,String>>* list = PushList<Pair<String,String>>(temp);
 
-  *list->PushElem() = {"extra_delay",SYM_Repr(compiled.dutyDivExpression - SYM_One,out)};
+  *list->PushElem() = {"extra_delay",SYM_Repr(compiled.dutyDivExpression - SYM_1,out)};
   
   *list->PushElem() = {"start","0"};
   *list->PushElem() = {"ext_addr",ext_addr};
@@ -596,7 +596,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
   SYM_Expr symbolicExpr = addr;
 
   // Builds expression for the internal address which is basically just a multiplication of all the loops sizes
-  SYM_Expr loopExpression = SYM_One;
+  SYM_Expr loopExpression = SYM_1;
   for(int i = 0; i <  loops.size; i++){
     AddressGenForDef loop = loops[i];
     // TODO: Handle parsing errors
@@ -605,7 +605,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
 
     // NOTE: We transform loops so that they always start at zero:
     //       - for x a..b {x} <===> for x 0..b-a {(x+a)} 
-    if(start != SYM_Zero){
+    if(!Equal(start,SYM_0)){
       loopEnd[i] = loopEnd[i] - start;
 
       SYM_Expr loopVar = SYM_Var(loop.loopVariable.identifier);
@@ -635,7 +635,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
 
     AddressGenForDef loop = loops[i];
     
-    LoopLinearSum* sum = PushLoopLinearSumSimpleVar(loop.loopVariable.identifier,term,SYM_Zero,loopEnd[i],temp);
+    LoopLinearSum* sum = PushLoopLinearSumSimpleVar(loop.loopVariable.identifier,term,SYM_0,loopEnd[i],temp);
     expr = AddLoopLinearSum(sum,expr,temp);
   }
   
@@ -643,7 +643,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
   SYM_Expr toCalcConst = fullExpr;
 
   for(String str : loopVars){
-    toCalcConst = SYM_Replace(toCalcConst,SYM_Var(str),SYM_Zero);
+    toCalcConst = SYM_Replace(toCalcConst,SYM_Var(str),SYM_0);
   }
   toCalcConst = toCalcConst;
 
@@ -666,7 +666,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
       
   AddressAccess* result = PushStruct<AddressAccess>(out);
   result->inputVariableNames = asString;
-  result->internal = PushLoopLinearSumSimpleVar("x",SYM_One,SYM_Zero,finalExpression,out);
+  result->internal = PushLoopLinearSumSimpleVar("x",SYM_1,SYM_0,finalExpression,out);
   result->external = AddLoopLinearSum(expr,freeTerm,out);
   result->dutyDivExpr = dutyDiv;
   result->loopVars = loopVars;

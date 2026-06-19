@@ -721,9 +721,9 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
   }
 
   SYM_Expr defaultDelaySize = SYM_Var("DELAY_W");
-  SYM_Expr configExpr = SYM_Zero;
-  SYM_Expr stateExpr = SYM_Zero;
-  SYM_Expr delayBits = SYM_Zero;
+  SYM_Expr configExpr = SYM_0;
+  SYM_Expr stateExpr = SYM_0;
+  SYM_Expr delayBits = SYM_0;
   int externalMemoryInterfaces = 0; 
 
   for(AccelInfoIterator iter = StartIteration(info); iter.IsValid(); iter = iter.Next()){

@@ -982,14 +982,14 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
         return;
       }
 
-      SYM_Expr maximum = SYM_Zero;
+      SYM_Expr maximum = SYM_0;
       bool allNil = true;
       for(AccelInfoIterator it = iter.StepInsideOnly(); it.IsValid(); it = it.Next()){
         InstanceInfo* unit = it.CurrentUnit();
         
         SYM_Expr unitExpr = unit->memMapSym;
         if(SYM_IsNil(unitExpr)){
-          unitExpr = SYM_Zero;
+          unitExpr = SYM_0;
         } else {
           allNil = false;
         }
@@ -1191,14 +1191,14 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
 
   TrieSet<int>* configsSeen = PushTrieSet<int>(temp);
 
-  SYM_Expr maximum = SYM_Zero;
+  SYM_Expr maximum = SYM_0;
   bool allNil = true;
   for(AccelInfoIterator it = StartIteration(info); it.IsValid(); it = it.Next()){
     InstanceInfo* unit = it.CurrentUnit();
 
     SYM_Expr unitExpr = unit->memMapSym;
     if(SYM_IsNil(unitExpr)){
-      unitExpr = SYM_Zero;
+      unitExpr = SYM_0;
     } else {
       allNil = false;
     }
@@ -1278,7 +1278,7 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
   //       or if it is only needed by the top accelerator.
   //       For now we calculate it to make easier to debug by inspecting the data.
   //       But need to take another look eventually
-  SYM_Expr staticExpr = SYM_Zero;
+  SYM_Expr staticExpr = SYM_0;
   for(FUInstance* ptr : accel->allocated){
     FUInstance* inst = ptr;
     if(inst->isStatic){
@@ -1453,7 +1453,7 @@ Opt<SYM_Expr> GetParameterValue(InstanceInfo* info,String name){
     }
   }
 
-  return SYM_Zero;
+  return SYM_0;
 }
 
 bool IsUnitCombinatorialOperation(InstanceInfo* info){

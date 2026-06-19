@@ -737,7 +737,6 @@ void Repr(CAST* top,StringBuilder* b,bool cppStyle,int level){
     b->PushSpaces(level * 2);
     b->PushString("{\n");
 
-    bool first = true;
     for(SingleLink<CAST*>* iter = top->top.declarations->head; iter; iter = iter->next){
       Repr(iter->elem,b,cppStyle,level + 1);
       b->PushString("\n");

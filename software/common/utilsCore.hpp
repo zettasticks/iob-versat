@@ -135,6 +135,7 @@ ALWAYS_INLINE _Once operator+(_OnceTag,F&& f){
 #define TEMP_once(LINE) TEMP__once( LINE )
 #define once static _Once TEMP_once(__LINE__) = _OnceTag() + [&] // Executes once even if called multiple times
 
+#define IGNORE_UNUSED __attribute__((unused))
 #define WARN_UNUSED __attribute__((warn_unused_result))
 
 void PrintStacktrace();
@@ -244,24 +245,6 @@ if(_){ \
    A = B; \
    B = TEMP; \
    } while(0)
-
-#define HASH(TYPENAME,COND) \
-template<> struct std::hash<TYPENAME>{ \
-  std::size_t operator()(TYPENAME const& x) const noexcept{ \
-    std::size_t hash = (COND); \
-    return hash; \
-  } \
-};
-
-#define EQUALITY(TYPENAME,COND) \
-inline bool operator==(const TYPENAME& lhs,const TYPENAME& rhs){ \
-  bool res = (COND); \
-  return res; \
-} \
-inline bool operator!=(const TYPENAME& lhs,const TYPENAME& rhs){ \
-  bool res = !(COND); \
-  return res; \
-}
 
 typedef uint8_t Byte;
 typedef uint8_t u8;
@@ -385,6 +368,14 @@ Time operator+(const Time& s1,const Time& s2);
 bool operator>(const Time& s1,const Time& s2);
 bool operator==(const Time& s1,const Time& s2);
 
+inline bool Equal(int lhs,int rhs){
+  bool res = (lhs == rhs);
+  return res;
+}
+inline bool Equal(void* lhs,void* rhs){
+  bool res = (lhs == rhs);
+  return res;
+}
 static constexpr Time Seconds(u64 seconds){Time t = {}; t.seconds = seconds; return t;};
 static constexpr Time MilliSeconds(u64 milli){Time t = {}; t.microSeconds = milli * 1000; return t;};
 
@@ -498,6 +489,9 @@ inline bool operator==(String first,String second){
       }
    }
    return true;
+}
+inline bool Equal(String first,String second){
+  return (first == second);
 }
 
 inline bool operator!=(String first,String second){

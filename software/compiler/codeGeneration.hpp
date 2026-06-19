@@ -89,6 +89,9 @@ struct StructElement{
 
 inline u64 Hash(StructInfo* info);
 inline bool operator==(StructInfo& l,StructInfo& r);
+inline bool Equal(StructInfo& l,StructInfo& r){
+  return (l == r);
+}
 
 inline u64 Hash(StructElement x){
   u64 res = Hash(x.name) + 

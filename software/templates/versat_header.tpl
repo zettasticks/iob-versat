@@ -12,6 +12,7 @@
 
 #define VERSAT_MAX(A,B) ((A) > (B) ? (A) : (B))
 #define VERSAT_ARRAY_SIZE(ARR) (sizeof(ARR) / sizeof(ARR[0]))
+#define VERSAT_FLOOR_DIV(A,B) ((A) / (B))
 
 typedef intptr_t iptr;
 

@@ -73,6 +73,7 @@ enum SpecType{
 
 struct SpecExpression{
   Array<SpecExpression*> expressions;
+  Array<Var> varArgs;
 
   SpecOperation op;
   Var var;
@@ -403,6 +404,7 @@ struct Env{
 
   void SetGenVariable(Token name,int value);
 
+  FUInstance* InstantiateReduction(Var var,FUDeclaration* decl);
   PortExpression InstantiateSpecExpression(SpecExpression* root);
 
   SYM_Expr SymbolicFromMathExpression(MathExpression* spec);

@@ -1069,7 +1069,7 @@ Data* TrieMap<Key,Data>::Insert(Key key,Data data){
       (*current)[select] = node;
       inserted += 1;
       return &node->pair.second;
-    } else if((*current)[select]->pair.first == key){
+    } else if(Equal((*current)[select]->pair.first,key)){
       (*current)[select]->pair.second = data;
       return &(*current)[select]->pair.second;
     } else {
@@ -1124,7 +1124,7 @@ Data* TrieMap<Key,Data>::Get(Key key){
     int select = index & 3;
     if((*current)[select] == nullptr){
       return nullptr;
-    } else if((*current)[select]->valid && (*current)[select]->pair.first == key) {
+    } else if((*current)[select]->valid && Equal((*current)[select]->pair.first,key)) {
       return &(*current)[select]->pair.second;
     } else {
       current = &((*current)[select]->childs);

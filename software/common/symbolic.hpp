@@ -15,7 +15,19 @@ enum SYM_Type{
   SYM_Type_SUM,
   SYM_Type_MUL,
   SYM_Type_DIV,
+  SYM_Type_MOD,
+  SYM_Type_COMP,
   SYM_Type_FUNC // We only care about 2 args functions so no need to support more than that.
+};
+
+// Negative inverts.
+enum SYM_CompType{
+  SYM_CompType_NIL = 0,
+  SYM_CompType_EQ,
+  SYM_CompType_GT,
+  SYM_CompType_GE,
+  SYM_CompType_LT,
+  SYM_CompType_LE
 };
 
 struct SYM_Node;
@@ -23,45 +35,9 @@ struct SYM_Expr{
   SYM_Node* node;
 };
 
-extern SYM_Expr SYM_Nil;
-extern SYM_Expr SYM_Zero;
-extern SYM_Expr SYM_One;
-extern SYM_Expr SYM_Two;
-extern SYM_Expr SYM_Eight;
-
-extern SYM_Expr SYM_AddrW;
-extern SYM_Expr SYM_AxiAddrW;
-extern SYM_Expr SYM_AxiDataW;
-extern SYM_Expr SYM_AxiStrobeW;
-extern SYM_Expr SYM_LenW;
-extern SYM_Expr SYM_DelayW;
-extern SYM_Expr SYM_DataW;
-extern SYM_Expr SYM_DataStrobeW;
-
-inline SYM_Node* Negate(SYM_Node* ptr);
-inline bool IsNegative(SYM_Node* ptr);
-
-SYM_Expr Abs(SYM_Expr in);
-
-bool IsLiteral(SYM_Expr in);
-int LiteralValue(SYM_Expr in);
-
-inline bool operator==(SYM_Expr lhs,SYM_Expr rhs){
-  // TODO: Instead of trying to "fix" negative zero, just change the negate function to 
-  //       never negate if the expr points to literal zero. It is just easier.
-  if(IsLiteral(lhs) && IsLiteral(rhs) && LiteralValue(lhs) == LiteralValue(rhs)){
-    return true;
-  }
-
-  return lhs.node == rhs.node;
-}
-
-inline bool operator!=(SYM_Expr lhs,SYM_Expr rhs){return !(lhs == rhs);}
-inline SYM_Expr Negate(SYM_Expr expr){SYM_Expr res = {Negate(expr.node)}; return res;}
-inline bool IsNegative(SYM_Expr expr){return IsNegative(expr.node);}
-
 struct SYM_Node{
   SYM_Type type;
+  SYM_CompType compType;
 
   String name;
 
@@ -85,71 +61,15 @@ struct SYM_Node{
   SYM_Node* hashNext;
 };
 
-inline SYM_Node* Negate(SYM_Node* ptr){return (SYM_Node*) (((iptr) ptr) ^ 0x1);}
-inline bool IsNegative(SYM_Node* ptr){return (((iptr) ptr) & 0x1);}
-inline SYM_Node* GetPointer(SYM_Node* ptr){return (SYM_Node*) (((iptr) ptr) & ~0x1);}
-
-inline SYM_Node* GetPointer(SYM_Expr expr){return GetPointer(expr.node);}
-
-void SYM_Print(SYM_Expr expr);
-
-SYM_Expr operator+(SYM_Expr left,SYM_Expr right);
-SYM_Expr& operator+=(SYM_Expr& left,SYM_Expr right);
-SYM_Expr operator-(SYM_Expr left,SYM_Expr right);
-SYM_Expr operator-(SYM_Expr right);
-SYM_Expr operator*(SYM_Expr left,SYM_Expr right);
-SYM_Expr operator/(SYM_Expr left,SYM_Expr right);
-
-SYM_Expr SYM_PosMax(SYM_Expr left,SYM_Expr right);
-SYM_Expr SYM_Align(SYM_Expr left,SYM_Expr right);
-
-SYM_Expr SYM_Var(String name);
-SYM_Expr SYM_Lit(int value);
-
-SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<String,String>* replacements);
-SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<String,SYM_Expr>* replacements);
-SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<SYM_Expr,SYM_Expr>* replacements);
-SYM_Expr SYM_Replace(SYM_Expr expr,SYM_Expr toReplace,SYM_Expr replacement);
-
-SYM_Expr SYM_Derivate(SYM_Expr expr,String var);
-
-SYM_Expr SYM_Factor(SYM_Expr expr,SYM_Expr commonFactor);
-Array<String> SYM_GetAllVariables(SYM_Expr top,Arena* out);
-
-bool SYM_IsNil(SYM_Expr expr);
-bool SYM_IsZeroValue(SYM_Expr expr);
-bool SYM_IsOneValue(SYM_Expr expr);
-
-SYM_Expr SYM_Normalize(SYM_Expr in);
-
-void SYM_Repr(StringBuilder* b,SYM_Expr expr);
-String SYM_Repr(SYM_Expr expr,Arena* out);
-
-Pair<SYM_Expr,SYM_Expr> SYM_BreakDiv(SYM_Expr in);
-
-bool operator<(SYM_Expr left,SYM_Expr right);
-
 struct SYM_EvaluateResult{
   int result;
 
-  // TODO: Replace with a big flag approach
-  bool divByZero;
-  bool nonConstantValue;
-  bool nilValue;
+  bool divByZero : 1;
+  bool nonConstantValue : 1;
+  bool nilValue : 1;
 
   bool Error(){return (divByZero || nonConstantValue || nilValue);}
 };
-
-SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr in);
-
-int Compare(SYM_Expr left,SYM_Expr right);
-
-SYM_Expr GetOrAllocateOp(SYM_Type type,SYM_Expr topIn,SYM_Expr bottomIn);
-SYM_Expr GetOrAllocateFunc(String name,SYM_Expr first,SYM_Expr second);
-SYM_Expr GetOrAllocateVariable(String name);
-SYM_Expr GetOrAllocateLiteral(int input);
-
-bool operator>(SYM_Expr left,SYM_Expr right);
 
 struct SYM_MultTerms{
   Array<SYM_Expr> terms;
@@ -166,86 +86,125 @@ struct SYM_Partition{
   bool exists;
 };
 
-u64 Hash(SYM_Expr expr);
+// ======================================
+// Couple of useful constants and variables
 
-inline u64 Hash(SYM_MultTerms terms){
-  u64 res = 0;
-  for(int i = 0; i < terms.terms.size; i++){
-    res += Hash(terms.terms[i]);
-  }
+extern SYM_Expr SYM_Nil;
+extern SYM_Expr SYM_0;
+extern SYM_Expr SYM_1;
+extern SYM_Expr SYM_2;
+extern SYM_Expr SYM_8;
 
-  return res;
+extern SYM_Expr SYM_AddrW;
+extern SYM_Expr SYM_AxiAddrW;
+extern SYM_Expr SYM_AxiDataW;
+extern SYM_Expr SYM_AxiStrobeW;
+extern SYM_Expr SYM_LenW;
+extern SYM_Expr SYM_DelayW;
+extern SYM_Expr SYM_DataW;
+extern SYM_Expr SYM_DataStrobeW;
+
+// ======================================
+// Basic expr and node interactions. 
+
+inline SYM_Node* Negate(SYM_Node* ptr);
+inline bool IsNegative(SYM_Node* ptr);
+inline SYM_Node* Negate(SYM_Node* ptr){return (SYM_Node*) (((iptr) ptr) ^ 0x1);}
+inline bool IsNegative(SYM_Node* ptr){return (((iptr) ptr) & 0x1);}
+inline SYM_Node* GetPointer(SYM_Node* ptr){return (SYM_Node*) (((iptr) ptr) & ~0x1);}
+
+inline SYM_Expr Negate(SYM_Expr expr){SYM_Expr res = {Negate(expr.node)}; return res;}
+inline bool IsNegative(SYM_Expr expr){return IsNegative(expr.node);}
+inline SYM_Node* GetPointer(SYM_Expr expr){return GetPointer(expr.node);}
+
+inline bool SYM_Equal(SYM_Expr lhs,SYM_Expr rhs){
+  return lhs.node == rhs.node;
+}
+inline bool Equal(SYM_Expr lhs,SYM_Expr rhs){
+  return SYM_Equal(lhs,rhs);
 }
 
-inline bool operator==(SYM_MultTerms left,SYM_MultTerms right){
-  if(left.terms.size != right.terms.size){
-    return false;
-  }
+// ======================================
+// Public API.
 
-  int size = left.terms.size;
-  for(int i = 0; i < size; i++){
-    if(!(left.terms[i] == right.terms[i])){
-      return false;
-    }
-  }
+SYM_Expr SYM_Var(String name);
+SYM_Expr SYM_Lit(int value);
 
-  return true;
-}
+SYM_Expr operator+(SYM_Expr left,SYM_Expr right);
+SYM_Expr& operator+=(SYM_Expr& left,SYM_Expr right);
+SYM_Expr operator-(SYM_Expr left,SYM_Expr right);
+SYM_Expr operator-(SYM_Expr right);
+SYM_Expr operator*(SYM_Expr left,SYM_Expr right);
+SYM_Expr operator/(SYM_Expr left,SYM_Expr right);
+SYM_Expr operator%(SYM_Expr left,SYM_Expr right);
 
-inline bool operator<(SYM_MultTerms left,SYM_MultTerms right){
-  if(left.terms.size < right.terms.size){
-    return true;
-  }
+SYM_Expr operator>(SYM_Expr left,SYM_Expr right);
+SYM_Expr operator>=(SYM_Expr left,SYM_Expr right);
+SYM_Expr operator<(SYM_Expr left,SYM_Expr right);
+SYM_Expr operator<=(SYM_Expr left,SYM_Expr right);
+SYM_Expr operator==(SYM_Expr left,SYM_Expr right);
+SYM_Expr operator!=(SYM_Expr left,SYM_Expr right);
 
-  if(left.terms.size > right.terms.size){
-    return false;
-  }
+SYM_Expr SYM_Max(SYM_Expr left,SYM_Expr right);
+SYM_Expr SYM_PosMax(SYM_Expr left,SYM_Expr right); // Assumes final value is positive always.
+SYM_Expr SYM_Align(SYM_Expr left,SYM_Expr right);
+SYM_Expr SYM_FloorDiv(SYM_Expr top,SYM_Expr bottom);
 
-  int size = left.terms.size;
-  
-  for(int i = 0; i < size; i++){
-    if(left.terms[i] < right.terms[i]){
-      if(left.terms[i] == right.terms[i]){
-        continue;
-      }
+SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<String,SYM_Expr>* replacements);
+SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<SYM_Expr,SYM_Expr>* replacements);
+SYM_Expr SYM_Replace(SYM_Expr expr,SYM_Expr toReplace,SYM_Expr replacement);
 
-      return false;
-    }
-  }
+SYM_Expr SYM_Derivate(SYM_Expr expr,String var);
+SYM_Expr SYM_Normalize(SYM_Expr in);
 
-  return true;
-}  
+// ======================================
+// Manipulation and info retrieval
 
-static inline int Compare(SYM_MultTerms left,SYM_MultTerms right){
-  if(left.terms.size > right.terms.size){
-    return 1;
-  }
+bool SYM_IsNil(SYM_Expr expr);
+bool SYM_IsZeroValue(SYM_Expr expr);
+bool SYM_IsOneValue(SYM_Expr expr);
 
-  if(left.terms.size < right.terms.size){
-    return -1;
-  }
+Pair<SYM_Expr,SYM_Expr> SYM_BreakDiv(SYM_Expr in);
+SYM_Expr SYM_Factor(SYM_Expr expr,SYM_Expr commonFactor);
+Array<String> SYM_GetAllVariables(SYM_Expr top,Arena* out);
 
-  int size = left.terms.size;
-  
-  for(int i = 0; i < size; i++){
-    int com = Compare(left.terms[i],right.terms[i]);
+// ======================================
+// Repr
 
-    if(com == 0){
-      continue;
-    }
+void SYM_Print(SYM_Expr expr);
+void SYM_Repr(StringBuilder* b,SYM_Expr expr);
+String SYM_ReprHier(SYM_Expr expr,Arena* out);
+String SYM_Repr(SYM_Expr expr,Arena* out);
 
-    return com;
-  }
+// ======================================
+// Evaluation
 
-  return 0;
-}
+SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr in);
 
+// ======================================
+// Implementation helpers
 
-void SYM_Test();
-char* SYM_DebugRepr(SYM_Expr expr);
+SYM_Expr GetOrAllocateOp(SYM_Type type,SYM_Expr topIn,SYM_Expr bottomIn);
+SYM_Expr GetOrAllocateFunc(String name,SYM_Expr first,SYM_Expr second);
+SYM_Expr GetOrAllocateVariable(String name);
+SYM_Expr GetOrAllocateLiteral(int input);
 
 int LiteralValue(SYM_Expr in);
 bool IsLiteral(SYM_Expr in);
+
+SYM_Expr Abs(SYM_Expr in);
+int Compare(SYM_Expr left,SYM_Expr right);
+bool LessThan(SYM_Expr left,SYM_Expr right);
+bool GreaterThan(SYM_Expr left,SYM_Expr right);
+
+u64 Hash(SYM_Expr expr);
+u64 Hash(SYM_MultTerms terms);
+bool Equal(SYM_MultTerms left,SYM_MultTerms right);
+bool operator<(SYM_MultTerms left,SYM_MultTerms right);
+int Compare(SYM_MultTerms left,SYM_MultTerms right);
+
+void SYM_Test();
+char* SYM_DebugRepr(SYM_Expr expr);
 
 // ============================================================================
 // Loop Linear Sum

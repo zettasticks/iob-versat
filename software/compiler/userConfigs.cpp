@@ -456,7 +456,7 @@ for(int a = rangeStart; a < rangeEnd; a++){
         bool isLhsWireAccess = false;
         bool isLhsWireVirtual = false;
         bool isLhsFunctionCall = false;
-        bool lhsError = false;
+        IGNORE_UNUSED bool lhsError = false;
 
         Entity lhsBase = Entity_Nil;
         Entity lhsSub = Entity_Nil;
@@ -535,7 +535,6 @@ for(int a = rangeStart; a < rangeEnd; a++){
               isLhsWireAccess = true;
 
               Token accessName = ptr->name;
-              String access = accessName.identifier;
 
               if(lhsBase.type != EntityType_FU){
                 env->ReportError(accessName,"Trying to access entity that does not support member access");
@@ -588,8 +587,7 @@ for(int a = rangeStart; a < rangeEnd; a++){
         
         Entity rhsEntity = Entity_Nil;
         SYM_Expr rhsExpr = SYM_Nil;
-        bool rhsError = false;
-        MathExpression* rhsFunctionCall = {};
+        IGNORE_UNUSED bool rhsError = false;
 
         // Decompose rhs side =========================================================
         if(!isLhsFunctionCall){
@@ -853,7 +851,7 @@ for(int a = rangeStart; a < rangeEnd; a++){
       // Decompose rhs side =========================================================
       Entity rhsEntity = Entity_Nil;
       Entity rhsSubEntity = Entity_Nil;
-      bool rhsError = false;
+      IGNORE_UNUSED bool rhsError = false;
 
       MathExpression* ptr = stmt->rhs;
       FULL_SWITCH(ptr->type){
@@ -1004,7 +1002,7 @@ for(int a = rangeStart; a < rangeEnd; a++){
       }
 
       if(dir != TransferDirection_NONE){
-        SYM_Expr size = SYM_One;
+        SYM_Expr size = SYM_1;
         if(!singleStatement){
           SYM_Expr start = env->SymbolicFromMathExpression(stmt->def.startSym);
           SYM_Expr end = env->SymbolicFromMathExpression(stmt->def.endSym);
@@ -1082,7 +1080,48 @@ for(int a = rangeStart; a < rangeEnd; a++){
       c->Assignment("V_firstVal","0");
       c->EndIf();
 
-      c->Assignment(comp->outputName,"V_firstVal");
+      SYM_Expr trueStart = args[0];
+      SYM_Expr trueEnd = args[1];
+      SYM_Expr count = args[2];
+      SYM_Expr index = args[3];
+      
+      SYM_Expr trueSize = trueEnd - trueStart;
+      SYM_Expr mod = trueSize % count;
+      SYM_Expr workSize = SYM_FloorDiv(trueSize,count) + (index + SYM_1 <= mod);
+      SYM_Expr firstValNoMod = index * workSize;
+      SYM_Expr firstVal = index * workSize + mod * (mod < (index + SYM_1));
+
+      SYM_Expr final = SYM_Max(firstVal,SYM_0);
+     
+#if 0
+      SYM_Print(firstValNoMod);
+      printf("\n");
+      
+      SYM_Print(args[0]);
+      printf("\n");
+      SYM_Print(args[1]);
+      printf("\n");
+      SYM_Print(args[2]);
+      printf("\n");
+      SYM_Print(args[3]);
+      printf("\n");
+
+      SYM_Print(trueSize);
+      printf("\n");
+      SYM_Print(mod);
+      printf("\n");
+      SYM_Print(workSize);
+      printf("\n");
+      SYM_Print(firstVal);
+      printf("\n");
+      SYM_Print(final);
+      printf("\n");
+      //exit(0);
+#endif
+
+      //c->Assignment(comp->outputName,"V_firstVal");
+      String r = SYM_Repr(final,temp);
+      c->Assignment(comp->outputName,r);
     }
     if(funcName == "RangeHigh"){
       c->VarDeclare("int","V_trueStart",SYM_Repr(args[0],temp));

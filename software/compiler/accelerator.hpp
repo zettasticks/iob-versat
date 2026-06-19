@@ -39,6 +39,9 @@ inline bool operator==(const PortInstance& p1,const PortInstance& p2){
   bool res = (p1.inst == p2.inst && p1.port == p2.port && p1.dir == p2.dir);
   return res;
 }
+inline bool Equal(const PortInstance& p1,const PortInstance& p2){
+  return (p1 == p2);
+}
 
 inline bool operator!=(const PortInstance& p1,const PortInstance& p2){
   bool res = !(p1 == p2);
@@ -182,7 +185,7 @@ struct FUInstance{
 };
 
 extern FUInstance FUInstance_NilInst;
-static FUInstance* FUInstance_Nil = &FUInstance_NilInst;
+static IGNORE_UNUSED FUInstance* FUInstance_Nil = &FUInstance_NilInst;
 
 bool Nil(FUInstance* inst);
 
@@ -219,6 +222,9 @@ inline u64 Hash(StaticId id){
 inline bool operator==(const StaticId& id1,const StaticId& id2){
    bool res = CompareString(id1.name,id2.name) && id1.parent == id2.parent;
    return res;
+}
+inline bool Equal(StaticId& id1,const StaticId& id2){
+  return (id1 == id2);
 }
 
 struct StaticData{
@@ -350,6 +356,9 @@ inline bool operator==(const SubMappingInfo& p1,const SubMappingInfo& p2){
               p1.subPort == p2.subPort &&
               p1.isInput == p2.isInput);
   return res;
+}
+inline bool Equal(const SubMappingInfo& p1,const SubMappingInfo& p2){
+  return (p1 == p2);
 }
 
 typedef TrieMap<SubMappingInfo,PortInstance> SubMap;

@@ -58,7 +58,7 @@ bool NodeConflict(FUInstance* first,FUInstance* second){
       SYM_Expr val1 = param1->GetOrFail(param.name);
       SYM_Expr val2 = param2->GetOrFail(param.name);
 
-      if(val1 != val2){
+      if(!Equal(val1,val2)){
         return true;
       }
     }

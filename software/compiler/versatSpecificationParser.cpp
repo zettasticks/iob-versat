@@ -676,7 +676,6 @@ Array<Entity> Env::GetEntity(ConfigIdentifier* id,Arena* out){
     } break;
     case ConfigIdentifierType_ACCESS:{
       Token accessName = ptr->name;
-      String access = accessName.identifier;
 
       if(current.type != EntityType_FU){
         ReportError(accessName,"Trying to access entity that does not support member access");
@@ -1065,8 +1064,6 @@ void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
   for(Pair<String,MathExpression*> p : decl.parameters){
     String paramName = p.first;
 
-    bool topLevelOverride = false;
-
     int val = 0;
     val = CalculateConstantExpression(p.second);
 
@@ -1288,7 +1285,7 @@ Entity Env::AddComputation(String functionName,Array<SYM_Expr> expressions){
     }
     if(found){
       for(int ii = 0; ii < alreadyExists->args.size; ii++){
-        if(alreadyExists->args[ii] != expressions[ii]){
+        if(!Equal(alreadyExists->args[ii],expressions[ii])){
           found = false;
         }
       }
@@ -1341,7 +1338,7 @@ Array<Entity> Env::GetAllComputations(Arena* out){
 }
 
 void Env::SetGenVariable(Token name,int value){
-  Entity* alreadyExists;
+  Entity* alreadyExists = nullptr;
   for(int i = this->currentScope; i >= 0; i--){
     alreadyExists = this->scopes[i]->variable->Get(name.identifier);
 
@@ -1409,6 +1406,58 @@ FUInstanceIterator StartIteration(Env* env,Entity ent,Arena* out){
   return iter;
 }
 
+FUInstance* Env::InstantiateReduction(Var var,FUDeclaration* type){
+  TEMP_REGION(temp,nullptr);
+  Arena* perm = globalPermanent;
+
+  String typeName = type->name;
+
+  int start = CalculateConstantExpression(var.index[0].start);
+  int end = CalculateConstantExpression(var.index[0].end);
+  int size = end - start;
+
+  int uniqueIndex = GetUniqueIndex(typeName,table);
+  Array<FUInstance*> buffer = PushArray<FUInstance*>(temp,size);
+
+  for(int i = 0; i < size; i++){
+    String name = GetActualArrayName(var.name.identifier,i,globalPermanent);
+    buffer[i] = table->GetOrFail(name);
+  }
+      
+  Array<FUInstance*> buffer2 = PushArray<FUInstance*>(temp,size);
+      
+  // Tree shaped instanciation of units.
+  int amountOfUnits = size;
+  while(amountOfUnits > 1){
+    int newAmountOfUnits = 0;
+        
+    int index = 0;
+    while(index < amountOfUnits){
+      if(index + 2 <= amountOfUnits){
+        FUInstance* first = buffer[index];
+        FUInstance* second = buffer[index + 1];
+
+        String uniqueName = GetUniqueName(typeName,perm,table,uniqueIndex);
+        FUInstance* newUnit = CreateInstance(type,uniqueName);
+            
+        ConnectUnits(first,0,newUnit,0);
+        ConnectUnits(second,0,newUnit,1);
+          
+        buffer2[newAmountOfUnits++] = newUnit;
+        index += 2;
+      } else {
+        buffer2[newAmountOfUnits++] = buffer[index];
+        index += 1;
+      }
+    }
+        
+    amountOfUnits = newAmountOfUnits;
+    buffer = buffer2;
+  }
+      
+  return buffer[0];
+}
+
 PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
   TEMP_REGION(temp,nullptr);
 
@@ -1416,7 +1465,24 @@ PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
   PortExpression res = {};
 
   switch(root->type){
-    // Just to remove warnings. TODO: Change expression so that multiple locations have their own expression struct, instead of reusing the same one.
+    // Just to remove warnings.
+  case SpecType_FUNCTION_CALL:{
+    Token functionToken = root->name;
+    String functionName = functionToken.identifier;
+    Array<Var> args = root->varArgs;
+
+    if(functionName != "Reduce"){
+      ReportError(functionToken,"Unknown function name");
+    }
+
+    Var toReduce = args[0];
+    Token reduceTypeToken = args[1].name;
+    FUDeclaration* reduceType = GetTypeByName(reduceTypeToken.identifier);
+
+    res.inst = InstantiateReduction(toReduce,reduceType);
+    res.extra.port.end  = res.extra.port.start  = &MATH_LITERAL_0;
+    res.extra.delay.end = res.extra.delay.start = &MATH_LITERAL_0;
+  } break;
   case SpecType_LITERAL:{
     int number = root->val;
 
@@ -1511,6 +1577,7 @@ PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
     if(isReduceForm){
       Assert(root->op == SpecOperation_ADD || root->op == SpecOperation_MUL);
 
+#if 0
       Var var = root->var;
       FUDeclaration* type = GetTypeByName(typeName);
       
@@ -1558,6 +1625,10 @@ PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
       }
       
       res.inst = buffer[0];
+#endif
+
+      FUDeclaration* type = GetTypeByName(typeName);
+      res.inst = InstantiateReduction(root->var,type);
       res.extra.port.end  = res.extra.port.start  = &MATH_LITERAL_0;
       res.extra.delay.end = res.extra.delay.start = &MATH_LITERAL_0;
     }
@@ -1691,8 +1762,23 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
         expressions[i] = SymbolicFromMathExpression(args[i]);
       }
 
-      Entity funcEnt = AddComputation(top->name.identifier,expressions);
-      res = SYM_Var(funcEnt.name.identifier);
+      // MARK1
+      if(false && top->name.identifier == "RangeLow"){
+        SYM_Expr trueStart = this->SymbolicFromMathExpression(args[0]);
+        SYM_Expr trueEnd = this->SymbolicFromMathExpression(args[1]);
+        SYM_Expr count = this->SymbolicFromMathExpression(args[2]);
+        SYM_Expr index = this->SymbolicFromMathExpression(args[3]);
+      
+        SYM_Expr trueSize = trueEnd - trueStart;
+        SYM_Expr mod = trueSize % count;
+        SYM_Expr workSize = (trueSize/count) + (index + SYM_1 <= mod);
+        SYM_Expr firstVal = index * workSize + mod * (mod >= (index + SYM_1));
+
+        res = SYM_Max(firstVal,SYM_0);
+      } else {
+        Entity funcEnt = AddComputation(top->name.identifier,expressions);
+        res = SYM_Var(funcEnt.name.identifier);
+      }
     } break;
 
     case MathType_SINGLE_ACCESS:  Assert(false);
@@ -2184,6 +2270,8 @@ MathExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
 }
 
 SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower){
+  TEMP_REGION(temp,out);
+
   SpecExpression* topUnary = nullptr;
   SpecExpression* innerMostUnary = nullptr;
 
@@ -2225,7 +2313,7 @@ SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower){
   Token atom = parser->PeekToken();
 
   if(atom.type == '+' || atom.type == '*'){
-    // Unary addition
+    // Unary addition or reduced form.
     Token peek = parser->PeekToken(0);
     Token peek2 = parser->PeekToken(1);
 
@@ -2262,13 +2350,37 @@ SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower){
     res->type = SpecType_LITERAL;
     res->val = number.number;
   } else if(atom.type == TokenType_IDENTIFIER){
-    TEMP_REGION(temp,out);
+    if(parser->IfPeekToken('(',1)){
+      Token functionName = parser->ExpectNext(TokenType_IDENTIFIER);
+      parser->ExpectNext('(');
+      
+      auto args = PushList<Var>(temp);
+      
+      while(!parser->Done()){
+        Var arg = ParseVar(parser,out);
 
-    Var var = ParseVar(parser,out);
+        *args->PushElem() = arg;
+        
+        if(parser->IfNextToken(',')){
+          continue;
+        }
+        
+        break;
+      }
+
+      parser->ExpectNext(')');
+      
+      res = PushStruct<SpecExpression>(out);
+      res->name = functionName;
+      res->varArgs = PushArray(out,args);
+      res->type = SpecType_FUNCTION_CALL;
+    } else {
+      Var var = ParseVar(parser,out);
     
-    res = PushStruct<SpecExpression>(out);
-    res->var = var;
-    res->type = SpecType_VAR;
+      res = PushStruct<SpecExpression>(out);
+      res->var = var;
+      res->type = SpecType_VAR;
+    }
   } else {
     // TODO: Better error reporting
     parser->ReportUnexpectedToken(atom,{});
@@ -2288,7 +2400,6 @@ SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower){
   };
 
   // TODO: This should be outside the function itself.
-  TEMP_REGION(temp,out);
   auto infos = PushArray<OpInfo>(temp,11);
 
   // TODO: Need to double check binding power
