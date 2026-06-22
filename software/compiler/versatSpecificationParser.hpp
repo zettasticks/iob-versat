@@ -157,6 +157,7 @@ struct InstanceDeclaration{
 
 enum ConnectionType{
   ConnectionType_NONE,
+  ConnectionType_LOOP,
   ConnectionType_EQUALITY,
   ConnectionType_CONNECTION
 };
@@ -164,6 +165,12 @@ enum ConnectionType{
 struct ConnectionDef{
   ConnectionType type;
   VarGroup output;
+
+  // Loops
+  Token loopVar;
+  MathExpression* loopStart;
+  MathExpression* loopEnd;
+  Array<ConnectionDef*> loopExpressions;
 
   // TODO: Union.
   VarGroup input;
@@ -184,7 +191,7 @@ struct ModuleDef : public DefBase{
   Array<ParameterDeclaration> params;
   Array<VarDeclaration> inputs;
   Array<InstanceDeclaration> declarations;
-  Array<ConnectionDef> connections;
+  Array<ConnectionDef*> connections;
   Array<ConfigFunctionDef> configs;
 };
 
@@ -407,6 +414,9 @@ struct Env{
   FUInstance* InstantiateReduction(Var var,FUDeclaration* decl);
   PortExpression InstantiateSpecExpression(SpecExpression* root);
 
+  // TODO: We want to be able to differentiate between a constant expression or not.
+  //       Would be useful if we also returned a boolean indicating that the expression
+  //       was constant or not.
   SYM_Expr SymbolicFromMathExpression(MathExpression* spec);
 };
 

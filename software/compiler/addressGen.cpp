@@ -257,11 +257,43 @@ Array<Pair<String,SYM_Expr>> InstantiateIndividualAssignments(AddressAccess* acc
   int port = options.memPort;
   bool input = (options.dir == Direction_INPUT);
 
-
+  // External access values =====================================================
+  SYM_Expr totalTransferSize = SYM_Nil;
+  SYM_Expr length = SYM_Nil;
+  SYM_Expr amountMinusOne = SYM_Nil;
+  SYM_Expr addrShift = SYM_Nil;
+  
   CompiledAccess compiled = {};
   switch(type){
   case AddressGenType_READ:{
+    // NOTE: Read type logic is mostly internal except the memory access part
+    //       that is calculated differently.
     compiled = CompileAccess(access->internal,access->dutyDivExpr,temp);
+    
+    LoopLinearSum* external = access->external;
+    int size = external->terms.size;
+
+    Assert(size <= 2);
+
+    LoopLinearSumTerm inner = external->terms[0];
+    LoopLinearSumTerm outer = external->terms[external->terms.size - 1];
+
+    SYM_Expr fullExpression = TransformIntoSymbolicExpression(external);
+  
+    length = GetLoopSize(inner);
+    if(size == 1){
+      totalTransferSize = length;
+      amountMinusOne = SYM_0;
+      addrShift = SYM_0;
+    } else {
+      addrShift = SYM_Derivate(fullExpression,outer.var);
+    
+      SYM_Expr outerLoopSize = GetLoopSize(outer);
+      SYM_Expr all = GetLoopSize(inner) * outerLoopSize;
+
+      totalTransferSize = all;
+      amountMinusOne = GetLoopSize(outer,true);
+    }
   } break;
   case AddressGenType_MEM:
   case AddressGenType_GEN:{
@@ -279,41 +311,6 @@ Array<Pair<String,SYM_Expr>> InstantiateIndividualAssignments(AddressAccess* acc
   } else {
     // NOTE: I do not think it is possible for both external and internal to have free terms.
     Assert(SYM_Equal(access->internal->freeTerm,SYM_0));
-  }
-
-  SYM_Expr totalTransferSize = SYM_Nil;
-  SYM_Expr length = SYM_Nil;
-  SYM_Expr amountMinusOne = SYM_Nil;
-  SYM_Expr addrShift = SYM_Nil;
-  
-  // For mem access need to calculate external values ===========================
-  if(type == AddressGenType_READ){
-    LoopLinearSum* external = access->external;
-    
-    int size = external->terms.size;
-
-    Assert(size <= 2);
-
-    LoopLinearSumTerm inner = external->terms[0];
-    LoopLinearSumTerm outer = external->terms[external->terms.size - 1];
-
-    SYM_Expr fullExpression = TransformIntoSymbolicExpression(external);
-  
-    length = GetLoopSize(inner);
-  
-    if(size == 1){
-      totalTransferSize = length;
-      amountMinusOne = SYM_0;
-      addrShift = SYM_0;
-    } else {
-      addrShift = SYM_Derivate(fullExpression,outer.var);
-    
-      SYM_Expr outerLoopSize = GetLoopSize(outer);
-      SYM_Expr all = GetLoopSize(inner) * outerLoopSize;
-
-      totalTransferSize = all;
-      amountMinusOne = GetLoopSize(outer,true);
-    }
   }
   
   ArenaList<Pair<String,SYM_Expr>>* list = PushList<Pair<String,SYM_Expr>>(temp);

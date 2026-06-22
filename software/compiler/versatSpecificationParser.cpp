@@ -204,15 +204,15 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAnd
 
   // Pass to check if out instance is used anywhere
   bool addOutputInstance = false;
-  for(ConnectionDef& decl : def.connections){
-    for(Var v : decl.input.vars){
+  for(ConnectionDef* decl : def.connections){
+    for(Var v : decl->input.vars){
       if(v.name.identifier == "out"){
         addOutputInstance = true;
         break;
       }
     }
 
-    for(Var v : decl.output.vars){
+    for(Var v : decl->output.vars){
       if(v.name.identifier == "out"){
         addOutputInstance = true;
         break;
@@ -269,15 +269,38 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAnd
     }
   }
 
-  for(ConnectionDef& decl : def.connections){
-    Assert(decl.type != ConnectionType_NONE);
-    if(decl.type == ConnectionType_EQUALITY){
-      env->AddEquality(decl);
-    } else if(decl.type == ConnectionType_CONNECTION){
-      env->AddConnection(decl);
-    }
+  auto Recurse = [env](auto Recurse,ConnectionDef* top) -> void{
+    FULL_SWITCH(top->type){
+    case ConnectionType_NONE: Assert(false);
+    case ConnectionType_EQUALITY:{
+      env->AddEquality(*top);
+    } break;
+    case ConnectionType_CONNECTION:{
+      env->AddConnection(*top);
+    } break;
+    case ConnectionType_LOOP:{
+      int start = env->CalculateConstantExpression(top->loopStart);
+      int end = env->CalculateConstantExpression(top->loopEnd);
+      
+      for(int i = start; i < end; i++){
+        env->PushScope(EnvScopeType_FOR_LOOP);
+        env->AddParam(top->loopVar,i);
+
+        for(ConnectionDef* child : top->loopExpressions){
+          Recurse(Recurse,child);
+        }
+
+        env->PopScope();
+      }
+    } break;
   }
-  
+
+  };
+
+  for(ConnectionDef* decl : def.connections){
+    Recurse(Recurse,decl);
+  }
+
   FUDeclaration* res = RegisterSubUnit(circuit,params,SubUnitOptions_BAREBONES);
   
   {
@@ -983,6 +1006,11 @@ int Env::CalculateConstantExpression(MathExpression* top){
   SYM_Expr expr = SymbolicFromMathExpression(top);
   SYM_EvaluateResult eval = SYM_ConstantEvaluate(expr);
 
+  if(eval.Error()){
+    // TODO: Report error
+    ReportError({},"Expected a constant expression. Cannot handle non constant expressions in here");
+  }
+
   return eval.result;
 }
 
@@ -1577,56 +1605,6 @@ PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
     if(isReduceForm){
       Assert(root->op == SpecOperation_ADD || root->op == SpecOperation_MUL);
 
-#if 0
-      Var var = root->var;
-      FUDeclaration* type = GetTypeByName(typeName);
-      
-      int start = CalculateConstantExpression(var.index[0].start);
-      int end = CalculateConstantExpression(var.index[0].end);
-      int size = end - start;
-
-      int uniqueIndex = GetUniqueIndex(typeName,table);
-      Array<FUInstance*> buffer = PushArray<FUInstance*>(temp,size);
-
-      for(int i = 0; i < size; i++){
-        String name = GetActualArrayName(var.name.identifier,i,globalPermanent);
-        buffer[i] = table->GetOrFail(name);
-      }
-      
-      Array<FUInstance*> buffer2 = PushArray<FUInstance*>(temp,size);
-      
-      // Tree shaped instanciation of units.
-      int amountOfUnits = size;
-      while(amountOfUnits > 1){
-        int newAmountOfUnits = 0;
-        
-        int index = 0;
-        while(index < amountOfUnits){
-          if(index + 2 <= amountOfUnits){
-            FUInstance* first = buffer[index];
-            FUInstance* second = buffer[index + 1];
-
-            String uniqueName = GetUniqueName(typeName,perm,table,uniqueIndex);
-            FUInstance* newUnit = CreateInstance(type,uniqueName);
-            
-            ConnectUnits(first,0,newUnit,0);
-            ConnectUnits(second,0,newUnit,1);
-          
-            buffer2[newAmountOfUnits++] = newUnit;
-            index += 2;
-          } else {
-            buffer2[newAmountOfUnits++] = buffer[index];
-            index += 1;
-          }
-        }
-        
-        amountOfUnits = newAmountOfUnits;
-        buffer = buffer2;
-      }
-      
-      res.inst = buffer[0];
-#endif
-
       FUDeclaration* type = GetTypeByName(typeName);
       res.inst = InstantiateReduction(root->var,type);
       res.extra.port.end  = res.extra.port.start  = &MATH_LITERAL_0;
@@ -1762,26 +1740,8 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
         expressions[i] = SymbolicFromMathExpression(args[i]);
       }
 
-      // MARK1
-      if(false && top->name.identifier == "RangeLow"){
-        SYM_Expr trueStart = this->SymbolicFromMathExpression(args[0]);
-        SYM_Expr trueEnd = this->SymbolicFromMathExpression(args[1]);
-        SYM_Expr count = this->SymbolicFromMathExpression(args[2]);
-        SYM_Expr index = this->SymbolicFromMathExpression(args[3]);
-      
-        SYM_Expr trueSize = trueEnd - trueStart;
-        SYM_Expr mod = trueSize % count;
-        SYM_Expr workSize = SYM_FloorDiv(trueSize,count) + (index + SYM_1 <= mod);
-        //SYM_Expr firstValNoMod = index * workSize;
-        SYM_Expr firstVal = index * workSize + mod * (mod < (index + SYM_1));
-
-        res = SYM_Max(firstVal,SYM_0);
-      
-        res = SYM_Wrapper(res);
-      } else {
-        Entity funcEnt = AddComputation(top->name.identifier,expressions);
-        res = SYM_Var(funcEnt.name.identifier);
-      }
+      Entity funcEnt = AddComputation(top->name.identifier,expressions);
+      res = SYM_Var(funcEnt.name.identifier);
     } break;
 
     case MathType_SINGLE_ACCESS:  Assert(false);
@@ -2457,38 +2417,74 @@ SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower){
   return res;
 }
 
-ConnectionDef ParseConnection(Parser* parser,Arena* out){
-  VarGroup outPortion = ParseVarGroup(parser,out);
+ConnectionDef* ParseConnection(Parser* parser,Arena* out){
+  TEMP_REGION(temp,out);
 
+  ConnectionDef* def = PushStruct<ConnectionDef>(out);
+  
   ConnectionType type = ConnectionType_NONE;
-  
-  if(parser->IfNextToken('=')){
-    type = ConnectionType_EQUALITY;
-  } else if(parser->IfNextToken(TokenType_XOR_EQUAL)){
-    // TODO: We parse it but we do not use it. We probably wanna remove the testcase that uses this.
-    type = ConnectionType_EQUALITY;
-  } else if(parser->IfNextToken(TokenType_ARROW)){
-    type = ConnectionType_CONNECTION;
+  if(parser->IfNextToken(TokenType_KEYWORD_FOR)){
+#if 1
+    type = ConnectionType_LOOP;
+#endif
+  }
+
+  if(type == ConnectionType_LOOP){
+    Token loopVariable = parser->ExpectNext(TokenType_IDENTIFIER);
+
+    MathExpression* start = ParseMathExpression(parser,out);
+    parser->ExpectNext(TokenType_DOUBLE_DOT);
+    MathExpression* end = ParseMathExpression(parser,out);
+    
+    parser->ExpectNext('{');
+
+    auto list = PushList<ConnectionDef*>(temp);
+
+    while(!parser->Done()){
+      if(parser->IfPeekToken('}')){
+        break;
+      }
+      
+      *list->PushElem() = ParseConnection(parser,out);
+    }
+
+    parser->ExpectNext('}');
+
+    def->type = type;
+    def->loopVar = loopVariable;
+    def->loopStart = start;
+    def->loopEnd = end;
+    def->loopExpressions = PushArray(out,list);
   } else {
-    parser->ReportUnexpectedToken(parser->NextToken(),{TOK_TYPE('='),TokenType_ARROW});
+    VarGroup outPortion = ParseVarGroup(parser,out);
+
+    if(parser->IfNextToken('=')){
+      type = ConnectionType_EQUALITY;
+    } else if(parser->IfNextToken(TokenType_XOR_EQUAL)){
+      // TODO: We parse it but we do not use it. We probably wanna remove the testcase that uses this.
+      type = ConnectionType_EQUALITY;
+    } else if(parser->IfNextToken(TokenType_ARROW)){
+      type = ConnectionType_CONNECTION;
+    } else {
+      parser->ReportUnexpectedToken(parser->NextToken(),{TOK_TYPE('='),TokenType_ARROW});
+    }
+
+    SpecExpression* expr = nullptr;
+    VarGroup inPortion = {};
+
+    if(type == ConnectionType_EQUALITY){
+      expr = ParseSpecExpression(parser,out);
+    } else if(type == ConnectionType_CONNECTION){
+      inPortion = ParseVarGroup(parser,out);
+    }
+
+    def->type = type;
+    def->expression = expr;
+    def->output = outPortion;
+    def->input = inPortion;
+
+    parser->ExpectNext(';');
   }
-
-  ConnectionDef def = {};
-  SpecExpression* expr = nullptr;
-  VarGroup inPortion = {};
-
-  if(type == ConnectionType_EQUALITY){
-    expr = ParseSpecExpression(parser,out);
-  } else if(type == ConnectionType_CONNECTION){
-    inPortion = ParseVarGroup(parser,out);
-  }
-
-  parser->ExpectNext(';');
-  
-  def.type = type;
-  def.expression = expr;
-  def.output = outPortion;
-  def.input = inPortion;
 
   return def;
 }
@@ -2568,7 +2564,7 @@ ModuleDef ParseModuleDef(Parser* parser,Arena* out){
   }
   Array<InstanceDeclaration> declarations = PushArray(out,decls);
 
-  ArenaList<ConnectionDef>* cons = PushList<ConnectionDef>(temp);
+  ArenaList<ConnectionDef*>* cons = PushList<ConnectionDef*>(temp);
   if(parser->IfNextToken('#')){
     while(!parser->Done()){
       Token peek = parser->PeekToken();
@@ -2582,7 +2578,7 @@ ModuleDef ParseModuleDef(Parser* parser,Arena* out){
         break;
       }
 
-      ConnectionDef con = ParseConnection(parser,out);
+      ConnectionDef* con = ParseConnection(parser,out);
  
       *cons->PushElem() = con;
     }
@@ -3114,20 +3110,6 @@ ConfigFunctionDef* ParseConfigFunction(Parser* parser,Arena* out){
   parser->ExpectNext('{');
 
   ConfigStatement* config = ParseConfigStatements(parser,out);
-  
-#if 0
-  auto stmts = PushList<ConfigStatement*>(temp);
-  while(!parser->Done()){
-    Token peek = parser->PeekToken();
-
-    if(peek.type == '}'){
-      break;
-    }
-        
-    ConfigStatement* config = ParseConfigStatement(parser,out);
-    *stmts->PushElem() = config;
-  }
-#endif
   
   parser->ExpectNext('}');
 

@@ -3259,7 +3259,6 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
     for(MergePartition part : info.infos){
       String mergeName = part.name;
 
-      // MARK1
       // Output simulation functions if they exist
       for(ConfigFunction* func : part.userFunctions){
         if(func->simLoops->type != ConfigSimStatementType_NIL){
