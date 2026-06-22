@@ -251,7 +251,7 @@ Array<Pair<String,int>> ExtractMem(Array<InstanceInfo> info,Arena* out){
   return res;
 }
 
-// nocheck: Remove this, we already have a function that does this.
+// TODO: Remove this, we already have a function that does this.
 String ReprStaticConfig(StaticId id,Wire* wire,Arena* out){
   String identifier = PushString(out,"%.*s_%.*s_%.*s",UN(id.parent->name),UN(id.name),UN(wire->name));
 

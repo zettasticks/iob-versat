@@ -3488,61 +3488,69 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
               AddressGenInst inst = access.inst;
               
               String fullLhs = HIER_GetFullName(assign.lhs,".",temp);
+              
+              bool pushStartToExt = (inst.type == AddressGenType_READ);
 
-              FULL_SWITCH(inst.type){
-              case AddressGenType_GEN: {
-                String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(fullLhs));
-                EmitGenStatements(c,access,lhs);
-              } break;
-              case AddressGenType_MEM: {
-                String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(fullLhs));
-                EmitMemStatements(c,access,lhs);
-              } break;
-              case AddressGenType_READ: {
-                String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(fullLhs));
-                //EmitReadStatements(c,access,lhs,assign.pointerVarName);
+              String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(fullLhs));
 
-                auto Recurse = [lhs,c,temp](auto Recurse,CodeNode* top) -> void{
+              auto Recurse = [lhs,c,pushStartToExt,temp](auto Recurse,CodeNode* top) -> void{
+                SYM_Expr startExpr = SYM_0;
+                if(pushStartToExt){
                   for(CodeNode* ptr = top; ptr; ptr = ptr->next){
-                    String repr = SYM_Repr(ptr->expr,temp);
+                    if(ptr->name == "start"){
+                      startExpr = ptr->expr;
+                    }
+                  }
+                }
+                  
+                for(CodeNode* ptr = top; ptr; ptr = ptr->next){
+                  String repr = SYM_Repr(ptr->expr,temp);
 
-                    FULL_SWITCH(ptr->type){
-                    case CodeNodeType_EMPTY:{
-                      Assert(false);
-                    } break;
-                    case CodeNodeType_IF:{
-                      c->If(repr);
-                      Recurse(Recurse,ptr->child);
-                      c->EndIf();
-                    } break;
-                    case CodeNodeType_ASSIGN:{
-                      String fullName = PushString(temp,"%.*s.%.*s",UN(lhs),UN(ptr->name));
+                  FULL_SWITCH(ptr->type){
+                  case CodeNodeType_EMPTY:{
+                    Assert(false);
+                  } break;
+                  case CodeNodeType_IF:{
+                    c->If(repr);
+                    Recurse(Recurse,ptr->child);
+                    c->EndIf();
+                  } break;
+                  case CodeNodeType_ASSIGN:{
+                    if(pushStartToExt && ptr->name == "start"){
+                      continue;
+                    }
+                      
+                    String fullName = PushString(temp,"%.*s.%.*s",UN(lhs),UN(ptr->name));
 
-                      if(ptr->name == "ext_addr"){
+                    if(pushStartToExt && ptr->name == "ext_addr"){
+                      if(!Equal(startExpr,SYM_0)){
+                        String startExprRepr = SYM_Repr(startExpr,temp);
+                        repr = PushString(temp,"(iptr) (((float*) %.*s) + (%.*s))",UN(repr),UN(startExprRepr));
+                      } else {
                         repr = PushString(temp,"(iptr) (%.*s)",UN(repr));
                       }
-                      if(ptr->name == "length"){
-                        repr = PushString(temp,"(%.*s) * sizeof(float)",UN(repr));
-                      }
-                      if(ptr->name == "addr_shift"){
-                        repr = PushString(temp,"(%.*s) * sizeof(float)",UN(repr));
-                      }
+                    }
+                    if(ptr->name == "length"){
+                      repr = PushString(temp,"(%.*s) * sizeof(float)",UN(repr));
+                    }
+                    if(ptr->name == "addr_shift"){
+                      repr = PushString(temp,"(%.*s) * sizeof(float)",UN(repr));
+                    }
 
-                      c->Assignment(fullName,repr);
-                    } break;
-                  }
-                  }
-                };
+                    c->Assignment(fullName,repr);
+                  } break;
+                }
+                }
+              };
+              
+              InstantiateOptions options = {};
+              options.type = inst.type;
+              options.extVarName = assign.pointerVarName;
+              options.memPort = access.port;
+              options.dir = access.dir;
 
-                // MARK
-                CodeNode* top = EmitReadStatements2(access,assign.pointerVarName,temp);
-                Recurse(Recurse,top);
-
-                //DEBUG_BREAK();
-                
-                //EmitReadStatements2(c,access,lhs,assign.pointerVarName);
-              } break;
-            }
+              CodeNode* top = EmitStatements(access,temp,options);
+              Recurse(Recurse,top);
 
               c->RawLine("}");
 

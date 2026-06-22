@@ -37,20 +37,6 @@ struct AddressAccess{
   Array<String> loopVars;
 };
 
-struct ExternalMemoryAccess{
-  String totalTransferSize;
-  String length;
-  String amountMinusOne;
-  String addrShift;
-};
-
-struct ExternalMemoryAccess2{
-  SYM_Expr totalTransferSize;
-  SYM_Expr length;
-  SYM_Expr amountMinusOne;
-  SYM_Expr addrShift;
-};
-
 struct InternalMemoryAccess{
   SYM_Expr periodExpression;
   SYM_Expr incrementExpression;
@@ -82,7 +68,6 @@ struct AccessAndType{
   Direction dir;
 };
 
-// nocheckin
 enum CodeNodeType{
   CodeNodeType_EMPTY,
   CodeNodeType_IF,
@@ -93,20 +78,22 @@ struct CodeNode{
   CodeNodeType type;
 
   String name;
-
   SYM_Expr expr;
   
   CodeNode* next;
   CodeNode* child;
 };
 
-// ======================================
-// Misc (Probably gonna move these around eventually)
+struct InstantiateOptions{
+  AddressGenType type;
 
-Array<Pair<String,String>> InstantiateRead(AddressAccess* access,int highestExternalLoop,bool doubleLoop,int maxLoops,String extVarName,Arena* out);
+  // External access stuff
+  String extVarName;
 
-// nocheckin
-Array<Pair<String,SYM_Expr>> InstantiateRead2(AddressAccess* access,int highestExternalLoop,bool doubleLoop,int maxLoops,String extVarName,Arena* out);
+  // Mem stuff
+  int memPort;
+  Direction dir;
+};
 
 // ======================================
 // Representation
@@ -121,28 +108,37 @@ void   Print(AddressAccess* access);
 AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenForDef> loops,SYM_Expr addr,String content);
 
 // ======================================
-// Conversion
+// Manipulation
 
-AddressAccess* ConvertAccessTo1External(AddressAccess* access,Arena* out);
-AddressAccess* ConvertAccessTo2External(AddressAccess* access,int biggestLoopIndex,Arena* out);
-
-// ======================================
-// 
-
+AddressAccess* Copy(AddressAccess* in,Arena* out);
 AddressAccess* ReplaceVariables(AddressAccess* in,TrieMap<String,SYM_Expr>* varReplace,Array<String> newInputVariableNames,Arena* out);
 
 // ======================================
-// Code emission
+// Emission
 
-void EmitReadStatements(CEmitter* m,AccessAndType access,String varName,String extVarName);
+CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions options);
 
-CodeNode* EmitReadStatements2(AccessAndType access,String extVarName,Arena* out);
 
-void EmitMemStatements(CEmitter* m,AccessAndType access,String varName);
-void EmitGenStatements(CEmitter* m,AccessAndType access,String varName);
+
+// Helpers ====================================================================
+
+
 
 // ======================================
 // LoopLinearSumTerm handling
 
+SYM_Expr GetLoopSize(LoopLinearSumTerm def,bool removeOne = false);
+String GetLoopSizeRepr(LoopLinearSumTerm def,Arena* out,bool removeOne);
+SYM_Expr GetLoopHighestDecider(LoopLinearSumTerm* term);
+SYM_Expr LoopMaximumValue(LoopLinearSumTerm term);
+SYM_Expr EvaluateMaxLinearSumValue(LoopLinearSum* sum);
 SYM_Expr GetLoopHighestDecider(LoopLinearSumTerm* term);
 
+// ======================================
+// Address gen conversion
+
+AddressAccess* ConvertAccessTo1External(AddressAccess* access,Arena* out);
+AddressAccess* ConvertAccessTo2External(AddressAccess* access,int biggestLoopIndex,Arena* out);
+
+CompiledAccess CompileAccess(LoopLinearSum* access,SYM_Expr dutyDiv,Arena* out);
+Array<Pair<String,SYM_Expr>> InstantiateIndividualAssignments(AddressAccess* access,int maxLoops,InstantiateOptions options,Arena* out);

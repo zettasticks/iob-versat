@@ -19,12 +19,6 @@ AddressAccess* Copy(AddressAccess* in,Arena* out){
   return res;
 }
 
-SYM_Expr LoopMaximumValue(LoopLinearSumTerm term){
-  SYM_Expr maxVal = term.loopEnd - SYM_1;
-
-  return maxVal;
-}
-
 void Repr(StringBuilder* builder,AddressAccess* access){
   TEMP_REGION(temp,builder->arena);
 
@@ -57,6 +51,13 @@ void Print(AddressAccess* access){
     SYM_Print(access->dutyDivExpr);
     printf("\n");
   }
+}
+
+
+SYM_Expr LoopMaximumValue(LoopLinearSumTerm term){
+  SYM_Expr maxVal = term.loopEnd - SYM_1;
+
+  return maxVal;
 }
 
 SYM_Expr EvaluateMaxLinearSumValue(LoopLinearSum* sum){
@@ -115,6 +116,8 @@ AddressAccess* ConvertAccessTo2External(AddressAccess* access,int biggestLoopInd
   SYM_Expr val = EvaluateMaxLinearSumValue(&oneSort);
   SYM_Expr maxLoopValueExpr = val + SYM_1;
 
+  // NOTE: The reason we need to align is because the increase in AXI_DATA_W forces data to be aligned inside the VUnits memories. The single loop does not care because we only need to access values individually, but the double loop cannot function because it assumes that the data is read and stored in a linear matter while in reality the data is stored in multiples of (AXI_DATA_W/DATA_W). 
+
   maxLoopValueExpr = SYM_Align(maxLoopValueExpr,SYM_Var("VERSAT_DIFF_W"));
   
   result->internal = Copy(external,out);
@@ -149,7 +152,7 @@ SYM_Expr GetLoopHighestDecider(LoopLinearSumTerm* term){
   return term->term;
 }
 
-SYM_Expr GetLoopSize(LoopLinearSumTerm def,bool removeOne = false){
+SYM_Expr GetLoopSize(LoopLinearSumTerm def,bool removeOne){
   SYM_Expr diff = def.loopEnd - def.loopStart;
     
   if(removeOne){
@@ -163,71 +166,7 @@ String GetLoopSizeRepr(LoopLinearSumTerm def,Arena* out,bool removeOne = false){
   return SYM_Repr(GetLoopSize(def,removeOne),out);
 };
 
-// nocheckin
-static ExternalMemoryAccess2 CompileExternalMemoryAccess2(LoopLinearSum* access,SYM_Expr dutyExpr,Arena* out){
-  int size = access->terms.size;
-
-  Assert(size <= 2);
-
-  ExternalMemoryAccess2 result = {};
-
-  LoopLinearSumTerm inner = access->terms[0];
-  LoopLinearSumTerm outer = access->terms[access->terms.size - 1];
-
-  SYM_Expr fullExpression = TransformIntoSymbolicExpression(access);
-  
-  result.length = GetLoopSize(inner);
-  
-  if(size == 1){
-    result.totalTransferSize = result.length;
-    result.amountMinusOne = SYM_0;
-    result.addrShift = SYM_0;
-  } else {
-    result.addrShift = SYM_Derivate(fullExpression,outer.var);
-    
-    SYM_Expr outerLoopSize = GetLoopSize(outer);
-    SYM_Expr all = GetLoopSize(inner) * outerLoopSize;
-
-    result.totalTransferSize = all;
-    result.amountMinusOne = GetLoopSize(outer,true);
-  }
-  
-  return result;
-}
-
-static ExternalMemoryAccess CompileExternalMemoryAccess(LoopLinearSum* access,SYM_Expr dutyExpr,Arena* out){
-  int size = access->terms.size;
-
-  Assert(size <= 2);
-
-  ExternalMemoryAccess result = {};
-
-  LoopLinearSumTerm inner = access->terms[0];
-  LoopLinearSumTerm outer = access->terms[access->terms.size - 1];
-
-  SYM_Expr fullExpression = TransformIntoSymbolicExpression(access);
-  
-  result.length = GetLoopSizeRepr(inner,out);
-  
-  if(size == 1){
-    result.totalTransferSize = result.length;
-    result.amountMinusOne = "0";
-    result.addrShift = "0";
-  } else {
-    SYM_Expr derived = SYM_Derivate(fullExpression,outer.var);
-    result.addrShift = SYM_Repr(derived,out);
-    
-    SYM_Expr outerLoopSize = GetLoopSize(outer);
-    SYM_Expr all = GetLoopSize(inner) * outerLoopSize;
-
-    result.totalTransferSize = SYM_Repr(all,out);
-    result.amountMinusOne = GetLoopSizeRepr(outer,out,true);
-  }
-  
-  return result;
-}
-
-static CompiledAccess CompileAccess(LoopLinearSum* access,SYM_Expr dutyDiv,Arena* out){
+CompiledAccess CompileAccess(LoopLinearSum* access,SYM_Expr dutyDiv,Arena* out){
   auto GenerateLoopExpressionPairSymbolic = [dutyDiv](Array<LoopLinearSumTerm> loops,
                                                       SYM_Expr expr,Arena* out) -> CompiledAccess{
     TEMP_REGION(temp,out);
@@ -310,73 +249,31 @@ static CompiledAccess CompileAccess(LoopLinearSum* access,SYM_Expr dutyDiv,Arena
   return res;
 }
 
-static Array<Pair<String,String>> InstantiateGen(AddressAccess* access,int maxLoops,Arena* out){
-  TEMP_REGION(temp,out);
-  Array<InternalMemoryAccess> compiled = CompileAccess(access->external,access->dutyDivExpr,temp).internalAccess;
-  SYM_Expr freeTerm = access->external->freeTerm;
-
-  ArenaList<Pair<String,String>>* list = PushList<Pair<String,String>>(temp);
-  String start = SYM_Repr(freeTerm,out);
-
-  *list->PushElem() = {"start",start};
-
-  {
-    InternalMemoryAccess l = compiled[0]; 
-
-    *list->PushElem() = {"duty",SYM_Repr(l.dutyExpression,out)};
-    *list->PushElem() = {"per",SYM_Repr(l.periodExpression,out)};
-    *list->PushElem() = {"incr",SYM_Repr(l.incrementExpression,out)};
-    *list->PushElem() = {"iter",SYM_Repr(l.iterationExpression,out)};
-    *list->PushElem() = {"shift",SYM_Repr(l.shiftExpression,out)};
-  }
-    
-  // TODO: This is stupid. We can just put some loop logic in here. Do this when tests are stable and quick changes are easy to do.
-  if(compiled.size > 1){
-    InternalMemoryAccess l = compiled[1]; 
-    *list->PushElem() = {"per2",SYM_Repr(l.periodExpression,out)};
-    *list->PushElem() = {"incr2",SYM_Repr(l.incrementExpression,out)};
-    *list->PushElem() = {"iter2",SYM_Repr(l.iterationExpression,out)};
-    *list->PushElem() = {"shift2",SYM_Repr(l.shiftExpression,out)};
-  } else if(maxLoops > 1){
-    *list->PushElem() = {"per2","0"};
-    *list->PushElem() = {"incr2","0"};
-    *list->PushElem() = {"iter2","0"};
-    *list->PushElem() = {"shift2","0"};
-  }
-
-  if(compiled.size > 2){
-    InternalMemoryAccess l = compiled[2]; 
-    *list->PushElem() = {"per3",SYM_Repr(l.periodExpression,out)};
-    *list->PushElem() = {"incr3",SYM_Repr(l.incrementExpression,out)};
-    *list->PushElem() = {"iter3",SYM_Repr(l.iterationExpression,out)};
-    *list->PushElem() = {"shift3",SYM_Repr(l.shiftExpression,out)};
-  } else if(maxLoops > 2){
-    *list->PushElem() = {"per3","0"};
-    *list->PushElem() = {"incr3","0"};
-    *list->PushElem() = {"iter3","0"};
-    *list->PushElem() = {"shift3","0"};
-  }
-  
-  if(compiled.size > maxLoops){
-    // TODO: Proper error reporting requires us to lift the data up.
-    printf("[ERROR] Address gen contains %d loops but unit can only handle a maximum of 3\n",compiled.size);
-    exit(-1);
-  }
-  
-  return PushArray(out,list);
-}
-
-Array<Pair<String,SYM_Expr>> InstantiateRead2(AddressAccess* access,int highestExternalLoop,bool doubleLoop,int maxLoops,String extVarName,Arena* out){
+Array<Pair<String,SYM_Expr>> InstantiateIndividualAssignments(AddressAccess* access,int maxLoops,InstantiateOptions options,Arena* out){
   TEMP_REGION(temp,out);
 
-  // TODO: We probably could just remove this, only called from here.
-  ExternalMemoryAccess2 external = CompileExternalMemoryAccess2(access->external,access->dutyDivExpr,temp);
-  CompiledAccess compiled = CompileAccess(access->internal,access->dutyDivExpr,temp);
+  // Unpack options =============================================================
+  AddressGenType type = options.type;
+  int port = options.memPort;
+  bool input = (options.dir == Direction_INPUT);
+
+
+  CompiledAccess compiled = {};
+  switch(type){
+  case AddressGenType_READ:{
+    compiled = CompileAccess(access->internal,access->dutyDivExpr,temp);
+  } break;
+  case AddressGenType_MEM:
+  case AddressGenType_GEN:{
+    compiled = CompileAccess(access->external,access->dutyDivExpr,temp);
+  } break;
+  }
 
   auto internal = compiled.internalAccess;
+  int loops = internal.size;
   
+  // Calculate free term 
   SYM_Expr freeTerm = access->external->freeTerm;
-    
   if(SYM_Equal(freeTerm,SYM_0)){
     freeTerm = access->internal->freeTerm;
   } else {
@@ -384,277 +281,197 @@ Array<Pair<String,SYM_Expr>> InstantiateRead2(AddressAccess* access,int highestE
     Assert(SYM_Equal(access->internal->freeTerm,SYM_0));
   }
 
-  // ======================================
-  // NOTE: VERY IMPORTANT: If a field is not set, then set it to
-  //       zero. Do not leave it hanging otherwise future
-  //       configuration calls do not change it and the unit gets
-  //       misconfigured.
+  SYM_Expr totalTransferSize = SYM_Nil;
+  SYM_Expr length = SYM_Nil;
+  SYM_Expr amountMinusOne = SYM_Nil;
+  SYM_Expr addrShift = SYM_Nil;
   
-  // NOTE: We push the start term to the ext pointer in order to save memory inside the unit. This is being done in a  kinda hacky way, but nothing major.
-  // TODO: This hack is being removed from here but we can still do it at code generation time.
-#if 0
-  String ext_addr = extVarName;
-  if(!SYM_IsNil(freeTerm) && !Equal(freeTerm,SYM_0)){
-    String repr = SYM_Repr(freeTerm,temp);
+  // For mem access need to calculate external values ===========================
+  if(type == AddressGenType_READ){
+    LoopLinearSum* external = access->external;
+    
+    int size = external->terms.size;
 
-    ext_addr = PushString(out,"(((float*) %.*s) + (%.*s))",UN(extVarName),UN(repr));
-  }
-#endif
+    Assert(size <= 2);
+
+    LoopLinearSumTerm inner = external->terms[0];
+    LoopLinearSumTerm outer = external->terms[external->terms.size - 1];
+
+    SYM_Expr fullExpression = TransformIntoSymbolicExpression(external);
   
-  // TODO: No need for a list, we already know all the memory that we are gonna need
+    length = GetLoopSize(inner);
+  
+    if(size == 1){
+      totalTransferSize = length;
+      amountMinusOne = SYM_0;
+      addrShift = SYM_0;
+    } else {
+      addrShift = SYM_Derivate(fullExpression,outer.var);
+    
+      SYM_Expr outerLoopSize = GetLoopSize(outer);
+      SYM_Expr all = GetLoopSize(inner) * outerLoopSize;
+
+      totalTransferSize = all;
+      amountMinusOne = GetLoopSize(outer,true);
+    }
+  }
+  
   ArenaList<Pair<String,SYM_Expr>>* list = PushList<Pair<String,SYM_Expr>>(temp);
 
-  *list->PushElem() = {"extra_delay",compiled.dutyDivExpression - SYM_1};
-  
-  *list->PushElem() = {"start",SYM_0};
-  *list->PushElem() = {"ext_addr",SYM_Var(extVarName)};
-  *list->PushElem() = {"length",external.length};
+  if(type == AddressGenType_GEN || type == AddressGenType_READ){
+    *list->PushElem() = {"start",freeTerm};
+  }
+  if(type == AddressGenType_MEM){
+    if(port == 0){
+      *list->PushElem() = {"startA",freeTerm};
+    } else {
+      *list->PushElem() = {"startB",freeTerm};
+    }
 
-  // NOTE: The reason we need to align is because the increase in AXI_DATA_W forces data to be aligned inside the VUnits memories. The single loop does not care because we only need to access values individually, but the double loop cannot function because it assumes that the data is read and stored in a linear matter while in reality the data is stored in multiples of (AXI_DATA_W/DATA_W). 
+    if(input){
+      if(port == 0){
+        *list->PushElem() = {"in0_wr",SYM_1};
+      } else {
+        *list->PushElem() = {"in1_wr",SYM_1};
+      }
+    } else {
+      if(port == 0){
+        *list->PushElem() = {"in0_wr",SYM_0};
+      } else {
+        *list->PushElem() = {"in1_wr",SYM_0};
+      }
+    }
+  }
 
-  *list->PushElem() = {"amount_minus_one",external.amountMinusOne};
-  *list->PushElem() = {"addr_shift",external.addrShift};
+  if(type == AddressGenType_READ){
+    *list->PushElem() = {"extra_delay",compiled.dutyDivExpression - SYM_1};
+    *list->PushElem() = {"ext_addr",SYM_Var(options.extVarName)};
+    *list->PushElem() = {"length",length};
 
-  *list->PushElem() = {"enabled",SYM_1};
-  *list->PushElem() = {"pingPong",SYM_1};
+    *list->PushElem() = {"amount_minus_one",amountMinusOne};
+    *list->PushElem() = {"addr_shift",addrShift};
 
-  {
-    InternalMemoryAccess l = internal[0]; 
+    *list->PushElem() = {"enabled",SYM_1};
+    *list->PushElem() = {"pingPong",SYM_1};
+  }
 
-    *list->PushElem() = {"duty",l.dutyExpression};
-    *list->PushElem() = {"per",l.periodExpression};
-    *list->PushElem() = {"incr",l.incrementExpression};
-    *list->PushElem() = {"iter",l.iterationExpression};
-    *list->PushElem() = {"shift",l.shiftExpression};
+  if(type == AddressGenType_GEN || type == AddressGenType_READ){
+    if(loops > 0){
+      InternalMemoryAccess l = internal[0];
+      *list->PushElem() = {"duty",l.dutyExpression};
+      *list->PushElem() = {"per",l.periodExpression};
+      *list->PushElem() = {"incr",l.incrementExpression};
+      *list->PushElem() = {"iter",l.iterationExpression};
+      *list->PushElem() = {"shift",l.shiftExpression};
+    } else {
+      *list->PushElem() = {"duty",SYM_0};
+      *list->PushElem() = {"per",SYM_0};
+      *list->PushElem() = {"incr",SYM_0};
+      *list->PushElem() = {"iter",SYM_0};
+      *list->PushElem() = {"shift",SYM_0};
+    }
+  }
+  if(type == AddressGenType_MEM){
+    if(loops > 0){
+      InternalMemoryAccess l = internal[0];
+      
+      if(port == 0){
+        *list->PushElem() = {"dutyA",l.dutyExpression};
+        *list->PushElem() = {"perA",l.periodExpression};
+        *list->PushElem() = {"incrA",l.incrementExpression};
+        *list->PushElem() = {"iterA",l.iterationExpression};
+        *list->PushElem() = {"shiftA",l.shiftExpression};
+      } else {
+        *list->PushElem() = {"dutyB",l.dutyExpression};
+        *list->PushElem() = {"perB",l.periodExpression};
+        *list->PushElem() = {"incrB",l.incrementExpression};
+        *list->PushElem() = {"iterB",l.iterationExpression};
+        *list->PushElem() = {"shiftB",l.shiftExpression};
+      }    
+    } else {
+      // NOTE: Assume that the an empty loop is the same as a one iteration loop
+      if(port == 0){
+        *list->PushElem() = {"dutyA",SYM_1};
+        *list->PushElem() = {"perA",SYM_1};
+        *list->PushElem() = {"incrA",SYM_1};
+        *list->PushElem() = {"iterA",SYM_0};
+        *list->PushElem() = {"shiftA",SYM_0};
+      } else {
+        *list->PushElem() = {"dutyB",SYM_1};
+        *list->PushElem() = {"perB",SYM_1};
+        *list->PushElem() = {"incrB",SYM_1};
+        *list->PushElem() = {"iterB",SYM_0};
+        *list->PushElem() = {"shiftB",SYM_0};
+      }
+    }
   }
     
-  if(internal.size > 1){
-    InternalMemoryAccess l = internal[1]; 
-    *list->PushElem() = {"per2",l.periodExpression};
-    *list->PushElem() = {"incr2",l.incrementExpression};
-    *list->PushElem() = {"iter2",l.iterationExpression};
-    *list->PushElem() = {"shift2",l.shiftExpression};
-  } else if(maxLoops > 1) {
-    *list->PushElem() = {"per2",SYM_0};
-    *list->PushElem() = {"incr2",SYM_0};
-    *list->PushElem() = {"iter2",SYM_0};
-    *list->PushElem() = {"shift2",SYM_0};
+  if(type == AddressGenType_GEN || type == AddressGenType_READ){
+    if(loops > 1){
+      InternalMemoryAccess l = internal[1]; 
+      *list->PushElem() = {"per2",l.periodExpression};
+      *list->PushElem() = {"incr2",l.incrementExpression};
+      *list->PushElem() = {"iter2",l.iterationExpression};
+      *list->PushElem() = {"shift2",l.shiftExpression};
+    } else if(maxLoops > 1){
+      *list->PushElem() = {"per2",SYM_0};
+      *list->PushElem() = {"incr2",SYM_0};
+      *list->PushElem() = {"iter2",SYM_0};
+      *list->PushElem() = {"shift2",SYM_0};
+    }
+  }
+  if(type == AddressGenType_MEM){
+    if(loops > 1){
+      InternalMemoryAccess l = internal[1]; 
+      if(port == 0){
+        *list->PushElem() = {"per2A",l.periodExpression};
+        *list->PushElem() = {"incr2A",l.incrementExpression};
+        *list->PushElem() = {"iter2A",l.iterationExpression};
+        *list->PushElem() = {"shift2A",l.shiftExpression};
+      } else {
+        *list->PushElem() = {"per2B",l.periodExpression};
+        *list->PushElem() = {"incr2B",l.incrementExpression};
+        *list->PushElem() = {"iter2B",l.iterationExpression};
+        *list->PushElem() = {"shift2B",l.shiftExpression};
+      }
+    } else if(maxLoops > 1){
+      if(port == 0){
+        *list->PushElem() = {"per2A",SYM_0};
+        *list->PushElem() = {"incr2A",SYM_0};
+        *list->PushElem() = {"iter2A",SYM_0};
+        *list->PushElem() = {"shift2A",SYM_0};
+      } else {
+        *list->PushElem() = {"per2B",SYM_0};
+        *list->PushElem() = {"incr2B",SYM_0};
+        *list->PushElem() = {"iter2B",SYM_0};
+        *list->PushElem() = {"shift2B",SYM_0};
+      }
+    }
   }
 
   // TODO: This is stupid. We can just put some loop logic in here. Do this when tests are stable and quick changes are easy to do.
-  if(internal.size > 2){
-    InternalMemoryAccess l = internal[2]; 
-    *list->PushElem() = {"per3",l.periodExpression};
-    *list->PushElem() = {"incr3",l.incrementExpression};
-    *list->PushElem() = {"iter3",l.iterationExpression};
-    *list->PushElem() = {"shift3",l.shiftExpression};
-  } else if(maxLoops > 2){
-    *list->PushElem() = {"per3",SYM_0};
-    *list->PushElem() = {"incr3",SYM_0};
-    *list->PushElem() = {"iter3",SYM_0};
-    *list->PushElem() = {"shift3",SYM_0};
+  if(type == AddressGenType_GEN || type == AddressGenType_READ){
+    if(loops > 2){
+      InternalMemoryAccess l = internal[2]; 
+      
+      *list->PushElem() = {"per3",l.periodExpression};
+      *list->PushElem() = {"incr3",l.incrementExpression};
+      *list->PushElem() = {"iter3",l.iterationExpression};
+      *list->PushElem() = {"shift3",l.shiftExpression};
+    } else if(maxLoops > 2){
+      *list->PushElem() = {"per3",SYM_0};
+      *list->PushElem() = {"incr3",SYM_0};
+      *list->PushElem() = {"iter3",SYM_0};
+      *list->PushElem() = {"shift3",SYM_0};
+    }
   }
 
-  if(internal.size > maxLoops){
+  if(loops > maxLoops){
     // TODO: Proper error reporting requires us to lift the data up.
     printf("[ERROR] Address gen contains more loops than the unit is capable of handling\n");
     exit(-1);
   }
-  
-  return PushArray(out,list);
-}
 
-
-Array<Pair<String,String>> InstantiateRead(AddressAccess* access,int highestExternalLoop,bool doubleLoop,int maxLoops,String extVarName,Arena* out){
-  TEMP_REGION(temp,out);
-
-  ExternalMemoryAccess external = CompileExternalMemoryAccess(access->external,access->dutyDivExpr,temp);
-  CompiledAccess compiled = CompileAccess(access->internal,access->dutyDivExpr,temp);
-
-  auto internal = compiled.internalAccess;
-  
-  SYM_Expr freeTerm = access->external->freeTerm;
-    
-  if(SYM_Equal(freeTerm,SYM_0)){
-    freeTerm = access->internal->freeTerm;
-  } else {
-    // NOTE: I do not think it is possible for both external and internal to have free terms.
-    Assert(SYM_Equal(access->internal->freeTerm,SYM_0));
-  }
-
-  // ======================================
-  // NOTE: VERY IMPORTANT: If a field is not set, then set it to
-  //       zero. Do not leave it hanging otherwise future
-  //       configuration calls do not change it and the unit gets
-  //       misconfigured.
-  
-  // NOTE: We push the start term to the ext pointer in order to save memory inside the unit. This is being done in a  kinda hacky way, but nothing major.
-  String ext_addr = extVarName;
-  if(!SYM_IsNil(freeTerm) && !Equal(freeTerm,SYM_0)){
-    String repr = SYM_Repr(freeTerm,temp);
-
-    ext_addr = PushString(out,"(((float*) %.*s) + (%.*s))",UN(extVarName),UN(repr));
-  }
-  
-  // TODO: No need for a list, we already know all the memory that we are gonna need
-  ArenaList<Pair<String,String>>* list = PushList<Pair<String,String>>(temp);
-
-  *list->PushElem() = {"extra_delay",SYM_Repr(compiled.dutyDivExpression - SYM_1,out)};
-  
-  *list->PushElem() = {"start","0"};
-  *list->PushElem() = {"ext_addr",ext_addr};
-  *list->PushElem() = {"length",PushString(out,"(%.*s) * sizeof(float)",UN(external.length))};
-
-  // NOTE: The reason we need to align is because the increase in AXI_DATA_W forces data to be aligned inside the VUnits memories. The single loop does not care because we only need to access values individually, but the double loop cannot function because it assumes that the data is read and stored in a linear matter while in reality the data is stored in multiples of (AXI_DATA_W/DATA_W). 
-
-  *list->PushElem() = {"amount_minus_one",PushString(out,external.amountMinusOne)};
-  *list->PushElem() = {"addr_shift",PushString(out,"(%.*s) * sizeof(float)",UN(external.addrShift))};
-
-  *list->PushElem() = {"enabled","1"};
-  *list->PushElem() = {"pingPong","1"};
-
-  {
-    InternalMemoryAccess l = internal[0]; 
-
-    *list->PushElem() = {"duty",SYM_Repr(l.dutyExpression,out)};
-    *list->PushElem() = {"per",SYM_Repr(l.periodExpression,out)};
-    *list->PushElem() = {"incr",SYM_Repr(l.incrementExpression,out)};
-    *list->PushElem() = {"iter",SYM_Repr(l.iterationExpression,out)};
-    *list->PushElem() = {"shift",SYM_Repr(l.shiftExpression,out)};
-  }
-    
-  if(internal.size > 1){
-    InternalMemoryAccess l = internal[1]; 
-    *list->PushElem() = {"per2",SYM_Repr(l.periodExpression,out)};
-    *list->PushElem() = {"incr2",SYM_Repr(l.incrementExpression,out)};
-    *list->PushElem() = {"iter2",SYM_Repr(l.iterationExpression,out)};
-    *list->PushElem() = {"shift2",SYM_Repr(l.shiftExpression,out)};
-  } else if(maxLoops > 1) {
-    *list->PushElem() = {"per2","0"};
-    *list->PushElem() = {"incr2","0"};
-    *list->PushElem() = {"iter2","0"};
-    *list->PushElem() = {"shift2","0"};
-  }
-
-  // TODO: This is stupid. We can just put some loop logic in here. Do this when tests are stable and quick changes are easy to do.
-  if(internal.size > 2){
-    InternalMemoryAccess l = internal[2]; 
-    *list->PushElem() = {"per3",SYM_Repr(l.periodExpression,out)};
-    *list->PushElem() = {"incr3",SYM_Repr(l.incrementExpression,out)};
-    *list->PushElem() = {"iter3",SYM_Repr(l.iterationExpression,out)};
-    *list->PushElem() = {"shift3",SYM_Repr(l.shiftExpression,out)};
-  } else if(maxLoops > 2){
-    *list->PushElem() = {"per3","0"};
-    *list->PushElem() = {"incr3","0"};
-    *list->PushElem() = {"iter3","0"};
-    *list->PushElem() = {"shift3","0"};
-  }
-
-  if(internal.size > maxLoops){
-    // TODO: Proper error reporting requires us to lift the data up.
-    printf("[ERROR] Address gen contains more loops than the unit is capable of handling\n");
-    exit(-1);
-  }
-  
-  return PushArray(out,list);
-}
-
-static Array<Pair<String,String>> InstantiateMem(AddressAccess* access,int port,bool input,int maxLoops,Arena* out){
-  TEMP_REGION(temp,out);
-  Array<InternalMemoryAccess> compiled = CompileAccess(access->external,access->dutyDivExpr,temp).internalAccess;
-  SYM_Expr freeTerm = access->external->freeTerm;
-
-  ArenaList<Pair<String,String>>* list = PushList<Pair<String,String>>(temp);
-  String start = SYM_Repr(freeTerm,out);
-
-  if(port == 0){
-    *list->PushElem() = {"startA",start};
-  } else {
-    *list->PushElem() = {"startB",start};
-  }
-    
-  if(input){
-    if(port == 0){
-      *list->PushElem() = {"in0_wr","1"};
-    } else {
-      *list->PushElem() = {"in1_wr","1"};
-    }
-  } else {
-    if(port == 0){
-      *list->PushElem() = {"in0_wr","0"};
-    } else {
-      *list->PushElem() = {"in1_wr","0"};
-    }
-  }
-  
-  if(compiled.size > 0){
-    InternalMemoryAccess l = compiled[0]; 
-
-    if(port == 0){
-      *list->PushElem() = {"dutyA",SYM_Repr(l.dutyExpression,out)};
-      *list->PushElem() = {"perA",SYM_Repr(l.periodExpression,out)};
-      *list->PushElem() = {"incrA",SYM_Repr(l.incrementExpression,out)};
-      *list->PushElem() = {"iterA",SYM_Repr(l.iterationExpression,out)};
-      *list->PushElem() = {"shiftA",SYM_Repr(l.shiftExpression,out)};
-    } else {
-      *list->PushElem() = {"dutyB",SYM_Repr(l.dutyExpression,out)};
-      *list->PushElem() = {"perB",SYM_Repr(l.periodExpression,out)};
-      *list->PushElem() = {"incrB",SYM_Repr(l.incrementExpression,out)};
-      *list->PushElem() = {"iterB",SYM_Repr(l.iterationExpression,out)};
-      *list->PushElem() = {"shiftB",SYM_Repr(l.shiftExpression,out)};
-    }
-  } else {
-    // NOTE: Assume that the an empty loop is the same as a one iteration loop
-    if(port == 0){
-      *list->PushElem() = {"dutyA","1"};
-      *list->PushElem() = {"perA","1"};
-      *list->PushElem() = {"incrA","1"};
-      *list->PushElem() = {"iterA","0"};
-      *list->PushElem() = {"shiftA","0"};
-    } else {
-      *list->PushElem() = {"dutyB","1"};
-      *list->PushElem() = {"perB","1"};
-      *list->PushElem() = {"incrB","1"};
-      *list->PushElem() = {"iterB","0"};
-      *list->PushElem() = {"shiftB","0"};
-    }
-  }
-    
-  // TODO: This is stupid. We can just put some loop logic in here. Do this when tests are stable and quick changes are easy to do.
-  if(compiled.size > 1){
-    InternalMemoryAccess l = compiled[1]; 
-
-    if(port == 0){
-      *list->PushElem() = {"per2A",SYM_Repr(l.periodExpression,out)};
-      *list->PushElem() = {"incr2A",SYM_Repr(l.incrementExpression,out)};
-      *list->PushElem() = {"iter2A",SYM_Repr(l.iterationExpression,out)};
-      *list->PushElem() = {"shift2A",SYM_Repr(l.shiftExpression,out)};
-    } else {
-      *list->PushElem() = {"per2B",SYM_Repr(l.periodExpression,out)};
-      *list->PushElem() = {"incr2B",SYM_Repr(l.incrementExpression,out)};
-      *list->PushElem() = {"iter2B",SYM_Repr(l.iterationExpression,out)};
-      *list->PushElem() = {"shift2B",SYM_Repr(l.shiftExpression,out)};
-    }
-  } else if(maxLoops > 1){
-    if(port == 0){
-      *list->PushElem() = {"per2A","0"};
-      *list->PushElem() = {"incr2A","0"};
-      *list->PushElem() = {"iter2A","0"};
-      *list->PushElem() = {"shift2A","0"};
-    } else {
-      *list->PushElem() = {"per2B","0"};
-      *list->PushElem() = {"incr2B","0"};
-      *list->PushElem() = {"iter2B","0"};
-      *list->PushElem() = {"shift2B","0"};
-    }
-  }
-  
-  if(compiled.size > maxLoops){
-    // TODO: Proper error reporting requires us to lift the data up.
-    printf("[ERROR] Address gen contains more loops than the unit is capable of handling\n");
-    exit(-1);
-  }
-  
   return PushArray(out,list);
 }
 
@@ -776,7 +593,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
 
   // TODO: We are in a crossroad between what we want addressgen to be.
   //       In one hand, we basically want the division to be used as a form of specifying duty.
-  //       A / 2 means that only "acts" every other cycle.
+  //       A / 2 means that we only "act" every other cycle.
   //       On the other hand, we want address gen to mimic the values that we describe.
   //       for x in range(0,10): x / 2 gives us 0,0,1,1,2,2,3,3,4,4 and because the last
   //       value is the one that matters then that means that we have a duty of 2.
@@ -818,13 +635,13 @@ static void EmitDebugAddressGenInfo(AddressAccess* access,CEmitter* c){
   c->Comment(externalStr);
 }
 
-CodeNode* EmitReadStatements2(AccessAndType access,String extVarName,Arena* out){
+CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions options){
   TEMP_REGION(temp,out);
 
   AddressAccess* initial = access.access;
   int maxLoops = access.inst.loopsSupported;
 
-  auto EmitDoubleOrSingleLoopCode = [extVarName,maxLoops,out](int loopIndex,AddressAccess* access) -> CodeNode*{
+  auto EmitDoubleOrSingleLoopCode = [maxLoops,options,out](int loopIndex,AddressAccess* access) -> CodeNode*{
     TEMP_REGION(temp,out);
 
     AddressAccess* doubleLoop = ConvertAccessTo2External(access,loopIndex,temp);
@@ -844,11 +661,11 @@ CodeNode* EmitReadStatements2(AccessAndType access,String extVarName,Arena* out)
 
     ifTrue->next = ifFalse;
 
-    Array<Pair<String,SYM_Expr>> paramsDouble = InstantiateRead2(doubleLoop,loopIndex,true,maxLoops,extVarName,temp);
-    Array<Pair<String,SYM_Expr>> paramsSingle = InstantiateRead2(singleLoop,-1,true,maxLoops,extVarName,temp);
+    Array<Pair<String,SYM_Expr>> paramsDouble = InstantiateIndividualAssignments(doubleLoop,maxLoops,options,temp);
+    Array<Pair<String,SYM_Expr>> paramsSingle = InstantiateIndividualAssignments(singleLoop,maxLoops,options,temp);
 
     {
-      CodeNode* chainStart = nullptr; //PushStruct<CodeNode>(out);
+      CodeNode* chainStart = nullptr;
       CodeNode* ptr = nullptr;
 
       for(Pair<String,SYM_Expr> p : paramsDouble){
@@ -873,7 +690,7 @@ CodeNode* EmitReadStatements2(AccessAndType access,String extVarName,Arena* out)
     }
 
     {
-      CodeNode* chainStart = nullptr; //PushStruct<CodeNode>(out);
+      CodeNode* chainStart = nullptr;
       CodeNode* ptr = nullptr;
 
       for(Pair<String,SYM_Expr> p : paramsSingle){
@@ -900,365 +717,223 @@ CodeNode* EmitReadStatements2(AccessAndType access,String extVarName,Arena* out)
     return ifTrue;
   };
 
-  // The first thing that we need to check if its worth to create an expression.
-  // If we have if(1 < 0) we know that is never gonna hit.
-  // If we normalize we can always check if the result is zero and therefore not create it.
-
-  // Generate top level if chains ===============================================
   CodeNode* head = nullptr;
   CodeNode* ptr = nullptr;
 
-  int totalSize = initial->external->terms.size;
+  if(options.type != AddressGenType_READ){
+    Array<Pair<String,SYM_Expr>> params = InstantiateIndividualAssignments(initial,maxLoops,options,temp);
 
-  Array<SYM_Expr> ifDecider = PushArray<SYM_Expr>(temp,totalSize);
-  for(int i = 0; i < totalSize; i++){
-    LoopLinearSumTerm term  =  initial->external->terms[i];
-    ifDecider[i] = GetLoopHighestDecider(&term);
-  }
+    CodeNode* chainStart = nullptr;
+    CodeNode* ptr = nullptr;
 
-  SYM_Expr lastCond = SYM_0;
-  for(int i = 0; i < totalSize; i++){
-    int topIndex = i;
-    
-    SYM_Expr topVar = ifDecider[topIndex];
-    SYM_Expr ifCond = SYM_1;
-    for(int ii = 0; ii < totalSize; ii++){
-      if(ii == topIndex){
-        continue;
+    for(Pair<String,SYM_Expr> p : params){
+      CodeNode* newNode = PushStruct<CodeNode>(out);
+
+      newNode->type = CodeNodeType_ASSIGN;
+      newNode->name = PushString(out,p.first);
+      newNode->expr = p.second;
+
+      if(ptr){
+        ptr->next = newNode;
+        ptr = ptr->next;
       }
+
+      if(!ptr){
+        chainStart = newNode;
+        ptr = newNode;
+      }
+    }
       
-      SYM_Expr var = ifDecider[i];
-
-      SYM_Expr cond = SYM_Nil;
-      if(ii <= topIndex){
-        cond = (topVar >= var);
-      } else {
-        cond = (topVar > var);
-      }
-
-      ifCond = ifCond && cond;
-    }
-
-    CodeNode* ifExpr = PushStruct<CodeNode>(out);
-    ifExpr->type = CodeNodeType_IF;
-    ifExpr->expr = ifCond;
-    ifExpr->child = EmitDoubleOrSingleLoopCode(topIndex,initial);
-    
-    if(ptr){
-      ptr->next = ifExpr;
-      ptr = ptr->next;
-    }
-    
-    if(!ptr){
-      head = ifExpr;
-      ptr = ifExpr;
-    }
+    head = chainStart;
   }
 
-  auto GetAssignByName = [](CodeNode* top,String name) -> CodeNode*{
-    for(CodeNode* ptr = top; ptr; ptr = ptr->next){
-      if(ptr->type == CodeNodeType_ASSIGN && ptr->name == name){
-        return ptr;
-      }
+  if(options.type == AddressGenType_READ){
+    int totalSize = initial->external->terms.size;
+
+    // Generate top level if chains ===============================================
+    Array<SYM_Expr> ifDecider = PushArray<SYM_Expr>(temp,totalSize);
+    for(int i = 0; i < totalSize; i++){
+      LoopLinearSumTerm term  =  initial->external->terms[i];
+      ifDecider[i] = GetLoopHighestDecider(&term);
     }
-    return nullptr;
-  };
 
-  // Returns the head of the list after removing the node.
-  auto RemoveNode = [](CodeNode* head,CodeNode* toRemove) -> CodeNode*{
-    for(CodeNode *ptr = head,*previous = nullptr; ptr; previous = ptr,ptr = ptr->next){
-      if(ptr == toRemove){
-        if(!previous){
-          CodeNode* newHead = toRemove->next;
-          toRemove->next = nullptr;
+    // TODO: The first thing that we need to check if its worth to create an expression.
+    // If we have if(1 < 0) we know that is never gonna hit.
+    // If we normalize we can always check if the result is zero and therefore not create it.
 
-          return newHead;
+    for(int i = 0; i < totalSize; i++){
+      int topIndex = i;
+    
+      SYM_Expr topVar = ifDecider[topIndex];
+      SYM_Expr ifCond = SYM_1;
+      for(int ii = 0; ii < totalSize; ii++){
+        if(ii == topIndex){
+          continue;
+        }
+      
+        SYM_Expr var = ifDecider[i];
+
+        SYM_Expr cond = SYM_Nil;
+        if(ii <= topIndex){
+          cond = (topVar >= var);
         } else {
-          previous->next = toRemove->next;
-          toRemove->next = nullptr;
+          cond = (topVar > var);
+        }
 
-          return head;
+        ifCond = ifCond && cond;
+      }
+
+      SYM_EvaluateResult eval = SYM_ConstantEvaluate(ifCond);
+      CodeNode* emitted = EmitDoubleOrSingleLoopCode(topIndex,initial);
+      
+      CodeNode* expr = nullptr;
+      if(!eval.Error() && eval.result){
+        expr = emitted;
+      } else {
+        expr = PushStruct<CodeNode>(out);
+        expr->type = CodeNodeType_IF;
+        expr->expr = ifCond;
+        expr->child = emitted;
+      }
+
+      if(ptr){
+        ptr->next = expr;
+        ptr = ptr->next;
+      }
+    
+      if(!ptr){
+        head = expr;
+        ptr = expr;
+      }
+    }
+
+    auto GetAssignByName = [](CodeNode* top,String name) -> CodeNode*{
+      for(CodeNode* ptr = top; ptr; ptr = ptr->next){
+        if(ptr->type == CodeNodeType_ASSIGN && ptr->name == name){
+          return ptr;
         }
       }
-    }
+      return nullptr;
+    };
 
-    Assert(false && "ToRemove was not found inside the list");
-    return nullptr;
-  };
+    // Returns the head of the list after removing the node.
+    auto RemoveNode = [](CodeNode* head,CodeNode* toRemove) -> CodeNode*{
+      for(CodeNode *ptr = head,*previous = nullptr; ptr; previous = ptr,ptr = ptr->next){
+        if(ptr == toRemove){
+          if(!previous){
+            CodeNode* newHead = toRemove->next;
+            toRemove->next = nullptr;
 
-  auto AddNode = [](CodeNode* list,CodeNode* toAdd){
-    for(CodeNode* ptr = list; ptr; ptr = ptr->next){
-      if(!ptr->next){
-        ptr->next = toAdd;
-        break;
-      }
-    }
-  };
+            return newHead;
+          } else {
+            previous->next = toRemove->next;
+            toRemove->next = nullptr;
 
-  // Check if we can pull up any expression thats equal in all ifs ==============
-  auto PullUp = [GetAssignByName,RemoveNode,AddNode](auto PullUp,CodeNode* top) -> void {
-    TEMP_REGION(temp,nullptr);
-
-    // Recurse first. 
-    for(CodeNode* ptr = top->child; ptr; ptr = ptr->next){
-      if(ptr->type == CodeNodeType_IF){
-        PullUp(PullUp,ptr);
-      }
-    }
-
-    auto allIfs = PushList<CodeNode*>(temp);
-
-    for(CodeNode* ptr = top; ptr; ptr = ptr->next){
-      if(ptr->type == CodeNodeType_IF){
-        *allIfs->PushElem() = ptr;
-      }
-    }
-
-    Array<CodeNode*> ifArray = PushArray(temp,allIfs);
-    int size = ifArray.size;
-
-    // Only makes sense to export when having more than 1 if statement
-    if(ifArray.size < 2){
-      return;
-    }
-
-    CodeNode* singleBranch = ifArray[0];
-
-    Array<CodeNode*> sameAssignNodeBuffer = PushArray<CodeNode*>(temp,size);
-    for(CodeNode* ptr = singleBranch->child; ptr; ){
-      sameAssignNodeBuffer[0] = ptr;
-      
-      if(ptr->type == CodeNodeType_IF){
-        ptr = ptr->next;
-        continue;
+            return head;
+          }
+        }
       }
 
-      String assignName = ptr->name;
-      SYM_Expr assignExpr = ptr->expr;
+      Assert(false && "ToRemove was not found inside the list");
+      return nullptr;
+    };
 
-      bool allEqual = true;
-      for(int i = 1; i < size; i++){
-        CodeNode* otherIf = ifArray[i];
-        CodeNode* sameAssign = GetAssignByName(otherIf->child,assignName);
-
-        if(sameAssign == nullptr){
-          allEqual = false;
+    auto AddNode = [](CodeNode* list,CodeNode* toAdd){
+      for(CodeNode* ptr = list; ptr; ptr = ptr->next){
+        if(!ptr->next){
+          ptr->next = toAdd;
           break;
         }
+      }
+    };
 
-        if(!SYM_Equal(assignExpr,sameAssign->expr)){
-          allEqual = false;
-          break;
+    // Check if we can pull up any expression thats equal in all ifs ==============
+    auto PullUp = [GetAssignByName,RemoveNode,AddNode](auto PullUp,CodeNode* top) -> void {
+      TEMP_REGION(temp,nullptr);
+
+      if(!top->child){
+        return;
+      }
+
+      // Recurse first. 
+      for(CodeNode* ptr = top->child; ptr; ptr = ptr->next){
+        if(ptr->type == CodeNodeType_IF){
+          PullUp(PullUp,ptr);
+        }
+      }
+
+      auto allIfs = PushList<CodeNode*>(temp);
+
+      for(CodeNode* ptr = top; ptr; ptr = ptr->next){
+        if(ptr->type == CodeNodeType_IF){
+          *allIfs->PushElem() = ptr;
+        }
+      }
+
+      Array<CodeNode*> ifArray = PushArray(temp,allIfs);
+      int size = ifArray.size;
+
+      // Only makes sense to export when having more than 1 if statement
+      if(ifArray.size < 2){
+        return;
+      }
+
+      CodeNode* singleBranch = ifArray[0];
+
+      Array<CodeNode*> sameAssignNodeBuffer = PushArray<CodeNode*>(temp,size);
+      for(CodeNode* ptr = singleBranch->child; ptr; ){
+        sameAssignNodeBuffer[0] = ptr;
+      
+        if(ptr->type == CodeNodeType_IF){
+          ptr = ptr->next;
+          continue;
         }
 
-        sameAssignNodeBuffer[i] = sameAssign;
-      }
+        String assignName = ptr->name;
+        SYM_Expr assignExpr = ptr->expr;
 
-      if(!allEqual){
-        ptr = ptr->next;
-        continue;
-      }
+        bool allEqual = true;
+        for(int i = 1; i < size; i++){
+          CodeNode* otherIf = ifArray[i];
+          CodeNode* sameAssign = GetAssignByName(otherIf->child,assignName);
+
+          if(sameAssign == nullptr){
+            allEqual = false;
+            break;
+          }
+
+          if(!SYM_Equal(assignExpr,sameAssign->expr)){
+            allEqual = false;
+            break;
+          }
+
+          sameAssignNodeBuffer[i] = sameAssign;
+        }
+
+        if(!allEqual){
+          ptr = ptr->next;
+          continue;
+        }
       
-      CodeNode* nextIterNode = ptr->next;
+        CodeNode* nextIterNode = ptr->next;
 
-      // Remove all the nodes from the inner Ifs.
-      for(int i = 0; i < size; i++){
-        CodeNode* otherIf = ifArray[i];
-        CodeNode* sameAssign = sameAssignNodeBuffer[i];
+        // Remove all the nodes from the inner Ifs.
+        for(int i = 0; i < size; i++){
+          CodeNode* otherIf = ifArray[i];
+          CodeNode* sameAssign = sameAssignNodeBuffer[i];
 
-        otherIf->child = RemoveNode(otherIf->child,sameAssign);
+          otherIf->child = RemoveNode(otherIf->child,sameAssign);
+        }
+
+        // Add node to the outer if
+        AddNode(singleBranch,ptr);
+
+        ptr = nextIterNode;
       }
-
-      // Add node to the outer if
-      AddNode(singleBranch,ptr);
-
-      ptr = nextIterNode;
-    }
-  };
+    };
   
-  PullUp(PullUp,head);
+    PullUp(PullUp,head);
+  }
   
   return head;
-}
-
-void EmitReadStatements(CEmitter* m,AccessAndType access,String varName,String extVarName){
-  TEMP_REGION(temp,nullptr);
-
-  AddressAccess* initial = access.access;
-  int maxLoops = access.inst.loopsSupported;
-  
-  auto EmitStoreAddressGenIntoConfig = [varName](CEmitter* emitter,Array<Pair<String,String>> params) -> void{
-    TEMP_REGION(temp,emitter->castArena);
-          
-    for(int i = 0; i < params.size; i++){
-      String str = params[i].first;
-      
-      String t = PushString(temp,"%.*s.%.*s",UN(varName),UN(str));
-      String v = params[i].second;
-
-      // TODO: Kinda hacky
-      if(CompareString(str,"ext_addr")){
-        v = PushString(temp,"(iptr) (%.*s)",UN(v));
-      }
-
-      emitter->Assignment(t,v);
-    }
-  };
-
-  auto EmitDoubleOrSingleLoopCode = [extVarName,maxLoops,EmitStoreAddressGenIntoConfig](CEmitter* c,int loopIndex,AddressAccess* access){
-    TEMP_REGION(temp,c->castArena);
-    
-    // TODO: The way we handle the free term is kinda sketchy.
-    // NOTE: The problem is that the convert access functions do not know how to handle duty.
-    AddressAccess* doubleLoop = ConvertAccessTo2External(access,loopIndex,temp);
-    AddressAccess* singleLoop = ConvertAccessTo1External(access,temp);
-
-    region(temp){
-      String repr = SYM_Repr(GetLoopLinearSumTotalSize(doubleLoop->external),temp);
-      c->VarDeclare("int","doubleLoop",repr);
-    }
-
-    region(temp){
-      String repr2 = SYM_Repr(GetLoopLinearSumTotalSize(singleLoop->external),temp);
-      c->VarDeclare("int","singleLoop",repr2);
-    }
-
-    // TODO: Maybe it would be better to just not generate single or double loop if we can check that one is always gonna be better than the other, right?
-    c->If("(!forceSingleLoop && forceDoubleLoop) || (!forceSingleLoop && (doubleLoop < singleLoop))");
-    c->Comment("Double is smaller (better)");
-    region(temp){
-      StringBuilder* b = StartString(temp);
-      EmitDebugAddressGenInfo(doubleLoop,c);
-      Repr(b,doubleLoop);
-
-      Array<Pair<String,String>> params = InstantiateRead(doubleLoop,loopIndex,true,maxLoops,extVarName,temp);
-      EmitStoreAddressGenIntoConfig(c,params);
-    }
-
-    c->Else();
-    c->Comment("Single is smaller (better)");
-    region(temp){
-      StringBuilder* b = StartString(temp);
-      EmitDebugAddressGenInfo(singleLoop,c);
-      Repr(b,singleLoop);
-
-      Array<Pair<String,String>> params = InstantiateRead(singleLoop,-1,false,maxLoops,extVarName,temp);
-      EmitStoreAddressGenIntoConfig(c,params);
-    }
-
-    c->EndIf();
-  };
-  
-  auto Recurse = [EmitDoubleOrSingleLoopCode,&initial](auto Recurse,int loopIndex,CEmitter* c) -> void{
-    TEMP_REGION(temp,nullptr);
-
-    LoopLinearSum* external = initial->external;
-          
-    int totalSize = external->terms.size;
-    int leftOverSize = totalSize - loopIndex;
-
-    // Last member must generate an 'else' instead of a 'else if'
-    if(leftOverSize > 1){
-      c->StartExpression();
-      for(int i = loopIndex + 1; i < totalSize; i++){
-        if(i != loopIndex + 1){
-          c->And();
-        }
-
-        c->Var(PushString(temp,"_VERSAT_a%d",loopIndex));
-        c->GreaterThan();
-        c->Var(PushString(temp,"_VERSAT_a%d",i));
-      }
-      
-      if(loopIndex == 0){
-        c->IfFromExpression();
-      } else {
-        // The other 'ifs' are 'elseifs' of the (loopIndex == 0) 'if'.
-        c->ElseIfFromExpression();
-      }
-
-      c->Comment(PushString(temp,"Loop var %.*s is the largest",UN(external->terms[loopIndex].var)));
-      EmitDoubleOrSingleLoopCode(c,loopIndex,initial);
-      
-      Recurse(Recurse,loopIndex + 1,c);
-    } else {
-      c->Else();
-
-      c->Comment(PushString(temp,"Loop var %.*s is the largest",UN(external->terms[loopIndex].var)));
-      EmitDoubleOrSingleLoopCode(c,loopIndex,initial);
-
-      c->EndIf();
-    }
-  };
-
-  if(initial->external->terms.size > 1){
-    for(int i = 0; i <  initial->external->terms.size; i++){
-      LoopLinearSumTerm term  =  initial->external->terms[i];
-      String repr = SYM_Repr(GetLoopHighestDecider(&term),temp);
-      String name = PushString(temp,"_VERSAT_a%d",i);
-      String comment = PushString(temp,"Loop var: %.*s",UN(term.var));
-
-      m->Comment(comment);
-      m->VarDeclare("int",name,repr);
-    }
-  
-    Recurse(Recurse,0,m);
-  } else {
-    EmitDoubleOrSingleLoopCode(m,0,initial);
-  }
-}
-
-void EmitMemStatements(CEmitter* m,AccessAndType access,String varName){
-  TEMP_REGION(temp,nullptr);
-
-  AddressAccess* initial = access.access;
-  
-  auto EmitStoreAddressGenIntoConfig = [varName](CEmitter* emitter,Array<Pair<String,String>> params) -> void{
-    TEMP_REGION(temp,emitter->castArena);
-          
-    for(int i = 0; i < params.size; i++){
-      String str = params[i].first;
-      
-      String t = PushString(temp,"%.*s.%.*s",UN(varName),UN(str));
-      String v = params[i].second;
-
-      emitter->Assignment(t,v);
-    }
-  };
-
-  Assert(access.dir != Direction_NONE);
-
-  String addressStr = PushRepr(initial->external,temp);
-  m->Comment("[DEBUG] Address");
-  m->Comment(addressStr);
-
-  Array<Pair<String,String>> params = InstantiateMem(initial,access.port,access.dir == Direction_INPUT,access.inst.loopsSupported,temp);
-  EmitStoreAddressGenIntoConfig(m,params);
-}
-
-void EmitGenStatements(CEmitter* m,AccessAndType access,String varName){
-  TEMP_REGION(temp,nullptr);
-
-  AddressAccess* initial = access.access;
-  
-  auto EmitStoreAddressGenIntoConfig = [varName](CEmitter* emitter,Array<Pair<String,String>> params) -> void{
-    TEMP_REGION(temp,emitter->castArena);
-          
-    for(int i = 0; i < params.size; i++){
-      String str = params[i].first;
-      
-      String t = PushString(temp,"%.*s.%.*s",UN(varName),UN(str));
-      String v = params[i].second;
-
-      emitter->Assignment(t,v);
-    }
-  };
-
-  String addressStr = PushRepr(initial->external,temp);
-
-  m->Comment("[DEBUG] Address");
-  m->Comment(addressStr);
-
-  Array<Pair<String,String>> params = InstantiateGen(initial,access.inst.loopsSupported,temp);
-  EmitStoreAddressGenIntoConfig(m,params);
 }

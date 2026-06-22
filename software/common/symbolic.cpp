@@ -2300,11 +2300,6 @@ SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top){
     bool isInvalid;
   };
 
-  // NOTE: Evaluation is performed in floating point otherwise the division would cause problems 
-  //       simply by the order of evaluation. 4 * 9 / 4 is 9 but if we evaluate the 9 / 4 first as integers
-  //       it becomes 9 / 4 = 2 and the final result is 8
-  //       Also remember that this is used for debugging purposes. A proper evaluator would just do things in integers
-  //       because it would start from a normalized expression.
   auto Recurse = [&nilValue,&divByZero,&nonConstantValue](auto Recurse,SYM_Expr expr) -> Value {
     bool negate = IsNegative(expr.node);
     SYM_Node* node = GetPointer(expr.node);
@@ -2461,7 +2456,7 @@ SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top){
   Value result = Recurse(Recurse,top);
 
   SYM_EvaluateResult res = {};
-  res.result = (int) result.val;
+  res.result = result.val;
   res.divByZero = divByZero;
   res.nonConstantValue = nonConstantValue;
   res.nilValue = nilValue;

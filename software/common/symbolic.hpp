@@ -221,6 +221,7 @@ int Compare(SYM_MultTerms left,SYM_MultTerms right);
 void SYM_Test();
 char* SYM_DebugRepr(SYM_Expr expr);
 
+
 // ============================================================================
 // Loop Linear Sum
 

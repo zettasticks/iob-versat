@@ -753,6 +753,12 @@ for(int a = rangeStart; a < rangeEnd; a++){
               // TODO: By doing stuff this way we do not allow expressions inside functions.
               //       We cannot have ent.func(expr + expr) for example since we assume that the expression
               //       inside is just simple substitution.
+              // NOTE: Probably the best way of fixing is to treat hierarchies as simple substitutions.
+              //       If we could replace a function call with the statements that the function implies
+              //       then we could just compile those and the logic would remain simple.
+              //       If we can compile a single statement and we can flatten the functions then
+              //       we could compile anything.
+              
               newAccess->access = access;
               newAccess->access.access = ReplaceVariables(access.access,argToVar,varNames,out);
               newAccess->lhs = lhsName + stuff.lhs;
