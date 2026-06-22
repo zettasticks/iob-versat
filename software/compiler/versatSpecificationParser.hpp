@@ -372,7 +372,6 @@ struct Env{
 
   // TODO: The arrayIndexIfArray does not tell us if we are trying to access an array or not.
   //       We probably need to encode such info so that we can properly error report
-  FUInstance* GetFUInstance(Token name,int arrayIndexIfArray);
   FUInstance* GetFUInstance(Token name,Array<int> arrayIndexIfArray);
 
   FUInstance* GetFUInstance(Var var);
@@ -428,7 +427,7 @@ Env* StartEnvironment(Arena* freeUse,Arena* freeUse2);
 //       The StartIteration functions perform the fixup to make sure that everything lines up
 
 struct DimIterator{
-  Array<int> dim;
+  Array<int> endValues;
   Array<int> startValue;
   Array<int> current;
 
@@ -440,7 +439,7 @@ struct DimIterator{
   Array<int> Current();
 };
 
-DimIterator* StartIteration(Array<int> dims,Array<int> startValues,Arena* out);
+DimIterator* StartIteration(Array<int> endValues,Array<int> startValues,Arena* out);
 DimIterator* StartIteration(int size,Arena* out);
 
 void ArrayIndexIncrementInPlace(Array<int> dims,Array<int> startValue,Array<int> index);

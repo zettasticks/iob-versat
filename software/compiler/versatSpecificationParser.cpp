@@ -58,10 +58,6 @@ String GetUniqueName(String name,Arena* out,InstanceTable* names,int counterStar
   return uniqueName;
 }
 
-String GetActualArrayName(String baseName,int index,Arena* out){
-  return PushString(out,"%.*s_%d",UN(baseName),index);
-}
-
 String GetActualArrayName(String baseName,Array<int> index,Arena* out){
   TEMP_REGION(temp,out);
   
@@ -454,21 +450,6 @@ FUInstance* Env::CreateFUInstanceWithDeclaration(FUDeclaration* type,String name
   }
 
   return inst;
-}
-
-FUInstance* Env::GetFUInstance(Token name,int arrayIndexIfArray){
-  TEMP_REGION(temp,nullptr);
-
-  FUInstance* res = nullptr;
-  Entity ent = GetEntity(name);
-
-  String asStr = name.identifier;
-  if(ent.type == EntityType_FU_ARRAY){
-    asStr = GetActualArrayName(asStr,arrayIndexIfArray,temp);
-  }
-
-  res = table->GetOrElse(asStr,nullptr);
-  return res;
 }
 
 FUInstance* Env::GetFUInstance(Token name,Array<int> arrayIndexIfArray){
@@ -1440,21 +1421,31 @@ FUInstance* Env::InstantiateReduction(Var var,FUDeclaration* type){
 
   String typeName = type->name;
 
-  int start = CalculateConstantExpression(var.index[0].start);
-  int end = CalculateConstantExpression(var.index[0].end);
-  int size = end - start;
+  Array<int> start = ConvertRangeToStart(var.index,temp);
+  Array<int> end = ConvertRangeToEnd(var.index,temp);
 
-  int uniqueIndex = GetUniqueIndex(typeName,table);
+  // TODO-3
+  for(int i = 0; i < start.size; i++){
+    if(start[i] == end[i]){
+      end[i] += 1;
+    }
+  }
+
+  DimIterator* iter = StartIteration(end,start,temp);
+
+  int size = iter->Size();
   Array<FUInstance*> buffer = PushArray<FUInstance*>(temp,size);
+  for(int i = 0; iter->IsValid(); i += 1,iter->Advance()){
+    Array<int> index = iter->Current();
 
-  for(int i = 0; i < size; i++){
-    String name = GetActualArrayName(var.name.identifier,i,globalPermanent);
+    String name = GetActualArrayName(var.name.identifier,index,globalPermanent);
     buffer[i] = table->GetOrFail(name);
   }
       
   Array<FUInstance*> buffer2 = PushArray<FUInstance*>(temp,size);
       
   // Tree shaped instanciation of units.
+  int uniqueIndex = GetUniqueIndex(typeName,table);
   int amountOfUnits = size;
   while(amountOfUnits > 1){
     int newAmountOfUnits = 0;
@@ -3208,12 +3199,12 @@ Array<int> IntegerToArrayIndex(Array<int> dims,int index,Arena* out){
   return res;
 }
 
-DimIterator* StartIteration(Array<int> dimensions,Array<int> startValues,Arena* out){
-  Assert(dimensions.size > 0);
+DimIterator* StartIteration(Array<int> endValues,Array<int> startValues,Arena* out){
+  Assert(endValues.size > 0);
 
   DimIterator* res = PushStruct<DimIterator>(out);
 
-  res->dim = CopyArray(dimensions,out);
+  res->endValues = CopyArray(endValues,out);
   res->startValue = CopyArray(startValues,out);
   res->current = CopyArray(startValues,out);
 
@@ -3223,11 +3214,11 @@ DimIterator* StartIteration(Array<int> dimensions,Array<int> startValues,Arena* 
 DimIterator* StartIteration(int size,Arena* out){
   DimIterator* res = PushStruct<DimIterator>(out);
   
-  res->dim = PushArray<int>(out,1);
+  res->endValues = PushArray<int>(out,1);
   res->startValue = PushArray<int>(out,1);
   res->current = PushArray<int>(out,1);
 
-  res->dim[0] = size;
+  res->endValues[0] = size;
 
   return res;
 }
@@ -3235,23 +3226,23 @@ DimIterator* StartIteration(int size,Arena* out){
 int DimIterator::Size(){
   int size = 1;
 
-  for(int i = 0; i < dim.size; i++){
-    size *= MAX(1,dim[i] - startValue[i]);
+  for(int i = 0; i < endValues.size; i++){
+    size *= MAX(1,endValues[i] - startValue[i]);
   }
 
   return size;
 }
 
 void DimIterator::Invalidate(){
-  current[0] = dim[0];
+  current[0] = endValues[0];
 }
 
 void DimIterator::Advance(){
-  ArrayIndexIncrementInPlace(dim,startValue,current);
+  ArrayIndexIncrementInPlace(endValues,startValue,current);
 }
 
 bool DimIterator::IsValid(){
-  if(current[0] >= dim[0]){
+  if(current[0] >= endValues[0]){
     return false;
   }
  
@@ -3289,6 +3280,7 @@ VarIterator* StartIteration(Env* env,Var var,Arena* out){
     auto start = env->ConvertRangeToStart(var.index,temp);
     auto end = env->ConvertRangeToEnd(var.index,temp);
 
+    // TODO-3
     for(int& i : end){
       i += 1;
     }

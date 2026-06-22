@@ -2928,6 +2928,9 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   TEMP_REGION(temp,nullptr);
   TEMP_REGION(temp2,temp);
 
+  FREE_ARENA(CCode1);
+  FREE_ARENA(CCode2);
+
   AccelInfoIterator iter = StartIteration(&info);
   Array<Wire> allStaticsVerilatorSide = info.allStaticWires;
 
@@ -3027,7 +3030,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
     }
     }      
     
-    CEmitter* m = StartCCode(temp,temp);
+    CEmitter* m = StartCCode(CCode1,CCode2);
     m->Struct("AddressVArguments");
     for(String str : META_AddressVParameters_Members){
       m->Member("iptr",str);
@@ -3093,8 +3096,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   Array<Pair<String,int>> allMem = ExtractMem(info.infos[0].info,temp2);
 
   {
-    FREE_ARENA(emitterArena);
-    CEmitter* c = StartCCode(emitterArena,emitterArena);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     bool isMerge = false;
     if(info.infos.size > 1){
@@ -3579,7 +3581,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   DEFER_CLOSE_FILE(f);
 
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     if(structs.size == 0){
       c->Struct(PushString(temp,"%.*sConfig",UN(typeName)));
@@ -3617,7 +3619,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
 
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     if(stateStructs.size == 0){
       c->Struct(PushString(temp,"%.*sState",UN(typeName)));
@@ -3654,7 +3656,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
     
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     c->Struct("AcceleratorState");
     for(String name : allStates){
@@ -3667,7 +3669,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
 
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     Array<TypeStructInfo> addressStructures = GetMemMappedStructInfo(&info,temp2);
 
@@ -3688,7 +3690,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
 
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
     c->Struct("AcceleratorConfig");
 
     for(auto elem : structuredConfigs){
@@ -3711,7 +3713,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
 
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
     c->Struct("AcceleratorStatic");
 
     for(auto elem : allStaticsVerilatorSide){
@@ -3724,7 +3726,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
     
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
     c->Struct("AcceleratorDelay");
     {
       c->Union();
@@ -3745,7 +3747,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
     
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     for(Pair<String,int> p : allMem){
       c->Define(p.first,PushString(temp,"((void*) (versat_base + memMappedStart + 0x%x))",p.second));
@@ -3756,7 +3758,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
 
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     c->VarBlock();
     for(Pair<String,int> p : allMem){
@@ -3780,7 +3782,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   Array<int> delays = EndArray(arr);
 
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     c->VarBlock();
     for(auto d : delays){
@@ -3793,7 +3795,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
 
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     for(auto elem : allStaticsVerilatorSide){
       c->Define(PushString(temp,"ACCEL_%.*s",UN(elem.name)),PushString(temp,"accelStatic->%.*s",UN(elem.name)));
@@ -3804,7 +3806,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   }
 
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     bool hasVariableDelay = false;
 
@@ -3972,8 +3974,11 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
   TE_SetBool("signalLoop",info.signalLoop);
   TE_SetNumber("numberDelays",info.delays);
 
+  FREE_ARENA(CCode1);
+  FREE_ARENA(CCode2);
+
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     // TODO: BAD
     c->RawLine("AcceleratorConfig* config = (AcceleratorConfig*) &configBuffer;\n");
@@ -3985,7 +3990,7 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
   }
 
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     if(globalDebug.outputVCD){
       c->Define("TRACE");
@@ -4010,7 +4015,7 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
   }
 
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     for(int i = 0; i < info.delays; i++){
       c->Assignment(PushString(temp,"self->delay%d",i),PushString(temp,"delayBuffer[%d]",i));
@@ -4022,7 +4027,7 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
   }
 
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     for(int i = 0; i < info.inputs; i++){
       c->Assignment(PushString(temp,"self->in%d",i),"0");
@@ -4089,7 +4094,7 @@ if(SimulateDatabus){
   }
     
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
     c->Comment("Extract state from model");
       
     if(info.states){
@@ -4107,7 +4112,7 @@ if(SimulateDatabus){
   }
 
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     if(allConfigsVerilatorSide.size){
       c->RawLine(R"FOO(
@@ -4167,7 +4172,7 @@ if(SimulateDatabus){
   }
 
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
     for(auto wire : allConfigsVerilatorSide){
       if(wire.w.stage == VersatStage_COMPUTE){
         String format = "  COMPUTED_@{0} = 0;";
@@ -4195,7 +4200,7 @@ if(SimulateDatabus){
   }
   
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
     for(auto wire : allConfigsVerilatorSide){
       if(wire.w.stage == VersatStage_COMPUTE){
         String format = "static iptr COMPUTED_@{0} = 0;";
@@ -4218,7 +4223,7 @@ static iptr WRITE_@{0} = 0;)FOO";
   }
 
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     if(!SYM_IsNil(info.memMapBitsSym)){
       c->Define("HAS_MEMORY_MAP");
@@ -4232,7 +4237,7 @@ static iptr WRITE_@{0} = 0;)FOO";
   }
   
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     int varIndex = 0;
     for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
@@ -4260,7 +4265,7 @@ static iptr WRITE_@{0} = 0;)FOO";
   }
 
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
     
     for(int i = 0; i < info.amountOfMemMappedInterfaces; i++){
       c->Assignment(SF("    self->unit_valid_%d",i),SF("unit_valid_%d",i));
@@ -4271,7 +4276,7 @@ static iptr WRITE_@{0} = 0;)FOO";
   }
 
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
     
     for(int i = 0; i < info.amountOfMemMappedInterfaces; i++){
       c->Assignment(SF("    self->unit_valid_%d",i),"0");
@@ -4586,11 +4591,14 @@ void Output_VerilatorTopUnit(String topLevelTypeName,FUDeclaration* topLevelDecl
 void Output_IobVersatFirmware(String softwarePath,VersatComputedValues val){
   TEMP_REGION(temp,nullptr);
   
+  FREE_ARENA(CCode1);
+  FREE_ARENA(CCode2);
+
   //TODO: The src folder is not good. We want to remove this. We should not depend on IOb stuff in Versat code. 
   FILE* file = OpenFileAndCreateDirectories(PushString(temp,"%.*s/src/iob-versat.c",UN(softwarePath)),"w",FilePurpose_SOFTWARE);
   DEFER_CLOSE_FILE(file);
 
-  CEmitter* c = StartCCode(temp,temp);
+  CEmitter* c = StartCCode(CCode1,CCode2);
   
   for(VersatRegister reg : VersatRegisters){
     Opt<int> index = GetOptIndex(val,reg);
@@ -4602,7 +4610,7 @@ void Output_IobVersatFirmware(String softwarePath,VersatComputedValues val){
   }
 
   {
-    CEmitter* c = StartCCode(temp,temp);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     // TODO: BAD
     c->RawLine("AcceleratorConfig* config = (AcceleratorConfig*) accelConfig;\n");

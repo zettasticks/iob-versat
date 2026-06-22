@@ -935,7 +935,9 @@ for(int a = rangeStart; a < rangeEnd; a++){
     }
 
     // Generate C struct ==========================================================
-    CEmitter* c = StartCCode(temp,temp);
+    FREE_ARENA(CCode1);
+    FREE_ARENA(CCode2);
+    CEmitter* c = StartCCode(CCode1,CCode2);
     
     String structName = PushString(out,"%.*s_%.*s_Struct",UN(declaration->name),UN(def->name.identifier));
     structToReturnName = structName;
@@ -1055,8 +1057,9 @@ for(int a = rangeStart; a < rangeEnd; a++){
     
     comp->outputName = PushString(out,varName);
 
-    FREE_ARENA(emitter);
-    CEmitter* c = StartCCode(out,emitter);
+    FREE_ARENA(CCode1);
+    FREE_ARENA(CCode2);
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     String varValue = {};
     if(funcName == "RangeSize"){

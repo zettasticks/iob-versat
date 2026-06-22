@@ -10,6 +10,8 @@ Inside the code put this following the format: "TODO-N" (ex: // TODO-0  ) . That
 
 2 - Spec parsing and environment use tokens to carry info needed to properly report stuff to user but sometimes we need to generate names on the fly for each entity. This is kinda hacky specially because we cannot report errors that we want. (Array problems should still point user to the start of the array name at least). We could solve this somewhat by separating the Token into two pieces of code: the location of the "entity" and the name of the entity. That way even if we generate different names for whatever reason we can still point the location to a decent position inside the spec file to properly report stuff to the user.
 
+3 - There exists a serious underlying issue with the boundary conditions that is making the overall code harder to reason about. If we want to iterate over 0..4 how do we represent this? start and end of 0,4 or 0,5? Furthermore if we do not want to iterate something, just want to access it (like doing something like A[0][0..2] how do we represent these ranges? A[0,0][0,2] or A[0,0][0,3] or A[0,1][0,2] or A[0,1][0,32]?) The problem is that we have two places where the logic seems different. In one we do not care about single access in the other we do.
+
 =============== TODO IDEAS ===============
 
 - There exists moments where I want to check a given portion of code but do not know which test runs that part.
