@@ -29,6 +29,7 @@ enum SYM_Func{
   SYM_Func_ALIGN,
   SYM_Func_FLOOR_DIV,
   SYM_Func_WRAPPER,
+  SYM_Func_DUTY,
   SYM_Func_COUNT
 };
 
@@ -163,6 +164,7 @@ SYM_Expr SYM_Max(SYM_Expr left,SYM_Expr right);
 SYM_Expr SYM_PosMax(SYM_Expr left,SYM_Expr right); // Assumes final value is positive always.
 SYM_Expr SYM_Align(SYM_Expr left,SYM_Expr right);
 SYM_Expr SYM_FloorDiv(SYM_Expr top,SYM_Expr bottom);
+SYM_Expr SYM_Duty(SYM_Expr expr,SYM_Expr duty);
 SYM_Expr SYM_Wrapper(SYM_Expr in);
 
 SYM_Expr SYM_Replace(SYM_Expr expr,TrieMap<String,SYM_Expr>* replacements);
@@ -179,7 +181,7 @@ bool SYM_IsNil(SYM_Expr expr);
 bool SYM_IsZeroValue(SYM_Expr expr);
 bool SYM_IsOneValue(SYM_Expr expr);
 
-Pair<SYM_Expr,SYM_Expr> SYM_BreakDiv(SYM_Expr in);
+Pair<SYM_Expr,SYM_Expr> SYM_BreakDuty(SYM_Expr in);
 SYM_Expr SYM_Factor(SYM_Expr expr,SYM_Expr commonFactor);
 Array<String> SYM_GetAllVariables(SYM_Expr top,Arena* out);
 

@@ -2232,7 +2232,7 @@ void EmitIOUnpacking(VEmitter* m,int arraySize,Array<VerilogPortSpec> spec,Strin
   }
 }
 
-static void Output_Makefile(VersatComputedValues val,String typeName,String softwarePath){
+static void Output_Makefile(VersatComputedValues val,String softwarePath){
   TEMP_REGION(temp,nullptr);
 
   AccelInfo* info = val.info;
@@ -2252,8 +2252,6 @@ static void Output_Makefile(VersatComputedValues val,String typeName,String soft
     }
   
     String generatedUnitsLocation = GetRelativePathFromSourceToTarget(globalOptions.softwareOutputFilepath,globalOptions.hardwareOutputFilepath,temp);
-
-    TE_SetString("typeName",typeName);
   
     String simLoopHeader = {};
     if(simulateLoops){
@@ -2915,8 +2913,6 @@ assign data_wstrb = csr_wstrb;
     TE_SetString("combOperations",content);
   }
 
-  TE_SetNumber("nConfigs",val.nConfigs);
-  TE_SetBool("useDMA",globalOptions.useDMA);
   TE_SetNumber("databusDataSize",globalOptions.databusDataSize);
     
   TE_ProcessTemplate(s,META_TopInstanceTemplate_Content);
@@ -3006,72 +3002,6 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
 
     structs = GenerateStructs(allStructs,"Config",true,temp);
   }
-
-  // TODO: We eventually only want to put this as true if we output at least one address gen.
-  TE_SetBool("simulateLoops",true);
-
-  {
-    // NOTE: We only check the declarations. We do not check wether the units are actually used or not. This means that we are always outputting the same structs for every accelerator regardless of wether they use the units or not. We can change this later if needed but we do not gain much from it.
-    int highestVLoop = -1;
-    int highestGenLoop = -1;
-    int highestMemLoop = -1;
-
-    for(FUDeclaration* decl : globalDeclarations){
-      FULL_SWITCH(decl->supportedAddressGen.type){
-      case AddressGenType_MEM:{
-        highestMemLoop = MAX(highestMemLoop,decl->supportedAddressGen.loopsSupported);
-      } break;
-      case AddressGenType_READ:{
-        highestVLoop = MAX(highestVLoop,decl->supportedAddressGen.loopsSupported);
-      } break;
-      case AddressGenType_GEN:{
-        highestGenLoop = MAX(highestGenLoop,decl->supportedAddressGen.loopsSupported);
-      } break;
-    }
-    }      
-    
-    CEmitter* m = StartCCode(CCode1,CCode2);
-    m->Struct("AddressVArguments");
-    for(String str : META_AddressVParameters_Members){
-      m->Member("iptr",str);
-    }
-    for(int i = 2; i < highestVLoop + 1; i++){
-      for(String format : AddressGenExtraFormat){
-        String inst = PushString(temp,format.data,i);
-        m->Member("iptr",inst);
-      }
-    }
-    m->EndBlock();
-
-    m->Struct("AddressGenArguments");
-    for(String str : META_AddressGenBaseParameters_Members){
-      m->Member("iptr",str);
-    }
-    for(int i = 2; i < highestGenLoop + 1; i++){
-      for(String format : AddressGenExtraFormat){
-        String inst = PushString(temp,format.data,i);
-        m->Member("iptr",inst);
-      }
-    }
-    m->EndBlock();
-
-    m->Struct("AddressMemArguments");
-    for(String str : META_AddressMemParameters_Members){
-      m->Member("iptr",str);
-    }
-    for(int i = 2; i < highestMemLoop + 1; i++){
-      for(String format : AddressGenMemExtraFormat){
-        String inst = PushString(temp,format.data,i);
-        m->Member("iptr",inst);
-      }
-    }
-    m->EndBlock();
-    
-    CAST* ast = EndCCode(m);
-    auto b = StartString(temp);
-    Repr(ast,b);
-    TE_SetString("AddressStruct",EndString(temp,b));
-  }
     
   Array<Array<int>> allDelays = PushArray<Array<int>>(temp,info.infos.size);
   if(info.infos.size >= 2){
@@ -3090,13 +3020,13 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
       allDelays[i++] = delays;
     }
   }
-  TE_SetNumber("amountMerged",allDelays.size);
 
   Array<String> allStates = ExtractStates(info.infos[0].info,temp2);
   Array<Pair<String,int>> allMem = ExtractMem(info.infos[0].info,temp2);
 
+  // Output user config functions ===============================================
   {
-    CEmitter* c = StartCCode(CCode1,CCode2);
+    CEmitter* c = StartCCode(temp,CCode2);
 
     bool isMerge = false;
     if(info.infos.size > 1){
@@ -3261,7 +3191,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
     for(MergePartition part : info.infos){
       String mergeName = part.name;
 
-      // Output simulation functions if they exist
+      // Output simulation functions if they exist ==================================
       for(ConfigFunction* func : part.userFunctions){
         if(func->simLoops->type != ConfigSimStatementType_NIL){
           String fullFunctionName = PushString(temp,"%.*s_SIMULATE",UN(func->fullName));
@@ -3376,7 +3306,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
         }
       }
 
-      // Output 
+      // Output configuration functions =============================================
       for(ConfigFunction* func : part.userFunctions){
         bool isState = (func->type == ConfigFunctionType_STATE);
 
@@ -3419,7 +3349,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
           
           c->Statement(stmt);
         }
-
+        
         for(ConfigComputation comp : func->extraComputations){
           c->InsertCode(comp.cCode);
         }
@@ -3571,8 +3501,6 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
     String content = PushASTRepr(c,temp);
     TE_SetString("userConfigFunctions",content);
   }
-
-  TE_SetBool("outputChangeDelay",false);
 
   Array<String> names = Extract(info.infos,temp,&MergePartition::name);
   Array<Array<MuxInfo>> muxInfo = CalculateMuxInformation(&iter,temp);
@@ -3958,21 +3886,8 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
 
   Array<WireExtra> allConfigsVerilatorSide = PushArray(temp,build);
 
-  TE_SetNumber("delays",info.delays);
   Array<String> statesHeaderSide = ExtractStates(info.infos[0].info,temp);
-  
-  TE_SetNumber("nInputs",info.inputs);
-  TE_SetBool("implementsDone",info.implementsDone);
-
-  // TODO: PROPER ERROR CHECK
-  SYM_EvaluateResult eval = SYM_ConstantEvaluate(info.memMapBitsSym);
-  Opt<int> p = eval.result;
-
-  TE_SetNumber("memoryMapBits",p.value_or(0));
   TE_SetNumber("nIOs",info.nIOs);
-  TE_SetBool("trace",globalDebug.outputVCD);
-  TE_SetBool("signalLoop",info.signalLoop);
-  TE_SetNumber("numberDelays",info.delays);
 
   FREE_ARENA(CCode1);
   FREE_ARENA(CCode2);
@@ -4937,7 +4852,7 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topDecl,String hardwa
   Output_VersatInstance(info,topDecl,structuredConfigs,hardwarePath,val);
   Output_Header(structuredConfigs,info,softwarePath,val,typeName);
   Output_VerilatorWrapper(typeName,info,topDecl,structuredConfigs,softwarePath,val);
-  Output_Makefile(val,typeName,softwarePath);
+  Output_Makefile(val,softwarePath);
   Output_IobVersatFirmware(softwarePath,val);
 
   {

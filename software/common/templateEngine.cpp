@@ -1,4 +1,5 @@
 #include "templateEngine.hpp"
+#include "utilsCore.hpp"
 
 struct Frame{
   ArenaMark mark;
@@ -67,6 +68,18 @@ void TE_Init(){
 void TE_ProcessTemplate(StringBuilder* b,String tmpl){
   TEMP_REGION(temp,nullptr);
 
+  bool checkUnusedValues = false;
+
+  auto valueUsed = PushTrieMap<String,bool>(temp);
+
+  if(checkUnusedValues){
+    for(Frame* ptr = currentFrame; ptr; ptr = ptr->previousFrame){
+      for(Pair<String,Value> v : ptr->table){
+        valueUsed->Insert(v.first,false);
+      }
+    }
+  }
+
   int size = tmpl.size;
   for(int i = 0; i < size; i++){
     if(i + 2 < size && tmpl[i] == '@' && tmpl[i+1] == '{'){
@@ -87,6 +100,8 @@ void TE_ProcessTemplate(StringBuilder* b,String tmpl){
         Assert(false);
       }
 
+      valueUsed->Insert(subName,true);
+
       Value val = optVal.value();
 
       if(val.type == ValueType_STRING){
@@ -104,6 +119,15 @@ void TE_ProcessTemplate(StringBuilder* b,String tmpl){
       }
     } else {
       b->PushChar(tmpl[i]);
+    }
+  }
+
+  if(checkUnusedValues){
+    for(Pair<String,bool> v : valueUsed){
+      if(v.second == false){
+        printf("Template Engine value named: %.*s not use\n",UN(v.first));
+        ENTER_DEBUG();
+      }
     }
   }
 

@@ -563,7 +563,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
   // TODO: Handle parsing errors
   SYM_Expr normalized = symbolicExpr;
 
-  Pair<SYM_Expr,SYM_Expr> pair = SYM_BreakDiv(normalized);
+  Pair<SYM_Expr,SYM_Expr> pair = SYM_BreakDuty(normalized);
 
   SYM_Expr fullExpr = pair.first;
   SYM_Expr dutyDiv = pair.second;
@@ -586,22 +586,6 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
   for(String str : loopVars){
     toCalcConst = SYM_Replace(toCalcConst,SYM_Var(str),SYM_0);
   }
-  toCalcConst = toCalcConst;
-
-  // TODO: We are in a crossroad between what we want addressgen to be.
-  //       In one hand, we basically want the division to be used as a form of specifying duty.
-  //       A / 2 means that we only "act" every other cycle.
-  //       On the other hand, we want address gen to mimic the values that we describe.
-  //       for x in range(0,10): x / 2 gives us 0,0,1,1,2,2,3,3,4,4 and because the last
-  //       value is the one that matters then that means that we have a duty of 2.
-
-  //       It might just be better to move the first usage of div to a function call.
-  //       Something like Duty(A,2) instead of A/2.
-#if 0
-  if(!SYM_IsNil(dutyDiv) && !SYM_IsZeroValue(dutyDiv)){
-    toCalcConst = toCalcConst / dutyDiv;
-  }
-#endif
 
   LoopLinearSum* freeTerm = PushLoopLinearSumFreeTerm(toCalcConst,temp);
       

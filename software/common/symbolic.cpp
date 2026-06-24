@@ -15,6 +15,7 @@ String SYM_Func_To_Name[] = {
 "ALIGN",
 "VERSAT_FLOOR_DIV",
 "VERSAT_WRAPPER",
+"DUTY",
 "(COUNT)"
 };
 
@@ -25,6 +26,7 @@ int SYM_Func_ArgCount[]{
 2,
 2,
 1,
+2,
 0
 };
 
@@ -1127,6 +1129,10 @@ SYM_Expr SYM_FloorDiv(SYM_Expr top,SYM_Expr bottom){
   return GetOrAllocateFunc(SYM_Func_FLOOR_DIV,top,bottom);
 }
 
+SYM_Expr SYM_Duty(SYM_Expr expr,SYM_Expr duty){
+  return GetOrAllocateFunc(SYM_Func_DUTY,expr,duty);
+}
+
 SYM_Expr SYM_Wrapper(SYM_Expr in){
   return GetOrAllocateFunc(SYM_Func_WRAPPER,in,SYM_Nil);
 }
@@ -1569,19 +1575,29 @@ void SYM_Repr(StringBuilder* b,SYM_Expr expr){
   Recurse(Recurse,normalized,0);
 }
 
-Pair<SYM_Expr,SYM_Expr> SYM_BreakDiv(SYM_Expr in){
-  SYM_Expr top = in;
-  SYM_Expr bottom = SYM_1;
-  
-  if(IsDiv(in)){
+static bool SYM_IsDuty(SYM_Expr in){
+  SYM_Node* node = GetPointer(in);
+
+  if(node->type == SYM_Type_FUNC && node->funcType == SYM_Func_DUTY){
+    return true;
+  }
+
+  return false;
+}
+
+Pair<SYM_Expr,SYM_Expr> SYM_BreakDuty(SYM_Expr in){
+  SYM_Expr expr = in;
+  SYM_Expr duty = SYM_1;
+
+  if(SYM_IsDuty(in)){
     bool negate = IsNegative(in.node);
     SYM_Node* node = GetPointer(in.node);
 
-    top = CondNegate(node->top,negate);
-    bottom = node->bottom;
+    expr = CondNegate(node->top,negate);
+    duty = node->bottom;
   }
 
-  return {top,bottom};
+  return {expr,duty};
 }
 
 String SYM_Repr(SYM_Expr expr,Arena* out){
@@ -2399,6 +2415,12 @@ SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top){
 
         res = val.val;
         isInvalid = val.isInvalid;
+      } break;
+      case SYM_Func_DUTY:{
+        // NOTE: DUTY is not possible to be evaluated. It is a loop specific construct that does not make sense
+        // in a constant environment. 
+        nonConstantValue = true;
+        isInvalid = true;
       } break;
       default: NOT_IMPLEMENTED();
       }

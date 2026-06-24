@@ -111,8 +111,6 @@ void ConfigEnableDMA(bool value);
 void ConfigCreateVCD(bool value);
 void ConfigSimulateDatabus(bool value); // When disabled all vread/vwrites will not work.
 
-@{AddressStruct}
-
 #ifdef __cplusplus
 } // extern "C"
 #endif

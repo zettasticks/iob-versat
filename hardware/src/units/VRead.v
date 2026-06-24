@@ -203,7 +203,7 @@ assign data_data = databus_rdata_0;
    wire [ADDR_W-1:0] gen_addr = {pingPong ? !pingPongState : gen_addr_temp[ADDR_W-1],gen_addr_temp[ADDR_W-2:0]};
 
    // mem enables output by addr gen
-   wire output_enabled;
+   wire output_enabled,output_store_value;
 
    AddressGen3 #(
       .ADDR_W(ADDR_W),
@@ -244,7 +244,7 @@ assign data_data = databus_rdata_0;
       .valid_o(output_enabled),
       .ready_i(1'b1),
       .addr_o (output_addr_temp),
-      .store_o(),
+      .store_o(output_store_value),
       .done_o ()
    );
 
@@ -325,8 +325,19 @@ assign data_data = databus_rdata_0;
       doneOutput_1 <= doneOutput_0;
    end
 
+   // Need to delay to match memory latency
+   reg output_store_value_0,output_store_value_1;
+   always @(posedge clk) begin
+      output_store_value_0 <= output_store_value;
+      output_store_value_1 <= output_store_value_0;
+   end
+
+
    always @(posedge clk) begin
       out0 <= out0_temp;
+      if(!output_store_value_1) begin
+         out0 <= 0;               
+      end
       if(doneOutput_1) begin
          out0 <= 0;
       end

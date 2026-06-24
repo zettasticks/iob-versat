@@ -681,8 +681,6 @@ for(int a = rangeStart; a < rangeEnd; a++){
         }
         }
 
-        
-        
         String lhsName = lhsBase.name.identifier;
 
         if(rhsError){
@@ -937,7 +935,7 @@ for(int a = rangeStart; a < rangeEnd; a++){
     // Generate C struct ==========================================================
     FREE_ARENA(CCode1);
     FREE_ARENA(CCode2);
-    CEmitter* c = StartCCode(CCode1,CCode2);
+    CEmitter* c = StartCCode(out,CCode2);
     
     String structName = PushString(out,"%.*s_%.*s_Struct",UN(declaration->name),UN(def->name.identifier));
     structToReturnName = structName;
@@ -1059,7 +1057,7 @@ for(int a = rangeStart; a < rangeEnd; a++){
 
     FREE_ARENA(CCode1);
     FREE_ARENA(CCode2);
-    CEmitter* c = StartCCode(CCode1,CCode2);
+    CEmitter* c = StartCCode(out,CCode2);
 
     String varValue = {};
     if(funcName == "RangeSize"){

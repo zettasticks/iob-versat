@@ -327,7 +327,6 @@ struct EnvScope{
   ArenaMark mark;
   EnvScopeType type;
 
-  int currentComputationIndex;
   TrieMap<String,Entity>* variable;
 };
 
@@ -348,8 +347,8 @@ struct FUAccess{
 };
 
 struct Env{
-  Arena* scopeArena;
-  Arena* miscArena;
+  Arena* scopeArena; // Grows and shrinks with scope pushing and poping
+  Arena* miscArena; // Always growns and stores a bunch of different things.
 
   ArenaList<String>* errors;
   Accelerator* circuit;
@@ -360,6 +359,9 @@ struct Env{
 
   Array<EnvScope*> scopes;
   int currentScope;
+  
+  int currentComputationIndex;
+  ArenaList<Entity>* computations;
 
   void ReportError(Token badToken,String msg);
 
@@ -393,7 +395,7 @@ struct Env{
   
   Array<int> ConvertRangeToIndex(Array<Range<MathExpression*>> range,Arena* out);
 
-  Array<int> CalculateArraySize(Array<MathExpression*> exprs);
+  Array<int> CalculateArraySize(Array<MathExpression*> exprs,Arena* out);
   int CalculateConstantExpression(MathExpression* top);
 
   void AddInput(VarDeclaration decl);
@@ -402,8 +404,8 @@ struct Env{
   void AddConnection(ConnectionDef def);
   void AddEquality(ConnectionDef def);
 
-  void AddParam(Token name,int val);
-  void AddVariable(Token name,MathExpression* arraySize = nullptr,EntityVarFlags flags = {});
+  Entity AddParam(Token name,int val);
+  Entity AddVariable(Token name,MathExpression* arraySize = nullptr,EntityVarFlags flags = {});
   
   Entity AddComputation(String functionName,Array<SYM_Expr> expressions);
   Array<Entity> GetAllComputations(Arena* out);

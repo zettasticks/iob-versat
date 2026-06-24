@@ -3,7 +3,7 @@
 // Unit that computes both databus address and memory address for reading and writing operations.
 // This unit is the source of truth for how the address gen interface generates the addresses for accessing memory.
 
-// Take care when changing this. This unit is verilated in order to simulate address gen independently of the accelerator at pc-emul-run time.
+// Take care when changing this. Software address gen code needs to match this logic
 module SuperAddress #(
    parameter AXI_ADDR_W = 32,
    parameter DATA_W   = 32,
@@ -18,7 +18,7 @@ module SuperAddress #(
 
    input run_i,
 
-   input ignore_first_i, // Treat as this is bias vread, for now
+   input ignore_first_i, // Used to align when using duty expressions
 
    //configurations 
    input        [  ADDR_W - 1:0] start_i,
@@ -63,7 +63,7 @@ module SuperAddress #(
    input                          data_valid_i,
    input                          reading,
 
-   // Only address databus values. Read vs Write implemented outside of thies unit.
+   // Only address databus values. Read vs Write implemented outside of this unit.
    input                          databus_ready,
    output                         databus_valid,
    output     [  AXI_ADDR_W-1:0]  databus_addr,
@@ -105,7 +105,7 @@ wire [5:0] cases = {iter3Cond,per3Cond,iter2Cond,per2Cond,iterCond,perCond};
 
 reg ignore;
 
-assign store_o = (per < duty_i && !ignore);
+assign store_o = (per < duty_i && !ignore && valid_o);
 
 wire isZero = (per_i == 0);
 
@@ -161,7 +161,7 @@ always @(posedge clk_i,posedge rst_i) begin
          if (per < duty_i && (!ignore)) begin
             addr_o <= addr_o + (incr_i << OFFSET_W);
          end
-         per <= per + 1;         
+         per <= per + 1;
       end
       6'b????01: begin
          if(!ignore)
