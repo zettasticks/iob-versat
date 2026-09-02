@@ -3037,7 +3037,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
     auto ConfigVarTypeToName = [](ConfigVarType varType) -> String{
       FULL_SWITCH(varType){
         case ConfigVarType_SIMPLE: return "int";
-        case ConfigVarType_ADDRESS: return "void*";
+        case ConfigVarType_BUFFER: return "void*";
         case ConfigVarType_DYN: return "int";
         case ConfigVarType_FIXED: return "int";
       }
@@ -3081,7 +3081,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
           if(var.type == ConfigVarType_DYN){
             c->Argument("VersatVarSpec*",var.name);
             *list->PushElem() = var.name;
-          } else if(var.type != ConfigVarType_ADDRESS){
+          } else if(var.type != ConfigVarType_BUFFER){
             c->Argument(ConfigVarTypeToName(var.type),var.name);
           }
         }

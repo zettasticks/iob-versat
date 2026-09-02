@@ -72,6 +72,8 @@ module AXITransferController #(
       end
    endfunction
 
+
+
    // State variables
    reg [LEN_W-1:0] stored_len;
    reg first_i_transfer;
@@ -101,14 +103,11 @@ module AXITransferController #(
    reg [$clog2(STROBE_W):0] final_strb_o_count;  // Values for 128, right?
    reg [$clog2(STROBE_W):0] initial_strb_o_count;
    reg [$clog2(STROBE_W)-1:0] true_final_strb_o_count;  // $clog2(16) = 4.
-   reg [$clog2(STROBE_W)-1:0] initial_strb_o_last_zero;
-   reg [STROBE_W-1:0] temp_initial_strb_o;
    reg [STROBE_W-1:0] base_strb;
-   wire [OFFSET_W:0] length_iPlusAddress_i = length_i[OFFSET_W:0] + address_i[OFFSET_W:0];
 
    integer i;
    always @* begin
-      // Strobe for a address_i == 0 and length_i smaller then a full transfer
+      // Strobe for a address_i == 0 and length_i smaller than a full transfer
       base_strb = 0;
       for (i = 0; i < (AXI_DATA_W / 8); i = i + 1) begin
          if (i < length_i[OFFSET_W-1:0]) base_strb[i] = 1'b1;

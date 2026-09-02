@@ -116,12 +116,14 @@ AddressAccess* ConvertAccessTo2External(AddressAccess* access,int biggestLoopInd
   SYM_Expr val = EvaluateMaxLinearSumValue(&oneSort);
   SYM_Expr maxLoopValueExpr = val + SYM_1;
 
-  // NOTE: The reason we need to align is because the increase in AXI_DATA_W forces data to be aligned inside the VUnits memories. The single loop does not care because we only need to access values individually, but the double loop cannot function because it assumes that the data is read and stored in a linear matter while in reality the data is stored in multiples of (AXI_DATA_W/DATA_W). 
+  // NOTE: The reason we need to align is because the increase in AXI_DATA_W forces data to be aligned inside the VUnits memories. The single loop does not care because we only need to access values individually, but the double loop cannot function because it assumes that the data is read and stored in a linear matter while in reality the data is stored in multiples of (AXI_DATA_W/DATA_W).
+  // TODO: The easist solution for this would be to add logic to the hardware unit that allows it to 
+  //       adjust the final offset. Its easier to do this in software for now.
 
-  maxLoopValueExpr = SYM_Align(maxLoopValueExpr,SYM_Var("VERSAT_DIFF_W"));
+  //maxLoopValueExpr = SYM_Align(maxLoopValueExpr,SYM_Var("VERSAT_DIFF_W"));
   
   result->internal = Copy(external,out);
-  result->internal->terms[highestConstantIndex].term = maxLoopValueExpr; //PushLiteral(out,maxLoopValue);
+  //result->internal->terms[highestConstantIndex].term = maxLoopValueExpr; //PushLiteral(out,maxLoopValue);
   
   LoopLinearSum* innermostExternal = PushLoopLinearSumSimpleVar("x",SYM_1,SYM_0,maxLoopValueExpr,out);
 
@@ -387,6 +389,8 @@ Array<Pair<String,SYM_Expr>> InstantiateIndividualAssignments(AddressAccess* acc
       }    
     } else {
       // NOTE: Assume that the an empty loop is the same as a one iteration loop
+      // TODO: This might not be the place to put this logic. We probably should transform a single element
+      //       expression into a single loop before calling this function.
       if(port == 0){
         *list->PushElem() = {"dutyA",SYM_1};
         *list->PushElem() = {"perA",SYM_1};
@@ -545,7 +549,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
     loopEnd[i] = env->SymbolicFromMathExpression(loop.endSym);
 
     // NOTE: We transform loops so that they always start at zero:
-    //       - for x a..b {x} <===> for x 0..b-a {(x+a)} 
+    //       - for x a..b {x}  <=>  for x 0..b-a {(x+a)} 
     if(!Equal(start,SYM_0)){
       loopEnd[i] = loopEnd[i] - start;
 
@@ -582,7 +586,6 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
   
   // Extracts the constant term
   SYM_Expr toCalcConst = fullExpr;
-
   for(String str : loopVars){
     toCalcConst = SYM_Replace(toCalcConst,SYM_Var(str),SYM_0);
   }
@@ -656,15 +659,7 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
         newNode->name = PushString(out,p.first);
         newNode->expr = p.second;
 
-        if(ptr){
-          ptr->next = newNode;
-          ptr = ptr->next;
-        }
-
-        if(!ptr){
-          chainStart = newNode;
-          ptr = newNode;
-        }
+        LL_Append(chainStart,ptr,next,newNode);
       }
       
       ifTrue->child = chainStart;
@@ -681,15 +676,7 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
         newNode->name = PushString(out,p.first);
         newNode->expr = p.second;
 
-        if(ptr){
-          ptr->next = newNode;
-          ptr = ptr->next;
-        }
-
-        if(!ptr){
-          chainStart = newNode;
-          ptr = newNode;
-        }
+        LL_Append(chainStart,ptr,next,newNode);
       }
       
       ifFalse->child = chainStart;
@@ -701,7 +688,10 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
   CodeNode* head = nullptr;
   CodeNode* ptr = nullptr;
 
-  if(options.type != AddressGenType_READ){
+  bool isExtMemType = (options.type == AddressGenType_READ);
+
+  // Non reads are easier since we do not have to worry about memory access =====
+  if(!isExtMemType){
     Array<Pair<String,SYM_Expr>> params = InstantiateIndividualAssignments(initial,maxLoops,options,temp);
 
     CodeNode* chainStart = nullptr;
@@ -714,21 +704,18 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
       newNode->name = PushString(out,p.first);
       newNode->expr = p.second;
 
-      if(ptr){
-        ptr->next = newNode;
-        ptr = ptr->next;
-      }
-
-      if(!ptr){
-        chainStart = newNode;
-        ptr = newNode;
-      }
+      LL_Append(chainStart,ptr,next,newNode);
     }
       
     head = chainStart;
   }
 
-  if(options.type == AddressGenType_READ){
+  // NOTE: For reads we need to generate runtime code that decides on how many loops to read data from
+  //       No point in reading thousands of bytes when we only care about the first and the last bytes.
+  //       Might as well divide a single read into multiple reads for this case. The problem is that 
+  //       we can only divide based on runtime info, meaning that we need to generate code for every
+  //       single case and then generate a runtime if that selects the best.
+  if(isExtMemType){
     int totalSize = initial->external->terms.size;
 
     // Generate top level if chains ===============================================
@@ -737,10 +724,6 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
       LoopLinearSumTerm term  =  initial->external->terms[i];
       ifDecider[i] = GetLoopHighestDecider(&term);
     }
-
-    // TODO: The first thing that we need to check if its worth to create an expression.
-    // If we have if(1 < 0) we know that is never gonna hit.
-    // If we normalize we can always check if the result is zero and therefore not create it.
 
     for(int i = 0; i < totalSize; i++){
       int topIndex = i;
@@ -764,6 +747,11 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
         ifCond = ifCond && cond;
       }
 
+      // TODO: If we add more information we could generate better if chains. Something like
+      //       the range of certain values, if some values are always bigger than others and stuff like that.
+      //       Do not know how much this would improve runtime. Regardless we always want to generate as little 
+      //       code as possible otherwise runtime will suffer.
+
       SYM_EvaluateResult eval = SYM_ConstantEvaluate(ifCond);
       CodeNode* emitted = EmitDoubleOrSingleLoopCode(topIndex,initial);
       
@@ -777,15 +765,7 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
         expr->child = emitted;
       }
 
-      if(ptr){
-        ptr->next = expr;
-        ptr = ptr->next;
-      }
-    
-      if(!ptr){
-        head = expr;
-        ptr = expr;
-      }
+      LL_Append(head,ptr,next,expr);
     }
 
     auto GetAssignByName = [](CodeNode* top,String name) -> CodeNode*{

@@ -3,6 +3,8 @@
 // TODO: Replace code with generic instantiation for 128,256,512 and 1024
 
 // Given aligned data, splits the data in order to meet byte alignment in a burst transfer starting with offset byte
+// In theory should work as a passthrough for any simple handshake protocol. Should just be plug and play.
+// Make sure that offset_i is set before the first transfer.
 module BurstSplit #(
    parameter DATA_W = 32,
 
@@ -12,18 +14,24 @@ module BurstSplit #(
 
    input [DATA_W-1:0] data_in_i,
    input              data_valid_i,
+   output             data_ready_o,
 
    output reg [DATA_W-1:0] data_out_o, // Combinatorial from data_in_i and stored_data
+   output                  data_out_valid_o,
+   input                   data_out_ready_i,
 
    input clk_i,
    input rst_i
 );
 
-   reg [(DATA_W-8)-1:0] stored_data;
+   assign data_out_valid_o = data_valid_i;
+   assign data_ready_o = data_out_ready_i;
+
+   reg [(DATA_W-8)-1:0] stored_data = 0,test = 2;
    always @(posedge clk_i, posedge rst_i) begin
       if (rst_i) begin
          stored_data <= 0;
-      end else if (data_valid_i) begin
+      end else if (data_out_valid_o && data_out_ready_i) begin
          stored_data <= data_in_i[DATA_W-1:8];
       end
    end

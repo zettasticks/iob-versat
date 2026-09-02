@@ -771,7 +771,7 @@ Array<Entity> Env::GetEntity(MathExpression* spec,Arena* out){
       }
 
     } break;
-    case MathType_SINGLE_ACCESS: {
+    case MathType_ACCESS: {
       Entity child = Recurse(Recurse,top->expressions[0],false);
       ent = GetEntityFromAccess(child,top->name);
       save = true;
@@ -960,7 +960,7 @@ FUAccess Env::ResolveFU(MathExpression* ptr,Arena* out){
   } break;
   case MathType_LITERAL:
   case MathType_OPERATION:
-  case MathType_SINGLE_ACCESS:
+  case MathType_ACCESS:
   case MathType_FUNCTION_CALL: {
   } break;
   }
@@ -1702,7 +1702,7 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
       }
     } break;
 
-    case MathType_SINGLE_ACCESS:  Assert(false);
+    case MathType_ACCESS:  Assert(false);
     }
 
     return res;
@@ -2097,7 +2097,7 @@ MathExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
       Token singleAccessName = parser->ExpectNext(TokenType_IDENTIFIER);
       
       MathExpression* singleAccess = PushStruct<MathExpression>(out);
-      singleAccess->type = MathType_SINGLE_ACCESS; //MathType_NAME;
+      singleAccess->type = MathType_ACCESS;
       singleAccess->name = singleAccessName;
       singleAccess->expressions = PushArray<MathExpression*>(out,1);
       singleAccess->expressions[0] = res;
@@ -3094,7 +3094,7 @@ Array<Token> AccumTokens(MathExpression* top,Arena* out){
     } break;
     case MathType_OPERATION: {
     } break;
-    case MathType_SINGLE_ACCESS: {
+    case MathType_ACCESS: {
       *list->PushElem() = top->name;
     } break;
     case MathType_ARRAY_ACCESS: {

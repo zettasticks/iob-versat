@@ -97,7 +97,7 @@ enum MathType{
   MathType_OPERATION,
   MathType_NAME,
   MathType_LITERAL,
-  MathType_SINGLE_ACCESS,
+  MathType_ACCESS, // A.B type of expression
   MathType_ARRAY_ACCESS, // Array access contains the all the accesses in a row (A[1][2][3] will contain 3 expressions)
   MathType_FUNCTION_CALL
 };

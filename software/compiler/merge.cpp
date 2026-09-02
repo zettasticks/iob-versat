@@ -797,13 +797,13 @@ GraphMapping ConsolidationGraphMapping(Accelerator* accel1,Accelerator* accel2,C
 
       InsertMapping(res,nodes.instances[1],nodes.instances[0]);
     } else { // Edge mapping
-         Edge& edge0 = node.edges[0]; // Edge in graph 1
-         Edge& edge1 = node.edges[1]; // Edge in graph 2
-
-         InsertMapping(res,edge1.units[0].inst,edge0.units[0].inst);
-         InsertMapping(res,edge1.units[1].inst,edge0.units[1].inst);
-
-         res.edgeMap->Insert(edge1,edge0);
+      Edge& edge0 = node.edges[0]; // Edge in graph 1
+      Edge& edge1 = node.edges[1]; // Edge in graph 2
+      
+      InsertMapping(res,edge1.units[0].inst,edge0.units[0].inst);
+      InsertMapping(res,edge1.units[1].inst,edge0.units[1].inst);
+      
+      res.edgeMap->Insert(edge1,edge0);
     }
   }
 
@@ -2772,7 +2772,7 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
   DebugOutputGraphs(merged,"BeforeInsertingMux");
   
   // At this point we need to add the multiplexers
-  // Also assuming that we already removed all the superflouos edges (same node and input connected to same node and input edges can just be collapsed into one)
+  // Also assuming that we already removed all the superfluous edges (same node and input connected to same node and input edges can just be collapsed into one)
   for(FUInstance* inst : merged->mergedGraph->allocated){
     if(!inst->multipleSamePortInputs){
       continue;

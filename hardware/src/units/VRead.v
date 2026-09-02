@@ -293,11 +293,14 @@ assign data_data = databus_rdata_0;
    generate
       if (AXI_DATA_W > DATA_W) begin
          reg [DECISION_BIT_W-1:0] sel_0;  // Matches addr_0_port_0
+         reg [DECISION_BIT_W-1:0] sel_0_2; // TODO: We probably want to abstract this into its own module, also need to be able to handle variable delays in memories.
          always @(posedge clk, posedge rst) begin
             if (rst) begin
                sel_0 <= 0;
+               sel_0_2 <= 0;
             end else begin
                sel_0 <= output_addr[DECISION_BIT_START+:DECISION_BIT_W];
+               sel_0_2 <= sel_0;
             end
          end
 
@@ -306,7 +309,7 @@ assign data_data = databus_rdata_0;
             .OUTPUT_W(DATA_W),
             .SIZE_W  (DATA_W)
          ) adapter (
-            .sel_i(sel_0),
+            .sel_i(sel_0_2),
             .in_i (ext_2p_data_in_0),
             .out_o(out0_temp)
          );

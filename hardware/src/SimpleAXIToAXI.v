@@ -98,7 +98,7 @@ module SimpleAXIToAXI #(
       .rst_i(rst_i)      
    );
 
-   SimpleAXIToAXIWrite #(
+   SimpleAXIToAXIWrite2 #(
       .AXI_ADDR_W(AXI_ADDR_W),
       .AXI_DATA_W(AXI_DATA_W),
       .AXI_ID_W  (AXI_ID_W),

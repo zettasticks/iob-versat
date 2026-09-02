@@ -448,6 +448,7 @@ Array<T> PushArray(Arena* out,ArenaList<T>* list){
     return {};
   }
 
+  // TODO: Add a count to arena list and remove this.
   auto arr = StartGrowableArray<T>(out);
   
   FOREACH_LIST(SingleLink<T>*,iter,list->head){

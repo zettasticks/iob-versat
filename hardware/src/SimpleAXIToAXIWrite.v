@@ -86,6 +86,16 @@ module SimpleAXIToAXIWrite #(
    wire [(AXI_DATA_W/8)-1:0] initial_strb, final_strb;
    wire outputOneExtra;
 
+   AXITransferController2 #(
+      .AXI_ADDR_W(AXI_ADDR_W),
+      .AXI_DATA_W(AXI_DATA_W),
+      .AXI_LEN_W(AXI_LEN_W),
+      .LEN_W     (LEN_W)
+   ) tempController (
+      .in_address(m_waddr_i),
+      .in_length(m_wlen_i)
+   );
+
    AXITransferController #(
       .AXI_ADDR_W(AXI_ADDR_W),
       .AXI_DATA_W(AXI_DATA_W),

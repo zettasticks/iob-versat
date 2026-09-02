@@ -26,16 +26,10 @@ static String GlobalConfigFunctionName(String functionName,FUDeclaration* decl,A
 struct DecompConfigStatement{
   // Single type
   bool isFunctionInvoc;
-  Array<MathExpression*> args;
   ConfigFunction* func;
 
   // LHS type
   struct {
-    bool isVirtualWire;
-    bool isSingleWire;
-    bool isEntityOnly;
-    bool isArrayAccess;
-
     Entity entity; // Always contains the "bigger" entity (FUs and such).
     Entity subEntity; // Contains the smaller entity (wires and such).
 
@@ -89,7 +83,6 @@ DecompConfigStatement DecomposeConfigStatement(Env* env,ConfigStatement* stmt,Ar
   if(stmt->type == ConfigStatementType_FUNCTION_CALL){
     res.isFunctionInvoc = true;
     res.func = lhsLast.func;
-    res.args = stmt->lhs->next->arguments;
     res.lhs.name = lhsFirst.name.identifier;
   }
 
@@ -116,23 +109,19 @@ DecompConfigStatement DecomposeConfigStatement(Env* env,ConfigStatement* stmt,Ar
     } break;
 
     case EntityType_FU:{
-      res.lhs.isEntityOnly = true;
       res.lhs.name = lhsLast.name.identifier;
       res.lhs.entity = lhsLast;
     } break;
     case EntityType_ACCESS_EXPR:{
-      res.lhs.isArrayAccess = true;
       res.lhs.entity = lhsSecondLast;
       res.lhs.subEntity = lhsLast;
     } break;
     case EntityType_MEM_PORT:{
-      res.lhs.isVirtualWire = true;
       res.lhs.entity = lhsSecondLast;
       res.lhs.subEntity = lhsLast;
     } break;
     case EntityType_CONFIG_WIRE:
     case EntityType_STATE_WIRE:{
-      res.lhs.isSingleWire = true;
       res.lhs.entity = lhsSecondLast;
       res.lhs.subEntity = lhsLast;
     } break;
@@ -285,44 +274,6 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     }
   }
 
-  /*
-    If we have variables a,b,c.
-    I want to produce a table like output like:
-
-    If we have something like:
-    
-for a in range{
-  x = ...
-  for b in range{
-    y = ...
-    for c in range{
-      z = ...
-    }
-  }
-}
-
-then I want to produce the equivalent C code:
-
-int index = 0;
-for(int a = rangeStart; a < rangeEnd; a++){
-  int x = ...; // The content in here can be the address gen symbolic expression directly.
-  for(int b = rangeStart; b < rangeEnd; b++){
-    int y = ...;
-    for(int c = rangeStart; c < rangeEnd; c++){
-      int z = ...;
-
-      printf("%d | %d | %d | %d | %d | %d | %d\n",index,a,b,c,x,y,z);
-      index += 1;
-    }
-  }
-}
-
-    index | A | B | C and so on.
-
-
-   */
-
-  
   // TODO: Kinda stupid calculating things this way but the rest of the code needs to collapse into a simpler form for the more robust approach first.
   auto variablesUsedOnLoopExpressions = PushTrieSet<String>(temp);
 
@@ -360,8 +311,8 @@ for(int a = rangeStart; a < rangeEnd; a++){
 
     ConfigVarType type = ConfigVarType_SIMPLE;
 
-    if(typeTok.identifier == "Address"){
-      type = ConfigVarType_ADDRESS;
+    if(typeTok.identifier == "Buffer"){
+      type = ConfigVarType_BUFFER;
     } else if(typeTok.identifier == "Fixed"){
       type = ConfigVarType_FIXED;
     } else if(typeTok.identifier == "Dyn"){
@@ -603,7 +554,7 @@ for(int a = rangeStart; a < rangeEnd; a++){
           } break;
 
           // We do not support accesses on rhs of config functions ====================
-          case MathType_SINGLE_ACCESS: {
+          case MathType_ACCESS: {
             rhsError = true;
             Assert(false);
           } break;
@@ -669,7 +620,7 @@ for(int a = rangeStart; a < rangeEnd; a++){
                   rhsEntity = newEntity;
                 }
               } break;
-              case MathType_SINGLE_ACCESS:
+              case MathType_ACCESS:
               case MathType_ARRAY_ACCESS: {
                 rhsError = true;
                 //Assert(false);
@@ -873,7 +824,7 @@ for(int a = rangeStart; a < rangeEnd; a++){
       } break;
 
       case MathType_FUNCTION_CALL:
-      case MathType_SINGLE_ACCESS:{
+      case MathType_ACCESS:{
         MathExpression* shouldBeFU = ptr->expressions[0];
         
         FUAccess access = env->ResolveFU(shouldBeFU,temp);
@@ -971,6 +922,72 @@ for(int a = rangeStart; a < rangeEnd; a++){
       ConfigStatement* stmt = stmts[0];
       ConfigStatement* simple = stmts[stmts.size - 1];
       bool singleStatement = (stmts.size == 1);
+
+      // Decompose lhs ==============================================================
+#if 0
+      Entity lhsBase = Entity_Nil;
+      Entity lhsExpr = Entity_Nil;
+      
+      bool isLhsFunctionCall = false;
+      bool nameAlreadySeen = false;
+      bool lhsError = false;
+
+      ConfigIdentifier* ptr = simple->lhs;
+          
+      for(; ptr; ptr = ptr->next){
+        FULL_SWITCH(ptr->type){
+        case ConfigIdentifierType_BASE:{
+          // Parser should never allow this
+          Assert(!nameAlreadySeen);
+
+          lhsBase = env->GetEntity(ptr->name);
+          nameAlreadySeen = true;
+        } break;
+        case ConfigIdentifierType_ARRAY:{
+          if(isLhsFunctionCall){
+            env->ReportError({},"Cannot have array access after a function expression");
+            lhsError = true;
+          }
+
+          MathExpression* expr = ptr->arrayExpr;
+          bool found = false;
+          if(!found && lhsBase.type == EntityType_FU_ARRAY){
+            found = true;
+        
+            int index = env->CalculateConstantExpression(expr);
+        
+            if(index < 0 || index >= lhsBase.dims[0]){
+              env->ReportError({},"Outside array bounds");
+              lhsError = true;
+            }
+
+            String arrayName = PushString(out,"%.*s_%d",UN(lhsBase.name.identifier),index);
+        
+            Array<int> newDims = Offset(lhsBase.dims,1);
+
+            if(newDims.size > 0){
+              lhsBase.type = EntityType_FU_ARRAY;
+          
+              // TODO-2
+              lhsBase.name = {};
+              lhsBase.name.type = TokenType_IDENTIFIER;
+              lhsBase.name.identifier = arrayName;
+              lhsBase.name.originalData = arrayName;
+
+              lhsBase.dims = newDims;
+            } else {
+              FUInstance** possibleInst = env->table->Get(arrayName);
+
+              if(!possibleInst){
+                //ReportError({},"Inst does not exist");
+              } else {
+                lhsBase = MakeEntity(*possibleInst);
+              }
+            }
+          }
+        } break;
+      }
+#endif
 
       DecompConfigStatement decomp = DecomposeConfigStatement(env,simple,temp);
 

@@ -99,7 +99,7 @@ module versat_2p_asym_ram #(
          end
          //read parallel
          always @* begin
-            r_data_o = 1'b0;
+            r_data_o = 0;
             for (k = 0; k < N; k = k + 1) begin
                r_data_o[k*MINDATA_W+:MINDATA_W] = data_rd[k];
             end

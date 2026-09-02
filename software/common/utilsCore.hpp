@@ -823,3 +823,12 @@ inline bool Contains(Array<String> array,String toCheck){
    }
    return false;
 }
+
+#define LL_Append(HEAD,PTR,NEXT,ELEM) \
+  if(HEAD == nullptr){ \
+    HEAD = ELEM; \
+    PTR = ELEM; \
+  } else if(ELEM) { \
+    PTR->NEXT = ELEM; \
+    PTR = ELEM; \
+  }

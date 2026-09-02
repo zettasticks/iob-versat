@@ -12,6 +12,7 @@ struct CEmitter;
 struct SpecExpression;
 struct MathExpression;
 struct Env;
+struct CAST;
 
 // TODO: We currently do not support loops that start at non zero values. The fix is simple, we can always shift loops from N..M to 0..(M-N) by adding more logic to the expression. Kinda not doing this for now since still have not found an example where this is needed.
 
@@ -72,6 +73,7 @@ enum CodeNodeType{
   CodeNodeType_EMPTY,
   CodeNodeType_IF,
   CodeNodeType_ASSIGN,
+  //CodeNodeType_COMMENT,
 };
 
 struct CodeNode{
@@ -79,6 +81,7 @@ struct CodeNode{
 
   String name;
   SYM_Expr expr;
+  CAST* comments;
   
   CodeNode* next;
   CodeNode* child;

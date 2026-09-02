@@ -41,7 +41,7 @@ struct ConfigStatement{
 
   ConfigStatementType type;
 
-  // Why have a ConfigIdentifier and a SpecExpression?
+  // Why have a ConfigIdentifier and a MathExpression?
 
   // TODO: Union
   // Statement
@@ -135,7 +135,7 @@ struct ConfigStuff{
 
 enum ConfigVarType{
   ConfigVarType_SIMPLE,
-  ConfigVarType_ADDRESS,
+  ConfigVarType_BUFFER,
   ConfigVarType_FIXED,
   ConfigVarType_DYN
 };
