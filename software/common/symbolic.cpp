@@ -2630,6 +2630,139 @@ SYM_Expr SYM_Normalize(SYM_Expr in){
   return res;
 }
 
+SYM_Expr SYM_Reduce(SYM_Expr in){
+  SYM_Node* node = GetPointer(in);
+  bool isNegative = IsNegative(in);
+
+  SYM_Expr  res = in;
+  FULL_SWITCH(node->type){
+  case SYM_Type_NIL:
+  case SYM_Type_MOD:
+  case SYM_Type_DIV:
+  case SYM_Type_MUL:
+  case SYM_Type_SUM:
+  case SYM_Type_FUNC:
+  case SYM_Type_LITERAL:
+  case SYM_Type_VARIABLE:{
+    // Nothing
+  } break;
+  case SYM_Type_AND:{
+    SYM_Expr first = SYM_Reduce(node->first);
+    SYM_Expr second = SYM_Reduce(node->second);
+
+    SYM_EvaluateResult firstRes = SYM_ConstantEvaluate(first);
+    SYM_EvaluateResult secondRes = SYM_ConstantEvaluate(second);
+
+    bool firstGood = !firstRes.Error();
+    bool secondGood = !secondRes.Error();
+    bool found = 0;
+
+    if(!found && firstGood && secondGood){
+      res = SYM_Lit(firstRes.result && secondRes.result ? 1 : 0);
+      found = 1;
+    }
+
+    if(!found && firstGood){
+      res = second;
+      found = 1;
+    }
+    if(!found && secondGood){
+      res = first;
+      found = 1;
+    }
+    if(!found && SYM_Equal(first,second)){
+      res = first;
+      found = 1;
+    }
+
+    if(found && isNegative){
+      res = Negate(res);
+    }
+  } break;
+  case SYM_Type_OR:{
+    SYM_Expr first = SYM_Reduce(node->first);
+    SYM_Expr second = SYM_Reduce(node->second);
+
+    SYM_EvaluateResult firstRes = SYM_ConstantEvaluate(first);
+    SYM_EvaluateResult secondRes = SYM_ConstantEvaluate(second);
+
+    bool firstGood = !firstRes.Error();
+    bool secondGood = !secondRes.Error();
+    bool found = 0;
+
+    if(!found && (firstGood || secondGood)){
+      res = SYM_Lit(firstRes.result || secondRes.result ? 1 : 0);
+      found = 1;
+    }
+    if(!found && SYM_Equal(first,second)){
+      res = first;
+      found = 1;
+    }
+
+    if(found && isNegative){
+      res = Negate(res);
+    }
+  } break;
+  case SYM_Type_COMP:{
+    SYM_Expr first = SYM_Reduce(node->first);
+    SYM_Expr second = SYM_Reduce(node->second);
+
+    SYM_EvaluateResult firstRes = SYM_ConstantEvaluate(first);
+    SYM_EvaluateResult secondRes = SYM_ConstantEvaluate(second);
+    
+    bool constant = 1;
+    if(firstRes.Error() || secondRes.Error()){
+      constant = 0;
+    }
+
+    if(constant){
+      int first = firstRes.result;
+      int second = secondRes.result;
+
+      FULL_SWITCH(node->compType){
+      case SYM_CompType_NIL:{
+        //Nothing
+      } break;
+      case SYM_CompType_EQ:{
+        res = (first == second ? SYM_Lit(1) : SYM_Lit(0));
+      } break;
+      case SYM_CompType_GT:{
+        res = (first > second ? SYM_Lit(1) : SYM_Lit(0));
+      } break;
+      case SYM_CompType_GE:{
+        res = (first >= second ? SYM_Lit(1) : SYM_Lit(0));
+      } break;
+      case SYM_CompType_LT:{
+        res = (first < second ? SYM_Lit(1) : SYM_Lit(0));
+      } break;
+      case SYM_CompType_LE:{
+        res = (first <= second ? SYM_Lit(1) : SYM_Lit(0));
+      } break;
+    }
+    }
+
+    if(SYM_Equal(first,second)){
+      FULL_SWITCH(node->compType){
+      case SYM_CompType_NIL:{
+        //Nothing
+      } break;
+      case SYM_CompType_LE:
+      case SYM_CompType_GE:
+      case SYM_CompType_EQ:{
+        res = SYM_Lit(1);
+      } break;
+      case SYM_CompType_GT:
+      case SYM_CompType_LT:{
+        res = SYM_Lit(0);
+      } break;
+    }
+    }
+  } break;
+  }
+
+  return res;
+}
+
 void SYM_Test(){
   TestCase tests[] = {
 #if 0

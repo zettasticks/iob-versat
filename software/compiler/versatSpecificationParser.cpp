@@ -1721,27 +1721,6 @@ MathExpression* ParseNumberOnly(Parser* parser,Arena* out){
   return res;
 }
 
-MathExpression* ParseNumberOrSingleIdentifier(Parser* parser,Arena* out){
-  MathExpression* res = PushStruct<MathExpression>(out);
-
-  Token tok = parser->NextToken();
-
-  if(tok.type != TokenType_IDENTIFIER && tok.type != TokenType_NUMBER){
-    parser->ReportError("Unexpected token");
-  }
-
-  if(tok.type == TokenType_IDENTIFIER){
-    res->name = tok;
-    res->type = MathType_NAME;
-  }
-  if(tok.type == TokenType_NUMBER){
-    res->val = tok.number;
-    res->type = MathType_LITERAL;
-  }
-
-  return res;
-}
-
 Range<MathExpression*> ParseRange(Parser* parser,Arena* out){
   Range<MathExpression*> res = {};
 
@@ -3128,42 +3107,6 @@ void ArrayIndexIncrementInPlace(Array<int> dims,Array<int> startValue,Array<int>
 
     break;
   }
-}
-
-int ArrayIndexToInteger(Array<int> dims,Array<int> index){
-  Assert(dims.size == index.size);
-  int size = dims.size;
-
-  int res = 0;
-  for(int i = 0; i < size; i++){
-    int val = index[i];
-    for(int j = i + 1; j < size; j++){
-      val *= dims[j];
-    }
-
-    res += val;
-  }
-
-  return res;
-}
-
-Array<int> IntegerToArrayIndex(Array<int> dims,int index,Arena* out){
-  int size = dims.size;
-
-  Array<int> res = PushArray<int>(out,size);
-
-  int value = index;
-  for(int i = 0; i < index; i++){
-    int dimTotalSize = 1;
-    for(int j = i + 1; j < size; j++){
-      dimTotalSize *= dims[j];
-    }
-
-    res[i] = value / dimTotalSize;
-    value = value % dimTotalSize;
-  }
-
-  return res;
 }
 
 DimIterator* StartIteration(Array<int> endValues,Array<int> startValues,Arena* out){

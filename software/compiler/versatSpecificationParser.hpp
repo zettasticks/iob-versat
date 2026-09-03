@@ -445,8 +445,6 @@ DimIterator* StartIteration(Array<int> endValues,Array<int> startValues,Arena* o
 DimIterator* StartIteration(int size,Arena* out);
 
 void ArrayIndexIncrementInPlace(Array<int> dims,Array<int> startValue,Array<int> index);
-int ArrayIndexToInteger(Array<int> dims,Array<int> index);
-Array<int> IntegerToArrayIndex(Array<int> dims,int index,Arena* out);
 
 struct FUInstanceIterator{
   Env* env;

@@ -173,6 +173,7 @@ SYM_Expr SYM_Replace(SYM_Expr expr,SYM_Expr toReplace,SYM_Expr replacement);
 
 SYM_Expr SYM_Derivate(SYM_Expr expr,String var);
 SYM_Expr SYM_Normalize(SYM_Expr in);
+SYM_Expr SYM_Reduce(SYM_Expr in);
 
 // ======================================
 // Manipulation and info retrieval

@@ -752,20 +752,30 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
       //       Do not know how much this would improve runtime. Regardless we always want to generate as little 
       //       code as possible otherwise runtime will suffer.
 
-      SYM_EvaluateResult eval = SYM_ConstantEvaluate(ifCond);
-      CodeNode* emitted = EmitDoubleOrSingleLoopCode(topIndex,initial);
+      //SYM_Print(ifCond);
+      //printf("\n\n");
+      SYM_Expr reduced = SYM_Reduce(ifCond);
+      //SYM_Print(reduced);
+      //printf("\n\n");
       
-      CodeNode* expr = nullptr;
-      if(!eval.Error() && eval.result){
-        expr = emitted;
+      SYM_EvaluateResult eval = SYM_ConstantEvaluate(reduced);
+      if(!eval.Error() && eval.result == 0){
+        // Skip, if(0)
       } else {
-        expr = PushStruct<CodeNode>(out);
-        expr->type = CodeNodeType_IF;
-        expr->expr = ifCond;
-        expr->child = emitted;
-      }
+        CodeNode* emitted = EmitDoubleOrSingleLoopCode(topIndex,initial);
+      
+        CodeNode* expr = nullptr;
+        if(!eval.Error() && eval.result){
+          expr = emitted;
+        } else {
+          expr = PushStruct<CodeNode>(out);
+          expr->type = CodeNodeType_IF;
+          expr->expr = reduced;
+          expr->child = emitted;
+        }
 
-      LL_Append(head,ptr,next,expr);
+        LL_Append(head,ptr,next,expr);
+      }
     }
 
     auto GetAssignByName = [](CodeNode* top,String name) -> CodeNode*{
