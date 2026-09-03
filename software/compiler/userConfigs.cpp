@@ -210,7 +210,8 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
   for(ConfigVarDeclaration varDecl : variables){
     EntityVarFlags flags = {};
-    if(varDecl.type.identifier == "Address"){
+    // TODO: Proper
+    if(varDecl.type.identifier == "Buffer"){
       flags = EntityVarFlags_ADDRESS;
     }
 
