@@ -18,6 +18,8 @@
 // ======================================
 // Constants
 
+static readOnly SP_Node SP_Node_Nil = {};
+
 // static readOnly SpecExpression SPEC_LITERAL_0 = {.val = 0,.type = SpecType_LITERAL};
 static readOnly MathExpression MATH_LITERAL_0 = {.val = 0,.type = MathType_LITERAL};
 
@@ -2777,6 +2779,7 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
 
   FREE_ARENA(parseArena);
   Parser* parser = StartParsing(TokenizeFunction,content,parseArena,ParsingOptions_DEFAULT);
+  parser->debug = 1;
 
   // TODO:
   // Kinda hacky way of doing this.
@@ -2793,7 +2796,11 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
     ConstructDef def = {};
     if(tok.type == TokenType_KEYWORD_MODULE){
       def.type = ConstructType_MODULE;
-      def.module = ParseModuleDef(parser,out);
+      def.node = SP_ParseModuleDef(parser,out);
+
+      //String repr = SP_Repr(def.node,temp);
+      //printf("%.*s\n",UN(repr));
+
     } else if(tok.type == TokenType_KEYWORD_MERGE){
       def.type = ConstructType_MERGE;
       def.merge = ParseMerge(parser,out);
@@ -3371,6 +3378,49 @@ SP_Node* SP_PushNode(Arena* out,SP_Type type,Token token,SP_Node* childs){
   return node;
 }
 
+String SP_Repr(SP_Node* top,Arena* out){
+  TEMP_REGION(temp,out);
+
+  auto b = StartString(temp);
+
+  auto Recurse = [b](auto Recurse,SP_Node* node,int level) -> void {
+    if(!node){
+      return;
+    }
+    
+    bool exprType = SP_Type_IsExpr(node->type);
+    String name = SP_Type_Name(node->type);
+
+    b->PushSpaces(level * 2);
+
+    if(exprType){
+      b->PushString("E: %.*s ",UN(name));
+      if(!Empty(node->token.identifier)){
+        b->PushString("%.*s",UN(node->token.identifier));
+      }
+      b->PushString("\n");
+
+      Recurse(Recurse,node->first,level + 1);
+      Recurse(Recurse,node->second,level + 1);
+    } else {
+      b->PushString("N: %.*s ",UN(name));
+      if(!Empty(node->token.identifier)){
+        b->PushString("%.*s",UN(node->token.identifier));
+      }
+      b->PushString("\n");
+
+      for(SP_Node* ptr = node->childs; ptr; ptr = ptr->next){
+        Recurse(Recurse,ptr,level + 1);
+      }
+    }
+  };
+
+  Recurse(Recurse,top,0);
+  String res = EndString(out,b);
+
+  return res;
+}
+
 SP_Node* SP_ParseVar(Parser* parser,Arena* out);
 
 SP_Node* SP_ParseExpression(Parser* parser,Arena* out,int bindingPower = 99){
@@ -3448,7 +3498,7 @@ SP_Node* SP_ParseExpression(Parser* parser,Arena* out,int bindingPower = 99){
     }
   } else {
     // TODO: Better error reporting
-    parser->ReportUnexpectedToken(peek,{});
+    parser->ReportUnexpectedToken(parser->NextToken(),{});
   }
 
   if(topUnary){
@@ -3536,6 +3586,12 @@ SP_Node* SP_ParseVar(Parser* parser,Arena* out){
 
   SP_Node* var = SP_PushNode(out,SP_Type_VAR,name,0);
 
+  while(parser->IfNextToken('.')){
+    Token access = parser->ExpectNext(TokenType_IDENTIFIER);
+    
+    var = SP_PushNode(out,SP_Type_ACCESS,access,var);
+  }
+  
   while(parser->IfNextToken('[')){
     SP_Node* range = SP_ParseRange(parser,out);
 
@@ -3545,6 +3601,7 @@ SP_Node* SP_ParseVar(Parser* parser,Arena* out){
     parser->ExpectNext(']');
   }
 
+#if 0
   if(parser->IfNextToken('{')){
     SP_Node* delay = SP_ParseRange(parser,out);
     
@@ -3553,6 +3610,7 @@ SP_Node* SP_ParseVar(Parser* parser,Arena* out){
 
     parser->ExpectNext('}');
   }
+#endif
 
   if(parser->IfNextToken(':')){
     SP_Node* port = SP_ParseRange(parser,out);
@@ -3795,7 +3853,13 @@ SP_Node* SP_ParseConnection(Parser* parser,Arena* out){
       parser->ReportUnexpectedToken(parser->NextToken(),{TOK_TYPE('='),TokenType_ARROW});
     }
 
-    SP_Node* inPart = SP_ParseVarGroup(parser,out);
+    SP_Node* inPart = {};
+
+    if(type == SP_Type_EQUALITY){
+      inPart = SP_ParseExpression(parser,out);
+    } else {
+      inPart = SP_ParseVarGroup(parser,out);
+    }
 
     outPart->next = inPart;
     res = SP_PushNode(out,type,{},outPart);
@@ -3820,7 +3884,13 @@ SP_Node* SP_ParseConfigStatements(Parser* parser,Arena* out){
   SP_Node* stmtsHead = 0;
   SP_Node* stmtsTail = 0;
   
+  parser->ExpectNext('{');
+
   while(!parser->Done()){
+    if(parser->IfPeekToken('}')){
+      break;
+    }
+    
     bool isLoop = false;
     bool isGen = false;
     if(!isLoop && parser->IfNextToken(TokenType_KEYWORD_GEN)){
@@ -3836,10 +3906,7 @@ SP_Node* SP_ParseConfigStatements(Parser* parser,Arena* out){
 
       // TODO: Not being set, need to figure out how to proceed for this case
       SP_Node* range = SP_ParseRange(parser,out);
-
-      parser->ExpectNext('{');
-      SP_Node* child = SP_ParseConfigStatements(parser,out);
-      parser->ExpectNext('}');
+      SP_Node* childs = SP_ParseConfigStatements(parser,out);
 
       SP_Type type = {};
       if(isGen){
@@ -3848,30 +3915,30 @@ SP_Node* SP_ParseConfigStatements(Parser* parser,Arena* out){
         type = SP_Type_FOR_LOOP;
       }
 
-      SP_Node* loopNode = SP_PushNode(out,type,loopVariable,child);
+      range->next = childs;
+      SP_Node* loopNode = SP_PushNode(out,type,loopVariable,range);
       SP_Append(stmtsHead,stmtsTail,loopNode);
     }
     
     if(!isLoop){
-      if(parser->IfPeekToken(TokenType_IDENTIFIER)){
-        SP_Node* lhs = SP_ParseExpression(parser,out);
+      SP_Node* lhs = SP_ParseExpression(parser,out);
 
-        SP_Type type = {};
-        if(parser->IfNextToken('=')){
-          SP_Node* rhs = SP_ParseExpression(parser,out);
-          lhs->next = rhs;
-          parser->ExpectNext(';');
-          type = SP_Type_EQUALITY;
-        }
-        if(parser->IfNextToken(';')){
-          type = SP_Type_FUNCTION_CALL;
-        }
-
-        SP_Node* stmt = SP_PushNode(out,type,{},lhs);
-        SP_Append(stmtsHead,stmtsTail,stmt);
+      SP_Type type = {};
+      if(parser->IfNextToken('=')){
+        SP_Node* rhs = SP_ParseExpression(parser,out);
+        lhs->next = rhs;
+        parser->ExpectNext(';');
+        type = SP_Type_EQUALITY;
       }
+      if(parser->IfNextToken(';')){
+        type = SP_Type_FUNCTION_CALL;
+      }
+
+      SP_Node* stmt = SP_PushNode(out,type,{},lhs);
+      SP_Append(stmtsHead,stmtsTail,stmt);
     }
   }
+  parser->ExpectNext('}');
 
   SP_Node* res = SP_PushNode(out,SP_Type_STMT_LIST,{},stmtsHead);
 
@@ -3960,11 +4027,7 @@ SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out){
     parser->ExpectNext(')');
   }
 
-  parser->ExpectNext('{');
-
   SP_Node* configs = SP_ParseConfigStatements(parser,out);
-  
-  parser->ExpectNext('}');
   
   // Pack =======================================================================
   SP_Node* mods = SP_PushNode(out,SP_Type_MODIFIER_LIST,{},modHead);
@@ -4036,8 +4099,10 @@ SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
       }
 
       // Parse variable declarations only ===========================================
-      SP_Node* var = SP_ParseVarDeclaration(parser,out);
+      SP_Node* var = SP_ParseInstanceDeclaration(parser,out);
       SP_Append(declHead,declTail,var);
+
+      parser->ExpectNext(';');
 
     } else {
       // Parser connections and function definitions ================================
@@ -4060,15 +4125,17 @@ SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
       } else {
         SP_Node* con = SP_ParseConnection(parser,out);
         SP_Append(conHead,conTail,con);
+
+        parser->ExpectNext(';');
       }
     }
   }
 
   parser->ExpectNext('}');
   
-  SP_Node* decls = SP_PushNode(out,SP_Type_DECL_GROUP,{},declHead);
-  SP_Node* cons = SP_PushNode(out,SP_Type_CON_GROUP,{},conHead);
-  SP_Node* funcs = SP_PushNode(out,SP_Type_FUNCS_GROUP,{},funcHead);
+  SP_Node* decls = SP_PushNode(out,SP_Type_DECL_LIST,{},declHead);
+  SP_Node* cons = SP_PushNode(out,SP_Type_CON_LIST,{},conHead);
+  SP_Node* funcs = SP_PushNode(out,SP_Type_FUNC_LIST,{},funcHead);
 
   vars->next = decls;
   decls->next = cons;

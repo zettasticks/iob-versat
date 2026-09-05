@@ -1,0 +1,59 @@
+table NodeTable(name,isExprType){
+  NIL                  0
+  NOT                  1
+  SUB                  1
+  LITERAL              1
+  FUNC_CALL            1
+  AND                  1
+  OR                   1
+  XOR                  1
+  RHL                  1
+  RHR                  1
+  SHL                  1
+  SHR                  1
+  MUL                  1
+  DIV                  1
+  ADD                  1
+  EXPR                 0
+  RANGE                0
+  VAR                  0
+  ACCESS               0
+  RANGE_DECL           0
+  DELAY_DECL           0
+  PORT_ACCESS          0
+  VAR_DECL             0
+  MODULE_INPUTS        0
+  MODIFIER_DEBUG       0
+  MODIFIER_STATIC      0
+  MODIFIER_SHARE       0
+  MODIFIER_SIM         0
+  MODIFIER_LIST        0
+  ID                   0
+  PARAM                0
+  PARAM_LIST           0
+  VARIABLE_DECL        0
+  VAR_LIST             0
+  FOR_LOOP             0
+  GEN_LOOP             0
+  FUNCTION_CALL        0
+  EQUALITY             0
+  CONNECTION           0
+  PARAM_DECL           0
+  DECL_LIST            0
+  CON_LIST             0
+  FUNC_LIST            0
+  MODULE_DECL          0
+  FUNC_CONFIG          0
+  FUNC_STATE           0
+  FUNC_MEM             0
+  FUNC_TYPE_BUFFER     0
+  FUNC_TYPE_DYN        0
+  FUNC_TYPE_FIXED      0
+  STMT                 0
+  STMT_LIST            0
+}
+
+enum SP_Type{ @(for a NodeTable) $$ SP_Type_@(a.name) $$}
+
+map SP_Type_Name(SP_Type,String){ @(for a NodeTable) $$ SP_Type_@(a.name) -> "@(a.name)" $$ }
+map SP_Type_IsExpr(SP_Type,bool){ @(for a NodeTable) $$ SP_Type_@(a.name) -> @(a.isExprType) $$ }

@@ -24,6 +24,7 @@ _b := $(shell mkdir -p $(TOOL_BUILD_DIR)) # Creates the folder
 #Tools
 EMBED     := $(TOOL_BUILD_DIR)/embedData
 HASH      := $(TOOL_BUILD_DIR)/calculateHash
+META      := $(TOOL_BUILD_DIR)/meta
 VCD2SAIF  := $(TOOL_BUILD_DIR)/vcd2saif
 FST2SAIF  := $(TOOL_BUILD_DIR)/fst2saif
 
@@ -73,6 +74,9 @@ $(HASH): $(VERSAT_TOOLS_DIR)/calculateHash.cpp $(VERSAT_COMMON_TOOLS_OBJS) $(VER
 $(EMBED): $(VERSAT_TOOLS_DIR)/embedData.cpp $(VERSAT_COMMON_TOOLS_OBJS) $(VERSAT_COMMON_HEADERS)
 	$(COMPILE_TOOL_NO_D)
 
+$(META): $(VERSAT_TOOLS_DIR)/meta.cpp
+	g++ -g -DPC -std=c++17 -MMD -MP -o $@ $<
+
 $(VERSAT_TOOLS_DIR)/libfst/src/%.o: $(VERSAT_TOOLS_DIR)/libfst/src/%.c
 	gcc $< -c -o $@ -I$(VERSAT_TOOLS_DIR)/libfst/src
 
@@ -99,9 +103,12 @@ $(VERSAT_DIR)/versat: $(CPP_OBJ) $(VERSAT_ALL_HEADERS)
 	g++ -MMD -std=c++17 $(VERSAT_COMMON_FLAGS) -DVERSAT_DEBUG -DVERSAT_DIR="$(VERSAT_DIR)" -rdynamic -DROOT_PATH=\"$(abspath $(VERSAT_DIR))\" -o $@ $(CPP_OBJ) $(VERSAT_INCLUDE) -lstdc++ -lm -lgcc -lc -pthread -ldl -lbfd
 
 # TODO: This approach is stupid. There is no point in making the embedData rule file end with a .d format and juggling stuff around so that we do not overwrite our own .d file.
-#       Just make it a different ending. Something like .ded and be done with it. Just make sure that the generated .d file from gcc and the .ded file work, because both of them will put different rules for the same file and we might have problems. 
+#       Just make it a different ending. Something like .ded and be done with it. Just make sure that the generated .d file from gcc and the .ded file work, because both of them will put different rules for the same file and we might have problems.
 -include $(BUILD_DIR)/embeddedData.d
 -include $(BUILD_DIR)/*.d
+
+meta-data: $(META)
+	$(META) $(VERSAT_SW_DIR)/compiler
 
 versat: $(VERSAT_DIR)/versat $(HASH)
 

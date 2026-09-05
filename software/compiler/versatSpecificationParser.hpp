@@ -204,6 +204,8 @@ struct MergeDef : public DefBase{
   Array<Token> mergeModifiers;
 };
 
+struct SP_Node; // nocheckin
+
 struct ConstructDef{
   ConstructType type;
   union {
@@ -211,6 +213,7 @@ struct ConstructDef{
     ModuleDef module;
     MergeDef merge;
   };
+  SP_Node* node;
 };
 
 struct HierarchicalName{
@@ -510,68 +513,8 @@ struct GroupIterator{
 
 GroupIterator IterateGroup(Env* env,VarGroup* group,Arena* out);
 
-
 // Parser stuff ===============================================================
-enum SP_Type{
-  SP_Type_NIL,
-  SP_Type_NOT,
-  SP_Type_SUB,
-  SP_Type_LITERAL,
-  SP_Type_FUNC_CALL,
-  SP_Type_AND,
-  SP_Type_OR,
-  SP_Type_XOR,
-  SP_Type_RHL,
-  SP_Type_RHR,
-  SP_Type_SHL,
-  SP_Type_SHR,
-  SP_Type_MUL,
-  SP_Type_DIV,
-  SP_Type_ADD,
-  SP_Type_EXPR,
-  SP_Type_RANGE,
-  SP_Type_VAR,
-  SP_Type_RANGE_DECL,
-  SP_Type_DELAY_DECL,
-  SP_Type_PORT_ACCESS,
-  SP_Type_VAR_DECL,
-  SP_Type_MODULE_INPUTS,
-  SP_Type_MODIFIER_DEBUG,
-  SP_Type_MODIFIER_STATIC,
-  SP_Type_MODIFIER_SHARE,
-  SP_Type_MODIFIER_SIM,
-  SP_Type_MODIFIER_LIST,
-  SP_Type_ID,
-  SP_Type_PARAM,
-  SP_Type_PARAM_LIST,
-  SP_Type_VARIABLE_DECL,
-  SP_Type_VAR_LIST,
-
-  SP_Type_FOR_LOOP,
-  SP_Type_GEN_LOOP,
-
-  SP_Type_FUNCTION_CALL,
-
-  SP_Type_EQUALITY,
-  SP_Type_CONNECTION,
-  SP_Type_PARAM_DECL,
-  SP_Type_DECL_GROUP,
-  SP_Type_CON_GROUP,
-  SP_Type_FUNCS_GROUP,
-  SP_Type_MODULE_DECL,
-
-  SP_Type_FUNC_CONFIG,
-  SP_Type_FUNC_STATE,
-  SP_Type_FUNC_MEM,
-
-  SP_Type_FUNC_TYPE_BUFFER,
-  SP_Type_FUNC_TYPE_DYN,
-  SP_Type_FUNC_TYPE_FIXED,
-
-
-  SP_Type_STMT,
-  SP_Type_STMT_LIST
-};
+#include "versatSpecificationParser_meta.hpp"
 
 struct SP_Node{
   union {
@@ -588,8 +531,10 @@ struct SP_Node{
   Token token;
 };
 
-readOnly static SP_Node SP_Node_Nil = {};
+SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out);
 
 SP_Node* SP_PushNode(Arena* out,SP_Type type,Token token,SP_Node* childs);
+
+String SP_Repr(SP_Node* top,Arena* out);
 
 #define SP_Append(HEAD,TAIL,NODE) LL_Append(HEAD,TAIL,next,NODE)

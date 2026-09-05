@@ -212,7 +212,8 @@ Parser* StartParsing(TokenizeFunction tokenizer,void* tokenizerState,Arena* free
   res->tokenizer = tokenizer;
   res->arena = freeArena;
   res->options = options;
-  
+  res->errors = PushList<String>(freeArena);
+
   return res;
 }
 
@@ -283,6 +284,113 @@ Token Parser::NextToken(){
     this->storedTokens[i] = this->storedTokens[i+1];
   }
   this->amountStored -= 1;
+
+  if(this->debug){
+    TEMP_REGION(temp,arena);
+    
+    bool hasError = !Empty(this->errors);
+
+    DEBUG_AddLocation(debugLocHead,debugLocTail,arena);
+    
+    // NOTE: Slow but we want to output immediatly
+    Array<LocationNode*> list = DEBUG_DepthFirst(debugLocHead,temp);
+    int lastLevel = 0;
+    for(int i = lastDebugIndex; i < list.size; i++){
+      LocationNode* node = list[i];
+      if(!Contains(node->loc.functionName,"SP")){
+        continue;
+      }
+      lastLevel = node->level;
+    }
+
+    for(int i = lastDebugIndex; i < list.size; i++){
+      LocationNode* node = list[i];
+
+      if(!Contains(node->loc.functionName,"SP")){
+        continue;
+      }
+      
+      if(hasError){
+        printf("--->");
+      } else {
+        printf("    ");
+      }
+
+      for(int level = 0; level < node->level; level++){
+        printf("  ");
+      }
+
+      printf("[%d] %.*s:%u",node->level,UN(node->loc.functionName),node->loc.line);
+      
+      if(node->level == lastLevel  && !Empty(res.originalData)){
+        printf(" Token: '%.*s'",UN(res.originalData));
+      }
+
+      printf("\n");
+    }
+    lastDebugIndex = list.size;
+  }
+  
+  //static int lastIndex = 0;
+#if 0
+  if(this->debug){
+    TEMP_REGION(temp,nullptr);
+
+    Array<Location> stackTrace = CollectStackTrace(temp);
+    DEBUG_BREAK();
+    ReverseInPlace(stackTrace);
+    Array<Location> reversed = stackTrace;
+
+    auto PrintStack = [&reversed] (int i) -> void{
+      for(int j = 0; j < i; j++){
+        printf("  ");
+      }
+        
+      printf("[%d] %.*s:%d: ",i,UN(reversed[i].functionName),reversed[i].line);
+    };
+
+    int currentIndex = -1;
+    for(int i = reversed.size - 1; i >= 0; i--){
+      if(Contains(reversed[i].functionName,"SP")){
+        currentIndex = i;
+        break;
+      }
+    }
+
+    //PrintStack(reversed.size - 1);
+    //printf("\n");
+
+#if 1
+    if(lastIndex + 1 < currentIndex){
+      for(int i = lastIndex + 1; i < currentIndex; i++){
+        if(this->errors->head){
+          printf("-->");
+        } else {
+          printf("   ");
+        }
+        PrintStack(i);
+        printf("NO TOKEN\n");
+      }
+    }
+#endif
+
+    if(this->errors->head){
+      printf("-->");
+    } else {
+      printf("   ");
+    }
+    
+    PrintStack(currentIndex);
+    if(!Empty(res.identifier)){
+      printf("%.*s",UN(res.identifier));
+    }
+    //DEBUG_BREAK();
+    //String res = V_PushRepr(res,temp);
+    //printf("%.*s\n",UN(res));
+    printf("\n");
+    lastIndex = currentIndex;
+  }
+#endif
 
   return res;
 }

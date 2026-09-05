@@ -690,6 +690,139 @@ Array<Location> CollectStackTrace(Arena* out,int offset){
   }
 
   result.size = goodInserted;
+  result.size -= 1; // Remove the function before main, TODO: We probably want to actuall name check insteaf of assuming.
+
+  ReverseInPlace(result);
+
   return result;
 };
 #endif
+
+Location DEBUG_Copy(Location in,Arena* out){
+  Location res = {};
+  res.fileName = PushString(out,in.fileName);
+  res.functionName = PushString(out,in.functionName);
+  res.line = in.line;
+
+  return res;
+}
+
+LocationNode* DEBUG_AddLocation_(LocationNode* topTail,Arena* out,iptr tag){
+  TEMP_REGION(temp,out);
+  Array<Location> locs = CollectStackTrace(temp,2);
+
+  int size = locs.size;
+  LocationNode* top = topTail;
+  
+  if(!top){
+    top = PushStruct<LocationNode>(out);
+    top->loc = DEBUG_Copy(locs[0],out);
+    top->tag = tag;
+  }
+
+  // Find true ptr ==============================================================
+  LocationNode* ptr = top;
+  LocationNode* parent = 0;
+  int index = 0;
+
+  while(ptr && index < size){
+    bool equal = 1;
+    Location loc = locs[index];
+
+    equal &= (ptr->loc.functionName == loc.functionName);
+    equal &= (ptr->loc.fileName == loc.fileName);
+    equal &= (ptr->loc.line == loc.line);
+    
+    // If equal then check children 
+    if(equal && ptr->child){
+      parent = ptr;
+      ptr = ptr->child;
+    
+      // Move until last ptr inside chain
+      while(ptr && ptr->next){
+        ptr = ptr->next;
+      }
+      
+      index += 1;
+      continue;
+    } 
+
+    if(equal && !ptr->child && index + 1 < size){
+      break;
+    }
+
+    if(!equal){
+      LocationNode* next = PushStruct<LocationNode>(out);
+      next->loc = DEBUG_Copy(locs[index],out);
+      next->tag = tag;
+      
+      ptr->next = next;
+      ptr = next;
+    }
+
+    break;
+  }
+
+  if(index == 0){
+    top = ptr;
+  }
+
+  // Add all the child nodes ====================================================
+  for(int i = index + 1; i < size; i++){
+    LocationNode* child = PushStruct<LocationNode>(out);
+    child->loc = DEBUG_Copy(locs[i],out);
+    child->tag = tag;
+    
+    ptr->child = child;
+    child->parent = ptr;
+    
+    ptr = child;
+  }
+
+  return top;
+}
+
+String DEBUG_Repr(LocationNode* head,Arena* out){
+  TEMP_REGION(temp,out);
+
+  auto b = StartString(temp);
+
+  auto Recurse = [b](auto Recurse,LocationNode* top,int level) -> void {
+    b->PushSpaces(level * 2);
+    
+    b->PushString("[%d] %.*s:%u\n",level,UN(top->loc.functionName),top->loc.line);
+
+    for(LocationNode* ptr = top->child; ptr; ptr = ptr->next){
+      Recurse(Recurse,ptr,level + 1);
+    }
+  };
+  
+  for(LocationNode* ptr = head; ptr; ptr = ptr->next){
+    Recurse(Recurse,ptr,0);
+  }
+  String res = EndString(out,b);
+
+  return res;
+}
+
+Array<LocationNode*> DEBUG_DepthFirst(LocationNode* head,Arena* out){
+  TEMP_REGION(temp,out);
+  
+  auto b = PushList<LocationNode*>(temp);
+
+  auto Recurse = [b](auto Recurse,LocationNode* top,int level) -> void {
+    *b->PushElem() = top;
+    top->level = level;
+    for(LocationNode* ptr = top->child; ptr; ptr = ptr->next){
+      Recurse(Recurse,ptr,level + 1);
+    }
+  };
+  
+  for(LocationNode* ptr = head; ptr; ptr = ptr->next){
+    Recurse(Recurse,ptr,0);
+  }
+  Array<LocationNode*> res = PushArray(out,b);
+
+  return res;
+
+}

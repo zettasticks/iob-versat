@@ -3,6 +3,8 @@
 #include "utils.hpp"
 #include "utilsCore.hpp"
 
+#include "debug.hpp"
+
 enum TokenType : u16{
   TokenType_INVALID = 0,
   TokenType_EOF,
@@ -204,6 +206,11 @@ struct Parser{
   TokenizeFunction tokenizer;
 
   ArenaList<String>* errors;
+
+  bool debug;
+  int lastDebugIndex;
+  LocationNode* debugLocHead;
+  LocationNode* debugLocTail;
 
   ParsingOptions options;
   const char* currentFile; // Optional, gives better error messages
