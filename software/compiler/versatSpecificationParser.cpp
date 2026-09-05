@@ -31,8 +31,7 @@ readOnly Entity Entity_Nil = {.inst = &FUInstance_NilInst,.func = &ConfigFunctio
 SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower = 99);
 MathExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower = 99);
 
-int 
-GetUniqueIndex(String baseName,InstanceTable* names){
+int GetUniqueIndex(String baseName,InstanceTable* names){
   TEMP_REGION(temp,nullptr);
 
   int counter = 0;
@@ -1712,6 +1711,8 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
   return res;
 }
 
+// MARK PARSE FUNCTIONS START =================================================
+
 MathExpression* ParseNumberOnly(Parser* parser,Arena* out){
   MathExpression* res = PushStruct<MathExpression>(out);
 
@@ -1896,6 +1897,7 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
     
       while(!parser->Done()){
         Token peek = parser->PeekToken();
+
 
         if(peek.type == '}'){
           break;
@@ -3348,5 +3350,730 @@ Entity MakeEntity(FUInstance* inst){
 
 bool Nil(Entity ent){
   bool res = (ent.type == EntityType_NIL);
+  return res;
+}
+
+
+
+
+
+
+
+
+
+// New parsing code in here ===================================================
+
+SP_Node* SP_PushNode(Arena* out,SP_Type type,Token token,SP_Node* childs){
+  SP_Node* node = PushStruct<SP_Node>(out);
+  node->type = type;
+  node->token = token;
+  node->childs = childs;
+  return node;
+}
+
+SP_Node* SP_ParseVar(Parser* parser,Arena* out);
+
+SP_Node* SP_ParseExpression(Parser* parser,Arena* out,int bindingPower = 99){
+  TEMP_REGION(temp,out);
+
+  SP_Node* bottomUnary = nullptr;
+  SP_Node* topUnary = nullptr;
+  
+  // Parse unaries that can repeat ==============================================
+  while(!parser->Done()){
+    SP_Node* parsed = nullptr;
+    if(!parsed && parser->IfNextToken('~')){
+      parsed = PushStruct<SP_Node>(out);
+      parsed->type = SP_Type_NOT;
+    }
+    if(!parsed && parser->IfNextToken('-')){
+      parsed = PushStruct<SP_Node>(out);
+      parsed->type = SP_Type_SUB;
+    }
+
+    if(parsed && !topUnary){
+      bottomUnary = parsed;
+      topUnary = parsed;
+      continue;
+    }
+
+    if(parsed){
+      parsed->first = topUnary;
+      continue;
+    }
+
+    break;
+  }
+
+  // Parse atom =================================================================
+  SP_Node* atom = nullptr;
+  Token peek = parser->PeekToken();
+
+  if(peek.type == '('){
+    parser->ExpectNext('(');
+
+    atom = SP_ParseExpression(parser,out);
+
+    parser->ExpectNext(')');
+  } else if(peek.type == TokenType_NUMBER){
+    Token number = parser->ExpectNext(TokenType_NUMBER);
+    atom = SP_PushNode(out,SP_Type_LITERAL,number,0);
+  } else if(peek.type == TokenType_IDENTIFIER){
+    if(parser->IfPeekToken('(',1)){
+      Token functionName = parser->ExpectNext(TokenType_IDENTIFIER);
+      parser->ExpectNext('(');
+
+      SP_Node* argHead = 0;
+      SP_Node* argTail = 0;
+
+      while(!parser->Done()){
+        if(parser->IfNextToken(')')){
+          break;
+        }
+
+        SP_Node* arg = SP_ParseExpression(parser,out);
+        SP_Append(argHead,argTail,arg);
+
+        if(parser->IfNextToken(',')){
+          continue;
+        }
+        
+        break;
+      }
+
+      parser->ExpectNext(')');
+      atom = SP_PushNode(out,SP_Type_FUNC_CALL,functionName,argHead);
+    } else {
+      atom = SP_ParseVar(parser,out);
+    }
+  } else {
+    // TODO: Better error reporting
+    parser->ReportUnexpectedToken(peek,{});
+  }
+
+  if(topUnary){
+    bottomUnary->first = atom;
+    atom = topUnary;
+  }
+
+  struct OpInfo{
+    TokenType type;
+    int bindingPower;
+    SP_Type op;
+  };
+
+  // TODO: This should be outside the function itself.
+  auto infos = PushArray<OpInfo>(temp,11);
+
+  // TODO: Need to double check binding power
+  infos[0] = {TOK_TYPE('&'),0,SP_Type_AND};
+  infos[1] = {TOK_TYPE('|'),0,SP_Type_OR};
+  infos[2] = {TOK_TYPE('^'),0,SP_Type_XOR};
+
+  infos[3] = {TokenType_ROTATE_LEFT,1,SP_Type_RHL};
+  infos[4] = {TokenType_ROTATE_RIGHT,1,SP_Type_RHR};
+  infos[5] = {TokenType_SHIFT_LEFT,1,SP_Type_SHL};
+  infos[6] = {TokenType_SHIFT_RIGHT,1,SP_Type_SHR};
+
+  infos[7]  = {TOK_TYPE('*'),2,SP_Type_MUL};
+  infos[8] = {TOK_TYPE('/'),2,SP_Type_DIV};
+
+  infos[9] = {TOK_TYPE('+'),3,SP_Type_ADD};
+  infos[10] = {TOK_TYPE('-'),3,SP_Type_SUB};
+  
+  // Parse binary ops.
+  while(!parser->Done()){
+    Token peek = parser->PeekToken();
+
+    bool continueOuter = false;
+    for(OpInfo info : infos){
+      if(peek.type == info.type){
+        if(info.bindingPower < bindingPower){
+          parser->NextToken();
+
+          SP_Node* right = SP_ParseExpression(parser,out,info.bindingPower);
+      
+          SP_Node* op = SP_PushNode(out,info.op,{},0);
+          op->first = atom;
+          op->second = right;
+
+          atom = op;
+          continueOuter = true;
+          break;
+        }
+      }
+    }
+
+    if(continueOuter){
+      continue;
+    }
+
+    break;
+  }
+
+  // Pack into a node type ======================================================
+  SP_Node* res = SP_PushNode(out,SP_Type_EXPR,{},atom);
+
+  return res;
+}
+
+SP_Node* SP_ParseRange(Parser* parser,Arena* out){
+  SP_Node* first = SP_ParseExpression(parser,out);
+
+  SP_Node* second = &SP_Node_Nil;
+  if(parser->IfNextToken(TokenType_DOUBLE_DOT)){
+    second = SP_ParseExpression(parser,out);
+  }
+  
+  first->next = second;
+  SP_Node* res = SP_PushNode(out,SP_Type_RANGE,{},first);
+
+  return res;
+}
+
+SP_Node* SP_ParseVar(Parser* parser,Arena* out){
+  Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+
+  SP_Node* var = SP_PushNode(out,SP_Type_VAR,name,0);
+
+  while(parser->IfNextToken('[')){
+    SP_Node* range = SP_ParseRange(parser,out);
+
+    var->next = range;
+    var = SP_PushNode(out,SP_Type_RANGE_DECL,{},var);
+
+    parser->ExpectNext(']');
+  }
+
+  if(parser->IfNextToken('{')){
+    SP_Node* delay = SP_ParseRange(parser,out);
+    
+    var->next = delay;
+    var = SP_PushNode(out,SP_Type_DELAY_DECL,{},var);
+
+    parser->ExpectNext('}');
+  }
+
+  if(parser->IfNextToken(':')){
+    SP_Node* port = SP_ParseRange(parser,out);
+    
+    var->next = port;
+    var = SP_PushNode(out,SP_Type_PORT_ACCESS,{},var);
+
+    parser->ExpectNext('}');
+  }
+
+  return var;
+}
+
+SP_Node* SP_ParseVarDeclaration(Parser* parser,Arena* out){
+  Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+
+  SP_Node* var = SP_PushNode(out,SP_Type_VAR_DECL,name,0);
+  
+  while(parser->IfNextToken('[')){
+    SP_Node* range = SP_ParseRange(parser,out);
+
+    var->next = range;
+    var = SP_PushNode(out,SP_Type_RANGE_DECL,{},var);
+    
+    parser->ExpectNext(']');
+  }
+
+  return var;
+}
+
+SP_Node* SP_ParseModuleInputDeclaration(Parser* parser,Arena* out){
+  parser->ExpectNext('(');
+
+  SP_Node* head = 0;
+  SP_Node* tail = 0;
+  
+  while(!parser->Done()){
+    if(parser->IfPeekToken(')')){
+      break;
+    }
+
+    SP_Node* var = SP_ParseVarDeclaration(parser,out);
+    SP_Append(head,tail,var);
+    
+    if(parser->IfNextToken(',')){
+      continue;
+    } else {
+      break;
+    }
+  }
+
+  parser->ExpectNext(')');
+
+  SP_Node* res = SP_PushNode(out,SP_Type_MODULE_INPUTS,{},head);
+  return res;
+}
+
+SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
+  SP_Node* modHead = 0;
+  SP_Node* modTail = 0;
+
+  bool isVarGroup = 0;
+  while(1){
+    Token peek = parser->PeekToken();
+    
+    SP_Node* mod = 0;
+    if(peek.type == TokenType_KEYWORD_DEBUG){
+      parser->NextToken();
+      mod = SP_PushNode(out,SP_Type_MODIFIER_DEBUG,{},0);
+    }
+    if(peek.type == TokenType_KEYWORD_STATIC){
+      parser->NextToken();
+      mod = SP_PushNode(out,SP_Type_MODIFIER_STATIC,{},0);
+    }
+    if(peek.type == TokenType_KEYWORD_SHARE){
+      parser->NextToken();
+      parser->ExpectNext('(');
+      parser->ExpectNext(TokenType_KEYWORD_CONFIG);
+      parser->ExpectNext(')');
+
+      SP_Node* shareHead = 0;
+      SP_Node* shareTail = 0;
+      while(!parser->Done()){
+        if(parser->IfPeekToken(')')){
+          break;
+        }
+
+        Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+        SP_Node* node = SP_PushNode(out,SP_Type_ID,name,0);
+        SP_Append(shareHead,shareTail,node);
+
+        if(parser->IfNextToken(',')){
+          continue;
+        } else {
+          break;
+        }
+      }
+      parser->ExpectNext(')');
+
+      mod = SP_PushNode(out,SP_Type_MODIFIER_SHARE,{},shareHead);
+      isVarGroup = 1;
+    }
+
+    if(mod){
+      SP_Append(modHead,modTail,mod);
+      continue;
+    }
+
+    break;
+  }
+
+  Token typeName = parser->ExpectNext(TokenType_IDENTIFIER);
+
+  SP_Node* paramHead = 0;
+  SP_Node* paramTail = 0;
+
+  if(parser->IfNextToken('#')){
+    while(!parser->Done()){
+      if(parser->IfPeekToken(')')){
+        break;
+      }
+
+      parser->ExpectNext('.');
+      Token parameterName = parser->ExpectNext(TokenType_IDENTIFIER);
+      parser->ExpectNext('(');
+      SP_Node* expr = SP_ParseExpression(parser,out);
+      parser->ExpectNext(')');
+
+      SP_Node* param = SP_PushNode(out,SP_Type_PARAM,parameterName,expr);
+      SP_Append(paramHead,paramTail,param);
+
+      if(parser->IfNextToken(',')){
+        continue;
+      } else {
+        break;
+      }
+    }
+
+    parser->ExpectNext(')');
+  }
+
+  SP_Node* varHead = 0;
+  SP_Node* varTail = 0;
+
+  if(isVarGroup){
+    parser->ExpectNext('{');
+
+    while(!parser->Done()){
+      if(parser->IfPeekToken('}')){
+        break;
+      }
+    
+      SP_Node* varDecl = SP_ParseVarDeclaration(parser,out);
+      SP_Append(varHead,varTail,varDecl);
+
+      parser->ExpectNext(';');
+    }
+
+    parser->ExpectNext('}');
+  } else {
+    varHead = SP_ParseVarDeclaration(parser,out);
+  }
+
+  // Pack into final node =======================================================
+  SP_Node* modifierGroup = SP_PushNode(out,SP_Type_MODIFIER_LIST,{},modHead);
+  SP_Node* paramGroup = SP_PushNode(out,SP_Type_PARAM_LIST,{},paramHead);
+  SP_Node* variableNames = SP_PushNode(out,SP_Type_VAR_LIST,{},varHead);
+
+  modifierGroup->next = paramGroup;
+  paramGroup->next = variableNames;
+
+  SP_Node* res = SP_PushNode(out,SP_Type_VARIABLE_DECL,typeName,modifierGroup);
+  return res;
+}
+
+SP_Node* SP_ParseVarGroup(Parser* parser,Arena* out){
+  SP_Node* varHead = 0;
+  SP_Node* varTail = 0;
+
+  if(parser->IfNextToken('{')){
+    while(!parser->Done()){
+      if(parser->IfPeekToken('}')){
+        break;
+      }
+      
+      SP_Node* var = SP_ParseVar(parser,out);
+      SP_Append(varHead,varTail,var);
+
+      if(parser->IfNextToken(',')){
+        continue;
+      }
+
+      break;
+    }
+    parser->ExpectNext('}');
+  } else {
+    varHead = SP_ParseVar(parser,out);
+  }
+
+  SP_Node* varGroup = SP_PushNode(out,SP_Type_VAR_LIST,{},varHead);
+  return varGroup;
+}
+
+SP_Node* SP_ParseConnection(Parser* parser,Arena* out){
+  SP_Node* res = 0;
+
+  if(parser->IfNextToken(TokenType_KEYWORD_FOR)){
+    Token loopVar = parser->ExpectNext(TokenType_IDENTIFIER);
+
+    SP_Node* range = SP_ParseRange(parser,out);
+
+    parser->ExpectNext('{');
+
+    SP_Node* conHead = 0;
+    SP_Node* conTail = 0;
+    
+    while(!parser->Done()){
+      if(parser->IfPeekToken('}')){
+        break;
+      }
+
+      SP_Node* node = SP_ParseConnection(parser,out);
+      SP_Append(conHead,conTail,node);
+    }
+
+    parser->ExpectNext('}');
+    
+    range->next = conHead;
+
+    res = SP_PushNode(out,SP_Type_FOR_LOOP,loopVar,range);
+  } else {
+    SP_Node* outPart = SP_ParseVarGroup(parser,out);
+    
+    SP_Type type = SP_Type_NIL;
+    if(parser->IfNextToken('=')){
+      type = SP_Type_EQUALITY;
+    } else if(parser->IfNextToken(TokenType_ARROW)){
+      type = SP_Type_CONNECTION;
+    } else {
+      parser->ReportUnexpectedToken(parser->NextToken(),{TOK_TYPE('='),TokenType_ARROW});
+    }
+
+    SP_Node* inPart = SP_ParseVarGroup(parser,out);
+
+    outPart->next = inPart;
+    res = SP_PushNode(out,type,{},outPart);
+  }
+
+  return res;
+}
+
+SP_Node* SP_ParseParameterDeclaration(Parser* parser,Arena* out){
+  Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+
+  SP_Node* defaultVal = nullptr;
+  if(parser->IfNextToken('=')){
+    defaultVal = SP_ParseExpression(parser,out);
+  }  
+
+  SP_Node* res = SP_PushNode(out,SP_Type_PARAM_DECL,name,defaultVal);
+  return res;
+}
+
+SP_Node* SP_ParseConfigStatements(Parser* parser,Arena* out){
+  SP_Node* stmtsHead = 0;
+  SP_Node* stmtsTail = 0;
+  
+  while(!parser->Done()){
+    bool isLoop = false;
+    bool isGen = false;
+    if(!isLoop && parser->IfNextToken(TokenType_KEYWORD_GEN)){
+      isLoop = true;
+      isGen = true;
+    }
+    if(!isLoop && parser->IfNextToken(TokenType_KEYWORD_FOR)){
+      isLoop = true;
+    }
+
+    if(isLoop){
+      Token loopVariable = parser->ExpectNext(TokenType_IDENTIFIER);
+
+      // TODO: Not being set, need to figure out how to proceed for this case
+      SP_Node* range = SP_ParseRange(parser,out);
+
+      parser->ExpectNext('{');
+      SP_Node* child = SP_ParseConfigStatements(parser,out);
+      parser->ExpectNext('}');
+
+      SP_Type type = {};
+      if(isGen){
+        type = SP_Type_GEN_LOOP;
+      } else {
+        type = SP_Type_FOR_LOOP;
+      }
+
+      SP_Node* loopNode = SP_PushNode(out,type,loopVariable,child);
+      SP_Append(stmtsHead,stmtsTail,loopNode);
+    }
+    
+    if(!isLoop){
+      if(parser->IfPeekToken(TokenType_IDENTIFIER)){
+        SP_Node* lhs = SP_ParseExpression(parser,out);
+
+        SP_Type type = {};
+        if(parser->IfNextToken('=')){
+          SP_Node* rhs = SP_ParseExpression(parser,out);
+          lhs->next = rhs;
+          parser->ExpectNext(';');
+          type = SP_Type_EQUALITY;
+        }
+        if(parser->IfNextToken(';')){
+          type = SP_Type_FUNCTION_CALL;
+        }
+
+        SP_Node* stmt = SP_PushNode(out,type,{},lhs);
+        SP_Append(stmtsHead,stmtsTail,stmt);
+      }
+    }
+  }
+
+  SP_Node* res = SP_PushNode(out,SP_Type_STMT_LIST,{},stmtsHead);
+
+  return res;
+}
+
+SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out){
+  TEMP_REGION(temp,out);
+
+  SP_Type type = SP_Type_NIL;
+  if(parser->IfNextToken(TokenType_KEYWORD_CONFIG)){
+    type = SP_Type_FUNC_CONFIG;
+  } else if(parser->IfNextToken(TokenType_KEYWORD_MEM)){
+    type = SP_Type_FUNC_MEM;
+  } else if(parser->IfNextToken(TokenType_KEYWORD_STATE)){
+    type = SP_Type_FUNC_STATE;
+  }
+
+  if(type == SP_Type_NIL){
+    return &SP_Node_Nil;
+  }
+
+  SP_Node* modHead = 0;
+  SP_Node* modTail = 0;
+
+  while(!parser->Done()){
+    if(parser->IfNextToken(TokenType_KEYWORD_DEBUG)){
+      SP_Node* mod = SP_PushNode(out,SP_Type_MODIFIER_DEBUG,{},0);
+      SP_Append(modHead,modTail,mod);
+      continue;
+    } else if(parser->IfNextToken(TokenType_KEYWORD_SIM)){
+      SP_Node* mod = SP_PushNode(out,SP_Type_MODIFIER_SIM,{},0);
+      SP_Append(modHead,modTail,mod);
+      continue;
+    }
+    
+    break;
+  }
+
+  Token funcName = parser->ExpectNext(TokenType_IDENTIFIER);
+
+  // Parse function inputs ======================================================
+  SP_Node* varHead = 0;
+  SP_Node* varTail = 0;
+  if(type == SP_Type_FUNC_MEM || type == SP_Type_FUNC_CONFIG){
+    parser->ExpectNext('(');
+  
+    while(!parser->Done()){
+      if(parser->IfPeekToken(')')){
+        break;
+      }
+
+      Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+
+      SP_Node* arraySize = 0;
+      if(parser->IfNextToken('[')){
+        arraySize = SP_ParseExpression(parser,out);
+        parser->ExpectNext(']');
+      }
+
+      SP_Type type = {};
+      if(parser->IfNextToken(':')){
+        Token typeName = parser->ExpectNext(TokenType_IDENTIFIER);
+        
+        if(typeName.identifier == "Buffer"){
+          type = SP_Type_FUNC_TYPE_BUFFER;
+        }
+        if(typeName.identifier == "Dyn"){
+          type = SP_Type_FUNC_TYPE_DYN;
+        }
+        if(typeName.identifier == "Fixed"){
+          type = SP_Type_FUNC_TYPE_FIXED;
+        }
+      }
+
+      SP_Node* var = SP_PushNode(out,type,name,arraySize);
+      SP_Append(varHead,varTail,var);
+    
+      if(parser->IfNextToken(',')){
+        continue;
+      } else {
+        break;
+      }
+    }
+
+    parser->ExpectNext(')');
+  }
+
+  parser->ExpectNext('{');
+
+  SP_Node* configs = SP_ParseConfigStatements(parser,out);
+  
+  parser->ExpectNext('}');
+  
+  // Pack =======================================================================
+  SP_Node* mods = SP_PushNode(out,SP_Type_MODIFIER_LIST,{},modHead);
+  SP_Node* vars = SP_PushNode(out,SP_Type_VAR_LIST,{},varHead);
+
+  mods->next = vars;
+  vars->next = configs;
+
+  SP_Node* func = SP_PushNode(out,type,funcName,mods);
+
+  return func;
+}
+
+SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
+  parser->ExpectNext(TokenType_KEYWORD_MODULE);
+
+  Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+
+  SP_Node* paramHead = 0;
+  SP_Node* paramTail = 0;
+
+  if(parser->IfNextToken('#')){
+    parser->ExpectNext('(');
+    
+    while(!parser->Done()){
+      if(parser->IfPeekToken(')')){
+        break;
+      }
+
+      SP_Node* param = SP_ParseParameterDeclaration(parser,out);
+      SP_Append(paramHead,paramTail,param);
+      
+      if(parser->IfNextToken(',')){
+        continue;
+      } else {
+        break;
+      }
+    }
+
+    parser->ExpectNext(')');
+  }
+
+  SP_Node* vars = SP_ParseModuleInputDeclaration(parser,out);
+
+  if(parser->IfNextToken(TokenType_ARROW)){
+    parser->ExpectNext(TokenType_NUMBER);
+  }
+
+  SP_Node* declHead = 0;
+  SP_Node* declTail = 0;
+
+  SP_Node* conHead = 0;
+  SP_Node* conTail = 0;
+
+  SP_Node* funcHead = 0;
+  SP_Node* funcTail = 0;
+
+  parser->ExpectNext('{');
+  int state = 0;
+  while(!parser->Done()){
+    if(parser->IfPeekToken('}')){
+      break;
+    }
+
+    if(state == 0){
+      if(parser->IfNextToken('#')){
+        state = 1;
+        continue;
+      }
+
+      // Parse variable declarations only ===========================================
+      SP_Node* var = SP_ParseVarDeclaration(parser,out);
+      SP_Append(declHead,declTail,var);
+
+    } else {
+      // Parser connections and function definitions ================================
+      
+      // TODO: We currently ignore hashtag since we can just check the start of functions
+      parser->IfNextToken(TokenType_DOUBLE_HASHTAG);
+      
+      Token peek = parser->PeekToken(0);
+      bool isFunction = 0;
+
+      if(peek.type == TokenType_KEYWORD_CONFIG ||
+         peek.type == TokenType_KEYWORD_STATE ||
+         peek.type == TokenType_KEYWORD_MEM){
+        isFunction = 1;
+      }
+
+      if(isFunction){
+        SP_Node* func = SP_ParseConfigFunction(parser,out);
+        SP_Append(funcHead,funcTail,func);
+      } else {
+        SP_Node* con = SP_ParseConnection(parser,out);
+        SP_Append(conHead,conTail,con);
+      }
+    }
+  }
+
+  parser->ExpectNext('}');
+  
+  SP_Node* decls = SP_PushNode(out,SP_Type_DECL_GROUP,{},declHead);
+  SP_Node* cons = SP_PushNode(out,SP_Type_CON_GROUP,{},conHead);
+  SP_Node* funcs = SP_PushNode(out,SP_Type_FUNCS_GROUP,{},funcHead);
+
+  vars->next = decls;
+  decls->next = cons;
+  cons->next = funcs;
+
+  SP_Node* res = SP_PushNode(out,SP_Type_MODULE_DECL,name,vars);
   return res;
 }

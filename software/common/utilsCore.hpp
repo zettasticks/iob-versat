@@ -824,11 +824,36 @@ inline bool Contains(Array<String> array,String toCheck){
    return false;
 }
 
-#define LL_Append(HEAD,PTR,NEXT,ELEM) \
+#define LL_Append(HEAD,PTR,NEXT,NODE) \
+  if(NODE) { \
+  Assert(!PTR || !PTR->NEXT); \
   if(HEAD == nullptr){ \
-    HEAD = ELEM; \
-    PTR = ELEM; \
-  } else if(ELEM) { \
-    PTR->NEXT = ELEM; \
-    PTR = ELEM; \
+    HEAD = NODE; \
+    PTR = NODE; \
+  } else if(NODE) { \
+    PTR->NEXT = NODE; \
+  } \
+  while(PTR->NEXT) PTR = PTR->NEXT; \
+  }
+
+#define LL_PopFront(HEAD,NEXT) \
+  HEAD; \
+  if(HEAD) HEAD = HEAD->NEXT
+
+#define LL_Push(HEAD,NEXT,NODE) \
+  NODE->NEXT = HEAD; \
+  HEAD = NODE
+
+// NOTE: Care when using this, cannot depend on node and prev for loop conditions since this changes them.
+//       Best way of using this is to store the values needed for loop conditions before calling this macro.
+#define LL_Remove(HEAD,TAIL,NEXT,NODE,PREV) \
+  if(!PREV) { \
+    Assert(NODE == HEAD); \
+    HEAD = NODE->NEXT; \
+    if(!HEAD){ \
+      TAIL = HEAD; \
+    } \
+  } else { \
+    PREV->NEXT = NODE->NEXT; \
+    if(TAIL == NODE) TAIL = PREV; \
   }
