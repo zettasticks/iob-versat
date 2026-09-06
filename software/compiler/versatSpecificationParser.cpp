@@ -2798,8 +2798,8 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
       def.type = ConstructType_MODULE;
       def.node = SP_ParseModuleDef(parser,out);
 
-      //String repr = SP_Repr(def.node,temp);
-      //printf("%.*s\n",UN(repr));
+      String repr = SP_Repr(def.node,temp);
+      printf("%.*s\n",UN(repr));
 
     } else if(tok.type == TokenType_KEYWORD_MERGE){
       def.type = ConstructType_MERGE;
@@ -3390,6 +3390,8 @@ String SP_Repr(SP_Node* top,Arena* out){
     
     bool exprType = SP_Type_IsExpr(node->type);
     String name = SP_Type_Name(node->type);
+
+    DEBUG_BREAK_IF(name == "EXPR");
 
     b->PushSpaces(level * 2);
 

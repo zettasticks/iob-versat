@@ -131,7 +131,7 @@ static bool SP_Type_IsExpr(SP_Type in){
   case SP_Type_MUL: res = 1; didIt = 1; break;
   case SP_Type_DIV: res = 1; didIt = 1; break;
   case SP_Type_ADD: res = 1; didIt = 1; break;
-  case SP_Type_EXPR: res = 0; didIt = 1; break;
+  case SP_Type_EXPR: res = 1; didIt = 1; break;
   case SP_Type_RANGE: res = 0; didIt = 1; break;
   case SP_Type_VAR: res = 0; didIt = 1; break;
   case SP_Type_ACCESS: res = 0; didIt = 1; break;

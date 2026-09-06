@@ -14,7 +14,7 @@ table NodeTable(name,isExprType){
   MUL                  1
   DIV                  1
   ADD                  1
-  EXPR                 0
+  EXPR                 1
   RANGE                0
   VAR                  0
   ACCESS               0
