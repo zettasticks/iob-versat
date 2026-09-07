@@ -168,7 +168,7 @@ Wire* GetConfigWireByName(FUDeclaration* decl,String name){
 String DECL_MangleName(String typeName,Array<ParamNameAndValue> params,Arena* out){
   TEMP_REGION(temp,out);
 
-  return typeName;
+  //return typeName;
 
   Array<ParamNameAndValue> ordered = CopyArray(params,temp);
   
@@ -196,28 +196,26 @@ String DECL_MangleName(String typeName,Array<ParamNameAndValue> params,Arena* ou
 
 DECL_UnmangleResult DECL_UnmangleName(String name,Arena* out){
   TEMP_REGION(temp,out);
-  if(1){
-    DECL_UnmangleResult res = {};
-    res.name = name;
-    return res;
-  }  
 
   Array<String> splitted = Split(name,'@',temp);
+  int doubleArgCount = splitted.size - 1;
+  Assert(doubleArgCount % 2 == 0 && "We must have double since we always have a name,val pair");
+  
+  int argCount = doubleArgCount / 2;
 
   String typeName = splitted[0];
+  Array<ParamNameAndValue> params = PushArray<ParamNameAndValue>(out,argCount);
 
-  auto l = PushList<ParamNameAndValue>(temp);
   for(int i = 1; i < splitted.size; i += 2){
     String paramName = splitted[i];
     String value = splitted[i+1];
 
-    ParamNameAndValue* v = l->PushElem();
-    v->name = PushString(out,paramName);
-    v->value = ParseInt(value);
+    params[(i - 1) / 2].name = PushString(out,paramName);
+    params[(i - 1) / 2].value = ParseInt(value);
   }
   
   DECL_UnmangleResult res = {};
   res.name = PushString(out,typeName);
-  res.params = PushArray(out,l);
+  res.params = params;
   return res;
 }

@@ -155,8 +155,8 @@ def RunVersat(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,debug_pat
     output = codecs.getdecoder("unicode_escape")(result.stdout)[0]
 
     errorOutput = codecs.getdecoder("unicode_escape")(result.stderr)[0]
-    print(output,file=sys.stderr)
-    print(errorOutput,file=sys.stderr)
+    print("C:",output,file=sys.stderr)
+    print("D:",errorOutput,file=sys.stderr)
 
     if(returnCode != 0):
         print("Failed to generate accelerator\n",file=sys.stderr)
@@ -175,7 +175,7 @@ def SaveSetupInfo(filepath,lines):
         print(f"Failed to open versat setup file: {filepath}",file=sys.stderr)
         print("This might cause versat to run multiple times even if not needed",file=sys.stderr)
 
-def CreateVersatClass(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,debug_path=None,profile=None,extra=None):
+def CreateVersatClass(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,debug_path=None,profile=None,extraFlags=None):
     versat_dir = os.path.dirname(__file__)
 
     versatSetupFilepath = os.path.realpath(build_dir + "/software/versatSetup.txt")
@@ -188,10 +188,10 @@ def CreateVersatClass(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,d
             with open(versatSetupFilepath,"r") as file:
                lines = [x.strip() for x in file.readlines()]
         except:
-            lines = RunVersat(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,debug_path,profile,extra)
+            lines = RunVersat(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,debug_path,profile,extraFlags)
             SaveSetupInfo(versatSetupFilepath,lines)
     else:
-        lines = RunVersat(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,debug_path,profile,extra)
+        lines = RunVersat(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,debug_path,profile,extraFlags)
         SaveSetupInfo(versatSetupFilepath,lines)
 
     # Info needed by class, ADDR_W, HAS_AXI, lines

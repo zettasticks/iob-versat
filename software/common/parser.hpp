@@ -108,12 +108,10 @@ enum TokenType : u16{
   // a name and cause problems later on (Ex: 'const' is a valid name
   // from the POV of Versat but its a keyword in C which causes
   // problems when generating the C structs and so on).
-  TokenType_C_KEYWORD,
-
-  TokenType_C_STRING,
-
   // We solve this by adding a number at the end of every instance
   // so for now this is mostly unused
+  TokenType_C_KEYWORD,
+  TokenType_C_STRING,
   TokenType_VERILOG_KEYWORD
 };
 

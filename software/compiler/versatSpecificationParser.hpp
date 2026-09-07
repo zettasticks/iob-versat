@@ -234,7 +234,6 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAnd
 // TODO: Move this function to a better place, no reason to be inside spec parser
 FUDeclaration* InstantiateSpecifications(String content,ConstructDef def);
 
-
 // TODO Move to a better place after we probably remove the userConfigs.hpp file.
 // TODO: We cannot represent an array access followed by a wireOrPort access.
 //       This is probably not the best way to proceed.

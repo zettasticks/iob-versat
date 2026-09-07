@@ -161,20 +161,25 @@ int CopyFileGroup(Array<FileContent> fileGroup,String filepathBase,bool flattene
 };
 
 struct OptionsGather{
+  Arena* arena;
+  
   ArenaList<String>* verilogFiles; // Individual files, for cases where we want specific files inside a folder.
   ArenaList<String>* unitFolderPaths;
   ArenaList<String>* extraSources;
   ArenaList<String>* includePaths;
   
-  ArenaList<String>* paramDefinitions;
+  ArenaList<ParamNameAndValue>* paramDefinitions;
 
   Options* options;
+
+  ArenaList<String>* parsingErrors;
 };
 
 static int
 parse_opt (int key, char *arg,
            argp_state *state){
   OptionsGather* opts = (OptionsGather*) state->input;
+  Arena* out = opts->arena;
 
   // TODO: Better error handling
   switch (key)
@@ -183,7 +188,37 @@ parse_opt (int key, char *arg,
     case 'I': *opts->includePaths->PushElem() = arg; break;
 
     case 'A': {
-      *opts->paramDefinitions->PushElem() = arg; break;
+      const char* start = arg;
+      const char* ptr = arg;
+
+      for(;ptr; ptr += 1){
+        if(*ptr == '='){
+          break;
+        }
+      }
+
+      String paramName = String(start,ptr - start);
+      ptr += 1;
+
+      const char* valueStart = ptr;
+      for(;ptr; ptr += 1){
+        if(*ptr == '\0'){
+          break;
+        }
+      }
+
+      String value = String(valueStart,ptr - valueStart);
+      TokenizeResult number = ParseNumber(value.data,value.data + value.size);
+
+      if(number.token.type == TokenType_NUMBER){
+        i64 value = number.token.number;
+        
+        ParamNameAndValue* val = opts->paramDefinitions->PushElem();
+        val->name = PushString(out,paramName);
+        val->value = value;
+      } else {
+        *opts->parsingErrors->PushElem() = PushString(out,"Error parsing -A'%s', we expected a number but instead got '%.*s', make sure that you use the form '-AX=Y' where X is paramName and Y is an integer",arg,UN(value));
+      }
     } break;
 
     // TODO: All the filepaths should be inserted into verilogFiles while this only takes in folders.
@@ -300,20 +335,36 @@ int main(int argc,char* argv[]){
     return 0;
   }
 
+  for(int i = 0; i < argc; i++){
+    printf("ARGS: %s\n",argv[i]);
+  }
+
   argp argp = { options, parse_opt, "SpecFile\n-T UnitName", "Dataflow to accelerator compiler. Check tutorial in https://github.com/IObundle/iob-versat to learn how to write a specification file"};
 
+  FREE_ARENA(optsArena);
+  
   OptionsGather gather = {};
+  gather.arena = optsArena;
   gather.verilogFiles = PushList<String>(temp);
   gather.extraSources = PushList<String>(temp);
   gather.includePaths = PushList<String>(temp);
   gather.unitFolderPaths = PushList<String>(temp);
-  gather.paramDefinitions = PushList<String>(temp);
+  gather.paramDefinitions = PushList<ParamNameAndValue>(temp);
+  gather.parsingErrors = PushList<String>(temp);
 
   globalOptions = DefaultOptions(perm);
   gather.options = &globalOptions;
 
   if(argp_parse(&argp, argc, argv, 0, 0, &gather) != 0){
     printf("Error parsing arguments. Call -h help to print usage and argument help\n");
+    return -1;
+  }
+
+  if(!Empty(gather.parsingErrors)){
+    for(String str : gather.parsingErrors){
+      printf("%.*s\n",UN(str));
+    }
+
     return -1;
   }
   
@@ -340,7 +391,11 @@ int main(int argc,char* argv[]){
     exit(-1);
   }
 
-  Array<String> paramDefinitions = PushArray(perm,gather.paramDefinitions);
+  Array<ParamNameAndValue> paramDefinitions = PushArray(perm,gather.paramDefinitions);
+
+  for(ParamNameAndValue p : paramDefinitions){
+    printf("%.*s %d\n",UN(p.name),p.value);
+  }
 
   TrieMap<String,ModuleInfo>* allModules = PushTrieMap<String,ModuleInfo>(temp);
 
@@ -458,6 +513,8 @@ int main(int argc,char* argv[]){
   FUDeclaration* simpleType = GetTypeByName(globalOptions.topName);
 
   String topLevelTypeStr = globalOptions.topName;
+
+  bool anyError = false;
   
   if(!simpleType && specFilepath.size && !CompareString(topLevelTypeStr,"VERSAT_RESERVED_ALL_UNITS")){
     String content = PushFile(temp,StaticFormat("%.*s",UN(specFilepath)));
@@ -525,22 +582,17 @@ int main(int argc,char* argv[]){
         for(ParameterDeclaration decl : def.module.params){
           String paramName = decl.name.identifier;
 
-          bool topLevelOverride = false;
-
-          int val = 0;
+          int val = -1;
           if(constructName == topLevelTypeStr){
-            for(String topLevelParam : paramDefinitions){
-              Array<String> splitted = Split(topLevelParam,'=',temp);
-
-              if(splitted[0] == paramName){
-                val = ParseInt(splitted[1]);
-                topLevelOverride = true;
+            for(ParamNameAndValue topLevelParam : paramDefinitions){
+              if(topLevelParam.name == paramName){
+                val = topLevelParam.value;
                 break;
               }
             }
-          } 
+          }
 
-          if(!topLevelOverride){
+          if(val == -1){
             val = env->CalculateConstantExpression(decl.defaultValue);
           }
 
@@ -621,8 +673,6 @@ int main(int argc,char* argv[]){
     Array<Pair<int,int>> edges = PushArray<Pair<int,int>>(perm,edgeList);
 
     topLevelTypeStr = trueTopName;
-
-    
     
     int* topLevelId = typeToId->Get(trueTopName);
     if(!topLevelId){
@@ -646,24 +696,42 @@ int main(int argc,char* argv[]){
       String name = unmangled.name;
       work.params = unmangled.params;
 
+      bool found = 0; 
+      bool process = 1;
       for(int i = 0; i < modules.size; i++){
         ConstructDef def = modules[i];
         if(def.base.name.identifier == name){
           work.definition = def;
+          found = 1;
           break;
         }
       }
 
-      work.calculateDelayFixedGraph = true;
-      work.flattenWithMapping = true;
+      if(!found){
+        FUDeclaration* decl = GetTypeByName(name);
 
-      typeToWork->Insert(mangledName,work);
+        if(decl){
+          found = 1;
+          process = 0;
+        }
+      }
 
-      printf("Work to do: %.*s\n",UN(mangledName));
+      if(!found){
+        printf("Error, did not find type name: %.*s\n",UN(name));
+        anyError = 1;
+      } 
+
+      if(found && process){
+        work.calculateDelayFixedGraph = true;
+        work.flattenWithMapping = true;
+
+        typeToWork->Insert(mangledName,work);
+
+        printf("Work to do: %.*s\n",UN(mangledName));
+      }
     }
 
     // We first validity check merge and if the types they are merging actually exist.
-    bool anyError = false;
     for(auto p : typeToWork){
       Work work = *p.second;
 
@@ -721,6 +789,8 @@ int main(int argc,char* argv[]){
 
       Work work = *p.second;
       ConstructDef def = work.definition;
+      
+      DEBUG_BREAK();
 
       FUDeclaration* decl = nullptr;
       if(def.type == ConstructType_MODULE){

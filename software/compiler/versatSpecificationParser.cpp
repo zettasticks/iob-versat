@@ -27,7 +27,7 @@ readOnly Entity Entity_Nil = {.inst = &FUInstance_NilInst,.func = &ConfigFunctio
 
 // NOTE: Spec expression is more associated to the equality operator when defining the graph
 //       Math expression is everything else
-//       One of the biggest differences is that a SpecExpression can contain delay statements "ex: x{0}", while a math expression cannot.
+//       One of the biggest differences is that a SpecExpression can contain delay statements "ex: x{0}", while a math expression cannot. We need to separate this because we also use { to start a scope and therefore we cannot have a '{'. This is stupid. 
 
 // TODO: We could join these into a single one if we can abstract the differences (which are not a lot).
 SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower = 99);
@@ -1095,7 +1095,8 @@ void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
   
   if(!type){
     ReportError(decl.typeName,"Typename does not exist");
-    Assert(false);
+
+    type = &FUDeclaration_Nil;
   }
 
   Entity ent = Entity_Nil;
