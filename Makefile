@@ -107,10 +107,10 @@ $(VERSAT_DIR)/versat: $(CPP_OBJ) $(VERSAT_ALL_HEADERS)
 -include $(BUILD_DIR)/embeddedData.d
 -include $(BUILD_DIR)/*.d
 
-meta-data: $(META)
-	$(META) $(VERSAT_SW_DIR)/compiler
+#meta-data: $(META)
+#	$(META) $(VERSAT_SW_DIR)/compiler
 
-versat: $(VERSAT_DIR)/versat meta-data $(HASH)
+versat: $(VERSAT_DIR)/versat $(HASH) #meta-data 
 
 debug-embed-data: $(EMBED)
 	gdb --args $(EMBED) $(VERSAT_SW_DIR)/versat_defs.txt $(TOOL_BUILD_DIR)/embeddedData

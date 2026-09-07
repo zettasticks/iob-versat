@@ -120,7 +120,7 @@ class iob_versat(iob_module):
         cls.block_groups += []
 
 
-def RunVersat(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,debug_path,profile):
+def RunVersat(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,debug_path,profile,extra):
     versat_dir = os.path.dirname(__file__)
 
     versat_args = ["versat",os.path.realpath(versat_spec),
@@ -140,6 +140,9 @@ def RunVersat(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,debug_pat
 
     if(profile):
         versat_args.append("--profile")
+
+    if(extra):
+        versat_args.append(extra)
 
     print(*versat_args,"\n",file=sys.stderr)
     result = None
@@ -172,7 +175,7 @@ def SaveSetupInfo(filepath,lines):
         print(f"Failed to open versat setup file: {filepath}",file=sys.stderr)
         print("This might cause versat to run multiple times even if not needed",file=sys.stderr)
 
-def CreateVersatClass(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,debug_path=None,profile=None):
+def CreateVersatClass(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,debug_path=None,profile=None,extra=None):
     versat_dir = os.path.dirname(__file__)
 
     versatSetupFilepath = os.path.realpath(build_dir + "/software/versatSetup.txt")
@@ -185,10 +188,10 @@ def CreateVersatClass(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,d
             with open(versatSetupFilepath,"r") as file:
                lines = [x.strip() for x in file.readlines()]
         except:
-            lines = RunVersat(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,debug_path,profile)
+            lines = RunVersat(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,debug_path,profile,extra)
             SaveSetupInfo(versatSetupFilepath,lines)
     else:
-        lines = RunVersat(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,debug_path,profile)
+        lines = RunVersat(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,debug_path,profile,extra)
         SaveSetupInfo(versatSetupFilepath,lines)
 
     # Info needed by class, ADDR_W, HAS_AXI, lines

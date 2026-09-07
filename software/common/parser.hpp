@@ -139,7 +139,7 @@ struct Token{
   TokenType type;
 
   String originalData;
-  FileContent originalFile;
+  FileContent originalFile; 
 
   union{
     String identifier;

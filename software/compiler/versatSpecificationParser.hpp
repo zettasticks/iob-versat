@@ -189,6 +189,8 @@ struct DefBase{
   Token name;
 };
 
+struct SP_Node; // nocheckin
+
 struct ModuleDef : public DefBase{
   Token numberOutputs; // TODO: Not being used. Not sure if we gonna actually add this or not.
   Array<ParameterDeclaration> params;
@@ -196,6 +198,7 @@ struct ModuleDef : public DefBase{
   Array<InstanceDeclaration> declarations;
   Array<ConnectionDef*> connections;
   Array<ConfigFunctionDef> configs;
+  SP_Node* node;
 };
 
 struct MergeDef : public DefBase{
@@ -203,8 +206,6 @@ struct MergeDef : public DefBase{
   Array<SpecificMergeNode> specifics;
   Array<Token> mergeModifiers;
 };
-
-struct SP_Node; // nocheckin
 
 struct ConstructDef{
   ConstructType type;
@@ -514,6 +515,8 @@ struct GroupIterator{
 GroupIterator IterateGroup(Env* env,VarGroup* group,Arena* out);
 
 // Parser stuff ===============================================================
+#if 0
+// TODO: Remove all the list nodes, we can just have them be free and the "compiler" will just switch on the base type instead, no need to group stuff like we are currently doing.
 #include "versatSpecificationParser_meta.hpp"
 
 struct SP_Node{
@@ -538,3 +541,4 @@ SP_Node* SP_PushNode(Arena* out,SP_Type type,Token token,SP_Node* childs);
 String SP_Repr(SP_Node* top,Arena* out);
 
 #define SP_Append(HEAD,TAIL,NODE) LL_Append(HEAD,TAIL,next,NODE)
+#endif

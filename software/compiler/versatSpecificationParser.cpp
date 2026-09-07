@@ -18,7 +18,7 @@
 // ======================================
 // Constants
 
-static readOnly SP_Node SP_Node_Nil = {};
+//static readOnly SP_Node SP_Node_Nil = {};
 
 // static readOnly SpecExpression SPEC_LITERAL_0 = {.val = 0,.type = SpecType_LITERAL};
 static readOnly MathExpression MATH_LITERAL_0 = {.val = 0,.type = MathType_LITERAL};
@@ -2779,7 +2779,7 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
 
   FREE_ARENA(parseArena);
   Parser* parser = StartParsing(TokenizeFunction,content,parseArena,ParsingOptions_DEFAULT);
-  parser->debug = 1;
+  parser->debug = 0;
 
   // TODO:
   // Kinda hacky way of doing this.
@@ -2796,11 +2796,14 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
     ConstructDef def = {};
     if(tok.type == TokenType_KEYWORD_MODULE){
       def.type = ConstructType_MODULE;
+      def.module = ParseModuleDef(parser,out);
+      #if 0
       def.node = SP_ParseModuleDef(parser,out);
+      def.module.node = def.node;
 
       String repr = SP_Repr(def.node,temp);
       printf("%.*s\n",UN(repr));
-
+      #endif
     } else if(tok.type == TokenType_KEYWORD_MERGE){
       def.type = ConstructType_MERGE;
       def.merge = ParseMerge(parser,out);
@@ -3369,6 +3372,7 @@ bool Nil(Entity ent){
 
 
 // New parsing code in here ===================================================
+#if 0
 
 SP_Node* SP_PushNode(Arena* out,SP_Type type,Token token,SP_Node* childs){
   SP_Node* node = PushStruct<SP_Node>(out);
@@ -3390,9 +3394,6 @@ String SP_Repr(SP_Node* top,Arena* out){
     
     bool exprType = SP_Type_IsExpr(node->type);
     String name = SP_Type_Name(node->type);
-
-    DEBUG_BREAK_IF(name == "EXPR");
-
     b->PushSpaces(level * 2);
 
     if(exprType){
@@ -4146,3 +4147,5 @@ SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
   SP_Node* res = SP_PushNode(out,SP_Type_MODULE_DECL,name,vars);
   return res;
 }
+
+#endif

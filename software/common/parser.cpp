@@ -436,18 +436,20 @@ Token Parser::ExpectNext(TokenType type){
   Token tok = NextToken();
 
   if(type == TokenType_IDENTIFIER && (options & ParsingOptions_ERROR_ON_C_VERILOG_KEYWORDS)){
+#if 0
     if(tok.type == TokenType_C_KEYWORD && options & ParsingOptions_ERROR_ON_C_KEYWORDS){
       ReportError("Expected identifier but instead got a C reserved keyword.\n We cannot have C keywords since we will have to generate C code and the generated code will be malformed");
     } else if(tok.type == TokenType_VERILOG_KEYWORD && options & ParsingOptions_ERROR_ON_VERILOG_KEYWORDS){
       ReportError("Expected identifier but instead got a Verilog reserved keyword.\n We cannot have Verilog keywords since we will have to generate Verilog code and the generated code will be malformed");
     }
+#endif
   } else if(tok.type != type){
     TEMP_REGION(temp,nullptr);
 
     FileContent content = tok.originalFile;
 
     LocInfo loc = PARSE_GetLinesAroundLocation(tok.originalData.data,content.content,1,1,temp);
-    
+
     String typeRepr = PushRepr(temp,type);
     String repr = PARSE_PushDebugRepr(temp,tok);
     String error = PushString(temp,"Unexpected token. Expected type: %.*s , Got: %.*s",UN(typeRepr),UN(repr));
