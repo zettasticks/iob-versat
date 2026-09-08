@@ -14,7 +14,6 @@ AddressAccess* Copy(AddressAccess* in,Arena* out){
 
   res->external = Copy(in->external,out);
   res->internal = Copy(in->internal,out);
-  res->inputVariableNames = CopyArray(in->inputVariableNames,out);
 
   return res;
 }
@@ -144,7 +143,6 @@ AddressAccess* ReplaceVariables(AddressAccess* in,TrieMap<String,SYM_Expr>* varR
   res->internal = ReplaceVariables(in->internal,varReplace,out);
   res->external = ReplaceVariables(in->external,varReplace,out);
   res->dutyDivExpr = SYM_Replace(in->dutyDivExpr,varReplace);
-  res->inputVariableNames = CopyArray(newInputVariableNames,out);
   res->loopVars = CopyArray(in->loopVars,out);
   
   return res;
@@ -593,7 +591,6 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
   LoopLinearSum* freeTerm = PushLoopLinearSumFreeTerm(toCalcConst,temp);
       
   AddressAccess* result = PushStruct<AddressAccess>(out);
-  result->inputVariableNames = asString;
   result->internal = PushLoopLinearSumSimpleVar("x",SYM_1,SYM_0,finalExpression,out);
   result->external = AddLoopLinearSum(expr,freeTerm,out);
   result->dutyDivExpr = dutyDiv;
@@ -908,3 +905,102 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
   
   return head;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// nocheckin: Reorganize
+AddressAccess* CompileAddressGen2(Array<AddressGenForDef2> loops,SYM_Expr addr){
+  Arena* out = globalPermanent;
+  TEMP_REGION(temp,out);
+  
+  auto loopVarBuilder = PushList<String>(temp);
+  for(int i = 0; i < loops.size; i++){
+    AddressGenForDef2 loop = loops[i];
+
+    *loopVarBuilder->PushElem() = PushString(temp,loop.loopVariable);
+  }
+  Array<String> loopVars = PushArray(out,loopVarBuilder);
+
+  Array<SYM_Expr> loopEnd = PushArray<SYM_Expr>(temp,loops.size);
+  
+  SYM_Expr symbolicExpr = addr;
+
+  // Builds expression for the internal address which is basically just a multiplication of all the loops sizes
+  SYM_Expr loopExpression = SYM_1;
+  for(int i = 0; i < loops.size; i++){
+    AddressGenForDef2 loop = loops[i];
+    // TODO: Handle parsing errors
+    SYM_Expr start = loop.startSym;
+    loopEnd[i] = loop.endSym;
+
+    // NOTE: We transform loops so that they always start at zero:
+    //       - for x a..b {x}  <=>  for x 0..b-a {(x+a)} 
+    if(!Equal(start,SYM_0)){
+      loopEnd[i] = loopEnd[i] - start;
+
+      SYM_Expr loopVar = SYM_Var(loop.loopVariable);
+      symbolicExpr = SYM_Replace(symbolicExpr,loopVar,loopVar + start);
+    }
+
+    SYM_Expr diff = loopEnd[i];
+    loopExpression = loopExpression * diff;
+
+  }
+  SYM_Expr finalExpression = loopExpression;
+
+  // Building expression for the external address
+  // TODO: Handle parsing errors
+  SYM_Expr normalized = symbolicExpr;
+
+  Pair<SYM_Expr,SYM_Expr> pair = SYM_BreakDuty(normalized);
+
+  SYM_Expr fullExpr = pair.first;
+  SYM_Expr dutyDiv = pair.second;
+
+  LoopLinearSum* expr = PushLoopLinearSumEmpty(temp);
+  for(int i = 0; i < loopVars.size; i++){
+    String var = loopVars[i];
+
+    SYM_Expr term = SYM_Factor(fullExpr,SYM_Var(var));
+
+    AddressGenForDef2 loop = loops[i];
+    
+    LoopLinearSum* sum = PushLoopLinearSumSimpleVar(loop.loopVariable,term,SYM_0,loopEnd[i],temp);
+    expr = AddLoopLinearSum(sum,expr,temp);
+  }
+  
+  // Extracts the constant term
+  SYM_Expr toCalcConst = fullExpr;
+  for(String str : loopVars){
+    toCalcConst = SYM_Replace(toCalcConst,SYM_Var(str),SYM_0);
+  }
+
+  LoopLinearSum* freeTerm = PushLoopLinearSumFreeTerm(toCalcConst,temp);
+      
+  AddressAccess* result = PushStruct<AddressAccess>(out);
+  result->internal = PushLoopLinearSumSimpleVar("x",SYM_1,SYM_0,finalExpression,out);
+  result->external = AddLoopLinearSum(expr,freeTerm,out);
+  result->dutyDivExpr = dutyDiv;
+  result->loopVars = loopVars;
+  
+  return result;
+};
+

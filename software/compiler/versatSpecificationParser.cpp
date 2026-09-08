@@ -2701,7 +2701,7 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
 
   FREE_ARENA(parseArena);
   Parser* parser = StartParsing(TokenizeFunction,content,parseArena,ParsingOptions_DEFAULT);
-  parser->debug = 0;
+  parser->debug = 1;
 
   // TODO:
   // Kinda hacky way of doing this.
@@ -3411,15 +3411,38 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
     Token number = parser->ExpectNext(TokenType_NUMBER);
     atom = SP_PushNode(out,SP_Type_LITERAL,number,0);
   } else if(peek.type == TokenType_IDENTIFIER){
-    if(parser->IfPeekToken('(',1)){
-      Token functionName = parser->ExpectNext(TokenType_IDENTIFIER);
-      parser->ExpectNext('(');
+    Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+
+    SP_Node* var = SP_PushNode(out,SP_Type_VAR,name,0);
+
+    // TODO: Logic is not fully working, we cannot do something like: Var[].Func().
+    //
+
+    while(parser->IfNextToken('.')){
+      Token access = parser->ExpectNext(TokenType_IDENTIFIER);
+    
+      var = SP_PushNode(out,SP_Type_HIER_ACCESS,access,var);
+    }
+    
+    while(parser->IfNextToken('[')){
+      SP_Node* range = SP_ParseRange(parser,out);
+
+      var->next = range;
+      var = SP_PushNode(out,SP_Type_RANGE_ACCESS,{},var);
+
+      parser->ExpectNext(']');
+    }
+
+    // NOTE: Either we have a function or accesses, cannot have both.
+    bool isFunction = 0;
+    if(parser->IfNextToken('(')){
+      isFunction = 1;
 
       SP_Node* argHead = 0;
       SP_Node* argTail = 0;
 
       while(!parser->Done()){
-        if(parser->IfNextToken(')')){
+        if(parser->IfPeekToken(')')){
           break;
         }
 
@@ -3434,10 +3457,30 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
       }
 
       parser->ExpectNext(')');
-      atom = SP_PushNode(out,SP_Type_FUNC_CALL,functionName,argHead);
-    } else {
-      atom = SP_ParseVar(parser,out);
+
+      if(var->type == SP_Type_HIER_ACCESS){
+        // Var.Func()
+        SP_Node* innerVar = var->childs;
+
+        var->type = SP_Type_FUNC_CALL;
+        var->childs->next = argHead;
+      } else if(var->type == SP_Type_VAR){
+        // Func()
+        var->type = SP_Type_FUNC_CALL;
+        var->childs = argHead;
+      }
     }
+
+    if(!isFunction){
+      if(parser->IfNextToken(':')){
+        SP_Node* port = SP_ParseRange(parser,out);
+    
+        var->next = port;
+        var = SP_PushNode(out,SP_Type_PORT_ACCESS,{},var);
+      }
+    }
+    
+    atom = var;
   } else {
     // TODO: Better error reporting
     parser->ReportUnexpectedToken(parser->NextToken(),{});
@@ -3539,7 +3582,7 @@ SP_Node* SP_ParseVar(Parser* parser,Arena* out){
     
     var = SP_PushNode(out,SP_Type_HIER_ACCESS,access,var);
   }
-  
+
   while(parser->IfNextToken('[')){
     SP_Node* range = SP_ParseRange(parser,out);
 
@@ -3645,7 +3688,7 @@ SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
         }
 
         Token name = parser->ExpectNext(TokenType_IDENTIFIER);
-        SP_Node* node = SP_PushNode(out,SP_Type_ID,name,0);
+        SP_Node* node = SP_PushNode(out,SP_Type_VAR,name,0);
         SP_Append(shareHead,shareTail,node);
 
         if(parser->IfNextToken(',')){
@@ -3851,8 +3894,7 @@ SP_Node* SP_ParseConfigStatements(Parser* parser,Arena* out){
         lhs->next = rhs;
         parser->ExpectNext(';');
         type = SP_Type_EQUALITY;
-      }
-      if(parser->IfNextToken(';')){
+      } else if(parser->IfNextToken(';')){
         type = SP_Type_FUNCTION_CALL;
       }
 

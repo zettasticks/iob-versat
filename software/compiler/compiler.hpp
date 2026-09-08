@@ -123,6 +123,17 @@ struct COM_Unit{
 extern COM_Unit COM_Unit_Nil;
 
 // ======================================
+// 
+
+enum COM_ExprType{
+  COM_ExprType_NIL,
+  COM_ExprType_FUNC_CALL,
+  COM_ExprType_ARRAY_ACCESS,
+  COM_ExprType_VAR,
+  COM_ExprType_EXPR
+};
+
+// ======================================
 // Connections
 
 struct COM_Port{
@@ -149,11 +160,19 @@ enum COM_EntType{
   COM_EntType_PARAM,
   COM_EntType_MODULE_INPUT,
   COM_EntType_MODULE_UNIT,
+  COM_EntType_MODULE_UNIT_ARRAY,
 
   COM_EntType_ARG_NONE,
   COM_EntType_ARG_FIXED,
   COM_EntType_ARG_DYN,
-  COM_EntType_ARG_BUFFER
+  COM_EntType_ARG_BUFFER,
+
+  COM_EntType_VAR_WITH_LEFTOVER_RANGE,
+
+  COM_EntType_VAR_WITH_CONFIG,
+  COM_EntType_VAR_WITH_STATE,
+  COM_EntType_VAR_WITH_VIRTUAL_MEM,
+  
 };
 
 struct COM_Ent{
@@ -163,6 +182,10 @@ struct COM_Ent{
   COM_Unit* unit;
   int currentValue;
   int scope;
+  SP_Node* node;
+  Direction dir;
+  String wireName;
+  int port;
 };
 extern COM_Ent COM_Ent_Nil;
 
@@ -230,6 +253,25 @@ struct COM_RangeValues{
   int low;
   int high;
   bool error;
+  bool constant;
+};
+
+// ======================================
+// Functions
+
+enum COM_StmtType{
+  COM_StmtType_ASSIGN,
+  COM_StmtType_ADDR_GEN,
+  COM_StmtType_MEM_COPY
+};
+
+struct COM_Stmt{
+  COM_Stmt* next;
+
+  COM_StmtType type;
+  String lhs;
+  String rhs;
+  AddressAccess* access;
 };
 
 // ======================================
@@ -238,7 +280,8 @@ struct COM_RangeValues{
 bool IsNil(COM_Ent ent);
 bool IsNil(COM_ConnectInfo* con);
 
-bool COM_IsVar(COM_EntType in);
+bool COM_Ent_IsVar(COM_EntType in);
+bool COM_Ent_IsArray(COM_EntType in);
 
 // ======================================
 // Constant expressions and computations
@@ -250,7 +293,9 @@ COM_ConstantResult COM_ComputeConstantValue(COM_Env* env,SP_Node* expr);
 // Compilation helpers
 
 COM_ConnectInfoList COM_UnpackVarGroup(COM_Env* env,SP_Node* top,Arena* out);
-COM_RangeValues     COM_CalculateRange(COM_Env* env,SP_Node* rangeOrExpr);
+COM_RangeValues     COM_CalculateRange(COM_Env* env,SP_Node* rangeOrExpr,bool mustBeConstant);
+COM_Ent             COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode);
+COM_EntPort         COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out);
 
 // ======================================
 // Compilation
@@ -261,8 +306,8 @@ COM_Unit* COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> topL
 // Env
 
 COM_Ent* COM_PushEnt(COM_Env* env,Token name,COM_EntType type);
-COM_Ent COM_GetEnt(COM_Env* env,Token name,bool canFail = true);
-COM_Ent COM_ArrayAccess(COM_Env* env,COM_Ent array,int index);
+COM_Ent  COM_GetEnt(COM_Env* env,Token name,bool canFail);
+COM_Ent  COM_ArrayAccess(COM_Env* env,COM_Ent array,int index);
 
 void COM_PushScope(COM_Env* env);
 void COM_PopScope(COM_Env* env);
