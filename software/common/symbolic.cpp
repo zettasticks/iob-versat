@@ -2479,6 +2479,10 @@ SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top){
 
   SYM_EvaluateResult res = {};
   res.result = result.val;
+  if(result.isInvalid){
+    res.result = 0;
+  }
+
   res.divByZero = divByZero;
   res.nonConstantValue = nonConstantValue;
   res.nilValue = nilValue;

@@ -16,9 +16,8 @@
 
 static Pool<Accelerator> accelerators;
 
-readOnly ConnectionNode ConnectionNode_Nil = {.next = &ConnectionNode_Nil};
-
-readOnly FUInstance FUInstance_NilInst = {.declaration = &FUDeclaration_Nil,.allInputs = &ConnectionNode_Nil,.allOutputs = &ConnectionNode_Nil};
+readonly ConnectionNode ConnectionNode_Nil = {.next = &ConnectionNode_Nil};
+readonly FUInstance FUInstance_NilInst = {.declaration = &FUDeclaration_Nil,.allInputs = &ConnectionNode_Nil,.allOutputs = &ConnectionNode_Nil};
 
 bool Nil(FUInstance* inst){
   bool res = (inst == FUInstance_Nil);

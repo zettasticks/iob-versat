@@ -18,12 +18,12 @@
 // ======================================
 // Constants
 
-//static readOnly SP_Node SP_Node_Nil = {};
+static readonly SP_Node SP_Node_Nil = {};
 
 // static readOnly SpecExpression SPEC_LITERAL_0 = {.val = 0,.type = SpecType_LITERAL};
-static readOnly MathExpression MATH_LITERAL_0 = {.val = 0,.type = MathType_LITERAL};
+static readonly MathExpression MATH_LITERAL_0 = {.val = 0,.type = MathType_LITERAL};
 
-readOnly Entity Entity_Nil = {.inst = &FUInstance_NilInst,.func = &ConfigFunction_Nil,.decl = &FUDeclaration_Nil};
+readonly Entity Entity_Nil = {.inst = &FUInstance_NilInst,.func = &ConfigFunction_Nil,.decl = &FUDeclaration_Nil};
 
 // NOTE: Spec expression is more associated to the equality operator when defining the graph
 //       Math expression is everything else
@@ -104,87 +104,6 @@ FUDeclaration* InstantiateMerge(MergeDef def){
   }
   
   return Merge(decl,name,def.specifics,modifier);
-}
-
-int GetRangeCount(Env* env,Range<MathExpression*> range){
-  int start = env->CalculateConstantExpression(range.start);
-  int end = env->CalculateConstantExpression(range.end);
-  
-  Assert(end >= start);
-  return (end - start + 1);
-}
-
-// Connection type and number of connections
-Pair<PortRangeType,int> GetConnectionInfo(Env* env,Var var){
-  Entity ent = env->GetEntity(var.name);
-
-  int expectedRanges = 0;
-  if(ent.type == EntityType_FU_ARRAY){
-    expectedRanges = ent.dims.size; // arraySize
-  }
-
-  if(var.index.size != expectedRanges){
-    env->ReportError(var.name,"Too many array subscriptions for this entity");
-  }
-
-  int totalRangeCount = 1;
-  for(Range<MathExpression*> range : var.index){
-    totalRangeCount *= GetRangeCount(env,range);
-  }
-
-  int indexCount = totalRangeCount;
-  int portCount = GetRangeCount(env,var.extra.port);
-  int delayCount = GetRangeCount(env,var.extra.delay);
-
-  if(indexCount == 1 && portCount == 1 && delayCount == 1){
-    return {PortRangeType_SINGLE,1};
-  }
-
-  // We cannot have more than one range at the same time because otherwise how do we decide how to connnect them?
-  if((indexCount != 1 && portCount != 1) ||
-     (indexCount != 1 && delayCount != 1) ||
-     (portCount != 1 && delayCount != 1)){
-    return {PortRangeType_ERROR,0};
-  }
-  
-  if(indexCount != 1){
-    return {PortRangeType_ARRAY_RANGE,indexCount};
-  }
-
-  if(portCount != 1){
-    return {PortRangeType_PORT_RANGE,portCount};
-  } else if(delayCount != 1){
-    return {PortRangeType_DELAY_RANGE,delayCount};
-  }
-  
-  NOT_POSSIBLE("Every condition should have been checked by now");
-  return {PortRangeType_ERROR,0};
-}
-
-bool IsValidGroup(Env* env,VarGroup group){
-  // TODO: Wether we can match the group or not.
-  //       It depends on wether the ranges line up or not. 
-  for(Var& var : group.vars){
-    if(GetConnectionInfo(env,var).first == PortRangeType_ERROR){
-      return false;
-    }
-  }
-
-  return true;
-}
-
-int NumberOfConnections(Env* env,VarGroup group){
-  if(!IsValidGroup(env,group)){
-    return 0;
-  }
-
-  int count = 0;
-
-  for(Var& var : group.vars){
-    count += GetConnectionInfo(env,var).second;
-  }
-
-  return count;
 }
 
 // TODO: Merge this function with the RegisterSubUnit function. There is no purpose to having this be separated.
@@ -1515,6 +1434,8 @@ PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
       expr1 = InstantiateSpecExpression(root->expressions[1]);
     }
 
+    // NAME
+
     String typeName = {};
     FULL_SWITCH(root->op){
     case SpecOperation_NIL:{
@@ -2797,8 +2718,10 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
     ConstructDef def = {};
     if(tok.type == TokenType_KEYWORD_MODULE){
       def.type = ConstructType_MODULE;
-      def.module = ParseModuleDef(parser,out);
       #if 0
+      def.module = ParseModuleDef(parser,out);
+      #else
+      // MARK
       def.node = SP_ParseModuleDef(parser,out);
       def.module.node = def.node;
 
@@ -3373,7 +3296,15 @@ bool Nil(Entity ent){
 
 
 // New parsing code in here ===================================================
-#if 0
+
+// ======================================
+// Type
+
+bool SP_Type_IsLoop(SP_Type in){
+  bool res = (in == SP_Type_GEN_LOOP ||
+              in == SP_Type_FOR_LOOP);
+  return res;
+}
 
 SP_Node* SP_PushNode(Arena* out,SP_Type type,Token token,SP_Node* childs){
   SP_Node* node = PushStruct<SP_Node>(out);
@@ -3392,12 +3323,21 @@ String SP_Repr(SP_Node* top,Arena* out){
     if(!node){
       return;
     }
-    
+
     bool exprType = SP_Type_IsExpr(node->type);
+    bool isExprContainer = (node->type == SP_Type_EXPR);
     String name = SP_Type_Name(node->type);
     b->PushSpaces(level * 2);
 
-    if(exprType){
+    if(isExprContainer){
+      b->PushString("N: %.*s ",UN(name));
+      if(!Empty(node->token.identifier)){
+        b->PushString("%.*s",UN(node->token.identifier));
+      }
+      b->PushString("\n");
+      
+      Recurse(Recurse,node->childs,level + 1);
+    } else if(exprType){
       b->PushString("E: %.*s ",UN(name));
       if(!Empty(node->token.identifier)){
         b->PushString("%.*s",UN(node->token.identifier));
@@ -3425,9 +3365,7 @@ String SP_Repr(SP_Node* top,Arena* out){
   return res;
 }
 
-SP_Node* SP_ParseVar(Parser* parser,Arena* out);
-
-SP_Node* SP_ParseExpression(Parser* parser,Arena* out,int bindingPower = 99){
+SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
   TEMP_REGION(temp,out);
 
   SP_Node* bottomUnary = nullptr;
@@ -3466,7 +3404,7 @@ SP_Node* SP_ParseExpression(Parser* parser,Arena* out,int bindingPower = 99){
   if(peek.type == '('){
     parser->ExpectNext('(');
 
-    atom = SP_ParseExpression(parser,out);
+    atom = SP_ParseExpressionInternal(parser,out,99);
 
     parser->ExpectNext(')');
   } else if(peek.type == TokenType_NUMBER){
@@ -3485,7 +3423,7 @@ SP_Node* SP_ParseExpression(Parser* parser,Arena* out,int bindingPower = 99){
           break;
         }
 
-        SP_Node* arg = SP_ParseExpression(parser,out);
+        SP_Node* arg = SP_ParseExpressionInternal(parser,out,99);
         SP_Append(argHead,argTail,arg);
 
         if(parser->IfNextToken(',')){
@@ -3545,7 +3483,7 @@ SP_Node* SP_ParseExpression(Parser* parser,Arena* out,int bindingPower = 99){
         if(info.bindingPower < bindingPower){
           parser->NextToken();
 
-          SP_Node* right = SP_ParseExpression(parser,out,info.bindingPower);
+          SP_Node* right = SP_ParseExpressionInternal(parser,out,info.bindingPower);
       
           SP_Node* op = SP_PushNode(out,info.op,{},0);
           op->first = atom;
@@ -3565,23 +3503,29 @@ SP_Node* SP_ParseExpression(Parser* parser,Arena* out,int bindingPower = 99){
     break;
   }
 
-  // Pack into a node type ======================================================
-  SP_Node* res = SP_PushNode(out,SP_Type_EXPR,{},atom);
+  return atom;
+}
 
+SP_Node* SP_ParseExpression(Parser* parser,Arena* out){
+  SP_Node* expr = SP_ParseExpressionInternal(parser,out,99);
+
+  SP_Node* res = SP_PushNode(out,SP_Type_EXPR,{},expr);
   return res;
 }
 
 SP_Node* SP_ParseRange(Parser* parser,Arena* out){
-  SP_Node* first = SP_ParseExpression(parser,out);
+  SP_Node* first = SP_ParseExpressionInternal(parser,out,99);
 
-  SP_Node* second = &SP_Node_Nil;
+  SP_Node* second = first;
   if(parser->IfNextToken(TokenType_DOUBLE_DOT)){
-    second = SP_ParseExpression(parser,out);
+    second = SP_ParseExpressionInternal(parser,out,99);
   }
-  
-  first->next = second;
-  SP_Node* res = SP_PushNode(out,SP_Type_RANGE,{},first);
 
+  SP_Node* range = SP_PushNode(out,SP_Type_RANGE,{},0);
+  range->first = first;
+  range->second = second;
+
+  SP_Node* res = SP_PushNode(out,SP_Type_EXPR,{},range);
   return res;
 }
 
@@ -3593,14 +3537,14 @@ SP_Node* SP_ParseVar(Parser* parser,Arena* out){
   while(parser->IfNextToken('.')){
     Token access = parser->ExpectNext(TokenType_IDENTIFIER);
     
-    var = SP_PushNode(out,SP_Type_ACCESS,access,var);
+    var = SP_PushNode(out,SP_Type_HIER_ACCESS,access,var);
   }
   
   while(parser->IfNextToken('[')){
     SP_Node* range = SP_ParseRange(parser,out);
 
     var->next = range;
-    var = SP_PushNode(out,SP_Type_RANGE_DECL,{},var);
+    var = SP_PushNode(out,SP_Type_RANGE_ACCESS,{},var);
 
     parser->ExpectNext(']');
   }
@@ -3610,7 +3554,7 @@ SP_Node* SP_ParseVar(Parser* parser,Arena* out){
     SP_Node* delay = SP_ParseRange(parser,out);
     
     var->next = delay;
-    var = SP_PushNode(out,SP_Type_DELAY_DECL,{},var);
+    var = SP_PushNode(out,SP_Type_DELAY_ACCESS,{},var);
 
     parser->ExpectNext('}');
   }
@@ -3621,8 +3565,6 @@ SP_Node* SP_ParseVar(Parser* parser,Arena* out){
     
     var->next = port;
     var = SP_PushNode(out,SP_Type_PORT_ACCESS,{},var);
-
-    parser->ExpectNext('}');
   }
 
   return var;
@@ -3637,7 +3579,7 @@ SP_Node* SP_ParseVarDeclaration(Parser* parser,Arena* out){
     SP_Node* range = SP_ParseRange(parser,out);
 
     var->next = range;
-    var = SP_PushNode(out,SP_Type_RANGE_DECL,{},var);
+    var = SP_PushNode(out,SP_Type_RANGE_ACCESS,{},var);
     
     parser->ExpectNext(']');
   }
@@ -3673,8 +3615,8 @@ SP_Node* SP_ParseModuleInputDeclaration(Parser* parser,Arena* out){
 }
 
 SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
-  SP_Node* modHead = 0;
-  SP_Node* modTail = 0;
+  SP_Node* head = 0;
+  SP_Node* tail = 0;
 
   bool isVarGroup = 0;
   while(1){
@@ -3719,7 +3661,7 @@ SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
     }
 
     if(mod){
-      SP_Append(modHead,modTail,mod);
+      SP_Append(head,tail,mod);
       continue;
     }
 
@@ -3728,10 +3670,8 @@ SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
 
   Token typeName = parser->ExpectNext(TokenType_IDENTIFIER);
 
-  SP_Node* paramHead = 0;
-  SP_Node* paramTail = 0;
-
   if(parser->IfNextToken('#')){
+    parser->ExpectNext('(');
     while(!parser->Done()){
       if(parser->IfPeekToken(')')){
         break;
@@ -3744,7 +3684,7 @@ SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
       parser->ExpectNext(')');
 
       SP_Node* param = SP_PushNode(out,SP_Type_PARAM,parameterName,expr);
-      SP_Append(paramHead,paramTail,param);
+      SP_Append(head,tail,param);
 
       if(parser->IfNextToken(',')){
         continue;
@@ -3756,9 +3696,6 @@ SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
     parser->ExpectNext(')');
   }
 
-  SP_Node* varHead = 0;
-  SP_Node* varTail = 0;
-
   if(isVarGroup){
     parser->ExpectNext('{');
 
@@ -3768,25 +3705,18 @@ SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
       }
     
       SP_Node* varDecl = SP_ParseVarDeclaration(parser,out);
-      SP_Append(varHead,varTail,varDecl);
+      SP_Append(head,tail,varDecl);
 
       parser->ExpectNext(';');
     }
 
     parser->ExpectNext('}');
   } else {
-    varHead = SP_ParseVarDeclaration(parser,out);
+    SP_Node* decl = SP_ParseVarDeclaration(parser,out);
+    SP_Append(head,tail,decl);
   }
 
-  // Pack into final node =======================================================
-  SP_Node* modifierGroup = SP_PushNode(out,SP_Type_MODIFIER_LIST,{},modHead);
-  SP_Node* paramGroup = SP_PushNode(out,SP_Type_PARAM_LIST,{},paramHead);
-  SP_Node* variableNames = SP_PushNode(out,SP_Type_VAR_LIST,{},varHead);
-
-  modifierGroup->next = paramGroup;
-  paramGroup->next = variableNames;
-
-  SP_Node* res = SP_PushNode(out,SP_Type_VARIABLE_DECL,typeName,modifierGroup);
+  SP_Node* res = SP_PushNode(out,SP_Type_VARIABLE_DECL,typeName,head);
   return res;
 }
 
@@ -3814,7 +3744,7 @@ SP_Node* SP_ParseVarGroup(Parser* parser,Arena* out){
     varHead = SP_ParseVar(parser,out);
   }
 
-  SP_Node* varGroup = SP_PushNode(out,SP_Type_VAR_LIST,{},varHead);
+  SP_Node* varGroup = SP_PushNode(out,SP_Type_VAR_GROUP,{},varHead);
   return varGroup;
 }
 
@@ -3869,18 +3799,6 @@ SP_Node* SP_ParseConnection(Parser* parser,Arena* out){
     res = SP_PushNode(out,type,{},outPart);
   }
 
-  return res;
-}
-
-SP_Node* SP_ParseParameterDeclaration(Parser* parser,Arena* out){
-  Token name = parser->ExpectNext(TokenType_IDENTIFIER);
-
-  SP_Node* defaultVal = nullptr;
-  if(parser->IfNextToken('=')){
-    defaultVal = SP_ParseExpression(parser,out);
-  }  
-
-  SP_Node* res = SP_PushNode(out,SP_Type_PARAM_DECL,name,defaultVal);
   return res;
 }
 
@@ -3952,6 +3870,9 @@ SP_Node* SP_ParseConfigStatements(Parser* parser,Arena* out){
 SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out){
   TEMP_REGION(temp,out);
 
+  SP_Node* head = 0;
+  SP_Node* tail = 0;
+
   SP_Type type = SP_Type_NIL;
   if(parser->IfNextToken(TokenType_KEYWORD_CONFIG)){
     type = SP_Type_FUNC_CONFIG;
@@ -3965,17 +3886,14 @@ SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out){
     return &SP_Node_Nil;
   }
 
-  SP_Node* modHead = 0;
-  SP_Node* modTail = 0;
-
   while(!parser->Done()){
     if(parser->IfNextToken(TokenType_KEYWORD_DEBUG)){
       SP_Node* mod = SP_PushNode(out,SP_Type_MODIFIER_DEBUG,{},0);
-      SP_Append(modHead,modTail,mod);
+      SP_Append(head,tail,mod);
       continue;
     } else if(parser->IfNextToken(TokenType_KEYWORD_SIM)){
       SP_Node* mod = SP_PushNode(out,SP_Type_MODIFIER_SIM,{},0);
-      SP_Append(modHead,modTail,mod);
+      SP_Append(head,tail,mod);
       continue;
     }
     
@@ -3985,8 +3903,6 @@ SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out){
   Token funcName = parser->ExpectNext(TokenType_IDENTIFIER);
 
   // Parse function inputs ======================================================
-  SP_Node* varHead = 0;
-  SP_Node* varTail = 0;
   if(type == SP_Type_FUNC_MEM || type == SP_Type_FUNC_CONFIG){
     parser->ExpectNext('(');
   
@@ -4003,7 +3919,7 @@ SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out){
         parser->ExpectNext(']');
       }
 
-      SP_Type type = {};
+      SP_Type type = SP_Type_FUNC_TYPE_NONE;
       if(parser->IfNextToken(':')){
         Token typeName = parser->ExpectNext(TokenType_IDENTIFIER);
         
@@ -4019,7 +3935,7 @@ SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out){
       }
 
       SP_Node* var = SP_PushNode(out,type,name,arraySize);
-      SP_Append(varHead,varTail,var);
+      SP_Append(head,tail,var);
     
       if(parser->IfNextToken(',')){
         continue;
@@ -4032,15 +3948,9 @@ SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out){
   }
 
   SP_Node* configs = SP_ParseConfigStatements(parser,out);
+  SP_Append(head,tail,configs);
   
-  // Pack =======================================================================
-  SP_Node* mods = SP_PushNode(out,SP_Type_MODIFIER_LIST,{},modHead);
-  SP_Node* vars = SP_PushNode(out,SP_Type_VAR_LIST,{},varHead);
-
-  mods->next = vars;
-  vars->next = configs;
-
-  SP_Node* func = SP_PushNode(out,type,funcName,mods);
+  SP_Node* func = SP_PushNode(out,type,funcName,head);
 
   return func;
 }
@@ -4050,8 +3960,8 @@ SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
 
   Token name = parser->ExpectNext(TokenType_IDENTIFIER);
 
-  SP_Node* paramHead = 0;
-  SP_Node* paramTail = 0;
+  SP_Node* head = 0;
+  SP_Node* tail = 0;
 
   if(parser->IfNextToken('#')){
     parser->ExpectNext('(');
@@ -4061,8 +3971,15 @@ SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
         break;
       }
 
-      SP_Node* param = SP_ParseParameterDeclaration(parser,out);
-      SP_Append(paramHead,paramTail,param);
+      Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+
+      SP_Node* defaultVal = nullptr;
+      if(parser->IfNextToken('=')){
+        defaultVal = SP_ParseExpression(parser,out);
+      }  
+
+      SP_Node* param = SP_PushNode(out,SP_Type_PARAM_DECL,name,defaultVal);
+      SP_Append(head,tail,param);
       
       if(parser->IfNextToken(',')){
         continue;
@@ -4074,24 +3991,36 @@ SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
     parser->ExpectNext(')');
   }
 
-  SP_Node* vars = SP_ParseModuleInputDeclaration(parser,out);
+  parser->ExpectNext('(');
+  
+  while(!parser->Done()){
+    if(parser->IfPeekToken(')')){
+      break;
+    }
+
+    SP_Node* var = SP_ParseVarDeclaration(parser,out);
+    var->type = SP_Type_INPUT_DECL;
+    SP_Append(head,tail,var);
+    
+    if(parser->IfNextToken(',')){
+      continue;
+    } else {
+      break;
+    }
+  }
+
+  parser->ExpectNext(')');
 
   if(parser->IfNextToken(TokenType_ARROW)){
     parser->ExpectNext(TokenType_NUMBER);
   }
 
-  SP_Node* declHead = 0;
-  SP_Node* declTail = 0;
-
-  SP_Node* conHead = 0;
-  SP_Node* conTail = 0;
-
-  SP_Node* funcHead = 0;
-  SP_Node* funcTail = 0;
-
   parser->ExpectNext('{');
   int state = 0;
   while(!parser->Done()){
+    // TODO: We currently ignore hashtag since we can just check the start of functions
+    parser->IfNextToken(TokenType_DOUBLE_HASHTAG);
+
     if(parser->IfPeekToken('}')){
       break;
     }
@@ -4104,7 +4033,7 @@ SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
 
       // Parse variable declarations only ===========================================
       SP_Node* var = SP_ParseInstanceDeclaration(parser,out);
-      SP_Append(declHead,declTail,var);
+      SP_Append(head,tail,var);
 
       parser->ExpectNext(';');
 
@@ -4123,30 +4052,21 @@ SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
         isFunction = 1;
       }
 
+      SP_Node* node = 0;
       if(isFunction){
-        SP_Node* func = SP_ParseConfigFunction(parser,out);
-        SP_Append(funcHead,funcTail,func);
+        node = SP_ParseConfigFunction(parser,out);
       } else {
-        SP_Node* con = SP_ParseConnection(parser,out);
-        SP_Append(conHead,conTail,con);
+        node = SP_ParseConnection(parser,out);
 
         parser->ExpectNext(';');
       }
+
+      SP_Append(head,tail,node);
     }
   }
 
   parser->ExpectNext('}');
-  
-  SP_Node* decls = SP_PushNode(out,SP_Type_DECL_LIST,{},declHead);
-  SP_Node* cons = SP_PushNode(out,SP_Type_CON_LIST,{},conHead);
-  SP_Node* funcs = SP_PushNode(out,SP_Type_FUNC_LIST,{},funcHead);
 
-  vars->next = decls;
-  decls->next = cons;
-  cons->next = funcs;
-
-  SP_Node* res = SP_PushNode(out,SP_Type_MODULE_DECL,name,vars);
+  SP_Node* res = SP_PushNode(out,SP_Type_MODULE_DECL,name,head);
   return res;
 }
-
-#endif

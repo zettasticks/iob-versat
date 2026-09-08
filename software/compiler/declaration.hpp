@@ -196,3 +196,5 @@ bool HasMultipleConfigs(FUDeclaration* decl);
 // Declaration inspection
 
 Wire* GetConfigWireByName(FUDeclaration* decl,String name);
+
+FUDeclaration* DECL_GetType(String name,Array<ParamNameAndValue> params);

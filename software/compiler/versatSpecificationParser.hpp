@@ -41,7 +41,6 @@ struct VarGroup{
   Array<Var> vars;
 };
 
-
 enum SpecOperation{
   SpecOperation_NIL,
 
@@ -57,8 +56,6 @@ enum SpecOperation{
   SpecOperation_SHR,
   SpecOperation_RHL,
   SpecOperation_SHL
-
-  
 };
 
 enum SpecType{
@@ -514,7 +511,6 @@ struct GroupIterator{
 GroupIterator IterateGroup(Env* env,VarGroup* group,Arena* out);
 
 // Parser stuff ===============================================================
-#if 0
 // TODO: Remove all the list nodes, we can just have them be free and the "compiler" will just switch on the base type instead, no need to group stuff like we are currently doing.
 #include "versatSpecificationParser_meta.hpp"
 
@@ -533,11 +529,38 @@ struct SP_Node{
   Token token;
 };
 
-SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out);
+// ======================================
+// Type
+
+bool SP_Type_IsLoop(SP_Type in);
+
+// ======================================
+// Helpers
 
 SP_Node* SP_PushNode(Arena* out,SP_Type type,Token token,SP_Node* childs);
+#define SP_Append(HEAD,TAIL,NODE) LL_Append(HEAD,TAIL,next,NODE)
+
+// ======================================
+// Print
 
 String SP_Repr(SP_Node* top,Arena* out);
 
-#define SP_Append(HEAD,TAIL,NODE) LL_Append(HEAD,TAIL,next,NODE)
-#endif
+// ======================================
+// Parsing helpers
+
+SP_Node* ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower);
+SP_Node* SP_ParseExpression(Parser* parser,Arena* out);
+SP_Node* SP_ParseRange(Parser* parser,Arena* out);
+SP_Node* SP_ParseVar(Parser* parser,Arena* out);
+SP_Node* SP_ParseVarDeclaration(Parser* parser,Arena* out);
+SP_Node* SP_ParseModuleInputDeclaration(Parser* parser,Arena* out);
+SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out);
+SP_Node* SP_ParseVarGroup(Parser* parser,Arena* out);
+SP_Node* SP_ParseConnection(Parser* parser,Arena* out);
+SP_Node* SP_ParseConfigStatements(Parser* parser,Arena* out);
+SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out);
+
+// ======================================
+// Parsing
+
+SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out);

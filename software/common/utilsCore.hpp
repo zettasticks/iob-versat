@@ -26,7 +26,7 @@
 //#define readOnly __attribute__((section(".versat_rodata,\"a\"")))
 
 //#define readOnly __attribute__((section(".rodata,\"a\"")))
-#define readOnly __attribute__((section("versat.rodata,\"a\"")))
+#define readonly __attribute__((section("versat.rodata,\"a\"")))
 //#define readOnly
 
 inline float ABS(float f){return (f < 0.0f ? -f : f);};
@@ -824,16 +824,16 @@ inline bool Contains(Array<String> array,String toCheck){
    return false;
 }
 
-#define LL_Append(HEAD,PTR,NEXT,NODE) \
+#define LL_Append(HEAD,TAIL,NEXT,NODE) \
   if(NODE) { \
-  Assert(!PTR || !PTR->NEXT); \
+  Assert(!TAIL || !TAIL->NEXT); \
   if(HEAD == nullptr){ \
     HEAD = NODE; \
-    PTR = NODE; \
+    TAIL = NODE; \
   } else if(NODE) { \
-    PTR->NEXT = NODE; \
+    TAIL->NEXT = NODE; \
   } \
-  while(PTR->NEXT) PTR = PTR->NEXT; \
+  while(TAIL->NEXT) TAIL = TAIL->NEXT; \
   }
 
 #define LL_PopFront(HEAD,NEXT) \
@@ -846,6 +846,10 @@ inline bool Contains(Array<String> array,String toCheck){
 
 // NOTE: Care when using this, cannot depend on node and prev for loop conditions since this changes them.
 //       Best way of using this is to store the values needed for loop conditions before calling this macro.
+// TODO: Need to find a less bug prone way of doing this.
+//       But until then, basically allocate a next and prev pointer before the loop.
+//       Next is set immediatly every iteration with the next of the node
+//       Prev is only set if the node is not removed.
 #define LL_Remove(HEAD,TAIL,NEXT,NODE,PREV) \
   if(!PREV) { \
     Assert(NODE == HEAD); \
@@ -856,4 +860,18 @@ inline bool Contains(Array<String> array,String toCheck){
   } else { \
     PREV->NEXT = NODE->NEXT; \
     if(TAIL == NODE) TAIL = PREV; \
+  }
+
+#define DLL_Append(HEAD,TAIL,NEXT,PREV,NODE) \
+  if(NODE) { \
+  Assert(!NODE->PREV); \
+  Assert(!TAIL || !TAIL->NEXT); \
+  if(HEAD == nullptr){ \
+    HEAD = NODE; \
+    TAIL = NODE; \
+  } else if(NODE) { \
+    TAIL->NEXT = NODE; \
+    NODE->PREV = TAIL; \
+  } \
+  while(TAIL->NEXT) TAIL = TAIL->NEXT; \
   }

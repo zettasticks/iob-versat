@@ -13,7 +13,7 @@
 #include "versatSpecificationParser.hpp"
 #include "templateEngine.hpp"
 
-readOnly ConfigFunction ConfigFunction_Nil = {};
+readonly ConfigFunction ConfigFunction_Nil = {};
 
 // ============================================================================
 // Instantiation and manipulation

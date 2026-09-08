@@ -18,6 +18,7 @@
 #include "declaration.hpp"
 #include "templateEngine.hpp"
 #include "codeGeneration.hpp"
+#include "compiler.hpp"
 
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -521,6 +522,16 @@ int main(int argc,char* argv[]){
     
     // Parse spec file
     Array<ConstructDef> types = ParseVersatSpecification(content,temp);
+    
+    // MARK
+#if 1
+    for(ConstructDef def : types){
+      COM_Unit* top = COM_InstantiateModule(def.node,{},temp);
+      String repr = COM_Repr(top,temp);
+      printf("%.*s\n",UN(repr));
+    }
+    exit(-1);
+#endif
 
     TrieSet<String>* checkNames = PushTrieSet<String>(temp);
 
@@ -790,8 +801,6 @@ int main(int argc,char* argv[]){
       Work work = *p.second;
       ConstructDef def = work.definition;
       
-      DEBUG_BREAK();
-
       FUDeclaration* decl = nullptr;
       if(def.type == ConstructType_MODULE){
         decl = InstantiateModule(content,def.module,work.params);

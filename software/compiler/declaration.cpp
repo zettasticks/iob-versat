@@ -4,7 +4,7 @@
 #include "globals.hpp"
 #include "versat.hpp"
 
-FUDeclaration FUDeclaration_Nil = {};
+readonly FUDeclaration FUDeclaration_Nil = {};
 
 Pool<FUDeclaration> globalDeclarations;
 
@@ -103,7 +103,7 @@ static void RegisterOperators(){
 }
 
 bool IsNil(FUDeclaration* decl){
-  bool res = (decl->type == FUDeclarationType_NIL);
+  bool res = (decl && decl->type == FUDeclarationType_NIL);
   return res;
 }
 
@@ -168,8 +168,9 @@ Wire* GetConfigWireByName(FUDeclaration* decl,String name){
 String DECL_MangleName(String typeName,Array<ParamNameAndValue> params,Arena* out){
   TEMP_REGION(temp,out);
 
-  //return typeName;
+  return typeName;
 
+#if 0
   Array<ParamNameAndValue> ordered = CopyArray(params,temp);
   
   for(int i = 0; i < ordered.size; i++){
@@ -192,11 +193,17 @@ String DECL_MangleName(String typeName,Array<ParamNameAndValue> params,Arena* ou
 
   String res = EndString(out,b);
   return res;
+#endif
 }
 
 DECL_UnmangleResult DECL_UnmangleName(String name,Arena* out){
   TEMP_REGION(temp,out);
 
+  DECL_UnmangleResult res = {};
+  res.name = name;
+  return res;
+
+#if 0
   Array<String> splitted = Split(name,'@',temp);
   int doubleArgCount = splitted.size - 1;
   Assert(doubleArgCount % 2 == 0 && "We must have double since we always have a name,val pair");
@@ -217,5 +224,15 @@ DECL_UnmangleResult DECL_UnmangleName(String name,Arena* out){
   DECL_UnmangleResult res = {};
   res.name = PushString(out,typeName);
   res.params = params;
+  return res;
+#endif
+}
+
+FUDeclaration* DECL_GetType(String name,Array<ParamNameAndValue> params){
+  FUDeclaration* res = GetTypeByName(name);
+  if(!res){
+    return &FUDeclaration_Nil;
+  }
+
   return res;
 }

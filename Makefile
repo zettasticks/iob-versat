@@ -38,6 +38,7 @@ VERSAT_COMMON_TOOLS_OBJS := $(patsubst $(VERSAT_COMMON_DIR)/%.cpp,$(TOOL_BUILD_D
 
 VERSAT_ALL_HEADERS := $(VERSAT_COMMON_HEADERS) $(wildcard $(VERSAT_COMPILER_DIR)/*.hpp)
 VERSAT_ALL_HEADERS += $(BUILD_DIR)/embeddedData.hpp
+VERSAT_ALL_HEADERS += $(VERSAT_COMPILER_DIR)/versatSpecificationParser_meta.hpp
 
 VERSAT_TEMPLATES:=$(wildcard $(VERSAT_TEMPLATE_DIR)/*.tpl)
 
@@ -107,10 +108,10 @@ $(VERSAT_DIR)/versat: $(CPP_OBJ) $(VERSAT_ALL_HEADERS)
 -include $(BUILD_DIR)/embeddedData.d
 -include $(BUILD_DIR)/*.d
 
-#meta-data: $(META)
-#	$(META) $(VERSAT_SW_DIR)/compiler
+meta-data $(VERSAT_COMPILER_DIR)/versatSpecificationParser_meta.hpp: $(META) $(VERSAT_COMPILER_DIR)/versatSpecificationParser.meta
+	$(META) $(VERSAT_SW_DIR)/compiler
 
-versat: $(VERSAT_DIR)/versat $(HASH) #meta-data 
+versat: $(VERSAT_DIR)/versat $(HASH)
 
 debug-embed-data: $(EMBED)
 	gdb --args $(EMBED) $(VERSAT_SW_DIR)/versat_defs.txt $(TOOL_BUILD_DIR)/embeddedData
