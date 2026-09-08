@@ -165,11 +165,7 @@ SYM_Expr COM_SymbolicFromExpression(COM_Env* env,SP_Node* node){
     return res;
   };
 
-  SP_Node* expr = node;
-  if(expr && expr->type == SP_Type_EXPR){
-    expr = expr->childs;
-  }
-
+  SP_Node* expr = SP_UnpackExpr(node);
   SYM_Expr res = Recurse(Recurse,expr);
 
   return res;
@@ -255,11 +251,8 @@ COM_ConnectInfoList COM_UnpackVarGroup(COM_Env* env,SP_Node* top,Arena* out){
   return res;
 };
 
-COM_RangeValues COM_CalculateRange(COM_Env* env,SP_Node* rangeOrExpr,bool mustBeConstant){
-  SP_Node* range = rangeOrExpr;
-  if(range->type == SP_Type_EXPR){
-    range = range->childs;
-  }
+COM_RangeValues COM_CalculateRange(COM_Env* env,SP_Node* node,bool mustBeConstant){
+  SP_Node* range = SP_UnpackExpr(node);
   Assert(range->type == SP_Type_RANGE);
 
   COM_ConstantResult lowVal = COM_ComputeConstantValue(env,range->first);
@@ -466,8 +459,10 @@ COM_EntPort COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out){
 // ======================================
 // Compilation
 
-COM_Unit* COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> topLevelParams,Arena* out){
+COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> topLevelParams,Arena* out){
   Assert(moduleDef->type = SP_Type_MODULE_DECL);
+
+  String moduleName = moduleDef->token.identifier;
 
   FREE_ARENA(envArena);
   FREE_ARENA(envErrorArena);
@@ -475,6 +470,9 @@ COM_Unit* COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> topL
   COM_Env* env = &envInst;
   env->arena = envArena;
   env->errorArena = envErrorArena;
+
+  COM_Function* funcHead = 0;
+  COM_Function* funcTail = 0;
 
   for(SP_Node* ptr = moduleDef->childs; ptr; ptr = ptr->next){
     bool handled = 1;
@@ -623,10 +621,7 @@ COM_Unit* COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> topL
         COM_ReportError(env,"RHS of assignment must be an expression",rhsExpr);
       }
       
-      SP_Node* expr = rhsExpr;
-      if(expr && expr->type == SP_Type_EXPR){
-        expr = expr->childs;
-      }
+      SP_Node* expr = SP_UnpackExpr(rhsExpr);
 
       COM_EntPort exprInst = COM_InstantiateExpression(env,expr,out);
       COM_Ent* lhs = COM_PushEnt(env,lhsVar->token,COM_EntType_MODULE_UNIT);
@@ -755,10 +750,7 @@ COM_Unit* COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> topL
             SP_Node* forLoop = ptr->node;
             Token loopVar = forLoop->token;
 
-            SP_Node* rangeExpr = forLoop->childs;
-            if(rangeExpr->type == SP_Type_EXPR){
-              rangeExpr = rangeExpr->childs;
-            }
+            SP_Node* rangeExpr = SP_UnpackExpr(forLoop->childs);
 
             Assert(rangeExpr->type == SP_Type_RANGE);
 
@@ -771,15 +763,8 @@ COM_Unit* COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> topL
           }
         }
         
-        SP_Node* lhs = equalityOrFunction->childs;
-        SP_Node* rhs = equalityOrFunction->childs->next;
-        
-        if(lhs && lhs->type == SP_Type_EXPR){
-          lhs = lhs->childs;
-        }
-        if(rhs && rhs->type == SP_Type_EXPR){
-          rhs = rhs->childs;
-        }
+        SP_Node* lhs = SP_UnpackExpr(equalityOrFunction->childs);
+        SP_Node* rhs = SP_UnpackExpr(equalityOrFunction->childs->next);
 
         if(equalityOrFunction->type == SP_Type_FUNCTION_CALL){
           
@@ -807,6 +792,7 @@ COM_Unit* COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> topL
             
             if(lhsEnt.type == COM_EntType_VAR_WITH_LEFTOVER_RANGE){
               lhsType = COM_ExprType_ARRAY_ACCESS;
+              lhsExpr = lhsEnt.node;
             } else {
               lhsType = COM_ExprType_VAR;
             }
@@ -858,6 +844,7 @@ COM_Unit* COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> topL
             
               if(rhsEnt.type == COM_EntType_VAR_WITH_LEFTOVER_RANGE){
                 rhsType = COM_ExprType_ARRAY_ACCESS;
+                rhsExpr = rhsEnt.node;
               } else {
                 rhsType = COM_ExprType_VAR;
               }
@@ -910,7 +897,7 @@ COM_Unit* COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> topL
           // 
           if(lhsType == COM_ExprType_ARRAY_ACCESS){
             if(isConfig){
-              SYM_Expr expr = COM_SymbolicFromExpression(env,rhsExpr);
+              SYM_Expr expr = COM_SymbolicFromExpression(env,lhsExpr);
 
               AddressAccess* access = CompileAddressGen2(forLoops,expr);
 
@@ -922,7 +909,7 @@ COM_Unit* COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> topL
           }
           if(rhsType == COM_ExprType_ARRAY_ACCESS){
             if(isConfig){
-              SYM_Expr expr = COM_SymbolicFromExpression(env,lhsExpr);
+              SYM_Expr expr = COM_SymbolicFromExpression(env,rhsExpr);
 
               AddressAccess* access = CompileAddressGen2(forLoops,expr);
 
@@ -938,6 +925,11 @@ COM_Unit* COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> topL
           LL_Append(stmtHead,stmtTail,next,stmt);
         }
       }
+
+      // Pack into function =========================================================
+      COM_Function* func = PushStruct<COM_Function>(out);
+      
+      LL_Append(funcHead,funcTail,next,func);
     } break;
 
     default: handled = 0;
@@ -948,8 +940,14 @@ COM_Unit* COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> topL
   if(env->anyError){
      exit(-1);
   }
+
+  // Pack =======================================================================
+  COM_Module mod = {}; 
+  mod.name = PushString(out,moduleName);
+  mod.units = env->head;
+  mod.funcs = funcHead;
   
-  return env->head;
+  return mod;
 }
 
 // ====================================== 

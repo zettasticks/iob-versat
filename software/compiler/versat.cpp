@@ -365,16 +365,6 @@ FUDeclaration* RegisterSubUnit(Accelerator* circuit,Array<ParameterDef> params,S
   TEMP_REGION(temp2,temp);
 
   Arena* permanent = globalPermanent;
-
-  // We receive the circuit with all the instances. We also have any user provided param inside the instances themselves. The FUInstance contains the params.
-  // Any part of this code needs to instantiate everything that is a symbolic expression with those parameters, otherwise we run into trouble. And by everything I do mean everything.
-
-    // Disabled for now.
-#if 0
-  if(IsCombinatorial(circuit)){
-    circuit = Flatten(versat,circuit,99);
-  }
-#endif
   
   String name = circuit->name;
   FUDeclaration decl = {};

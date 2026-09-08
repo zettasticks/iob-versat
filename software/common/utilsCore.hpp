@@ -23,11 +23,11 @@
 #define MAX(A,B) ((A) > (B) ? (A) : (B))
 
 // TODO: Not portable without also defining the linker script.
-//#define readOnly __attribute__((section(".versat_rodata,\"a\"")))
+//#define readonly __attribute__((section(".versat_rodata,\"a\"")))
+//#define readonly __attribute__((section(".rodata,\"a\"")))
 
-//#define readOnly __attribute__((section(".rodata,\"a\"")))
 #define readonly __attribute__((section("versat.rodata,\"a\"")))
-//#define readOnly
+//#define readonly
 
 inline float ABS(float f){return (f < 0.0f ? -f : f);};
 

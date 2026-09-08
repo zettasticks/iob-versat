@@ -18,6 +18,7 @@
 
 struct COM_Connection;
 
+#if 1
 struct COM_Unit{
   COM_Unit* next;
   COM_Unit* prev;
@@ -120,6 +121,8 @@ struct COM_Unit{
 
   COM_Connection* outputs;
 };
+#endif
+//typedef InstanceInfo COM_Unit;
 extern COM_Unit COM_Unit_Nil;
 
 // ======================================
@@ -274,6 +277,20 @@ struct COM_Stmt{
   AddressAccess* access;
 };
 
+struct COM_Function{
+  COM_Function* next;
+  COM_Stmt* stmts;
+};
+
+// ======================================
+// Compiled module
+
+struct COM_Module{
+  String name;
+  COM_Unit* units;
+  COM_Function* funcs;
+};
+
 // ======================================
 // Type stuff
 
@@ -293,14 +310,14 @@ COM_ConstantResult COM_ComputeConstantValue(COM_Env* env,SP_Node* expr);
 // Compilation helpers
 
 COM_ConnectInfoList COM_UnpackVarGroup(COM_Env* env,SP_Node* top,Arena* out);
-COM_RangeValues     COM_CalculateRange(COM_Env* env,SP_Node* rangeOrExpr,bool mustBeConstant);
+COM_RangeValues     COM_CalculateRange(COM_Env* env,SP_Node* range,bool mustBeConstant);
 COM_Ent             COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode);
 COM_EntPort         COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out);
 
 // ======================================
 // Compilation
 
-COM_Unit* COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> topLevelParams,Arena* out);
+COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> topLevelParams,Arena* out);
 
 // ======================================
 // Env

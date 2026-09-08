@@ -526,11 +526,11 @@ int main(int argc,char* argv[]){
     // MARK
 #if 1
     for(ConstructDef def : types){
-      COM_Unit* top = COM_InstantiateModule(def.node,{},temp);
-      String repr = COM_Repr(top,temp);
+      COM_Module top = COM_InstantiateModule(def.node,{},temp);
+      String repr = COM_Repr(top.units,temp);
       printf("%.*s\n",UN(repr));
     }
-    exit(-1);
+    //exit(-1);
 #endif
 
     TrieSet<String>* checkNames = PushTrieSet<String>(temp);
@@ -1080,6 +1080,14 @@ int main(int argc,char* argv[]){
 
   return 0;
 }
+
+/*
+
+What is the best way of keeping the current code working while integrating the changes?
+
+
+*/
+
 
 #if 0
 - LEFT HERE - Now that we have proper work division for a single loop, need to test if we can do a 2D computation.

@@ -4112,3 +4112,15 @@ SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
   SP_Node* res = SP_PushNode(out,SP_Type_MODULE_DECL,name,head);
   return res;
 }
+
+// ======================================
+// Helpers
+
+SP_Node* SP_UnpackExpr(SP_Node* exprNode){
+  SP_Node* node = exprNode;
+  if(node->type == SP_Type_EXPR){
+    node = node->childs;
+  }
+
+  return node;
+}

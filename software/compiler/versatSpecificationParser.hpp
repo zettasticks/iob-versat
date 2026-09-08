@@ -535,7 +535,7 @@ struct SP_Node{
 bool SP_Type_IsLoop(SP_Type in);
 
 // ======================================
-// Helpers
+// Parsing Helpers
 
 SP_Node* SP_PushNode(Arena* out,SP_Type type,Token token,SP_Node* childs);
 #define SP_Append(HEAD,TAIL,NODE) LL_Append(HEAD,TAIL,next,NODE)
@@ -564,3 +564,8 @@ SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out);
 // Parsing
 
 SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out);
+
+// ======================================
+// Helpers
+
+SP_Node* SP_UnpackExpr(SP_Node* exprNode);
