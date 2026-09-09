@@ -46,7 +46,7 @@ struct ParamNameAndValue{
 // TODO: This is kinda stupid but really want something working right now.
 struct DECL_UnmangleResult{
   String name;
-  Array<ParamNameAndValue> params;
+  Array<ParamNameAndValue> metaParams;
 };
 
 // TODO: A lot of duplicated data exists since the change to merge.
@@ -183,9 +183,9 @@ FUDeclaration* RegisterFU(FUDeclaration declaration);
 FUDeclaration* GetTypeByName(String str);
 FUDeclaration* GetTypeByNameOrFail(String name);
 
-FUDeclaration* GetTypeByName(String str,Array<ParamNameAndValue> params);
+FUDeclaration* GetTypeByName(String str,Array<ParamNameAndValue> metaParams);
 
-String DECL_MangleName(String typeName,Array<ParamNameAndValue> params,Arena* out);
+String DECL_MangleName(String typeName,Array<ParamNameAndValue> metaParams,Arena* out);
 DECL_UnmangleResult DECL_UnmangleName(String name,Arena* out);
 
 void InitializeSimpleDeclarations();
@@ -197,4 +197,4 @@ bool HasMultipleConfigs(FUDeclaration* decl);
 
 Wire* GetConfigWireByName(FUDeclaration* decl,String name);
 
-FUDeclaration* DECL_GetType(String name,Array<ParamNameAndValue> params);
+FUDeclaration* DECL_GetType(String name,Array<ParamNameAndValue> metaParams);

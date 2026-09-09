@@ -79,7 +79,8 @@ FUDeclaration* InstantiateMerge(MergeDef def){
   Array<FUDeclaration*> decl = PushArray<FUDeclaration*>(temp,size);
   for(int i = 0; i <  size; i++){
     TypeAndInstance tp = def.declarations[i];
-    FUDeclaration* d = GetTypeByNameOrFail(tp.typeName.identifier,tp.params);
+    FUDeclaration* d = GetTypeByName(tp.typeName.identifier,tp.metaParams);
+    Assert(d);
     decl[i] = d;
   }
 
@@ -1012,7 +1013,7 @@ void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
   }
   Array<ParamNameAndValue> params = PushArray(temp,l);
 
-  FUDeclaration* type = GetTypeByName(decl.typeName.identifier,params);
+  FUDeclaration* type = GetTypeByName(decl.typeName.identifier);
   
   if(!type){
     ReportError(decl.typeName,"Typename does not exist");
@@ -2635,7 +2636,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
       TypeAndInstance* inst = declarationList->PushElem();
       inst->instanceName = name;
       inst->typeName = typeName;
-      inst->params = params;
+      inst->metaParams = params;
     }
     parser->ExpectNext('}');
   } else {

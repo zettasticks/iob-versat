@@ -181,7 +181,7 @@ struct ConnectionDef{
 struct TypeAndInstance{
   Token typeName;
   Token instanceName;
-  Array<ParamNameAndValue> params;
+  Array<ParamNameAndValue> metaParams;
 };
 
 struct DefBase{

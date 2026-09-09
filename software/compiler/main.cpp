@@ -298,6 +298,23 @@ struct TESTER{
   String t2;
 };
 
+
+struct DeclInfo{
+  String mangledName;
+  String unmangledName;
+  Array<ParamNameAndValue> metaParams;
+  int id;
+};
+
+bool operator==(DeclInfo& lhs,DeclInfo& rhs){
+  bool res = (lhs.mangledName == rhs.mangledName);
+  return res;
+}
+
+u64 Hash(DeclInfo info){
+  return Hash(info.mangledName);
+}
+
 int main(int argc,char* argv[]){
 #ifdef VERSAT_DEBUG
   printf("Running in debug mode\n");
@@ -523,8 +540,9 @@ int main(int argc,char* argv[]){
     // Parse spec file
     Array<ConstructDef> types = ParseVersatSpecification(content,temp);
     
+    
+#if 0
     // MARK
-#if 1
     for(ConstructDef def : types){
       COM_Module top = COM_InstantiateModule(def.node,{},temp);
       String repr = COM_Repr(top.units,temp);
@@ -562,7 +580,7 @@ int main(int argc,char* argv[]){
     auto modules = PushArray(temp,moduleLike);
 
     int typesSeen = 0;
-    BiMap<String,int>* typeToId = PushBiMap<String,int>(temp);
+    BiMap<DeclInfo,int>* typeToId = PushBiMap<DeclInfo,int>(temp);
 
     String trueTopName = topLevelTypeStr;
 
@@ -571,16 +589,25 @@ int main(int argc,char* argv[]){
     for(int i = 0; i < modules.size; i++){
       ConstructDef def = modules[i];
 
-      auto subtypesUsed = PushList<String>(temp);
+      auto subtypesUsed = PushList<DeclInfo>(temp);
       String constructName = def.base.name.identifier;
+      String mangledConstructName = DECL_MangleName(constructName,{},temp);
+      Array<ParamNameAndValue> metaParams;
 
       // Collect all the subtypes used
       FULL_SWITCH(def.type){
       case ConstructType_MERGE: {
-        Array<Token> subTypesUsed = Extract(def.merge.declarations,perm,&TypeAndInstance::typeName);
-        for(Token t : subTypesUsed){
-          *subtypesUsed->PushElem() = t.identifier;
-        }
+       for(TypeAndInstance t : def.merge.declarations){
+         Token typeName = t.typeName;
+         Array<ParamNameAndValue> params = t.metaParams;
+         String mangledName = DECL_MangleName(typeName.identifier,t.metaParams,perm);
+
+          if(mangledName != typeName.identifier){
+            printf("Mangled: %.*s\n",UN(mangledName));
+          }
+
+         *subtypesUsed->PushElem() = DeclInfo{.mangledName = mangledName,.unmangledName = typeName.identifier,.metaParams = t.metaParams};
+       }
       } break;
       case ConstructType_MODULE: {
         // Initialize an environment to properly figure out params values
@@ -633,12 +660,12 @@ int main(int argc,char* argv[]){
           }
           Array<ParamNameAndValue> params = PushArray(temp,list);
 
-          String mangledName = DECL_MangleName(typeName,params,perm);
+          String mangledName = DECL_MangleName(typeName,decl.metaParams,perm);
           if(mangledName != typeName){
             printf("Mangled: %.*s\n",UN(mangledName));
           }
 
-          *subtypesUsed->PushElem() = mangledName;
+          *subtypesUsed->PushElem() = DeclInfo{.mangledName = mangledName,.unmangledName = typeName,.metaParams = decl.metaParams,.id = 1};
         }
       } break;
       case ConstructType_ITERATIVE: {
@@ -647,25 +674,26 @@ int main(int argc,char* argv[]){
     }
 
       int moduleIndex = -1;
-      int* possibleModuleIndex = typeToId->Get(constructName);
+      int* possibleModuleIndex = typeToId->Get({.mangledName = constructName});
       
       if(possibleModuleIndex){
         moduleIndex = *possibleModuleIndex;
       } else {
         moduleIndex = typesSeen++;
-        typeToId->Insert(constructName,moduleIndex);
+        typeToId->Insert({.mangledName = mangledConstructName,.unmangledName = constructName,.id = 3},moduleIndex);
       }
 
-      for(String typeName : subtypesUsed){
+      for(DeclInfo decl : subtypesUsed){
+        String typeName = decl.mangledName;
         int index = -1;
 
-        int* possibleIndex = typeToId->Get(typeName);
+        int* possibleIndex = typeToId->Get({.mangledName = typeName});
         
         if(possibleIndex){
           index = *possibleIndex;
         } else {
           index = typesSeen++;
-          typeToId->Insert(typeName,index);
+          typeToId->Insert(decl,index);
         }
 
         bool notFound = true;
@@ -685,7 +713,7 @@ int main(int argc,char* argv[]){
 
     topLevelTypeStr = trueTopName;
     
-    int* topLevelId = typeToId->Get(trueTopName);
+    int* topLevelId = typeToId->Get({.mangledName = trueTopName});
     if(!topLevelId){
       // TODO: We could implement a 'did you mean'.
       printf("[Error] Module named '%.*s' does not exist\n",UN(trueTopName));
@@ -701,17 +729,20 @@ int main(int argc,char* argv[]){
     for(int i : order){
       Work work = {};
 
-      String mangledName = *typeToId->GetReverse(i);
-      DECL_UnmangleResult unmangled = DECL_UnmangleName(mangledName,temp);
-      
-      String name = unmangled.name;
-      work.params = unmangled.params;
+      DeclInfo decl = *typeToId->GetReverse(i);
+      String mangledName = decl.mangledName;
 
+      DEBUG_BREAK();
+
+      // We pass info inside the string
+      work.params = decl.metaParams;
+      
       bool found = 0; 
       bool process = 1;
       for(int i = 0; i < modules.size; i++){
         ConstructDef def = modules[i];
-        if(def.base.name.identifier == name){
+
+        if(def.base.name.identifier == decl.unmangledName){
           work.definition = def;
           found = 1;
           break;
@@ -719,7 +750,7 @@ int main(int argc,char* argv[]){
       }
 
       if(!found){
-        FUDeclaration* decl = GetTypeByName(name);
+        FUDeclaration* decl = GetTypeByName(mangledName);
 
         if(decl){
           found = 1;
@@ -728,7 +759,7 @@ int main(int argc,char* argv[]){
       }
 
       if(!found){
-        printf("Error, did not find type name: %.*s\n",UN(name));
+        printf("Error, did not find type name: %.*s\n",UN(mangledName));
         anyError = 1;
       } 
 
@@ -743,6 +774,7 @@ int main(int argc,char* argv[]){
     }
 
     // We first validity check merge and if the types they are merging actually exist.
+#if 0
     for(auto p : typeToWork){
       Work work = *p.second;
 
@@ -750,24 +782,23 @@ int main(int argc,char* argv[]){
         MergeDef merge = work.definition.merge;
 
         for(TypeAndInstance tp : merge.declarations){
+          String name = tp.typeName.identifier;
           bool found = false;
           for(auto p : typeToWork){
-            if(p.first == tp.typeName.identifier){
+            if(p.first == name){
               found = true;
               break;
             }
           }
 
           if(!found){
+            printf("Did not find type '%.*s'\n",UN(name));
             anyError = true;
           }
         }
       }
     }
-
-    if(anyError){
-      return -1;
-    }
+#endif
 
     // TODO: We could push more, we can technically parse the modules even if we have address gen errors.
     if(anyError){
@@ -803,6 +834,7 @@ int main(int argc,char* argv[]){
       
       FUDeclaration* decl = nullptr;
       if(def.type == ConstructType_MODULE){
+        DEBUG_BREAK();
         decl = InstantiateModule(content,def.module,work.params);
       } else {
         decl = InstantiateSpecifications(content,p.second->definition);
@@ -1084,6 +1116,8 @@ int main(int argc,char* argv[]){
 /*
 
 What is the best way of keeping the current code working while integrating the changes?
+
+
 
 
 */
