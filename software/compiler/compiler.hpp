@@ -126,17 +126,6 @@ struct COM_Unit{
 extern COM_Unit COM_Unit_Nil;
 
 // ======================================
-// 
-
-enum COM_ExprType{
-  COM_ExprType_NIL,
-  COM_ExprType_FUNC_CALL,
-  COM_ExprType_ARRAY_ACCESS,
-  COM_ExprType_VAR,
-  COM_ExprType_EXPR
-};
-
-// ======================================
 // Connections
 
 struct COM_Port{
@@ -175,7 +164,6 @@ enum COM_EntType{
   COM_EntType_VAR_WITH_CONFIG,
   COM_EntType_VAR_WITH_STATE,
   COM_EntType_VAR_WITH_VIRTUAL_MEM,
-  
 };
 
 struct COM_Ent{
@@ -250,13 +238,31 @@ struct COM_ConnectInfoList{
 };
 
 // ======================================
-// 
+// Compilation helpers
 
 struct COM_RangeValues{
   int low;
   int high;
   bool error;
   bool constant;
+};
+
+enum COM_ExprType{
+  COM_ExprType_NIL,
+  COM_ExprType_FUNC_CALL,
+  COM_ExprType_ARRAY_ACCESS,
+  COM_ExprType_VAR,
+  COM_ExprType_WIRE,
+  COM_ExprType_EXPR,
+  COM_ExprType_NAME
+};
+
+struct COM_UnpackedExpr{
+  COM_ExprType type;
+  
+  COM_Ent ent;
+  SP_Node* expr;
+  String name;
 };
 
 // ======================================
@@ -299,6 +305,8 @@ bool IsNil(COM_ConnectInfo* con);
 
 bool COM_Ent_IsVar(COM_EntType in);
 bool COM_Ent_IsArray(COM_EntType in);
+bool COM_Ent_IsExpr(COM_EntType in);
+bool COM_Ent_IsWire(COM_EntType in);
 
 // ======================================
 // Constant expressions and computations
@@ -310,9 +318,10 @@ COM_ConstantResult COM_ComputeConstantValue(COM_Env* env,SP_Node* expr);
 // Compilation helpers
 
 COM_ConnectInfoList COM_UnpackVarGroup(COM_Env* env,SP_Node* top,Arena* out);
-COM_RangeValues     COM_CalculateRange(COM_Env* env,SP_Node* range,bool mustBeConstant);
-COM_Ent             COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode);
+COM_RangeValues     COM_CalculateRange(COM_Env* env,SP_Node* range);
+COM_Ent             COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail);
 COM_EntPort         COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out);
+COM_UnpackedExpr    COM_UnpackExpr(COM_Env* env,SP_Node* expr);
 
 // ======================================
 // Compilation

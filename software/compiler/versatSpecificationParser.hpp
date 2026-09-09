@@ -145,6 +145,7 @@ struct InstanceDeclaration{
 
   // NOTE: We could create a different expression type 
   Array<Pair<String,MathExpression*>> parameters;
+  Array<ParamNameAndValue> metaParams;
 
   Array<Token> shareNames;
   bool negateShareNames;
@@ -180,6 +181,7 @@ struct ConnectionDef{
 struct TypeAndInstance{
   Token typeName;
   Token instanceName;
+  Array<ParamNameAndValue> params;
 };
 
 struct DefBase{
@@ -529,6 +531,11 @@ struct SP_Node{
   Token token;
 };
 
+struct SP_NodeNode{
+  SP_NodeNode* next;
+  SP_Node* node;
+};
+
 // ======================================
 // Type
 
@@ -568,4 +575,5 @@ SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out);
 // ======================================
 // Helpers
 
-SP_Node* SP_UnpackExpr(SP_Node* exprNode);
+SP_Node*     SP_UnpackExpr(SP_Node* exprNode);
+SP_NodeNode* SP_Flatten(SP_Node* top,Arena* out);

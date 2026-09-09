@@ -36,6 +36,23 @@ bool COM_Ent_IsArray(COM_EntType in){
   return res;
 }
 
+bool COM_Ent_IsExpr(COM_EntType in){
+  bool res = (in == COM_EntType_MODULE_INPUT ||
+              in == COM_EntType_PARAM ||
+              in == COM_EntType_ARG_NONE ||
+              in == COM_EntType_ARG_FIXED ||
+              in == COM_EntType_ARG_DYN ||
+              in == COM_EntType_ARG_BUFFER);
+
+  return res;
+}
+
+bool COM_Ent_IsWire(COM_EntType in){
+  bool res = (in == COM_EntType_VAR_WITH_STATE ||
+              in == COM_EntType_VAR_WITH_CONFIG ||
+              in == COM_EntType_VAR_WITH_VIRTUAL_MEM);
+  return res;
+}
 
 // ======================================
 // Constant expressions and computations
@@ -215,7 +232,7 @@ COM_ConnectInfoList COM_UnpackVarGroup(COM_Env* env,SP_Node* top,Arena* out){
     case SP_Type_DELAY_ACCESS:
     case SP_Type_RANGE_ACCESS:{
       SP_Node* expr = ptr->childs->next;
-      COM_RangeValues range = COM_CalculateRange(env,expr,true);
+      COM_RangeValues range = COM_CalculateRange(env,expr);
       
       for(int i = range.low; i < range.high + 1; i++){
         COM_ConnectInfo* con = PushStruct<COM_ConnectInfo>(out);
@@ -251,7 +268,7 @@ COM_ConnectInfoList COM_UnpackVarGroup(COM_Env* env,SP_Node* top,Arena* out){
   return res;
 };
 
-COM_RangeValues COM_CalculateRange(COM_Env* env,SP_Node* node,bool mustBeConstant){
+COM_RangeValues COM_CalculateRange(COM_Env* env,SP_Node* node){
   SP_Node* range = SP_UnpackExpr(node);
   Assert(range->type == SP_Type_RANGE);
 
@@ -262,7 +279,7 @@ COM_RangeValues COM_CalculateRange(COM_Env* env,SP_Node* node,bool mustBeConstan
     COM_ReportError(env,"Div by zero detected",range);
   }
 
-  if(mustBeConstant && (lowVal.nonConstant || highVal.nonConstant)){
+  if(lowVal.nonConstant || highVal.nonConstant){
     COM_ReportError(env,"Range must be a constant expression",range);
   }
 
@@ -274,7 +291,7 @@ COM_RangeValues COM_CalculateRange(COM_Env* env,SP_Node* node,bool mustBeConstan
   return res;
 }
 
-COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode){
+COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail){
   SP_Node* node = varAccessNode;
   bool isVarStuff = SP_Type_IsVarAccess(node->type);
   Assert(isVarStuff && "Can only call this function with valid access expressions");
@@ -284,10 +301,10 @@ COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode){
   bool handled = 1;
   switch(node->type){
   case SP_Type_VAR:{
-    res = COM_GetEnt(env,node->token,false);
+    res = COM_GetEnt(env,node->token,canFail);
   } break;
   case SP_Type_HIER_ACCESS:{
-    COM_Ent varSide = COM_ResolveEntity(env,node->childs);
+    COM_Ent varSide = COM_ResolveEntity(env,node->childs,false);
 
     Token access = node->token;
 
@@ -347,32 +364,31 @@ COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode){
     }
   } break;
   case SP_Type_RANGE_ACCESS:{
-    COM_Ent varSide = COM_ResolveEntity(env,node->childs);
-    SP_Node* rangeExpr = node->childs->next;
-    COM_RangeValues val = COM_CalculateRange(env,rangeExpr,false);
+    COM_Ent varSide = COM_ResolveEntity(env,node->childs,false);
+    SP_Node* accessExpr = node->childs->next;
+    
+    COM_ConstantResult val = COM_ComputeConstantValue(env,accessExpr);
 
-    if(!val.error){
-      if(val.constant && val.low != val.high){
-        COM_ReportError(env,"Cannot have range access type inside function definition",rangeExpr);
-      }
+    if(!val.anyError){
+      bool constant = !val.nonConstant;
 
-      if(val.constant){
+      if(constant){
         if(COM_Ent_IsArray(varSide.type)){
           NOT_IMPLEMENTED("TODO: Array stuff");
         } else {
           res = varSide;
           res.type = COM_EntType_VAR_WITH_LEFTOVER_RANGE;
-          res.node = rangeExpr;
+          res.node = accessExpr;
         }
       }
 
-      if(!val.constant){
+      if(!constant){
         if(COM_Ent_IsArray(varSide.type)){
-          COM_ReportError(env,"Cannot have a non constant expression inside an array access",rangeExpr);
+          COM_ReportError(env,"Cannot have a non constant expression inside an array access",accessExpr);
         } else {
           res = varSide;
           res.type = COM_EntType_VAR_WITH_LEFTOVER_RANGE;
-          res.node = rangeExpr;
+          res.node = accessExpr;
         }
       }
     }
@@ -432,7 +448,7 @@ COM_EntPort COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out){
 
       SP_Node* expr = top->childs->next;
       
-      COM_RangeValues range = COM_CalculateRange(env,expr,true);
+      COM_RangeValues range = COM_CalculateRange(env,expr);
 
       if(!range.error && range.low != range.high){
         COM_ReportError(env,"Cannot have range expressions inside expressions",expr);
@@ -456,6 +472,72 @@ COM_EntPort COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out){
   return res;
 };
 
+COM_UnpackedExpr COM_UnpackExpr(COM_Env* env,SP_Node* node){
+  COM_ExprType type = {};
+  COM_Ent ent = {};
+  SP_Node* expr = 0;
+  String name = {};
+
+  if(node){
+    bool isExpr = SP_Type_IsExpr(node->type);
+    bool isVarStuff = SP_Type_IsVarAccess(node->type);
+          
+    bool found = 0;
+    if(!found && isVarStuff){
+      ent = COM_ResolveEntity(env,node,true);
+      bool isWire = COM_Ent_IsWire(ent.type);
+      bool isExpr = COM_Ent_IsExpr(ent.type);
+      
+      if(!found && ent.type == COM_EntType_VAR_WITH_LEFTOVER_RANGE){
+        type = COM_ExprType_ARRAY_ACCESS;
+        expr = ent.node;
+        found = 1;
+      }
+
+      if(!found && isWire){
+        type = COM_ExprType_WIRE;
+        name = ent.wireName;
+        found = 1;
+      }
+
+      if(!found && isExpr){
+        type = COM_ExprType_EXPR;
+        expr = ent.node;
+        found = 1;
+      }
+
+      if(!found && ent.type == COM_EntType_NIL && node->type == SP_Type_VAR){
+        type = COM_ExprType_NAME;
+        name = node->token.identifier;
+        found = 1;
+      }
+    }
+
+    if(!found && node->type == SP_Type_FUNCTION_CALL){
+      NOT_IMPLEMENTED("TODO");
+      type = COM_ExprType_FUNC_CALL;
+      found = 1;
+    }
+          
+    if(isExpr){
+      expr = node;
+      type = COM_ExprType_EXPR;
+      found = 1;
+    }
+          
+    // Missing some handling.
+    Assert(found && "Missing some form of handling");
+  }
+
+  COM_UnpackedExpr res = {};
+  res.type = type;
+  res.expr = expr;
+  res.ent = ent;
+  res.name = name;
+  
+  return res;
+}
+
 // ======================================
 // Compilation
 
@@ -474,6 +556,8 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> top
   COM_Function* funcHead = 0;
   COM_Function* funcTail = 0;
 
+  COM_Unit* outputUnit = 0;
+  
   for(SP_Node* ptr = moduleDef->childs; ptr; ptr = ptr->next){
     bool handled = 1;
     switch(ptr->type){
@@ -575,6 +659,31 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> top
       
       SP_Node* lhsVarGroup = ptr->childs;
       SP_Node* rhsVarGroup = lhsVarGroup->next;
+
+      // Add output unit if found on rhs side. Lhs is always a error so no need to check =
+      if(!outputUnit){
+        SP_NodeNode* flatten = SP_Flatten(rhsVarGroup,temp);
+        
+        for(SP_NodeNode* ptr = flatten; ptr; ptr = ptr->next){
+          SP_Node* node = ptr->node;
+
+          if(node->type == SP_Type_VAR && node->token.identifier == "out"){
+            String name = "out";
+
+            COM_Unit* unit = PushStruct<COM_Unit>(out);
+            unit->name = name;
+            unit->decl = BasicDeclaration::output;
+
+            DLL_Append(env->head,env->tail,next,prev,unit);
+            
+            COM_Ent* var = COM_PushEnt(env,node->token,COM_EntType_MODULE_UNIT);
+            var->unit = unit;
+            
+            outputUnit = unit;
+            break;
+          }
+        }
+      }
 
       COM_ConnectInfoList lhsList = COM_UnpackVarGroup(env,lhsVarGroup,temp);
       COM_ConnectInfoList rhsList = COM_UnpackVarGroup(env,rhsVarGroup,temp);
@@ -729,14 +838,10 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> top
       for(Work* work = equalHead; work; work = work->next){
         COM_PushScope(env);
         defer{COM_PopScope(env);};
-        
-        SP_Node* equalityOrFunction = work->node;
-        
-        bool insideFor = (work->parent != 0);
-
-        Array<AddressGenForDef2> forLoops = {};
 
         // Pack loops =================================================================
+        bool insideFor = (work->parent != 0);
+        Array<AddressGenForDef2> forLoops = {};
         if(insideFor){
           int forCount = 0;
           for(Work* ptr = work->parent; ptr; ptr = ptr->parent){
@@ -763,159 +868,73 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> top
           }
         }
         
-        SP_Node* lhs = SP_UnpackExpr(equalityOrFunction->childs);
-        SP_Node* rhs = SP_UnpackExpr(equalityOrFunction->childs->next);
+        SP_Node* equalityOrFunction = work->node;
 
-        if(equalityOrFunction->type == SP_Type_FUNCTION_CALL){
-          
-        }
-        
-        // Unpack lhs =================================================================
-        COM_Ent lhsEnt = {};
-        SP_Node* lhsExpr = 0;
-        COM_ExprType lhsType = {};
-        String stateLhsName = {};
+        SP_Node* lhsNode = SP_UnpackExpr(equalityOrFunction->childs);
+        SP_Node* rhsNode = SP_UnpackExpr(equalityOrFunction->childs->next);
+
+        COM_UnpackedExpr lhs = COM_UnpackExpr(env,lhsNode);
+        COM_UnpackedExpr rhs = COM_UnpackExpr(env,rhsNode);
 
         if(isState){
-          if(lhs->type != SP_Type_VAR){
-            COM_ReportError(env,"State functions can only have simple variables on left side of assignments",lhs);
-          }
-
-          stateLhsName = lhs->token.identifier;
-        } else {
-          bool isExpr = SP_Type_IsExpr(lhs->type);
-          bool isVarStuff = SP_Type_IsVarAccess(lhs->type);
-          
-          bool found = 0;
-          if(!found && isVarStuff){
-            lhsEnt = COM_ResolveEntity(env,lhs);
-            
-            if(lhsEnt.type == COM_EntType_VAR_WITH_LEFTOVER_RANGE){
-              lhsType = COM_ExprType_ARRAY_ACCESS;
-              lhsExpr = lhsEnt.node;
-            } else {
-              lhsType = COM_ExprType_VAR;
-            }
-            
-            found = 1;
-          }
-
-          if(!found && lhs->type == SP_Type_FUNCTION_CALL){
-            NOT_IMPLEMENTED("TODO");
-            lhsType = COM_ExprType_FUNC_CALL;
-            found = 1;
-          }
-          
-          if(isExpr){
-            lhsExpr = lhs;
-            lhsType = COM_ExprType_EXPR;
-            found = 1;
-          }
-          
-          // Missing some handling.
-          Assert(found);
-        }
-
-        // Unpack rhs =================================================================
-        COM_Ent rhsEnt = {};
-        SP_Node* rhsExpr = 0;
-        COM_ExprType rhsType = {};
-        String stateRhsName = {};
-
-        if(rhs){
-          bool isExpr = SP_Type_IsExpr(rhs->type);
-          bool isVarStuff = SP_Type_IsVarAccess(rhs->type);
-          
-          if(isState){
-            if(!isVarStuff){
-              COM_ReportError(env,"State functions can only have simple variables on rhs of assignments",rhs);
-            }
-            
-            COM_Ent rhsEnt = COM_ResolveEntity(env,rhs);
-            if(rhsEnt.type != COM_EntType_VAR_WITH_STATE){
-              COM_ReportError(env,"Rhs statement inside state function needs to be a state wire or a function",rhs);
-            }
-
-            stateRhsName = PushString(temp,"%.*s.%.*s",UN(rhsEnt.unit->name),UN(rhsEnt.wireName));
-          } else {
-            bool found = 0;
-            if(!found && isVarStuff){
-              rhsEnt = COM_ResolveEntity(env,rhs);
-            
-              if(rhsEnt.type == COM_EntType_VAR_WITH_LEFTOVER_RANGE){
-                rhsType = COM_ExprType_ARRAY_ACCESS;
-                rhsExpr = rhsEnt.node;
-              } else {
-                rhsType = COM_ExprType_VAR;
-              }
-            
-              found = 1;
-            }
-          
-            if(isExpr){
-              rhsExpr = rhs;
-              rhsType = COM_ExprType_EXPR;
-              found = 1;
-            }
-          
-            // Missing some handling.
-            Assert(found);
+          if(lhs.type != COM_ExprType_NAME){
+            COM_ReportError(env,"State functions can only have simple variables on left side of assignments",lhsNode);
           }
         }
 
-        Assert(rhsType != COM_ExprType_FUNC_CALL);
-        
-        DEBUG_BREAK();
+#if 1
+        Assert(rhs.type != COM_ExprType_FUNC_CALL);
 
         COM_Stmt* stmt = nullptr;
         
         if(isState){
           stmt = PushStruct<COM_Stmt>(out);
           stmt->type = COM_StmtType_ASSIGN;
-          stmt->lhs = PushString(out,stateLhsName);
-          stmt->rhs = PushString(out,stateRhsName);
+          stmt->lhs = PushString(out,lhs.name);
+          stmt->rhs = PushString(out,rhs.name);
         } else {
           // We need to downgrade one of these into an expression =======================
-          if(lhsType == COM_ExprType_VAR && 
-             rhsType == COM_ExprType_VAR){
+          if(lhs.type == COM_ExprType_VAR && 
+             rhs.type == COM_ExprType_VAR){
 
             bool found = 0;
-            if(lhsEnt.type == COM_EntType_VAR_WITH_CONFIG){
-              rhsType = COM_ExprType_EXPR;
-              rhsExpr = rhs;
+            if(lhs.type == COM_EntType_VAR_WITH_CONFIG){
+              rhs.type = COM_ExprType_EXPR;
+              rhs.expr = rhs.expr;
               found = 1;
             }
+
 
             Assert(found && "Can we handle Var - Var ???");
           }
 
           // MARK
-          if(lhsType == COM_ExprType_FUNC_CALL){
+          if(lhs.type == COM_ExprType_FUNC_CALL){
             
           }
         
           // 
-          if(lhsType == COM_ExprType_ARRAY_ACCESS){
+          if(lhs.type == COM_ExprType_ARRAY_ACCESS){
             if(isConfig){
-              SYM_Expr expr = COM_SymbolicFromExpression(env,lhsExpr);
+              SYM_Expr expr = COM_SymbolicFromExpression(env,lhs.expr);
 
               AddressAccess* access = CompileAddressGen2(forLoops,expr);
 
               stmt = PushStruct<COM_Stmt>(out);
               stmt->type = COM_StmtType_ADDR_GEN;
-              stmt->rhs = rhsEnt.unit->name;
+              stmt->rhs = rhs.ent.unit->name;
               stmt->access = access;
             }
           }
-          if(rhsType == COM_ExprType_ARRAY_ACCESS){
+          if(rhs.type == COM_ExprType_ARRAY_ACCESS){
             if(isConfig){
-              SYM_Expr expr = COM_SymbolicFromExpression(env,rhsExpr);
+              SYM_Expr expr = COM_SymbolicFromExpression(env,rhs.expr);
 
               AddressAccess* access = CompileAddressGen2(forLoops,expr);
 
               stmt = PushStruct<COM_Stmt>(out);
               stmt->type = COM_StmtType_ADDR_GEN;
-              stmt->lhs = lhsEnt.unit->name;
+              stmt->lhs = lhs.ent.unit->name;
               stmt->access = access;
             }
           }
@@ -924,6 +943,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> top
         if(stmt){
           LL_Append(stmtHead,stmtTail,next,stmt);
         }
+#endif
       }
 
       // Pack into function =========================================================

@@ -79,7 +79,7 @@ FUDeclaration* InstantiateMerge(MergeDef def){
   Array<FUDeclaration*> decl = PushArray<FUDeclaration*>(temp,size);
   for(int i = 0; i <  size; i++){
     TypeAndInstance tp = def.declarations[i];
-    FUDeclaration* d = GetTypeByNameOrFail(tp.typeName.identifier);
+    FUDeclaration* d = GetTypeByNameOrFail(tp.typeName.identifier,tp.params);
     decl[i] = d;
   }
 
@@ -111,7 +111,9 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAnd
   Arena* perm = globalPermanent;
   TEMP_REGION(temp,perm);
 
-  Accelerator* circuit = CreateAccelerator(def.name.identifier,AcceleratorPurpose_MODULE);
+  String mangledName = DECL_MangleName(def.name.identifier,topLevelParams,temp);
+
+  Accelerator* circuit = CreateAccelerator(mangledName,AcceleratorPurpose_MODULE);
 
   FREE_ARENA(envArena);
   FREE_ARENA(envArena2);
@@ -1848,6 +1850,35 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
 
   res.typeName = parser->ExpectNext(TokenType_IDENTIFIER);
 
+  if(parser->IfNextToken('<')){
+    auto list = PushList<ParamNameAndValue>(temp);
+    while(!parser->Done()){
+      if(parser->IfPeekToken('>')){
+        break;
+      }
+
+      Token parameterName = parser->ExpectNext(TokenType_IDENTIFIER);
+
+      parser->ExpectNext('=');
+
+      Token number = parser->ExpectNext(TokenType_NUMBER);
+
+      ParamNameAndValue* val = list->PushElem();
+      val->name = parameterName.identifier;
+      val->value = number.number;
+
+      if(parser->IfNextToken(',')){
+        continue;
+      }
+
+      break;
+    }
+    Array<ParamNameAndValue> params = PushArray(out,list);
+    res.metaParams = params;
+
+    parser->ExpectNext('>');
+  }
+
   Token possibleParameters = parser->PeekToken();
   auto list = PushList<Pair<String,MathExpression*>>(temp);
   if(possibleParameters.type == '#'){
@@ -2543,26 +2574,74 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
   }
 
   Token mergeName = parser->ExpectNext(TokenType_IDENTIFIER);
-  
-  parser->ExpectNext('=');
 
   ArenaList<TypeAndInstance>* declarationList = PushList<TypeAndInstance>(temp);
-  while(!parser->Done()){
-    TypeAndInstance typeInst = ParseTypeAndInstance(parser);
 
-    *declarationList->PushElem() = typeInst;
+  if(parser->IfNextToken('=')){
+    while(!parser->Done()){
+      TypeAndInstance typeInst = ParseTypeAndInstance(parser);
 
-    Token peek = parser->PeekToken();
-    if(peek.type == '|'){
-      parser->NextToken();
-      continue;
-    } else if(peek.type == '{'){
-      break;
-    } else if(peek.type == ';'){
-      parser->NextToken();
-      break;
+      *declarationList->PushElem() = typeInst;
+
+      Token peek = parser->PeekToken();
+      if(peek.type == '|'){
+        parser->NextToken();
+        continue;
+      } else if(peek.type == '{'){
+        break;
+      } else if(peek.type == ';'){
+        parser->NextToken();
+        break;
+      }
     }
+  } else if(parser->IfNextToken('{')){
+    while(!parser->Done()){
+      if(parser->IfPeekToken('}')){
+        break;
+      }
+
+      Token typeName = parser->ExpectNext(TokenType_IDENTIFIER);
+      
+      auto list = PushList<ParamNameAndValue>(temp);
+      if(parser->IfNextToken('<')){
+        while(!parser->Done()){
+          if(parser->IfPeekToken('>')){
+            break;
+          }
+
+          Token parameterName = parser->ExpectNext(TokenType_IDENTIFIER);
+
+          parser->ExpectNext('=');
+
+          Token number = parser->ExpectNext(TokenType_NUMBER);
+
+          ParamNameAndValue* val = list->PushElem();
+          val->name = parameterName.identifier;
+          val->value = number.number;
+
+          if(parser->IfNextToken(',')){
+            continue;
+          }
+
+          break;
+        }
+        parser->ExpectNext('>');
+      }
+      Array<ParamNameAndValue> params = PushArray(out,list);
+      
+      Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+      parser->ExpectNext(';');
+
+      TypeAndInstance* inst = declarationList->PushElem();
+      inst->instanceName = name;
+      inst->typeName = typeName;
+      inst->params = params;
+    }
+    parser->ExpectNext('}');
+  } else {
+    parser->ReportError("Unexpected merge token");
   }
+
   Array<TypeAndInstance> declarations = PushArray(out,declarationList);
 
   Array<SpecNode> specNodes = {};
@@ -2701,7 +2780,7 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
 
   FREE_ARENA(parseArena);
   Parser* parser = StartParsing(TokenizeFunction,content,parseArena,ParsingOptions_DEFAULT);
-  parser->debug = 1;
+  parser->debug = 0;
 
   // TODO:
   // Kinda hacky way of doing this.
@@ -2718,7 +2797,7 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
     ConstructDef def = {};
     if(tok.type == TokenType_KEYWORD_MODULE){
       def.type = ConstructType_MODULE;
-      #if 0
+      #if 1
       def.module = ParseModuleDef(parser,out);
       #else
       // MARK
@@ -3425,9 +3504,9 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
     }
     
     while(parser->IfNextToken('[')){
-      SP_Node* range = SP_ParseRange(parser,out);
-
-      var->next = range;
+      // MARK
+      SP_Node* expr = SP_ParseExpression(parser,out);
+      var->next = expr;
       var = SP_PushNode(out,SP_Type_RANGE_ACCESS,{},var);
 
       parser->ExpectNext(']');
@@ -4123,4 +4202,37 @@ SP_Node* SP_UnpackExpr(SP_Node* exprNode){
   }
 
   return node;
+}
+
+SP_NodeNode* SP_Flatten(SP_Node* top,Arena* out){
+  SP_NodeNode* head = 0;
+  SP_NodeNode* tail = 0;
+  
+  auto Recurse = [&](auto Recurse,SP_Node* node) -> void{
+    if(!node){
+      return;
+    }
+
+    SP_NodeNode* toAdd = PushStruct<SP_NodeNode>(out);
+    toAdd->node = node;
+    LL_Append(head,tail,next,toAdd);
+
+    bool exprType = SP_Type_IsExpr(node->type);
+    bool isExprContainer = (node->type == SP_Type_EXPR);
+
+    if(isExprContainer){
+      Recurse(Recurse,node->childs);
+    } else if(exprType){
+      Recurse(Recurse,node->first);
+      Recurse(Recurse,node->second);
+    } else {
+      for(SP_Node* ptr = node->childs; ptr; ptr = ptr->next){
+        Recurse(Recurse,ptr);
+      }
+    }
+  };
+
+  Recurse(Recurse,top);
+  
+  return head;
 }
