@@ -732,7 +732,7 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
           continue;
         }
       
-        SYM_Expr var = ifDecider[i];
+        SYM_Expr var = ifDecider[ii];
 
         SYM_Expr cond = SYM_Nil;
         if(ii <= topIndex){
@@ -757,10 +757,11 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
 
       // nocheckin: If this actually solved the problem then figure out why.
       SYM_Expr reduced = ifCond;
-
-      //if(
-      //SYM_Expr reduced = SYM_Reduce(ifCond);
-      
+      reduced = SYM_Reduce(ifCond);
+      //printf("\n\n");
+      //SYM_Print(ifCond);
+      //printf("\n\n");
+     
       SYM_EvaluateResult eval = SYM_ConstantEvaluate(reduced);
       if(!eval.Error() && eval.result == 0){
         // Skip, if(0)
