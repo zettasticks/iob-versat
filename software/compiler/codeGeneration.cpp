@@ -3994,6 +3994,17 @@ if(SimulateDatabus){
       } else {
          char* ptr = (char*) (self->databus_addr_@{i});
 
+         int transferLength = self->databus_len_@{i};
+         int countersLength = ALIGN_UP(transferLength,sizeOfData) / sizeOfData;
+
+         int toWrite = sizeOfData;
+
+         if(access->counter >= countersLength - 1){
+            // Last transfer, need to take into account length to not overwrite data
+            int amountTransfered = (((transferLength / sizeOfData) - 1) * sizeOfData);
+            toWrite = transferLength - amountTransfered;
+         }
+
          if(self->databus_wstrb_@{i} == 0){
             if(ptr == nullptr){
               memset(&self->databus_rdata_@{i},0xdf,sizeOfData);
@@ -4002,13 +4013,10 @@ if(SimulateDatabus){
             }
          } else { // self->databus_wstrb_@{i} != 0
             if(ptr != nullptr){
-              memcpy(&ptr[access->counter * sizeOfData],&self->databus_wdata_@{i},sizeOfData);
+              memcpy(&ptr[access->counter * sizeOfData],&self->databus_wdata_@{i},toWrite);
             }
          }
          self->databus_ready_@{i} = 1;
-
-         int transferLength = self->databus_len_@{i};
-         int countersLength = ALIGN_UP(transferLength,sizeOfData) / sizeOfData;
 
          if(access->counter >= countersLength - 1){
             access->counter = 0;
