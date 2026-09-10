@@ -3079,8 +3079,9 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
           }
 
           if(var.type == ConfigVarType_DYN){
-            c->Argument("VersatVarSpec*",var.name);
-            *list->PushElem() = var.name;
+            String varName = PushString(temp,"%.*sSpec",UN(var.name));
+            c->Argument("VersatVarSpec*",varName);
+            *list->PushElem() = varName;
           } else if(var.type != ConfigVarType_BUFFER){
             c->Argument(ConfigVarTypeToName(var.type),var.name);
           }
@@ -3107,7 +3108,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
 
             for(ConfigVariable var : func->variables){
               if(var.type == ConfigVarType_DYN){
-                SYM_Expr varSym = SYM_Var(SF("%.*s->value",UN(var.name)));
+                SYM_Expr varSym = SYM_Var(SF("%.*sSpec->value",UN(var.name)));
                 
                 symb = SYM_Replace(symb,SYM_Var(var.name),varSym);
               }
@@ -3119,8 +3120,28 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
           }
         }
 
+        auto d = StartString(temp);
+        for(ConfigVariable var : func->variables){
+          if(var.type == ConfigVarType_DYN){
+            d->PushString("    int %.*s = %.*sSpec->value;\n",UN(var.name),UN(var.name));
+          }
+        }
+        auto specToVar = EndString(temp,d);
+
+        FREE_ARENA(ar1);
+        FREE_ARENA(ar2);
+        auto f = StartString(temp);
+        for(ConfigComputation comp : func->extraComputations){
+          f->PushString("    ");
+          Repr(comp.cCode,f,false);
+          f->PushString("\n");
+        }
+        String computations = EndString(temp,f);
+
         String varDeclareList = JoinStrings(list,",",temp);
         String varDeclare = PushString(temp,"{%.*s}",UN(varDeclareList));
+
+        // MARK
       
         c->VarDeclare("VersatVarSpec*","buffer[]",varDeclare);
       
@@ -3164,6 +3185,10 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
 
     int bytesUsed = 0;
 
+@{specToVar}
+
+@{computations}
+
     // NOTE: Pingpong cuts the usable memory in half. The reason for the '*2' logic
     @{allStuff}
 
@@ -3174,7 +3199,9 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
         TE_PushScope();
 
         TE_SetString("allStuff",allStuff);
-        
+        TE_SetString("specToVar",specToVar);
+        TE_SetString("computations",computations);
+
         String inst = TE_ProcessTemplate(temp,tmpl);
 
         TE_PopScope();
@@ -3349,7 +3376,8 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
           
           c->Statement(stmt);
         }
-        
+
+        // MARK
         for(ConfigComputation comp : func->extraComputations){
           c->InsertCode(comp.cCode);
         }
