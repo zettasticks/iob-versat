@@ -751,9 +751,15 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
 
       //SYM_Print(ifCond);
       //printf("\n\n");
-      SYM_Expr reduced = SYM_Reduce(ifCond);
+      //SYM_Expr reduced = SYM_Reduce(ifCond);
       //SYM_Print(reduced);
       //printf("\n\n");
+
+      // nocheckin: If this actually solved the problem then figure out why.
+      SYM_Expr reduced = ifCond;
+
+      //if(
+      //SYM_Expr reduced = SYM_Reduce(ifCond);
       
       SYM_EvaluateResult eval = SYM_ConstantEvaluate(reduced);
       if(!eval.Error() && eval.result == 0){
