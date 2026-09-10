@@ -167,7 +167,7 @@ Wire* GetConfigWireByName(FUDeclaration* decl,String name){
 
 String DECL_MangleName(String typeName,Array<ParamNameAndValue> params,Arena* out){
   TEMP_REGION(temp,out);
-#if 0
+#if 1
   return typeName;
 #else
   Array<ParamNameAndValue> ordered = CopyArray(params,temp);

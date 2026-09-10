@@ -300,20 +300,13 @@ struct TESTER{
 
 
 struct DeclInfo{
+  DeclInfo* next;
+
   String mangledName;
   String unmangledName;
   Array<ParamNameAndValue> metaParams;
-  int id;
+  int index;
 };
-
-bool operator==(DeclInfo& lhs,DeclInfo& rhs){
-  bool res = (lhs.mangledName == rhs.mangledName);
-  return res;
-}
-
-u64 Hash(DeclInfo info){
-  return Hash(info.mangledName);
-}
 
 int main(int argc,char* argv[]){
 #ifdef VERSAT_DEBUG
@@ -579,8 +572,36 @@ int main(int argc,char* argv[]){
     }
     auto modules = PushArray(temp,moduleLike);
 
+    DeclInfo* declHead = 0;
+    DeclInfo* declTail = 0;
+
+    auto GetDeclInfoByName = [&](String name) -> DeclInfo*{
+      for(DeclInfo* ptr = declHead; ptr; ptr = ptr->next){
+        if(ptr->mangledName == name){
+          return ptr;
+        }
+      }
+
+      return nullptr;
+    };
+
+    auto GetDeclInfoById = [&](int id) -> DeclInfo*{
+      for(DeclInfo* ptr = declHead; ptr; ptr = ptr->next){
+        if(ptr->index == id){
+          return ptr;
+        }
+      }
+
+      return nullptr;
+    };
+
+    auto PushDeclInfo = [&] -> DeclInfo*{
+      DeclInfo* newDecl = PushStruct<DeclInfo>(temp);
+      LL_Append(declHead,declTail,next,newDecl);
+      return newDecl;
+    };
+
     int typesSeen = 0;
-    BiMap<DeclInfo,int>* typeToId = PushBiMap<DeclInfo,int>(temp);
 
     String trueTopName = topLevelTypeStr;
 
@@ -665,7 +686,7 @@ int main(int argc,char* argv[]){
             printf("Mangled: %.*s\n",UN(mangledName));
           }
 
-          *subtypesUsed->PushElem() = DeclInfo{.mangledName = mangledName,.unmangledName = typeName,.metaParams = decl.metaParams,.id = 1};
+          *subtypesUsed->PushElem() = DeclInfo{.mangledName = mangledName,.unmangledName = typeName,.metaParams = decl.metaParams};
         }
       } break;
       case ConstructType_ITERATIVE: {
@@ -674,27 +695,33 @@ int main(int argc,char* argv[]){
     }
 
       int moduleIndex = -1;
-      int* possibleModuleIndex = typeToId->Get({.mangledName = constructName});
+
+      DeclInfo* info = GetDeclInfoByName(constructName);
       
-      if(possibleModuleIndex){
-        moduleIndex = *possibleModuleIndex;
-      } else {
-        moduleIndex = typesSeen++;
-        typeToId->Insert({.mangledName = mangledConstructName,.unmangledName = constructName,.id = 3},moduleIndex);
+      if(!info){
+        info = PushDeclInfo();
+        info->index = typesSeen++;
+        info->mangledName = mangledConstructName;
+        info->unmangledName = constructName;
       }
+      moduleIndex = info->index;
 
       for(DeclInfo decl : subtypesUsed){
         String typeName = decl.mangledName;
         int index = -1;
 
-        int* possibleIndex = typeToId->Get({.mangledName = typeName});
+        DeclInfo* info = GetDeclInfoByName(typeName);
         
-        if(possibleIndex){
-          index = *possibleIndex;
+        if(info){
+          if(decl.metaParams.size > 0){
+            info->metaParams = decl.metaParams;
+          }
         } else {
-          index = typesSeen++;
-          typeToId->Insert(decl,index);
+          info = PushDeclInfo();
+          *info = decl;
+          info->index = typesSeen++;
         }
+        index = info->index;
 
         bool notFound = true;
         for(Pair<int,int> p : edgeList){
@@ -712,16 +739,16 @@ int main(int argc,char* argv[]){
     Array<Pair<int,int>> edges = PushArray<Pair<int,int>>(perm,edgeList);
 
     topLevelTypeStr = trueTopName;
-    
-    int* topLevelId = typeToId->Get({.mangledName = trueTopName});
-    if(!topLevelId){
+
+    DeclInfo* info = GetDeclInfoByName(trueTopName);
+    if(!info){
       // TODO: We could implement a 'did you mean'.
       printf("[Error] Module named '%.*s' does not exist\n",UN(trueTopName));
       return -1;
     }
 
     // Basically using a simple DAG approach to detect the modules that we only care about. We do not process modules that are not needed
-    Array<int> order = CalculateDAG(edges,*topLevelId,temp);
+    Array<int> order = CalculateDAG(edges,info->index,temp);
 
     // Represents all the work that we need to do.
     Hashmap<String,Work>* typeToWork = PushHashmap<String,Work>(temp,order.size);
@@ -729,14 +756,14 @@ int main(int argc,char* argv[]){
     for(int i : order){
       Work work = {};
 
-      DeclInfo decl = *typeToId->GetReverse(i);
+      DeclInfo decl = *GetDeclInfoById(i);
       String mangledName = decl.mangledName;
 
       DEBUG_BREAK();
 
       // We pass info inside the string
       work.params = decl.metaParams;
-      
+
       bool found = 0; 
       bool process = 1;
       for(int i = 0; i < modules.size; i++){
@@ -769,7 +796,7 @@ int main(int argc,char* argv[]){
 
         typeToWork->Insert(mangledName,work);
 
-        printf("Work to do: %.*s\n",UN(mangledName));
+        printf("Work to do: %.*s [%d]\n",UN(mangledName),work.params.size);
       }
     }
 
