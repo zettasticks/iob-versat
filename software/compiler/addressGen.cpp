@@ -616,6 +616,14 @@ static void EmitDebugAddressGenInfo(AddressAccess* access,CEmitter* c){
   c->Comment(externalStr);
 }
 
+CodeNode* PushCodeNode(Arena* out,CodeNodeType type,String name,SYM_Expr expr){
+  CodeNode* node = PushStruct<CodeNode>(out);
+  node->type = type;
+  node->name = name;
+  node->expr = expr;
+  return node;
+}
+
 CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions options){
   TEMP_REGION(temp,out);
 
@@ -631,16 +639,25 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
     SYM_Expr doubleSize = GetLoopLinearSumTotalSize(doubleLoop->external);
     SYM_Expr singleSize = GetLoopLinearSumTotalSize(singleLoop->external);
 
-    CodeNode* ifTrue = PushStruct<CodeNode>(out);
-    CodeNode* ifFalse = PushStruct<CodeNode>(out);
+    CodeNode* head = 0;
+    CodeNode* tail = 0;
 
-    ifTrue->type = CodeNodeType_IF;
-    ifTrue->expr = doubleSize > singleSize;
+    CodeNode* doubleSizeVar = PushCodeNode(out,CodeNodeType_DECLARE,"doubleSize",doubleSize);
+    CodeNode* singleSizeVar = PushCodeNode(out,CodeNodeType_DECLARE,"singleSize",singleSize);
+
+    CodeNode* ifDoubleSmaller = PushStruct<CodeNode>(out);
+    CodeNode* ifSingleSmaller = PushStruct<CodeNode>(out);
+
+    ifDoubleSmaller->type = CodeNodeType_IF;
+    ifDoubleSmaller->expr = SYM_Var("doubleSize") < SYM_Var("singleSize");
     
-    ifFalse->type = CodeNodeType_IF;
-    ifFalse->expr = singleSize >= doubleSize;
+    ifSingleSmaller->type = CodeNodeType_IF;
+    ifSingleSmaller->expr = SYM_Var("singleSize") <= SYM_Var("doubleSize");
 
-    ifTrue->next = ifFalse;
+    LL_Append(head,tail,next,doubleSizeVar);
+    LL_Append(head,tail,next,singleSizeVar);
+    LL_Append(head,tail,next,ifDoubleSmaller);
+    LL_Append(head,tail,next,ifSingleSmaller);
 
     Array<Pair<String,SYM_Expr>> paramsDouble = InstantiateIndividualAssignments(doubleLoop,maxLoops,options,temp);
     Array<Pair<String,SYM_Expr>> paramsSingle = InstantiateIndividualAssignments(singleLoop,maxLoops,options,temp);
@@ -648,6 +665,12 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
     {
       CodeNode* chainStart = nullptr;
       CodeNode* ptr = nullptr;
+      
+      CodeNode* comment = PushStruct<CodeNode>(out);
+      comment->type = CodeNodeType_COMMENT;
+      comment->name = "Double loop";
+
+      LL_Append(chainStart,ptr,next,comment);
 
       for(Pair<String,SYM_Expr> p : paramsDouble){
         CodeNode* newNode = PushStruct<CodeNode>(out);
@@ -659,12 +682,18 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
         LL_Append(chainStart,ptr,next,newNode);
       }
       
-      ifTrue->child = chainStart;
+      ifDoubleSmaller->child = chainStart;
     }
 
     {
       CodeNode* chainStart = nullptr;
       CodeNode* ptr = nullptr;
+
+      CodeNode* comment = PushStruct<CodeNode>(out);
+      comment->type = CodeNodeType_COMMENT;
+      comment->name = "Single loop";
+
+      LL_Append(chainStart,ptr,next,comment);
 
       for(Pair<String,SYM_Expr> p : paramsSingle){
         CodeNode* newNode = PushStruct<CodeNode>(out);
@@ -676,14 +705,16 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
         LL_Append(chainStart,ptr,next,newNode);
       }
       
-      ifFalse->child = chainStart;
+      ifSingleSmaller->child = chainStart;
     }
 
-    return ifTrue;
+    return head;
   };
 
   CodeNode* head = nullptr;
   CodeNode* ptr = nullptr;
+
+  CodeNode* trueTop = nullptr;
 
   bool isExtMemType = (options.type == AddressGenType_READ);
 
@@ -705,13 +736,14 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
     }
       
     head = chainStart;
+    trueTop = head;
   }
 
   // NOTE: For reads we need to generate runtime code that decides on how many loops to read data from
   //       No point in reading thousands of bytes when we only care about the first and the last bytes.
   //       Might as well divide a single read into multiple reads for this case. The problem is that 
   //       we can only divide based on runtime info, meaning that we need to generate code for every
-  //       single case and then generate a runtime if that selects the best.
+  //       single case and then generate a runtime 'if' that selects the best.
   if(isExtMemType){
     int totalSize = initial->external->terms.size;
 
@@ -722,9 +754,7 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
       ifDecider[i] = GetLoopHighestDecider(&term);
     }
 
-    for(int i = 0; i < totalSize; i++){
-      int topIndex = i;
-    
+    for(int topIndex = 0; topIndex < totalSize; topIndex++){
       SYM_Expr topVar = ifDecider[topIndex];
       SYM_Expr ifCond = SYM_1;
       for(int ii = 0; ii < totalSize; ii++){
@@ -749,18 +779,20 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
       //       Do not know how much this would improve runtime. Regardless we always want to generate as little 
       //       code as possible otherwise runtime will suffer.
 
-      //SYM_Print(ifCond);
-      //printf("\n\n");
-      //SYM_Expr reduced = SYM_Reduce(ifCond);
-      //SYM_Print(reduced);
-      //printf("\n\n");
-
       // nocheckin: If this actually solved the problem then figure out why.
-      SYM_Expr reduced = ifCond;
-      reduced = SYM_Reduce(ifCond);
-      //printf("\n\n");
-      //SYM_Print(ifCond);
-      //printf("\n\n");
+#if 0
+      printf("Before\n");
+      String repr = SYM_Repr(ifCond,temp);
+      SYM_Print(ifCond);
+#endif
+
+      SYM_Expr reduced = SYM_Reduce(ifCond);
+
+#if 0
+      printf("After\n");
+      SYM_Print(reduced);
+      printf("\n\n\n\n\n\n");
+#endif
      
       SYM_EvaluateResult eval = SYM_ConstantEvaluate(reduced);
       if(!eval.Error() && eval.result == 0){
@@ -906,11 +938,19 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
         ptr = nextIterNode;
       }
     };
-  
-    PullUp(PullUp,head);
+
+    trueTop = PushStruct<CodeNode>(out);
+    trueTop->child = head;
+    trueTop->type = CodeNodeType_EMPTY;
+
+    // TODO: Hack, only running this once is not guaranteed to pull up everything, kinda need to check why
+    //       But running repeatedly should not change logic so its fine for now. We do not go above 3 'if' depth
+    PullUp(PullUp,trueTop);
+    PullUp(PullUp,trueTop);
+    PullUp(PullUp,trueTop);
   }
   
-  return head;
+  return trueTop;
 }
 
 

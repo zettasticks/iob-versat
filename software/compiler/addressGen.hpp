@@ -78,8 +78,9 @@ struct AccessAndType{
 enum CodeNodeType{
   CodeNodeType_EMPTY,
   CodeNodeType_IF,
+  CodeNodeType_DECLARE,
   CodeNodeType_ASSIGN,
-  //CodeNodeType_COMMENT,
+  CodeNodeType_COMMENT,
 };
 
 struct CodeNode{
@@ -87,11 +88,11 @@ struct CodeNode{
 
   String name;
   SYM_Expr expr;
-  CAST* comments;
   
   CodeNode* next;
   CodeNode* child;
 };
+CodeNode* PushCodeNode(Arena* out,CodeNodeType type,String name,SYM_Expr expr);
 
 struct InstantiateOptions{
   AddressGenType type;

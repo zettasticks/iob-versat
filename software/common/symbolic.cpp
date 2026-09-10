@@ -2638,7 +2638,7 @@ SYM_Expr SYM_Reduce(SYM_Expr in){
   SYM_Node* node = GetPointer(in);
   bool isNegative = IsNegative(in);
 
-  SYM_Expr  res = in;
+  SYM_Expr res = in;
   FULL_SWITCH(node->type){
   case SYM_Type_NIL:
   case SYM_Type_MOD:
@@ -2666,12 +2666,20 @@ SYM_Expr SYM_Reduce(SYM_Expr in){
       found = 1;
     }
 
-    if(!found && firstGood){
+    if(!found && firstGood && firstRes.result){
       res = second;
       found = 1;
     }
-    if(!found && secondGood){
+    if(!found && firstGood && !firstRes.result){
+      res = SYM_0;
+      found = 1;
+    }
+    if(!found && secondGood && secondRes.result){
       res = first;
+      found = 1;
+    }
+    if(!found && secondGood && !secondRes.result){
+      res = SYM_0;
       found = 1;
     }
     if(!found && SYM_Equal(first,second)){
@@ -2694,7 +2702,7 @@ SYM_Expr SYM_Reduce(SYM_Expr in){
     bool secondGood = !secondRes.Error();
     bool found = 0;
 
-    if(!found && (firstGood || secondGood)){
+    if(!found && ((firstGood && firstRes.result) || (secondGood && secondRes.result))){
       res = SYM_Lit(firstRes.result || secondRes.result ? 1 : 0);
       found = 1;
     }

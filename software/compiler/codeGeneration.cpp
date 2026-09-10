@@ -3467,12 +3467,19 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
 
                   FULL_SWITCH(ptr->type){
                   case CodeNodeType_EMPTY:{
-                    Assert(false);
+                    Recurse(Recurse,ptr->child);
                   } break;
                   case CodeNodeType_IF:{
                     c->If(repr);
                     Recurse(Recurse,ptr->child);
                     c->EndIf();
+                  } break;
+                  case CodeNodeType_COMMENT:{
+                    c->Comment(ptr->name);
+                  } break;
+                  case CodeNodeType_DECLARE:{
+                    String repr = SYM_Repr(ptr->expr,temp);
+                    c->VarDeclare("int",ptr->name,repr);
                   } break;
                   case CodeNodeType_ASSIGN:{
                     if(pushStartToExt && ptr->name == "start"){

@@ -759,8 +759,6 @@ int main(int argc,char* argv[]){
       DeclInfo decl = *GetDeclInfoById(i);
       String mangledName = decl.mangledName;
 
-      DEBUG_BREAK();
-
       // We pass info inside the string
       work.params = decl.metaParams;
 
@@ -861,7 +859,6 @@ int main(int argc,char* argv[]){
       
       FUDeclaration* decl = nullptr;
       if(def.type == ConstructType_MODULE){
-        DEBUG_BREAK();
         decl = InstantiateModule(content,def.module,work.params);
       } else {
         decl = InstantiateSpecifications(content,p.second->definition);
