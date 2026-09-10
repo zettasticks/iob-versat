@@ -3997,23 +3997,23 @@ if(SimulateDatabus){
          int transferLength = self->databus_len_@{i};
          int countersLength = ALIGN_UP(transferLength,sizeOfData) / sizeOfData;
 
-         int toWrite = sizeOfData;
-
+         int trueLength = sizeOfData;
          if(access->counter >= countersLength - 1){
             // Last transfer, need to take into account length to not overwrite data
-            int amountTransfered = (((transferLength / sizeOfData) - 1) * sizeOfData);
-            toWrite = transferLength - amountTransfered;
+            int amountTransfered = (access->counter * sizeOfData);
+            trueLength = transferLength - amountTransfered;
          }
 
          if(self->databus_wstrb_@{i} == 0){
             if(ptr == nullptr){
               memset(&self->databus_rdata_@{i},0xdf,sizeOfData);
             } else {
-              memcpy(&self->databus_rdata_@{i},&ptr[access->counter * sizeOfData],sizeOfData);
+              memset(&self->databus_rdata_@{i},0,sizeOfData);
+              memcpy(&self->databus_rdata_@{i},&ptr[access->counter * sizeOfData],trueLength);
             }
          } else { // self->databus_wstrb_@{i} != 0
             if(ptr != nullptr){
-              memcpy(&ptr[access->counter * sizeOfData],&self->databus_wdata_@{i},toWrite);
+              memcpy(&ptr[access->counter * sizeOfData],&self->databus_wdata_@{i},trueLength);
             }
          }
          self->databus_ready_@{i} = 1;
