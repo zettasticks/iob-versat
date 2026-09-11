@@ -56,10 +56,16 @@ module VRead #(
    input [PERIOD_W-1:0] per2,
    input [  ADDR_W-1:0] shift2,
    input [  ADDR_W-1:0] incr2,
+
    input [  ADDR_W-1:0] iter3,
    input [PERIOD_W-1:0] per3,
    input [  ADDR_W-1:0] shift3,
    input [  ADDR_W-1:0] incr3,
+
+   input [  ADDR_W-1:0] iter4,
+   input [PERIOD_W-1:0] per4,
+   input [  ADDR_W-1:0] shift4,
+   input [  ADDR_W-1:0] incr4,
 
    input [DELAY_W-1:0]  extra_delay,
    input                ignore_first,
@@ -164,6 +170,11 @@ module VRead #(
       .iter3_i({ADDR_W{1'b0}}),
       .shift3_i({ADDR_W{1'b0}}),
 
+      .per4_i({PERIOD_W{1'b0}}),
+      .incr4_i({ADDR_W{1'b0}}),
+      .iter4_i({ADDR_W{1'b0}}),
+      .shift4_i({ADDR_W{1'b0}}),
+
       .doneDatabus(),
       .doneAddress(),
 
@@ -205,7 +216,7 @@ assign data_data = databus_rdata_0;
    // mem enables output by addr gen
    wire output_enabled,output_store_value;
 
-   AddressGen3 #(
+   AddressGen4 #(
       .ADDR_W(ADDR_W),
       .DATA_W(DATA_W),
       .PERIOD_W(PERIOD_W),
@@ -236,6 +247,11 @@ assign data_data = databus_rdata_0;
       .incr3_i(incr3),
       .iter3_i(iter3),
       .shift3_i(shift3),
+
+      .per4_i(per4),
+      .incr4_i(incr4),
+      .iter4_i(iter4),
+      .shift4_i(shift4),
 
       .doneAddress(doneOutput),
       .doneDatabus(),

@@ -465,6 +465,23 @@ Array<Pair<String,SYM_Expr>> InstantiateIndividualAssignments(AddressAccess* acc
     }
   }
 
+  if(type == AddressGenType_GEN || type == AddressGenType_READ){
+    if(loops > 3){
+      InternalMemoryAccess l = internal[3]; 
+      
+      *list->PushElem() = {"per4",l.periodExpression};
+      *list->PushElem() = {"incr4",l.incrementExpression};
+      *list->PushElem() = {"iter4",l.iterationExpression};
+      *list->PushElem() = {"shift4",l.shiftExpression};
+    } else if(maxLoops > 3){
+      *list->PushElem() = {"per4",SYM_0};
+      *list->PushElem() = {"incr4",SYM_0};
+      *list->PushElem() = {"iter4",SYM_0};
+      *list->PushElem() = {"shift4",SYM_0};
+    }
+  }
+
+
   if(loops > maxLoops){
     // TODO: Proper error reporting requires us to lift the data up.
     printf("[ERROR] Address gen contains more loops than the unit is capable of handling\n");

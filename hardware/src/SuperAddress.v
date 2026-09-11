@@ -42,6 +42,12 @@ module SuperAddress #(
    input        [  ADDR_W - 1:0] iter3_i,
    input signed [  ADDR_W - 1:0] shift3_i,
 
+   input        [PERIOD_W - 1:0] per4_i,
+   input signed [  ADDR_W - 1:0] incr4_i,
+
+   input        [  ADDR_W - 1:0] iter4_i,
+   input signed [  ADDR_W - 1:0] shift4_i,
+
    input        [ DELAY_W - 1:0] delay_i,
 
    //outputs 
@@ -75,10 +81,13 @@ localparam OFFSET_W = $clog2(DATA_W / 8);
 
 reg                                           [   DELAY_W-1:0] delay_counter;
 
-reg                                           [  ADDR_W - 1:0] iter,iter2,iter3;
-reg                                           [PERIOD_W - 1:0] per,per2,per3;
+reg                                           [  ADDR_W - 1:0] iter,iter2,iter3,iter4;
+reg                                           [PERIOD_W - 1:0] per,per2,per3,per4;
 
-reg [ADDR_W-1:0] addr2,addr3;
+reg [ADDR_W-1:0] addr2,addr3,addr4;
+
+wire iter4Cond = (((iter4 + 1) == iter4_i) || (iter4_i == 0));
+wire per4Cond = (((per4 + 1) == per4_i) || (per4_i == 0));
 
 wire iter3Cond = (((iter3 + 1) == iter3_i) || (iter3_i == 0));
 wire per3Cond = (((per3 + 1) == per3_i) || (per3_i == 0));
@@ -91,7 +100,7 @@ wire per2Cond = (((per2 + 1) == per2_i) || (per2_i == 0));
 wire iterCond = (((iter + 1) == iter_i) || (iter_i == 0));
 wire perCond = (((per + 1) == per_i) || (per_i == 0));
 
-wire [5:0] cases = {iter3Cond,per3Cond,iter2Cond,per2Cond,iterCond,perCond};
+wire [7:0] cases = {iter4Cond,per4Cond,iter3Cond,per3Cond,iter2Cond,per2Cond,iterCond,perCond};
 
 /* TODO:
    
@@ -115,12 +124,15 @@ always @(posedge clk_i,posedge rst_i) begin
       addr_o        <= 0;
       addr2         <= 0;
       addr3         <= 0;
+      addr4         <= 0;
       iter          <= 0;
       iter2         <= 0;
       iter3         <= 0;
+      iter4         <= 0;
       per           <= 0;
       per2          <= 0;
       per3          <= 0;
+      per4          <= 0;
       valid_o       <= 0;
       doneAddress   <= 1'b1;
    end else if (run_i) begin
@@ -128,12 +140,15 @@ always @(posedge clk_i,posedge rst_i) begin
       addr_o        <= (start_i << OFFSET_W);
       addr2         <= (start_i << OFFSET_W);
       addr3         <= (start_i << OFFSET_W);
+      addr4         <= (start_i << OFFSET_W);
       iter          <= 0;
       iter2         <= 0;
       iter3         <= 0;
+      iter4         <= 0;
       per           <= 0;
       per2          <= 0;
       per3          <= 0;
+      per4          <= 0;
       valid_o       <= 0;
       doneAddress   <= 1'b0;
       ignore        <= ignore_first_i;
@@ -157,20 +172,20 @@ always @(posedge clk_i,posedge rst_i) begin
       //valid_o       <= (delay_counter == 1);
    end else if (valid_o && ready_i) begin
       casez(cases)
-      6'b?????0: begin
+      8'b???????0: begin
          if (per < duty_i && (!ignore)) begin
             addr_o <= addr_o + (incr_i << OFFSET_W);
          end
          per <= per + 1;
       end
-      6'b????01: begin
+      8'b??????01: begin
          if(!ignore)
             addr_o <= addr_o + (shift_i << OFFSET_W);
          per    <= 0;
          ignore <= 0;
          iter   <= iter + 1;
       end
-      6'b???011: begin
+      8'b?????011: begin
          if(!ignore) begin
             addr_o <= addr2 + (incr2_i << OFFSET_W);
             addr2  <= addr2 + (incr2_i << OFFSET_W);
@@ -180,7 +195,7 @@ always @(posedge clk_i,posedge rst_i) begin
          ignore <= 0;
          per2   <= per2 + 1;
       end
-      6'b??0111: begin
+      8'b????0111: begin
          if(!ignore) begin
             addr_o <= addr2 + (shift2_i << OFFSET_W);
             addr2  <= addr2 + (shift2_i << OFFSET_W);
@@ -191,7 +206,7 @@ always @(posedge clk_i,posedge rst_i) begin
          ignore <= 0;
          iter2  <= iter2 + 1;
       end
-      6'b?01111: begin
+      8'b???01111: begin
          if(!ignore) begin
             addr_o <= addr3 + (incr3_i << OFFSET_W);
             addr2  <= addr3 + (incr3_i << OFFSET_W);
@@ -204,7 +219,7 @@ always @(posedge clk_i,posedge rst_i) begin
          ignore <= 0;
          per3   <= per3 + 1;
       end
-      6'b011111: begin
+      8'b??011111: begin
          if(!ignore) begin
             addr_o <= addr3 + (shift3_i << OFFSET_W);
             addr2  <= addr3 + (shift3_i << OFFSET_W);
@@ -218,7 +233,42 @@ always @(posedge clk_i,posedge rst_i) begin
          ignore <= 0;
          iter3  <= iter3 + 1;
       end
-      6'b111111: begin
+
+      8'b?0111111: begin
+         if(!ignore) begin
+            addr_o <= addr4 + (incr4_i << OFFSET_W);
+            addr2  <= addr4 + (incr4_i << OFFSET_W);
+            addr3  <= addr4 + (incr4_i << OFFSET_W);
+            addr4  <= addr4 + (incr4_i << OFFSET_W);
+         end
+         per    <= 0;
+         iter   <= 0;
+         per2   <= 0;
+         iter2  <= 0;
+         per3   <= 0;
+         iter3  <= 0;
+         ignore <= 0;
+         per4   <= per4 + 1;
+      end
+      8'b01111111: begin
+         if(!ignore) begin
+            addr_o <= addr4 + (incr4_i << OFFSET_W);
+            addr2  <= addr4 + (incr4_i << OFFSET_W);
+            addr3  <= addr4 + (incr4_i << OFFSET_W);
+            addr4  <= addr4 + (incr4_i << OFFSET_W);
+         end
+         per    <= 0;
+         iter   <= 0;
+         per2   <= 0;
+         iter2  <= 0;
+         per3   <= 0;
+         iter3  <= 0;
+         per4   <= 0;         
+         ignore <= 0;
+         iter4  <= iter4 + 1;
+      end
+
+      8'b11111111: begin
          doneAddress <= 1'b1;
          valid_o <= 0;
       end

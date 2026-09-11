@@ -85,6 +85,11 @@ module AddressGen3 #(
       .iter3_i(iter3_i),
       .shift3_i(shift3_i),
 
+      .per4_i  ({PERIOD_W{1'b0}}),
+      .incr4_i ({ADDR_W{1'b0}}),
+      .iter4_i ({ADDR_W{1'b0}}),
+      .shift4_i({ADDR_W{1'b0}}),
+
       .doneDatabus(doneDatabus),
       .doneAddress(doneAddress),
 
