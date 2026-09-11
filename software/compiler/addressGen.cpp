@@ -122,7 +122,7 @@ AddressAccess* ConvertAccessTo2External(AddressAccess* access,int biggestLoopInd
   //maxLoopValueExpr = SYM_Align(maxLoopValueExpr,SYM_Var("VERSAT_DIFF_W"));
   
   result->internal = Copy(external,out);
-  //result->internal->terms[highestConstantIndex].term = maxLoopValueExpr; //PushLiteral(out,maxLoopValue);
+  result->internal->terms[highestConstantIndex].term = maxLoopValueExpr; //PushLiteral(out,maxLoopValue);
   
   LoopLinearSum* innermostExternal = PushLoopLinearSumSimpleVar("x",SYM_1,SYM_0,maxLoopValueExpr,out);
 
@@ -668,7 +668,8 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
       
       CodeNode* comment = PushStruct<CodeNode>(out);
       comment->type = CodeNodeType_COMMENT;
-      comment->name = "Double loop";
+      //comment->name = "Double loop";
+      comment->name = PushRepr(out,doubleLoop);
 
       LL_Append(chainStart,ptr,next,comment);
 
@@ -691,7 +692,8 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
 
       CodeNode* comment = PushStruct<CodeNode>(out);
       comment->type = CodeNodeType_COMMENT;
-      comment->name = "Single loop";
+      comment->name = PushRepr(out,singleLoop);
+      //comment->name = "Single loop";
 
       LL_Append(chainStart,ptr,next,comment);
 

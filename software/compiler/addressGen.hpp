@@ -130,8 +130,6 @@ AddressAccess* ReplaceVariables(AddressAccess* in,TrieMap<String,SYM_Expr>* varR
 
 CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions options);
 
-
-
 // Helpers ====================================================================
 
 
