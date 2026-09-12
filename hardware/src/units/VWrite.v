@@ -191,10 +191,14 @@ module VWrite #(
       .iter4_i ({ADDR_W{1'b0}}),
       .shift4_i({ADDR_W{1'b0}}),
 
+      .work_i(0),
+      .workSize_i(0),
+
       .doneDatabus(),
       .doneAddress(),
 
       .valid_o(),
+      .insideDuty_o(),
       .ready_i(1'b1),
       .addr_o (),
       .store_o(),
@@ -261,6 +265,7 @@ module VWrite #(
 
       //outputs 
       .valid_o(store_en),
+      .insideDuty_o(),
       .ready_i(1'b1),
       .addr_o (store_addr_temp),
       .store_o(do_store),

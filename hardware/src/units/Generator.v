@@ -42,7 +42,9 @@ module Generator #(
 
   wire [ADDR_W-1:0] genOut;
 
-  assign out0 = genOut;  //done ? off_value : genOut;
+  wire addr_valid;
+
+  assign out0 = addr_valid ? genOut : 0;  //done ? off_value : genOut;
 
   AddressGen3 #(
       .ADDR_W  (ADDR_W),
@@ -86,6 +88,7 @@ module Generator #(
 
       //outputs 
       .valid_o(),
+      .insideDuty_o(addr_valid),
       .ready_i(running),
       .addr_o (genOut),
       .store_o(),

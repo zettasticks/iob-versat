@@ -39,6 +39,7 @@ module AddressGen3 #(
 
    //outputs 
    output                valid_o,
+   output                insideDuty_o,
    input                 ready_i,
    output [ADDR_W - 1:0] addr_o,
    output                store_o,
@@ -90,11 +91,15 @@ module AddressGen3 #(
       .iter4_i ({ADDR_W{1'b0}}),
       .shift4_i({ADDR_W{1'b0}}),
 
+      .work_i(0),
+      .workSize_i(0),
+
       .doneDatabus(doneDatabus),
       .doneAddress(doneAddress),
 
       //outputs 
       .valid_o(valid_o),
+      .insideDuty_o(insideDuty_o),
       .ready_i(ready_i),
       .addr_o (addr_o),
       .store_o(store_o),

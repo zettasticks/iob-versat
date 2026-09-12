@@ -67,6 +67,9 @@ module VRead #(
    input [  ADDR_W-1:0] shift4,
    input [  ADDR_W-1:0] incr4,
 
+   input [ADDR_W-1:0]   work,
+   input [ADDR_W-1:0]   workSize,
+
    input [DELAY_W-1:0]  extra_delay,
    input                ignore_first,
 
@@ -178,12 +181,16 @@ module VRead #(
       .doneDatabus(),
       .doneAddress(),
 
+      .work_i(0),
+      .workSize_i(0),
+
       //outputs 
       //.valid_o(gen_valid), // gen_valid
       //.ready_i(gen_ready), // gen_ready
       //.addr_o (gen_addr_temp), // gen_addr_temp
 
       .valid_o(),
+      .insideDuty_o(),
       .ready_i(1'b1),
       .addr_o (),
 
@@ -214,7 +221,7 @@ assign data_data = databus_rdata_0;
    wire [ADDR_W-1:0] gen_addr = {pingPong ? !pingPongState : gen_addr_temp[ADDR_W-1],gen_addr_temp[ADDR_W-2:0]};
 
    // mem enables output by addr gen
-   wire output_enabled,output_store_value;
+   wire read_mem,output_enabled,output_store_value;
 
    AddressGen4 #(
       .ADDR_W(ADDR_W),
@@ -253,11 +260,15 @@ assign data_data = databus_rdata_0;
       .iter4_i(iter4),
       .shift4_i(shift4),
 
+      .work_i(work),
+      .workSize_i(workSize),
+
       .doneAddress(doneOutput),
       .doneDatabus(),
 
       //outputs 
-      .valid_o(output_enabled),
+      .valid_o(read_mem),
+      .insideDuty_o(output_enabled),
       .ready_i(1'b1),
       .addr_o (output_addr_temp),
       .store_o(output_store_value),
@@ -351,9 +362,14 @@ assign data_data = databus_rdata_0;
       output_store_value_1 <= output_store_value_0;
    end
 
+   reg output_enable_0,output_enable_1;
+   always @(posedge clk) begin
+      output_enable_0 <= output_enabled;
+      output_enable_1 <= output_enable_0;
+   end
 
    always @(posedge clk) begin
-      out0 <= out0_temp;
+      out0 <= output_enable_1 ? out0_temp : 0;
       if(!output_store_value_1) begin
          out0 <= 0;               
       end
@@ -381,7 +397,7 @@ assign data_data = databus_rdata_0;
    assign ext_2p_addr_out_0 = write_addr;
    assign ext_2p_data_out_0 = write_data;
 
-   assign ext_2p_read_0     = output_enabled;
+   assign ext_2p_read_0     = read_mem;
    assign ext_2p_addr_in_0  = output_addr;
 
    reg reportedB;

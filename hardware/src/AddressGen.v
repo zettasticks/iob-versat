@@ -71,11 +71,15 @@ module AddressGen #(
       .iter4_i({ADDR_W{1'b0}}),
       .shift4_i({ADDR_W{1'b0}}),
 
+      .work_i(0),
+      .workSize_i(0),
+
       .doneDatabus(),
       .doneAddress(),
 
       //outputs 
       .valid_o(valid_o),
+      .insideDuty_o(),
       .ready_i(ready_i),
       .addr_o (addr_o),
       .store_o(store_o),

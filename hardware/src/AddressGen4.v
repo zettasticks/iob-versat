@@ -43,8 +43,12 @@ module AddressGen4 #(
 
    input        [ DELAY_W - 1:0] delay_i,
 
+   input        [  ADDR_W - 1:0] work_i,
+   input        [  ADDR_W - 1:0] workSize_i,
+
    //outputs 
    output                valid_o,
+   output                insideDuty_o,
    input                 ready_i,
    output [ADDR_W - 1:0] addr_o,
    output                store_o,
@@ -96,11 +100,15 @@ module AddressGen4 #(
       .iter4_i(iter4_i),
       .shift4_i(shift4_i),
 
+      .work_i(work_i),
+      .workSize_i(workSize_i),
+
       .doneDatabus(doneDatabus),
       .doneAddress(doneAddress),
 
       //outputs 
       .valid_o(valid_o),
+      .insideDuty_o(insideDuty_o),
       .ready_i(ready_i),
       .addr_o (addr_o),
       .store_o(store_o),
