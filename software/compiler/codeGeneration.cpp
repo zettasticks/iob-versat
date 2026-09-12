@@ -4009,6 +4009,9 @@ if(SimulateDatabus){
             // Last transfer, need to take into account length to not overwrite data
             int amountTransfered = (access->counter * sizeOfData);
             trueLength = transferLength - amountTransfered;
+            if(trueLength < 0){
+               versat_printf("TrueLength is negative: %d %d %d %d\n",transferLength,countersLength,amountTransfered,trueLength);
+            }
          }
 
          if(self->databus_wstrb_@{i} == 0){
