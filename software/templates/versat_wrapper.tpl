@@ -13,6 +13,8 @@
 #define ALIGN_UP(val,size) (((val) + (size - 1)) & ~(size - 1))
 #define ALIGN_DOWN(val,size) (val & (~(size - 1)))
 
+#define MIN(A,B) (((A) < (B)) ? (A) : (B))
+
 #include "verilated.h"
 
 // Needed to obtain the wire size of the unit from the verilated code.

@@ -4013,14 +4013,14 @@ if(SimulateDatabus){
 
          if(self->databus_wstrb_@{i} == 0){
             if(ptr == nullptr){
-              memset(&self->databus_rdata_@{i},0xdf,sizeOfData);
+              memset(&self->databus_rdata_@{i},0xdf,sizeof(self->databus_rdata_@{i}));
             } else {
-              memset(&self->databus_rdata_@{i},0,sizeOfData);
-              memcpy(&self->databus_rdata_@{i},&ptr[access->counter * sizeOfData],trueLength);
+              memset(&self->databus_rdata_@{i},0,sizeof(self->databus_rdata_@{i}));
+              memcpy(&self->databus_rdata_@{i},&ptr[access->counter * sizeOfData],MIN(sizeof(self->databus_rdata_@{i}),trueLength));
             }
          } else { // self->databus_wstrb_@{i} != 0
             if(ptr != nullptr){
-              memcpy(&ptr[access->counter * sizeOfData],&self->databus_wdata_@{i},trueLength);
+              memcpy(&ptr[access->counter * sizeOfData],&self->databus_wdata_@{i},MIN(sizeof(&self->databus_wdata_@{i}),trueLength));
             }
          }
          self->databus_ready_@{i} = 1;
