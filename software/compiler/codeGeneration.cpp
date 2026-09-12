@@ -4012,6 +4012,9 @@ if(SimulateDatabus){
          }
 
          if(self->databus_wstrb_@{i} == 0){
+            if(trueLength > sizeof(self->databus_rdata_@{i})){
+              versat_printf("TrueLength greater then size of rdata %d > %d\n",trueLength,sizeof(self->databus_rdata_@{i}));
+            }
             if(ptr == nullptr){
               memset(&self->databus_rdata_@{i},0xdf,sizeof(self->databus_rdata_@{i}));
             } else {
@@ -4019,8 +4022,12 @@ if(SimulateDatabus){
               memcpy(&self->databus_rdata_@{i},&ptr[access->counter * sizeOfData],MIN(sizeof(self->databus_rdata_@{i}),trueLength));
             }
          } else { // self->databus_wstrb_@{i} != 0
+            if(trueLength > sizeof(self->databus_wdata_@{i})){
+              versat_printf("TrueLength greater then size of wdata %d > %d\n",trueLength,sizeof(self->databus_wdata_@{i}));
+            }
+
             if(ptr != nullptr){
-              memcpy(&ptr[access->counter * sizeOfData],&self->databus_wdata_@{i},MIN(sizeof(&self->databus_wdata_@{i}),trueLength));
+              memcpy(&ptr[access->counter * sizeOfData],&self->databus_wdata_@{i},MIN(sizeof(self->databus_wdata_@{i}),trueLength));
             }
          }
          self->databus_ready_@{i} = 1;
