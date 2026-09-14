@@ -100,6 +100,9 @@ end
 
 @{profilingStuff}
 
+@{captureDatabus}
+@{captureDatabusLogic}
+
 // Control interface write portion
 @{controlWriteInterface}
 

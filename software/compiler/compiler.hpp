@@ -4,14 +4,14 @@
 #include "configurations.hpp"
 #include "parser.hpp"
 
-#if 1
+#if 0
 
 // Remember, because of stuff like inserting buffers/delays/muxs, we need to be able to write to this.
 // Changing name is required. Or maybe not. If we have access to the partitions we could just compute the 
 // final name.
 
 // Anyway, lets start small and work from there. The only thing that I want without fail is easy copy.
-
+// If we can copy units easily then we can solve anything later on worst case scenario.
 
 // COM_Instance needs to contain a bunch of read-only data that needs to be simply copied
 // While also containing a bunch of data that can change 

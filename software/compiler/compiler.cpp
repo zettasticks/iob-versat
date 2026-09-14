@@ -1,5 +1,7 @@
 #include "compiler.hpp"
 
+#if 0
+
 // ======================================
 // Constants
 
@@ -1114,3 +1116,4 @@ String COM_Repr(COM_Unit* top,Arena* out){
   return res;
 }
 
+#endif

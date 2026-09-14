@@ -43,6 +43,11 @@ struct ParamNameAndValue{
   int value;
 };
 
+struct ParamNameAndValue2{
+  Token name;
+  SYM_Expr value;
+};
+
 // TODO: This is kinda stupid but really want something working right now.
 struct DECL_UnmangleResult{
   String name;
@@ -186,7 +191,6 @@ FUDeclaration* GetTypeByNameOrFail(String name);
 FUDeclaration* GetTypeByName(String str,Array<ParamNameAndValue> metaParams);
 
 String DECL_MangleName(String typeName,Array<ParamNameAndValue> metaParams,Arena* out);
-DECL_UnmangleResult DECL_UnmangleName(String name,Arena* out);
 
 void InitializeSimpleDeclarations();
 bool HasMultipleConfigs(FUDeclaration* decl);

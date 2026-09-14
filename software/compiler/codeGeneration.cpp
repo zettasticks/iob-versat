@@ -2481,8 +2481,53 @@ void Output_VersatInstance(AccelInfo info,FUDeclaration* topLevelDecl,Array<Type
     TE_SetString("profilingStuff",{});
   }
 
+  // MARK
+  #if 1
+  if(globalOptions.insertCaptureDatabusRegisters){
+    VEmitter* m = StartVCode(temp);
+
+    m->Reg("captureDatabus_IndexAndReadWrite",SYM_DataW);
+    m->Reg("captureDatabus_Count",SYM_DataW);
+    m->Reg("captureDatabus_SavedAddr",SYM_DataW);
+    m->Reg("captureDatabus_SavedValue",SYM_DataW);
+    m->Reg("captureDatabus_didCapture",SYM_1);
+
+    m->Reg("captureDatabus_Seen",SYM_DataW);
+
+    m->Wire("captureDatabus_ReadNotWrite",SYM_1);
+    m->Wire("captureDatabus_Index",SYM_DataW);
+    m->Assign("captureDatabus_ReadNotWrite","captureDatabus_IndexAndReadWrite[0]");
+    m->Assign("captureDatabus_Index","{1'b0,captureDatabus_IndexAndReadWrite[1+:31]}");
+
+    String format = R"FOO(
+always @(posedge clk,posedge rst) begin
+  if(capturedDatabus_valid && capturedDatabus_ready) begin
+    capturedDatabus_Seen <= capturedDatabus_Seen + 1;
+ 
+    if(capturedDatabus_Seen == capturedDatabus_Count) begin
+      capturedDatabus_SavedAddr <= capturedDatabus_addr;
+      captureDatabus_didCapture <= 1'b1;
+      if(capturedDatabus_ReadNotWrite) begin
+        capturedDatabus_SavedValue <= capturedDatabus_rdata;
+      end else begin
+        capturedDatabus_SavedValue <= capturedDatabus_wdata;
+      end
+    end
+  end
+end
+)FOO";
+    
+    String content = EndVCodeAndPrint(m,temp);
+    TE_SetString("captureDatabus",content);
+    TE_SetString("captureDatabusLogic",format);
+  } else {
+    TE_SetString("captureDatabus",{});
+    TE_SetString("captureDatabusLogic",{});
+  }
+  #endif
+
   // Control write portion
-  {      
+  {
     VEmitter* m = StartVCode(temp);
     m->AlwaysBlock("clk","rst_int");
     m->If("rst_int");
@@ -2493,6 +2538,10 @@ void Output_VersatInstance(AccelInfo info,FUDeclaration* topLevelDecl,Array<Type
       m->Set("dma_length","0");
       m->Set("dma_internal_address_start","0");
       m->Set("dma_external_addr_start","0");
+    }
+    if(globalOptions.insertCaptureDatabusRegisters){
+      m->Set("captureDatabus_IndexAndReadWrite","0");
+      m->Set("captureDatabus_Count","0");
     }
     m->Else();
     
@@ -2513,21 +2562,20 @@ void Output_VersatInstance(AccelInfo info,FUDeclaration* topLevelDecl,Array<Type
       m->EndIf();
     m->EndIf();
 
-    if(globalOptions.useDMA){
-      auto EmitStrobe = [](VEmitter* m,String strobeWire,const char* leftReg,const char* rightReg,int regSize){
-        for(int i = 0; i < regSize; i += 8){
-          int left = 8;
-          if(i + left > regSize){
-            left = regSize % 8;
-          }
-        
-          m->If(SF("%.*s[%d]",UN(strobeWire),i/8));
-          m->Set(leftReg,SF("%s[%d+:%d]",rightReg,i,left));
-          m->EndIf();
+    auto EmitStrobe = [](VEmitter* m,String strobeWire,const char* leftReg,const char* rightReg,int regSize){
+      for(int i = 0; i < regSize; i += 8){
+        int left = 8;
+        if(i + left > regSize){
+          left = regSize % 8;
         }
-      };
+        
+        m->If(SF("%.*s[%d]",UN(strobeWire),i/8));
+        m->Set(leftReg,SF("%s[%d+:%d]",rightReg,i,left));
+        m->EndIf();
+      }
+    };
 
-
+    if(globalOptions.useDMA){
       AddrIf(m,VersatRegister_DmaInternalAddress);
       EmitStrobe(m,"csr_wstrb","dma_internal_address_start","csr_wdata",32);
       m->EndIf();
@@ -2546,6 +2594,15 @@ void Output_VersatInstance(AccelInfo info,FUDeclaration* topLevelDecl,Array<Type
 
     if(globalOptions.useDMA){
       m->Assign("dma_start",SF("csr_valid && we && csr_addr >= %d && csr_addr < %d && csr_wstrb[0] && csr_wdata[0] == 1'b1",GetIndex(val,VersatRegister_DmaControl),GetIndex(val,VersatRegister_DmaControl)+4));
+    }
+
+    if(globalOptions.insertCaptureDatabusRegisters){
+      AddrIf(m,VersatRegister_CaptureDatabusIndexAndReadWrite);
+      EmitStrobe(m,"csr_wstrb","captureDatabus_IndexAndReadWrite","csr_wdata",32);
+      m->EndIf();
+      AddrIf(m,VersatRegister_CaptureDatabusCount);
+      EmitStrobe(m,"csr_wstrb","captureDatabus_Count","csr_wdata",32);
+      m->EndIf();
     }
 
     String content3 = EndVCodeAndPrint(m,temp);
@@ -2635,6 +2692,18 @@ void Output_VersatInstance(AccelInfo info,FUDeclaration* topLevelDecl,Array<Type
           m->EndIf();
           AddrIf(m,VersatRegister_ProfileConfigurationsSetWhileRunning2);
           m->Set("versat_rdata","profile_configurationsSetWhileRunning[DATA_W+:DATA_W]");
+          m->EndIf();
+        }
+
+        if(globalOptions.insertCaptureDatabusRegisters){
+          AddrIf(m,VersatRegister_CaptureDatabusGetAddr);
+          m->Set("versat_rdata","captureDatabus_SavedAddr");
+          m->EndIf();
+          AddrIf(m,VersatRegister_CaptureDatabusGetValue);
+          m->Set("versat_rdata","captureDatabus_SavedValue");
+          m->EndIf();
+          AddrIf(m,VersatRegister_CaptureDatabusGetDidCapture);
+          m->Set("versat_rdata","{31'h0,CaptureDatabusGetDidCapture}");
           m->EndIf();
         }
 
@@ -4002,6 +4071,10 @@ if(SimulateDatabus){
          char* ptr = (char*) (self->databus_addr_@{i});
 
          int transferLength = self->databus_len_@{i};
+         if(transferLength < 0){
+            transferLength = 0;
+         }
+
          int countersLength = ALIGN_UP(transferLength,sizeOfData) / sizeOfData;
 
          int trueLength = sizeOfData;

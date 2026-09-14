@@ -248,6 +248,10 @@ parse_opt (int key, char *arg,
     case 129: {
       opts->options->insertProfilingRegisters = true;
     } break;
+
+    case 130: {
+      opts->options->insertCaptureDatabusRegisters = true;
+    } break;
       
     case 'g': opts->options->debugPath = arg; opts->options->debug = true; break;
     case 't': opts->options->topName = arg; break;
@@ -265,6 +269,7 @@ struct argp_option options[] =
   {
     { "debug", 128 ,0, 0, "Insert debug registers on the generated accelerator"},
     { "profile", 129 ,0, 0, "Insert profiling registers on the generated accelerator"},
+    {"captureDatabus",130,0,0, "Insert registers to capture databus data from transfers"},
     { 0, 'A', "Arg",   0, "Set param to value"},
     { 0, 'b',"Size",   0, "Databus size connected to external RAM (8,16,default:32,64,128,256)"},
     { 0, 'd', 0,       0, "Use DMA"},
@@ -402,9 +407,9 @@ int main(int argc,char* argv[]){
     exit(-1);
   }
 
-  Array<ParamNameAndValue> paramDefinitions = PushArray(perm,gather.paramDefinitions);
+  Array<ParamNameAndValue> globalParams = PushArray(perm,gather.paramDefinitions);
 
-  for(ParamNameAndValue p : paramDefinitions){
+  for(ParamNameAndValue p : globalParams){
     printf("%.*s %d\n",UN(p.name),p.value);
   }
 
@@ -618,17 +623,65 @@ int main(int argc,char* argv[]){
       // Collect all the subtypes used
       FULL_SWITCH(def.type){
       case ConstructType_MERGE: {
-       for(TypeAndInstance t : def.merge.declarations){
-         Token typeName = t.typeName;
-         Array<ParamNameAndValue> params = t.metaParams;
-         String mangledName = DECL_MangleName(typeName.identifier,t.metaParams,perm);
+        FREE_ARENA(envArena);
+        FREE_ARENA(envArena2);
+        Env* env = StartEnvironment(envArena,envArena2);
+
+        for(TypeAndInstance t : def.merge.declarations){
+          Token typeName = t.typeName;
+         
+          auto l = PushList<ParamNameAndValue>(temp);
+          for(ParamNameAndValue2 param : t.metaParams){
+            String paramName = param.name.identifier;
+
+            SYM_Expr expr = param.value;
+
+            int val = -1;
+
+            if(expr.node->type == SYM_Type_LITERAL){
+              val = param.value.node->literal;
+            }
+
+            String varName = {};
+            if(val == -1){
+              Assert(expr.node->type == SYM_Type_VARIABLE);
+              varName = expr.node->name; 
+
+              if(constructName == topLevelTypeStr){
+                for(ParamNameAndValue topLevelParam : globalParams){
+                  if(topLevelParam.name == varName){
+                    val = topLevelParam.value;
+                    break;
+                  }
+                }
+              }
+            }
+
+            if(val == -1){
+              for(ParameterDeclaration mergeParam : def.merge.params){
+                if(mergeParam.name.identifier == varName){
+                  val = env->CalculateConstantExpression(mergeParam.defaultValue);
+                  break;
+                }
+              }
+            }
+            
+            Assert(val != -1);
+
+            ParamNameAndValue* v = l->PushElem();
+            v->name = paramName;
+            v->value = val;
+          }
+          Array<ParamNameAndValue> val = PushArray(temp,l);
+         
+          String mangledName = DECL_MangleName(typeName.identifier,val,perm);
 
           if(mangledName != typeName.identifier){
             printf("Mangled: %.*s\n",UN(mangledName));
           }
 
-         *subtypesUsed->PushElem() = DeclInfo{.mangledName = mangledName,.unmangledName = typeName.identifier,.metaParams = t.metaParams};
-       }
+          *subtypesUsed->PushElem() = DeclInfo{.mangledName = mangledName,.unmangledName = typeName.identifier,.metaParams = val};
+        }
       } break;
       case ConstructType_MODULE: {
         // Initialize an environment to properly figure out params values
@@ -643,7 +696,7 @@ int main(int argc,char* argv[]){
 
           int val = -1;
           if(constructName == topLevelTypeStr){
-            for(ParamNameAndValue topLevelParam : paramDefinitions){
+            for(ParamNameAndValue topLevelParam : globalParams){
               if(topLevelParam.name == paramName){
                 val = topLevelParam.value;
                 break;
@@ -861,7 +914,7 @@ int main(int argc,char* argv[]){
       if(def.type == ConstructType_MODULE){
         decl = InstantiateModule(content,def.module,work.params);
       } else {
-        decl = InstantiateSpecifications(content,p.second->definition);
+        decl = InstantiateMerge(p.second->definition.merge,work.params);
       }
       decl->singleInterfaces |= SingleInterfaces_SIGNAL_LOOP;
       

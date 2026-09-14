@@ -195,38 +195,6 @@ String DECL_MangleName(String typeName,Array<ParamNameAndValue> params,Arena* ou
 #endif
 }
 
-DECL_UnmangleResult DECL_UnmangleName(String name,Arena* out){
-  TEMP_REGION(temp,out);
-
-#if 0
-  DECL_UnmangleResult res = {};
-  res.name = name;
-  return res;
-#else
-  Array<String> splitted = Split(name,'@',temp);
-  int doubleArgCount = splitted.size - 1;
-  Assert(doubleArgCount % 2 == 0 && "We must have double since we always have a name,val pair");
-  
-  int argCount = doubleArgCount / 2;
-
-  String typeName = splitted[0];
-  Array<ParamNameAndValue> params = PushArray<ParamNameAndValue>(out,argCount);
-
-  for(int i = 1; i < splitted.size; i += 2){
-    String paramName = splitted[i];
-    String value = splitted[i+1];
-
-    params[(i - 1) / 2].name = PushString(out,paramName);
-    params[(i - 1) / 2].value = ParseInt(value);
-  }
-  
-  DECL_UnmangleResult res = {};
-  res.name = PushString(out,typeName);
-  res.metaParams = params;
-  return res;
-#endif
-}
-
 FUDeclaration* DECL_GetType(String name,Array<ParamNameAndValue> params){
   FUDeclaration* res = GetTypeByName(name);
   if(!res){

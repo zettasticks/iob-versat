@@ -794,6 +794,14 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
       AddRegister(reg.t);
     }
   }
+  
+  if(globalOptions.insertCaptureDatabusRegisters){
+    AddRegister(VersatRegister_CaptureDatabusIndexAndReadWrite);
+    AddRegister(VersatRegister_CaptureDatabusCount);
+    AddRegister(VersatRegister_CaptureDatabusGetAddr);
+    AddRegister(VersatRegister_CaptureDatabusGetValue);
+    AddRegister(VersatRegister_CaptureDatabusGetDidCapture);
+  }
 
   res.nConfigs += res.versatConfigs;
   res.nStates += res.versatStates;

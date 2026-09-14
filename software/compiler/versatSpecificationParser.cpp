@@ -71,15 +71,18 @@ String GetActualArrayName(String baseName,Array<int> index,Arena* out){
   return PushString(out,"%.*s_%.*s",UN(baseName),UN(idPart));
 }
 
-FUDeclaration* InstantiateMerge(MergeDef def){
+FUDeclaration* InstantiateMerge(MergeDef def,Array<ParamNameAndValue> params){
   TEMP_REGION(temp,nullptr);
   
   int size = def.declarations.size;
-  
+
+  DEBUG_BREAK();
+
   Array<FUDeclaration*> decl = PushArray<FUDeclaration*>(temp,size);
   for(int i = 0; i <  size; i++){
     TypeAndInstance tp = def.declarations[i];
-    FUDeclaration* d = GetTypeByName(tp.typeName.identifier,tp.metaParams);
+    
+    FUDeclaration* d = GetTypeByName(tp.typeName.identifier,params);
     Assert(d);
     decl[i] = d;
   }
@@ -2576,6 +2579,28 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
 
   Token mergeName = parser->ExpectNext(TokenType_IDENTIFIER);
 
+  Array<ParameterDeclaration> params = {};
+  if(parser->IfNextToken('#')){
+    parser->ExpectNext('(');
+
+    auto paramList = PushList<ParameterDeclaration>(temp);
+    
+    while(!parser->Done()){
+      ParameterDeclaration param = ParseParameterDeclaration(parser,out);
+      *paramList->PushElem() = param;
+    
+      if(parser->IfNextToken(',')){
+        continue;
+      } else {
+        break;
+      }
+    }
+
+    parser->ExpectNext(')');
+
+    params = PushArray(out,paramList);
+  }
+
   ArenaList<TypeAndInstance>* declarationList = PushList<TypeAndInstance>(temp);
 
   if(parser->IfNextToken('=')){
@@ -2603,7 +2628,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
 
       Token typeName = parser->ExpectNext(TokenType_IDENTIFIER);
       
-      auto list = PushList<ParamNameAndValue>(temp);
+      auto list = PushList<ParamNameAndValue2>(temp);
       if(parser->IfNextToken('<')){
         while(!parser->Done()){
           if(parser->IfPeekToken('>')){
@@ -2614,11 +2639,18 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
 
           parser->ExpectNext('=');
 
-          Token number = parser->ExpectNext(TokenType_NUMBER);
+          SYM_Expr expr = SYM_Nil;
+          Token next = parser->NextToken();
+          
+          if(next.type == TokenType_NUMBER){
+            expr = SYM_Lit(next.number);
+          } else if(next.type == TokenType_IDENTIFIER){
+            expr = SYM_Var(next.identifier);
+          }
 
-          ParamNameAndValue* val = list->PushElem();
-          val->name = parameterName.identifier;
-          val->value = number.number;
+          ParamNameAndValue2* val = list->PushElem();
+          val->name = parameterName;
+          val->value = expr;
 
           if(parser->IfNextToken(',')){
             continue;
@@ -2628,8 +2660,8 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
         }
         parser->ExpectNext('>');
       }
-      Array<ParamNameAndValue> params = PushArray(out,list);
-      
+      Array<ParamNameAndValue2> params = PushArray(out,list);
+
       Token name = parser->ExpectNext(TokenType_IDENTIFIER);
       parser->ExpectNext(';');
 
@@ -2701,6 +2733,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
   result.declarations = declarations;
   result.specifics = specifics;
   result.mergeModifiers = mergeModifiers;
+  result.params = params;
   
   return result;
 }

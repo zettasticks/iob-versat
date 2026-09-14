@@ -181,7 +181,7 @@ struct ConnectionDef{
 struct TypeAndInstance{
   Token typeName;
   Token instanceName;
-  Array<ParamNameAndValue> metaParams;
+  Array<ParamNameAndValue2> metaParams;
 };
 
 struct DefBase{
@@ -204,6 +204,7 @@ struct MergeDef : public DefBase{
   Array<TypeAndInstance> declarations;
   Array<SpecificMergeNode> specifics;
   Array<Token> mergeModifiers;
+  Array<ParameterDeclaration> params;
 };
 
 struct ConstructDef{
@@ -229,6 +230,7 @@ Array<Token> TypesUsed(ConstructDef def,Arena* out);
 Array<ConstructDef> ParseVersatSpecification(String content,Arena* out);
 
 FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAndValue> params = {});
+FUDeclaration* InstantiateMerge(MergeDef def,Array<ParamNameAndValue> params = {});
 
 // TODO: Move this function to a better place, no reason to be inside spec parser
 FUDeclaration* InstantiateSpecifications(String content,ConstructDef def);

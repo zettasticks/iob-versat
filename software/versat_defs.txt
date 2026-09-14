@@ -128,8 +128,7 @@ define_map possibleAttributes{
    VERSAT_STAGE   : versat_stage
 };
 
-// Note: The position of the registers is variable and depends on user flags. Some flags add registers and the position of the 
-// register on the accelerator changes based on the flags passed.
+// Note: The position of the registers is variable and depends on user flags. Some flags add registers and the position of the register on the accelerator changes based on the flags passed.
 enum VersatRegister{
    VersatRegister_Control,
    VersatRegister_DmaInternalAddress,
@@ -151,9 +150,15 @@ enum VersatRegister{
    VersatRegister_ProfileConfigurationsSet,
    VersatRegister_ProfileConfigurationsSet2,
    VersatRegister_ProfileConfigurationsSetWhileRunning,
-   VersatRegister_ProfileConfigurationsSetWhileRunning2
+   VersatRegister_ProfileConfigurationsSetWhileRunning2,
+   
+   VersatRegister_CaptureDatabusIndexAndReadWrite,
+   VersatRegister_CaptureDatabusCount,
+   VersatRegister_CaptureDatabusGetAddr,
+   VersatRegister_CaptureDatabusGetValue,
+   VersatRegister_CaptureDatabusGetDidCapture,
 };
-
+ 
 // Any value added here is automatically added to generated accelerator with profiling enabled. No logic is given, we just allocate memory mapped space.
 table ProfilingVersatRegisters(VersatRegister t){
    VersatRegister_ProfileControl,
