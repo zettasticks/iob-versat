@@ -76,8 +76,6 @@ FUDeclaration* InstantiateMerge(MergeDef def,Array<ParamNameAndValue> params){
   
   int size = def.declarations.size;
 
-  DEBUG_BREAK();
-
   Array<FUDeclaration*> decl = PushArray<FUDeclaration*>(temp,size);
   for(int i = 0; i <  size; i++){
     TypeAndInstance tp = def.declarations[i];

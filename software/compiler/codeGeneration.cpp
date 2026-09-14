@@ -3443,7 +3443,9 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
             stmt = PushString(temp,"volatile %.*sConfig* config = &accelConfig->%.*s",UN(mergeName),UN(mergeName));
           }
           
-          c->Statement(stmt);
+          if(info.states > 0){
+            c->Statement(stmt);
+          }
         }
 
         // MARK
