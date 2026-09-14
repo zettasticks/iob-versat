@@ -3438,12 +3438,12 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
           if(isState){
             assignStarter = "state";
             stmt = PushString(temp,"volatile %.*sState* state = &accelState->%.*s",UN(mergeName),UN(mergeName));
+            if(info.states > 0){
+              c->Statement(stmt);
+            }
           } else {
             assignStarter = "config";
             stmt = PushString(temp,"volatile %.*sConfig* config = &accelConfig->%.*s",UN(mergeName),UN(mergeName));
-          }
-          
-          if(info.states > 0){
             c->Statement(stmt);
           }
         }
