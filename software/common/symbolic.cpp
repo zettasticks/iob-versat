@@ -1242,7 +1242,7 @@ SYM_Expr ParseSYM_Expr(Parser* parser,int bindingPower = -1){
   } else if(atom.type == TokenType_NUMBER){
     Token number = parser->ExpectNext(TokenType_NUMBER);
     res = GetOrAllocateLiteral(number.number);
-  } else if(atom.type == TokenType_IDENTIFIER){
+  } else if(atom.type == TokenType_CONTENT){
     parser->NextToken();
 
     if(parser->IfNextToken('(')){

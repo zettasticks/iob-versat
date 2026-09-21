@@ -462,7 +462,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           
                   // TODO-2
                   lhsBase.name = {};
-                  lhsBase.name.type = TokenType_IDENTIFIER;
+                  lhsBase.name.type = TokenType_CONTENT;
                   lhsBase.name.identifier = arrayName;
                   lhsBase.name.originalData = arrayName;
 

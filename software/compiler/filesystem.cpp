@@ -4,8 +4,10 @@
 
 #include <dirent.h>
 
-#include "embeddedData.hpp"
+//#include "embeddedData.hpp"
 #include "utilsCore.hpp"
+
+#include "filesystem_meta.hpp"
 
 static Arena storeFileInfoArena = {};
 static ArenaList<FileInfo>* storeFileInfo;

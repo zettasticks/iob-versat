@@ -88,17 +88,20 @@ FUDeclaration* InstantiateMerge(MergeDef def,Array<ParamNameAndValue> params){
   String name = PushString(globalPermanent,def.name.identifier);
 
   bool error = false;
-  MergeModifier modifier = MergeModifier_NONE;
+  MergeModifier modifier = {};
 
   for(Token t : def.mergeModifiers){
-    Opt<MergeModifier> parsed = META_mergeModifiers_ReverseMap(t.identifier);
+    MergeModifier parsed = {};
+    if(t.identifier == "NoUnitMerged"){
+      parsed = MergeModifier_NO_UNIT_MERGED;
+    }
 
-    if(!parsed.has_value()){
+    if(parsed == MergeModifier_NIL){
       printf("Error, merge does not support option: %.*s\n",UN(t.identifier));
       error = true;
     }
 
-    modifier = (MergeModifier) (modifier | parsed.value());
+    modifier = (MergeModifier) (modifier | parsed);
   }
 
   if(error){
@@ -572,7 +575,7 @@ Array<Entity> Env::GetEntity(ConfigIdentifier* id,Arena* out){
           
           // TODO-2
           next.name = {};
-          next.name.type = TokenType_IDENTIFIER;
+          next.name.type = TokenType_CONTENT;
           next.name.identifier = arrayName;
           next.name.originalData = arrayName;
 
@@ -861,7 +864,7 @@ FUAccess Env::ResolveFU(MathExpression* ptr,Arena* out){
           
             // TODO-2
             entity.name = {};
-            entity.name.type = TokenType_IDENTIFIER;
+            entity.name.type = TokenType_CONTENT;
             entity.name.identifier = arrayName;
             entity.name.originalData = arrayName;
 
@@ -1683,7 +1686,7 @@ Range<MathExpression*> ParseExprRange(Parser* parser,Arena* out){
 Var ParseVar(Parser* parser,Arena* out){
   TEMP_REGION(temp,out);
   
-  Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+  Token name = parser->ExpectNext(TokenType_CONTENT);
 
   auto list = PushList<Range<MathExpression*>>(temp); 
   while(parser->IfNextToken('[')){
@@ -1725,7 +1728,7 @@ VarDeclaration ParseVarDeclaration(Parser* parser,Arena* out){
 
   VarDeclaration res = {};
 
-  res.name = parser->ExpectNext(TokenType_IDENTIFIER);
+  res.name = parser->ExpectNext(TokenType_CONTENT);
   
   // TODO: We should integrate the array parsing logic with this one
   auto list = PushList<MathExpression*>(temp);
@@ -1797,13 +1800,13 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
 
       parsedModifier = InstanceDeclarationType_SHARE_CONFIG;
       
-      res.typeName = parser->ExpectNext(TokenType_IDENTIFIER);
+      res.typeName = parser->ExpectNext(TokenType_CONTENT);
 
       if(parser->IfNextToken('(')){
         // TODO: For now, we assume that every wire specified inside the spec file is a negative (remove share).
         auto toShare = PushList<Token>(temp);
         while(!parser->Done()){
-          Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+          Token name = parser->ExpectNext(TokenType_CONTENT);
 
           *toShare->PushElem() = name;
 
@@ -1850,7 +1853,7 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
     }
   }
 
-  res.typeName = parser->ExpectNext(TokenType_IDENTIFIER);
+  res.typeName = parser->ExpectNext(TokenType_CONTENT);
 
   if(parser->IfNextToken('<')){
     auto list = PushList<ParamNameAndValue>(temp);
@@ -1859,7 +1862,7 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
         break;
       }
 
-      Token parameterName = parser->ExpectNext(TokenType_IDENTIFIER);
+      Token parameterName = parser->ExpectNext(TokenType_CONTENT);
 
       parser->ExpectNext('=');
 
@@ -1889,7 +1892,7 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
 
     while(!parser->Done()){
       parser->ExpectNext('.');
-      Token parameterName = parser->ExpectNext(TokenType_IDENTIFIER);
+      Token parameterName = parser->ExpectNext(TokenType_CONTENT);
 
       parser->ExpectNext('(');
 
@@ -2005,10 +2008,10 @@ MathExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
 
     res->type = MathType_LITERAL;
     res->val = number.number;
-  } else if(atom.type == TokenType_IDENTIFIER){
+  } else if(atom.type == TokenType_CONTENT){
     TEMP_REGION(temp,out);
 
-    Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+    Token name = parser->ExpectNext(TokenType_CONTENT);
 
     res = PushStruct<MathExpression>(out);
     res->name = name;
@@ -2032,7 +2035,7 @@ MathExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
     // TODO: This is mostly for state right side.
     //       We might eventually just separate this into different parsing functions.
     if(parser->IfNextToken('.')){
-      Token singleAccessName = parser->ExpectNext(TokenType_IDENTIFIER);
+      Token singleAccessName = parser->ExpectNext(TokenType_CONTENT);
       
       MathExpression* singleAccess = PushStruct<MathExpression>(out);
       singleAccess->type = MathType_ACCESS;
@@ -2208,9 +2211,9 @@ SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower){
 
     res->type = SpecType_LITERAL;
     res->val = number.number;
-  } else if(atom.type == TokenType_IDENTIFIER){
+  } else if(atom.type == TokenType_CONTENT){
     if(parser->IfPeekToken('(',1)){
-      Token functionName = parser->ExpectNext(TokenType_IDENTIFIER);
+      Token functionName = parser->ExpectNext(TokenType_CONTENT);
       parser->ExpectNext('(');
       
       auto args = PushList<Var>(temp);
@@ -2326,7 +2329,7 @@ ConnectionDef* ParseConnection(Parser* parser,Arena* out){
   }
 
   if(type == ConnectionType_LOOP){
-    Token loopVariable = parser->ExpectNext(TokenType_IDENTIFIER);
+    Token loopVariable = parser->ExpectNext(TokenType_CONTENT);
 
     MathExpression* start = ParseMathExpression(parser,out);
     parser->ExpectNext(TokenType_DOUBLE_DOT);
@@ -2391,7 +2394,7 @@ ConfigFunctionDef* ParseConfigFunction(Parser* parser,Arena* out);
 ParameterDeclaration ParseParameterDeclaration(Parser* parser,Arena* out){
   ParameterDeclaration res = {};
 
-  res.name = parser->ExpectNext(TokenType_IDENTIFIER);
+  res.name = parser->ExpectNext(TokenType_CONTENT);
   
   if(parser->IfNextToken('=')){
     res.defaultValue = ParseMathExpression(parser,out);
@@ -2407,7 +2410,7 @@ ModuleDef ParseModuleDef(Parser* parser,Arena* out){
 
   parser->ExpectNext(TokenType_KEYWORD_MODULE);
 
-  Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+  Token name = parser->ExpectNext(TokenType_CONTENT);
 
   Array<ParameterDeclaration> params = {};
   if(parser->IfNextToken('#')){
@@ -2521,11 +2524,11 @@ ModuleDef ParseModuleDef(Parser* parser,Arena* out){
 }
 
 TypeAndInstance ParseTypeAndInstance(Parser* parser){
-  Token typeName = parser->ExpectNext(TokenType_IDENTIFIER);
+  Token typeName = parser->ExpectNext(TokenType_CONTENT);
 
   Token instanceName = {};
   if(parser->IfNextToken(':')){
-    instanceName = parser->ExpectNext(TokenType_IDENTIFIER);
+    instanceName = parser->ExpectNext(TokenType_CONTENT);
   }
 
   TypeAndInstance res = {};
@@ -2536,7 +2539,7 @@ TypeAndInstance ParseTypeAndInstance(Parser* parser){
 }
 
 HierarchicalName ParseHierarchicalName(Parser* parser,Arena* out){
-  Token topInstance = parser->ExpectNext(TokenType_IDENTIFIER);
+  Token topInstance = parser->ExpectNext(TokenType_CONTENT);
 
   parser->ExpectNext('.');
 
@@ -2565,7 +2568,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
         break;
       }
 
-      *tokenList->PushElem() = parser->ExpectNext(TokenType_IDENTIFIER);
+      *tokenList->PushElem() = parser->ExpectNext(TokenType_CONTENT);
 
       parser->IfNextToken(',');
     }
@@ -2575,7 +2578,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
     parser->ExpectNext(')');
   }
 
-  Token mergeName = parser->ExpectNext(TokenType_IDENTIFIER);
+  Token mergeName = parser->ExpectNext(TokenType_CONTENT);
 
   Array<ParameterDeclaration> params = {};
   if(parser->IfNextToken('#')){
@@ -2624,7 +2627,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
         break;
       }
 
-      Token typeName = parser->ExpectNext(TokenType_IDENTIFIER);
+      Token typeName = parser->ExpectNext(TokenType_CONTENT);
       
       auto list = PushList<ParamNameAndValue2>(temp);
       if(parser->IfNextToken('<')){
@@ -2633,7 +2636,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
             break;
           }
 
-          Token parameterName = parser->ExpectNext(TokenType_IDENTIFIER);
+          Token parameterName = parser->ExpectNext(TokenType_CONTENT);
 
           parser->ExpectNext('=');
 
@@ -2642,7 +2645,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
           
           if(next.type == TokenType_NUMBER){
             expr = SYM_Lit(next.number);
-          } else if(next.type == TokenType_IDENTIFIER){
+          } else if(next.type == TokenType_CONTENT){
             expr = SYM_Var(next.identifier);
           }
 
@@ -2660,7 +2663,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
       }
       Array<ParamNameAndValue2> params = PushArray(out,list);
 
-      Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+      Token name = parser->ExpectNext(TokenType_CONTENT);
       parser->ExpectNext(';');
 
       TypeAndInstance* inst = declarationList->PushElem();
@@ -2771,7 +2774,7 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
 
     res |= ParseIdentifier(start,end);
 
-    if(res.token.type == TokenType_IDENTIFIER){
+    if(res.token.type == TokenType_CONTENT){
       String id = res.token.identifier;
       
       TokenType type = TokenType_INVALID;
@@ -2865,7 +2868,7 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
 static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
   TEMP_REGION(temp,out);
   
-  Token id = parser->ExpectNext(TokenType_IDENTIFIER);
+  Token id = parser->ExpectNext(TokenType_CONTENT);
   
   ConfigIdentifier* base = PushStruct<ConfigIdentifier>(out);
   base->type = ConfigIdentifierType_BASE;
@@ -2877,7 +2880,7 @@ static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
     ConfigIdentifier* parsed = nullptr;
 
     if(!parsed && parser->IfNextToken('.')){
-      Token access = parser->ExpectNext(TokenType_IDENTIFIER);
+      Token access = parser->ExpectNext(TokenType_CONTENT);
 
       // Function call syntax
       if(parser->IfNextToken('(')){
@@ -2959,7 +2962,7 @@ static ConfigStatement* ParseConfigStatements(Parser* parser,Arena* out){
     ConfigStatement* child = nullptr;
 
     if(isLoop){
-      loopVariable = parser->ExpectNext(TokenType_IDENTIFIER);
+      loopVariable = parser->ExpectNext(TokenType_CONTENT);
       
       start = ParseMathExpression(parser,out);
       parser->ExpectNext(TokenType_DOUBLE_DOT);
@@ -2977,7 +2980,7 @@ static ConfigStatement* ParseConfigStatements(Parser* parser,Arena* out){
     }
     
     if(!isLoop){
-      if(parser->IfPeekToken(TokenType_IDENTIFIER)){
+      if(parser->IfPeekToken(TokenType_CONTENT)){
         lhs = ParseConfigIdentifier(parser,out);
 
         if(parser->IfNextToken('=')){
@@ -3019,7 +3022,7 @@ static ConfigStatement* ParseConfigStatements(Parser* parser,Arena* out){
 static ConfigVarDeclaration ParseConfigVarDeclaration(Parser* parser,Arena* out){
   ConfigVarDeclaration res = {};
 
-  res.name = parser->ExpectNext(TokenType_IDENTIFIER);
+  res.name = parser->ExpectNext(TokenType_CONTENT);
 
   if(parser->IfNextToken('[')){
     MathExpression* arraySize = ParseMathExpression(parser,out);
@@ -3084,7 +3087,7 @@ ConfigFunctionDef* ParseConfigFunction(Parser* parser,Arena* out){
   bool debug = parser->IfNextToken(TokenType_KEYWORD_DEBUG);
   bool sim = parser->IfNextToken(TokenType_KEYWORD_SIM);
     
-  Token configName = parser->ExpectNext(TokenType_IDENTIFIER);
+  Token configName = parser->ExpectNext(TokenType_CONTENT);
 
   Array<ConfigVarDeclaration> functionVars = {};
   if(type == UserConfigType_MEM || type == UserConfigType_CONFIG){
@@ -3386,7 +3389,7 @@ Entity MakeEntity(FUInstance* inst){
 
   // TODO-2
   res.name = {};
-  res.name.type = TokenType_IDENTIFIER;
+  res.name.type = TokenType_CONTENT;
   res.name.identifier = inst->name;
   res.name.originalData = inst->name;
 
@@ -3521,8 +3524,8 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
   } else if(peek.type == TokenType_NUMBER){
     Token number = parser->ExpectNext(TokenType_NUMBER);
     atom = SP_PushNode(out,SP_Type_LITERAL,number,0);
-  } else if(peek.type == TokenType_IDENTIFIER){
-    Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+  } else if(peek.type == TokenType_CONTENT){
+    Token name = parser->ExpectNext(TokenType_CONTENT);
 
     SP_Node* var = SP_PushNode(out,SP_Type_VAR,name,0);
 
@@ -3530,7 +3533,7 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
     //
 
     while(parser->IfNextToken('.')){
-      Token access = parser->ExpectNext(TokenType_IDENTIFIER);
+      Token access = parser->ExpectNext(TokenType_CONTENT);
     
       var = SP_PushNode(out,SP_Type_HIER_ACCESS,access,var);
     }
@@ -3684,12 +3687,12 @@ SP_Node* SP_ParseRange(Parser* parser,Arena* out){
 }
 
 SP_Node* SP_ParseVar(Parser* parser,Arena* out){
-  Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+  Token name = parser->ExpectNext(TokenType_CONTENT);
 
   SP_Node* var = SP_PushNode(out,SP_Type_VAR,name,0);
 
   while(parser->IfNextToken('.')){
-    Token access = parser->ExpectNext(TokenType_IDENTIFIER);
+    Token access = parser->ExpectNext(TokenType_CONTENT);
     
     var = SP_PushNode(out,SP_Type_HIER_ACCESS,access,var);
   }
@@ -3725,7 +3728,7 @@ SP_Node* SP_ParseVar(Parser* parser,Arena* out){
 }
 
 SP_Node* SP_ParseVarDeclaration(Parser* parser,Arena* out){
-  Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+  Token name = parser->ExpectNext(TokenType_CONTENT);
 
   SP_Node* var = SP_PushNode(out,SP_Type_VAR_DECL,name,0);
   
@@ -3798,7 +3801,7 @@ SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
           break;
         }
 
-        Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+        Token name = parser->ExpectNext(TokenType_CONTENT);
         SP_Node* node = SP_PushNode(out,SP_Type_VAR,name,0);
         SP_Append(shareHead,shareTail,node);
 
@@ -3822,7 +3825,7 @@ SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
     break;
   }
 
-  Token typeName = parser->ExpectNext(TokenType_IDENTIFIER);
+  Token typeName = parser->ExpectNext(TokenType_CONTENT);
 
   if(parser->IfNextToken('#')){
     parser->ExpectNext('(');
@@ -3832,7 +3835,7 @@ SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
       }
 
       parser->ExpectNext('.');
-      Token parameterName = parser->ExpectNext(TokenType_IDENTIFIER);
+      Token parameterName = parser->ExpectNext(TokenType_CONTENT);
       parser->ExpectNext('(');
       SP_Node* expr = SP_ParseExpression(parser,out);
       parser->ExpectNext(')');
@@ -3906,7 +3909,7 @@ SP_Node* SP_ParseConnection(Parser* parser,Arena* out){
   SP_Node* res = 0;
 
   if(parser->IfNextToken(TokenType_KEYWORD_FOR)){
-    Token loopVar = parser->ExpectNext(TokenType_IDENTIFIER);
+    Token loopVar = parser->ExpectNext(TokenType_CONTENT);
 
     SP_Node* range = SP_ParseRange(parser,out);
 
@@ -3978,7 +3981,7 @@ SP_Node* SP_ParseConfigStatements(Parser* parser,Arena* out){
     }
 
     if(isLoop){
-      Token loopVariable = parser->ExpectNext(TokenType_IDENTIFIER);
+      Token loopVariable = parser->ExpectNext(TokenType_CONTENT);
 
       // TODO: Not being set, need to figure out how to proceed for this case
       SP_Node* range = SP_ParseRange(parser,out);
@@ -4053,7 +4056,7 @@ SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out){
     break;
   }
 
-  Token funcName = parser->ExpectNext(TokenType_IDENTIFIER);
+  Token funcName = parser->ExpectNext(TokenType_CONTENT);
 
   // Parse function inputs ======================================================
   if(type == SP_Type_FUNC_MEM || type == SP_Type_FUNC_CONFIG){
@@ -4064,7 +4067,7 @@ SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out){
         break;
       }
 
-      Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+      Token name = parser->ExpectNext(TokenType_CONTENT);
 
       SP_Node* arraySize = 0;
       if(parser->IfNextToken('[')){
@@ -4074,7 +4077,7 @@ SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out){
 
       SP_Type type = SP_Type_FUNC_TYPE_NONE;
       if(parser->IfNextToken(':')){
-        Token typeName = parser->ExpectNext(TokenType_IDENTIFIER);
+        Token typeName = parser->ExpectNext(TokenType_CONTENT);
         
         if(typeName.identifier == "Buffer"){
           type = SP_Type_FUNC_TYPE_BUFFER;
@@ -4111,7 +4114,7 @@ SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out){
 SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
   parser->ExpectNext(TokenType_KEYWORD_MODULE);
 
-  Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+  Token name = parser->ExpectNext(TokenType_CONTENT);
 
   SP_Node* head = 0;
   SP_Node* tail = 0;
@@ -4124,7 +4127,7 @@ SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
         break;
       }
 
-      Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+      Token name = parser->ExpectNext(TokenType_CONTENT);
 
       SP_Node* defaultVal = nullptr;
       if(parser->IfNextToken('=')){

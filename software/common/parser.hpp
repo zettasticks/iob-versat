@@ -26,7 +26,7 @@ enum TokenType : u16{
   // } End characters
 
   // Normal types commonly used
-  TokenType_IDENTIFIER = 128,
+  TokenType_CONTENT = 128,
   TokenType_NUMBER,
   TokenType_FILEPATH,
   
@@ -127,7 +127,6 @@ enum TokenType : u16{
 #define TOK_TYPE(IN) ((TokenType) IN)
 
 struct TokenLocation{
-  //FileContent content;
   int bytePos;
   int line;
   int column;

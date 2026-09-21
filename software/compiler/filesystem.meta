@@ -1,0 +1,8 @@
+file defaultVerilogUnits {
+  $ ./hardware/src/units $
+}
+
+file defaultVerilogFiles { 
+  $ ./hardware/src/units $
+  $ ./hardware/src $
+}

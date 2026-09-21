@@ -33,6 +33,7 @@ Token ConsumeToken(Tokenizer* tok){
 
   char ch = 0;
   char ch2 = 0;
+  int sizeOffset = 0;
 
   if(tok->ptr < tok->end){
     ch = tok->ptr[0];
@@ -112,6 +113,8 @@ Token ConsumeToken(Tokenizer* tok){
   }
 
   // Strings ====================================================================
+
+  // NOTE: ' and " are passed directly. 
   if(!Found() && ch == '\''){
     tok->ptr += 1;
 
@@ -120,7 +123,7 @@ Token ConsumeToken(Tokenizer* tok){
     }
     tok->ptr += 1;
 
-    type = TokenType_IDENTIFIER;
+    type = TokenType_CONTENT;
   }
   if(!Found() && ch == '"'){
     tok->ptr += 1;
@@ -130,13 +133,37 @@ Token ConsumeToken(Tokenizer* tok){
     }
     tok->ptr += 1;
 
-    type = TokenType_IDENTIFIER;
+    type = TokenType_CONTENT;
   }
 
+  // NOTE: A $ string acts like a proper string type and the $ are removed from consideration by the rest of the code.
+  //       $ ABC $ is treated as ABC by the rest of the code, with the $ removed.
+  //       Multiple $ can be used to change the start and end terminators. A $$ start only matches a $$ end.
+  // NOTE: If needed add '$$$' and so on, altough two levels should be enough for anyone.
   if(!Found() && ch == '$' && ch2 == '$'){
     tok->ptr += 2;
+    savedPtr = tok->ptr;
 
-    type = TokenType_GROUP_DELIM;
+    while(tok->ptr + 1 < tok->end && *tok->ptr != '$' && *(tok->ptr + 1) != '$'){
+      tok->ptr += 1;
+    }
+    tok->ptr += 2;
+
+    sizeOffset = -2;
+    type = TokenType_CONTENT;
+  }
+
+  if(!Found() && ch == '$'){
+    tok->ptr += 1;
+    savedPtr = tok->ptr;
+
+    while(tok->ptr < tok->end && *tok->ptr != '$'){
+      tok->ptr += 1;
+    }
+    tok->ptr += 1;
+
+    sizeOffset = -1;
+    type = TokenType_CONTENT;
   }
 
   if(!Found() && ch == '-' && ch2 == '>'){
@@ -145,15 +172,15 @@ Token ConsumeToken(Tokenizer* tok){
     type = TokenType_ARROW;
   }
 
-  if(!Found() && ch == '$'){
-    tok->ptr += 1;
+  if(!Found() && ch == '=' && ch2 == '='){
+    tok->ptr += 2;
 
-    while(tok->ptr < tok->end && *tok->ptr != '$'){
-      tok->ptr += 1;
-    }
-    tok->ptr += 1;
+    type = TokenType_EQ;
+  }
+  if(!Found() && ch == '!' && ch2 == '='){
+    tok->ptr += 2;
 
-    type = TokenType_STRING;
+    type = TokenType_NEQ;
   }
 
   // Single chars symbols =======================================================
@@ -199,11 +226,12 @@ Token ConsumeToken(Tokenizer* tok){
     TOK_ID("func",FUNC);
     TOK_ID("for",FOR);
     TOK_ID("struct",STRUCT);
+    TOK_ID("file",FILE);
 
 #undef TOK_ID
 
     if(!Found()){
-      type = TokenType_IDENTIFIER;
+      type = TokenType_CONTENT;
     }
   }
 
@@ -211,6 +239,7 @@ Token ConsumeToken(Tokenizer* tok){
   res.type = type;
   res.id.data = savedPtr;
   res.id.size = (tok->ptr - savedPtr);
+  res.id.size += sizeOffset;
   
   return res;
 }
@@ -255,9 +284,6 @@ Token ConsumeTokenInternal(Tokenizer* tok){
   // Symbols ====================================================================
 
   auto IsSymbol = [](char ch, char ch2) -> i32{
-    if(ch == '$' && ch2 == '$'){
-      return 2;
-    }
     if(ch == '('){
       return 1;
     }
@@ -279,9 +305,6 @@ Token ConsumeTokenInternal(Tokenizer* tok){
     tok->ptr += symbolOffset;
 
     type = TOK_TYPE(ch);
-    if(symbolOffset >= 2){
-      type = TokenType_GROUP_DELIM;
-    }
   }
 
   if(!Found()){
@@ -303,7 +326,7 @@ Token ConsumeTokenInternal(Tokenizer* tok){
     
     int identifierSize = (tok->ptr - savedPtr);
     String id = String(savedPtr,identifierSize);
-    type = TokenType_IDENTIFIER;
+    type = TokenType_CONTENT;
   }
 
   Token res = {};
@@ -420,22 +443,6 @@ Node* ParseModifier(Tokenizer* tok,Arena* out){
 
 Node* ParseValue(Tokenizer* tok,Arena* out){
   Node* res = 0;
-  
-  if(!res && IfNextToken(tok,TokenType_GROUP_DELIM)){
-    Token value = {};
-
-    while(!Done(tok)){
-      if(IfPeekToken(tok,TokenType_GROUP_DELIM)){
-        break;
-      }
-
-      Token token = NextToken(tok);
-      value = Combine(value,token);
-    }
-
-    AssertToken(tok,TokenType_GROUP_DELIM);
-    res = MakeNode(out,NodeType_VALUE,value);
-  }  
 
   if(!res && IfNextToken(tok,TOK_TYPE('@'))){
     AssertToken(tok,TOK_TYPE('('));
@@ -473,8 +480,8 @@ Node* ParseLine(Tokenizer* tok,Arena* out){
     AssertToken(tok,TOK_TYPE('('));
           
     AssertToken(tok,TokenType_KEYWORD_FOR);
-    Token iter = AssertToken(tok,TokenType_IDENTIFIER);
-    Token iterating = AssertToken(tok,TokenType_IDENTIFIER);
+    Token iter = AssertToken(tok,TokenType_CONTENT);
+    Token iterating = AssertToken(tok,TokenType_CONTENT);
     AssertToken(tok,TOK_TYPE(')'));
 
     Node* iterName = PushStruct<Node>(out);
@@ -518,7 +525,7 @@ Node* ParseLine(Tokenizer* tok,Arena* out){
 }
 
 Token ParseMetaTypeExpression(Tokenizer* tok){
-  Token res = AssertToken(tok,TokenType_IDENTIFIER);
+  Token res = AssertToken(tok,TokenType_CONTENT);
 
   if(IfNextToken(tok,TOK_TYPE('['))){
     Token arraySize = NextToken(tok);
@@ -540,7 +547,7 @@ Node* Parse(Tokenizer* tok,Arena* out){
       Node* tableHead = nullptr;
       Node* tablePtr = nullptr;
       
-      Token name = AssertToken(tok,TokenType_IDENTIFIER);
+      Token name = AssertToken(tok,TokenType_CONTENT);
       AssertToken(tok,TOK_TYPE('('));
 
       Node* paramHead = nullptr;
@@ -550,7 +557,7 @@ Node* Parse(Tokenizer* tok,Arena* out){
           break;
         }
 
-        Token id = AssertToken(tok,TokenType_IDENTIFIER);
+        Token id = AssertToken(tok,TokenType_CONTENT);
         Token typeExpression = {};
 
         if(IfNextToken(tok,TOK_TYPE(':'))){
@@ -618,7 +625,7 @@ Node* Parse(Tokenizer* tok,Arena* out){
     }
 
     if(!node && IfNextToken(tok,TokenType_KEYWORD_ENUM)){
-      Token name = AssertToken(tok,TokenType_IDENTIFIER);
+      Token name = AssertToken(tok,TokenType_CONTENT);
       
       AssertToken(tok,TOK_TYPE('{'));
 
@@ -639,15 +646,15 @@ Node* Parse(Tokenizer* tok,Arena* out){
     }
 
     if(!node && IfNextToken(tok,TokenType_KEYWORD_FUNC)){
-      Token type = AssertToken(tok,TokenType_IDENTIFIER);
-      Token name = AssertToken(tok,TokenType_IDENTIFIER);
+      Token type = AssertToken(tok,TokenType_CONTENT);
+      Token name = AssertToken(tok,TokenType_CONTENT);
       AssertToken(tok,TOK_TYPE('('));
 
       Node* paramHead = nullptr;
       Node* paramPtr = nullptr;
       while(!Done(tok)){
-        Token type = AssertToken(tok,TokenType_IDENTIFIER);
-        Token id = AssertToken(tok,TokenType_IDENTIFIER);
+        Token type = AssertToken(tok,TokenType_CONTENT);
+        Token id = AssertToken(tok,TokenType_CONTENT);
         
         Node* paramType = PushStruct<Node>(out);
         paramType->token = type;
@@ -712,8 +719,8 @@ Node* Parse(Tokenizer* tok,Arena* out){
     }
 
     if(!node && IfNextToken(tok,TokenType_KEYWORD_ARRAY)){
-      Token type = AssertToken(tok,TokenType_IDENTIFIER);
-      Token arrayName = AssertToken(tok,TokenType_IDENTIFIER);
+      Token type = AssertToken(tok,TokenType_CONTENT);
+      Token arrayName = AssertToken(tok,TokenType_CONTENT);
       AssertToken(tok,TOK_TYPE('{'));
 
       Node* typeNode = MakeNode(out,NodeType_DECL_TYPE,type);
@@ -746,7 +753,7 @@ Node* Parse(Tokenizer* tok,Arena* out){
             break;
           }
 
-          Token modifier = AssertToken(tok,TokenType_IDENTIFIER);
+          Token modifier = AssertToken(tok,TokenType_CONTENT);
           b32 found = 0;
 
           if(modifier.id == "shallow"){
@@ -767,12 +774,12 @@ Node* Parse(Tokenizer* tok,Arena* out){
         AssertToken(tok,TOK_TYPE(')'));
       }
       
-      Token name = AssertToken(tok,TokenType_IDENTIFIER);
+      Token name = AssertToken(tok,TokenType_CONTENT);
       
       AssertToken(tok,TOK_TYPE('('));
-      Token src = AssertToken(tok,TokenType_IDENTIFIER);
+      Token src = AssertToken(tok,TokenType_CONTENT);
       AssertToken(tok,TOK_TYPE(','));
-      Token dst = AssertToken(tok,TokenType_IDENTIFIER);
+      Token dst = AssertToken(tok,TokenType_CONTENT);
       AssertToken(tok,TOK_TYPE(')'));
 
       AssertToken(tok,TOK_TYPE('{'));
@@ -800,6 +807,28 @@ Node* Parse(Tokenizer* tok,Arena* out){
       mapTypes->next = head;
       
       node = MakeNode(out,NodeType_MAP,name,mapTypes,flags);
+    }
+    
+    // MARK
+    if(!node && IfNextToken(tok,TokenType_KEYWORD_FILE)){
+      Token name = AssertToken(tok,TokenType_CONTENT);
+      
+      AssertToken(tok,TOK_TYPE('{'));
+
+      Node* head = 0;
+      Node* ptr = 0;
+      while(!Done(tok)){
+        if(IfPeekToken(tok,TOK_TYPE('}'))){
+          break;
+        }
+
+        Node* node = ParseValue(tok,out);
+        LL_Append(head,ptr,next,node);
+      }
+
+      AssertToken(tok,TOK_TYPE('}'));
+
+      node = MakeNode(out,NodeType_FILE,name,head);
     }
 
 #if 0
@@ -864,18 +893,18 @@ Token ParseCType(Tokenizer* tok){
     b32 baseType = 0;
     b32 extra = 0;
 
-    modifier |= (peek.type == TokenType_IDENTIFIER && peek.id == "const");
-    modifier |= (peek.type == TokenType_IDENTIFIER && peek.id == "static");
+    modifier |= (peek.type == TokenType_CONTENT && peek.id == "const");
+    modifier |= (peek.type == TokenType_CONTENT && peek.id == "static");
 
-    integerModifier |= (peek.type == TokenType_IDENTIFIER && peek.id == "long");
-    integerModifier |= (peek.type == TokenType_IDENTIFIER && peek.id == "short");
-    integerModifier |= (peek.type == TokenType_IDENTIFIER && peek.id == "unsigned");
-    integerModifier |= (peek.type == TokenType_IDENTIFIER && peek.id == "signed");
+    integerModifier |= (peek.type == TokenType_CONTENT && peek.id == "long");
+    integerModifier |= (peek.type == TokenType_CONTENT && peek.id == "short");
+    integerModifier |= (peek.type == TokenType_CONTENT && peek.id == "unsigned");
+    integerModifier |= (peek.type == TokenType_CONTENT && peek.id == "signed");
 
-    baseType |= (peek.type == TokenType_IDENTIFIER && peek.id == "char");
-    baseType |= (peek.type == TokenType_IDENTIFIER && peek.id == "int");
-    baseType |= (peek.type == TokenType_IDENTIFIER && peek.id == "float");
-    baseType |= (peek.type == TokenType_IDENTIFIER && peek.id == "double");
+    baseType |= (peek.type == TokenType_CONTENT && peek.id == "char");
+    baseType |= (peek.type == TokenType_CONTENT && peek.id == "int");
+    baseType |= (peek.type == TokenType_CONTENT && peek.id == "float");
+    baseType |= (peek.type == TokenType_CONTENT && peek.id == "double");
 
     b32 templateEnter = (peek.type == TOK_TYPE('<'));
     b32 templateExit = (peek.type == TOK_TYPE('>'));
@@ -918,7 +947,7 @@ Token ParseCType(Tokenizer* tok){
     }
 
     if(!keepGoing){
-      if(!seenBaseType && !seenIntegerModifier && !seenType && peek.type == TokenType_IDENTIFIER){
+      if(!seenBaseType && !seenIntegerModifier && !seenType && peek.type == TokenType_CONTENT){
         keepGoing = 1;
         seenType = 1;
       }
@@ -1111,6 +1140,133 @@ bool IsNil(MetaType* type){
 Array<String> GetValue(Node* node,Arena* out){
   TEMP_REGION(temp,out);
 
+  struct TempEnv{
+    TempEnv* parent;
+    String name;
+    Table* table;
+    Array<String> values;
+  };
+
+  auto HandleModifier = [temp,out](auto HandleModifier,Node* node,TempEnv* env) -> Array<String> {
+    if(node->type == NodeType_VALUE){
+      String content = node->token.id;
+
+      TokenOptions opts = {.allowWhitespace = 1};
+      
+      Tokenizer tokInst = {};
+      Tokenizer* tok = &tokInst;
+      tok->func = ConsumeTokenInternal;
+      tok->start = content.data;
+      tok->end = content.data + content.size;
+      tok->ptr = tok->start;
+
+      auto b = StartString(temp);
+
+      while(!Done(tok,opts)){
+        Token token = NextToken(tok,opts);
+        
+        if(token.type == TOK_TYPE('@')){
+          AssertToken(tok,TOK_TYPE('('));
+
+          Token id = NextToken(tok);
+
+          AssertToken(tok,TOK_TYPE('.'));
+
+          Token paramName = NextToken(tok);
+          
+          TempEnv* value = nullptr;
+          for(TempEnv* ptr = env; ptr; ptr = ptr->parent){
+            if(ptr->name == id.id){
+              value = ptr;
+              break;
+            }
+          }
+          Assert(value);
+
+          i32 index = GetTableParamIndex(value->table,paramName.id);
+          if(index < 0){
+            printf("Bad param name: %.*s\n",UN(paramName.id));
+            Assert(false);
+          }
+          b->PushString(value->values[index]);
+
+          AssertToken(tok,TOK_TYPE(')'));
+        } else {
+          b->PushString(token.id);
+        }
+        
+      }
+
+      Array<String> res = PushArray<String>(temp,1);
+      res[0] = EndString(out,b);
+      return res;
+    }
+
+    Node* modifierList = node->childs;
+    Node* firstModifier = modifierList->childs;
+
+    Node* insideContent = node->childs->next;
+
+    Node* modifierType = modifierList->childs;
+
+    b32 found = 0;
+    if(!found && modifierType->token.id == "for"){
+      Node* iter = firstModifier->next;
+      Node* iterating = iter->next;
+      Table* t = GetTable(iterating->token.id);
+      
+      TempEnv envNode = {};
+      envNode.name = iter->token.id;
+      envNode.parent = env;
+      envNode.table = t;
+
+      auto stringAccum = PushList<String>(temp);
+      for(Array<String> values : t->values){
+        envNode.values = values;
+
+        Array<String> results = HandleModifier(HandleModifier,insideContent,&envNode);
+        for(String str : results){
+          *stringAccum->PushElem() = str;
+        }
+      }
+
+      return PushArray<String>(temp,stringAccum);
+    }
+    if(!found && modifierType->token.id == "if"){
+      Node* id = firstModifier->next;
+      Node* paramName = firstModifier->next->next->next;
+      Node* compareValue = firstModifier->next->next->next->next->next;
+
+      TempEnv* value = nullptr;
+      for(TempEnv* ptr = env; ptr; ptr = ptr->parent){
+        if(ptr->name == id->token.id){
+          value = ptr;
+          break;
+        }
+      }
+      Assert(value);
+      
+      i32 index = GetTableParamIndex(value->table,paramName->token.id);
+      if(index < 0){
+        printf("Bad param name: %.*s\n",UN(paramName->token.id));
+        Assert(false);
+      }
+      String val = value->values[index];
+      
+      String toCompare = compareValue->token.id;
+
+      if(TrimWhitespaces(val) == TrimWhitespaces(toCompare)){
+        return HandleModifier(HandleModifier,insideContent,env);
+      } else {
+        return {};
+      }
+
+      // MARK
+      
+      DEBUG_BREAK();
+    }
+  };
+
   Array<String> res = {};
   if(node->type == NodeType_VALUE){
     res.data = &node->token.id;
@@ -1118,64 +1274,11 @@ Array<String> GetValue(Node* node,Arena* out){
   }
 
   if(node->type == NodeType_MODIFIER){
-    Node* modifierList = node->childs;
-    Node* insideContent = node->childs->next;
-    String content = insideContent->token.id;
+    Array<String> result = HandleModifier(HandleModifier,node,nullptr);
 
-    TokenOptions opts = {.allowWhitespace = 1};
-
-    Node* firstModifier = modifierList->childs;
-    
-    b32 found = 0;
-    if(!found && firstModifier->token.id == "for"){
-      Node* iter = firstModifier->next;
-      Node* iterating = iter->next;
-
-      Table* t = GetTable(iterating->token.id);
-
-      List<String>* allStrings = PushList<String>(temp);
-
-      for(Array<String> values : t->values){
-        // TODO: (perf) : Stupid parsing this all the time, its always the same content.
-        Tokenizer tokInst = {};
-        Tokenizer* tok = &tokInst;
-        tok->func = ConsumeTokenInternal;
-        tok->start = content.data;
-        tok->end = content.data + content.size;
-        tok->ptr = tok->start;
-
-        auto b = StartString(out);
-
-        while(!Done(tok,opts)){
-          Token token = NextToken(tok,opts);
-        
-          if(token.type == TOK_TYPE('@')){
-            AssertToken(tok,TOK_TYPE('('));
-
-            Token id = NextToken(tok);
-
-            AssertToken(tok,TOK_TYPE('.'));
-
-            Token paramName = NextToken(tok);
-            i32 index = GetTableParamIndex(t,paramName.id);
-            if(index < 0){
-              printf("Bad param name: %.*s\n",UN(paramName.id));
-              Assert(false);
-            }
-            b->PushString(values[index]);
-
-            AssertToken(tok,TOK_TYPE(')'));
-          } else {
-            b->PushString(token.id);
-          }
-        }
-
-        String res = EndString(out,b);
-        *allStrings->PushElem() = res;
-      }
-
-      found = 1;
-      res = PushArray(out,allStrings);
+    res = PushArray<String>(out,result.size);
+    for(int i = 0; i <  result.size; i++){
+      res[i] = PushString(out,result[i]);
     }
   }
 
@@ -1183,6 +1286,9 @@ Array<String> GetValue(Node* node,Arena* out){
 }
 
 int main(int argc,const char* argv[]){
+  bool processHeaders = 0;
+  bool skipIfOlder = 0;
+
   Arena* arena0 = InitArena(Megabyte(128));
   Arena* arena1 = InitArena(Megabyte(128));
 
@@ -1237,12 +1343,13 @@ int main(int argc,const char* argv[]){
 
     String headerFilePath = PushString(temp,"%.*s.hpp",UN(fileNameWithoutDot));
     String metaFilePath = PushString(temp,"%.*s.meta",UN(fileNameWithoutDot));
+    String fullMetaPath = PushString(temp,"%s/%.*s",argv[1],UN(metaFilePath));
 
     // Load header and meta file if exists ========================================
     String headerFileContent = {};
-    {
+    if(processHeaders){
       String fullPath = PushString(temp,"%s/%.*s",argv[1],UN(headerFilePath));
-      FILE* headerFile = fopen(SF("%.*s",UN(fullPath)),"r");
+      FILE* headerFile = fopen(CS(fullPath),"r");
 
       if(headerFile){
         headerFileContent = PushFile(temp,headerFile);
@@ -1252,8 +1359,7 @@ int main(int argc,const char* argv[]){
 
     String metaFileContent = {};
     {
-      String fullPath = PushString(temp,"%s/%.*s",argv[1],UN(metaFilePath));
-      FILE* metaFile = fopen(SF("%.*s",UN(fullPath)),"r");
+      FILE* metaFile = fopen(CS(fullMetaPath),"r");
 
       if(metaFile){
         metaFileContent = PushFile(temp,metaFile);
@@ -1261,12 +1367,24 @@ int main(int argc,const char* argv[]){
       }
     }
 
-    //printf("Gonna process: %.*s\n",UN(fileNameWithoutDot));
+    String metaHeaderPath = PushString(temp,"%s/%.*s_meta.hpp",argv[1],UN(fileNameWithoutDot));
+    String metaSourcePath = PushString(temp,"%s/%.*s_meta.cpp",argv[1],UN(fileNameWithoutDot));
 
-    String outputPath = PushString(temp,"%s/%.*s_meta.hpp",argv[1],UN(fileNameWithoutDot));
+    // Check if the output is outdated ============================================
+    bool metaIsNewer = true;
+
+    if(skipIfOlder){
+      u128 outputChange = OS_FileLastChange(metaHeaderPath);
+      u128 inputChange = OS_FileLastChange(fullMetaPath);
+      metaIsNewer = inputChange > outputChange;
+
+      if(metaIsNewer){
+        printf("Meta file is newer than meta header\n");
+      }
+    }
 
     // Header file meta stuff =====================================================
-    {
+    if(processHeaders){
       Tokenizer tokInst = {};
       Tokenizer* tok = &tokInst;
       
@@ -1309,7 +1427,7 @@ int main(int argc,const char* argv[]){
         if(parseStruct){
           NextToken(tok);
 
-          Token structName = AssertToken(tok,TokenType_IDENTIFIER);
+          Token structName = AssertToken(tok,TokenType_CONTENT);
 
           AssertToken(tok,TOK_TYPE('{'));
           
@@ -1321,7 +1439,7 @@ int main(int argc,const char* argv[]){
 
             Token type = ParseCType(tok);
 
-            Token name = AssertToken(tok,TokenType_IDENTIFIER);
+            Token name = AssertToken(tok,TokenType_CONTENT);
 
             // NOTE: Will I ever have two array dims? 
             auto list = PushList<Token>(temp);
@@ -1516,33 +1634,35 @@ int main(int argc,const char* argv[]){
       }
     }
     
-    if(metaTop && Meta_State.tableHead){
-      FILE* f = fopen(SF("%.*s",UN(outputPath)),"w");
-
+    if(metaIsNewer && metaTop){
       Arena* out = temp;
 
+      auto h = StartString(temp);
+      auto c = StartString(temp);
+
+      h->PushString("#include \"utils.hpp\"\n\n");
+      c->PushString("#include \"%.*s_meta.hpp\"\n\n",UN(fileNameWithoutDot));
+      
       // Process enums ==============================================================
       for(Node* ptr = metaTop; ptr; ptr = ptr->next){
         if(ptr->type != NodeType_ENUM){
           continue;
         }
 
-        fprintf(f,"enum %.*s {\n",UN(ptr->token.id));
-      
-        // MARK
+        h->PushString("enum %.*s {\n",UN(ptr->token.id));
 
-        auto b = StartString(temp);
         for(Node* line = ptr->childs; line; line = line->next){
           Array<String> contents = GetValue(line,temp);
           
           for(String str : contents){
-            b->PushString("  ");
-            b->PushString(str);
-            b->PushString(",\n");
+            String fixed = TrimWhitespaces(str);
+            
+            h->PushString("  ");
+            h->PushString(fixed);
+            h->PushString(",\n");
           }
         }
-        String enumContent = EndString(out,b);
-        fprintf(f,"%.*s};\n",UN(enumContent));
+        h->PushString("};\n");
       }
 
       for(Node* ptr = metaTop; ptr; ptr = ptr->next){
@@ -1567,18 +1687,25 @@ int main(int argc,const char* argv[]){
         Array<String> allStringsArray = PushArray(out,allStrings);
 
         auto b = StartString(temp);
-        b->PushString("{");
-        for(String str : allStringsArray){
-          if(b->LastCharOrElse(0) != '{'){
-            b->PushString(",");
+        b->PushString("{\n");
+        for(int i = 0; i <  allStringsArray.size; i++){
+          String str  =  allStringsArray[i];
+          String fixed = TrimWhitespaces(str);
+
+          if(i != 0){
+            b->PushString(",\n");
           }
-          b->PushString(str);
+          b->PushString("  ");
+          b->PushString(fixed);
         }
-        b->PushString("}");
+        b->PushString("\n}");
 
         String allValues = EndString(out,b);
 
-        fprintf(f,"%.*s %.*s[] = %.*s;\n",UN(type->token.id),UN(arrayName),UN(allValues));
+        h->PushString("extern Array<%.*s> %.*s;\n",UN(type->token.id),UN(arrayName));
+
+        c->PushString("%.*s %.*s_c_temp[] = %.*s;\n",UN(type->token.id),UN(arrayName),UN(allValues));
+        c->PushString("Array<%.*s> %.*s = {%.*s_c_temp,%d};\n",UN(type->token.id),UN(arrayName),UN(arrayName),allStringsArray.size);
       }
 
       // Process maps ===============================================================
@@ -1595,12 +1722,14 @@ int main(int argc,const char* argv[]){
         Node* mapDst = mapSrc->next;
         Node* contentStart = mapTypes->next;
 
-        fprintf(f,"static %.*s %.*s(%.*s in){\n",UN(mapDst->token.id),UN(ptr->token.id),UN(mapSrc->token.id));
-        fprintf(f,"  %.*s res = {};\n",UN(mapDst->token.id));
-        fprintf(f,"  bool didIt = 0;\n");
+        h->PushString("%.*s %.*s(%.*s in);\n",UN(mapDst->token.id),UN(ptr->token.id),UN(mapSrc->token.id));
+
+        c->PushString("%.*s %.*s(%.*s in){\n",UN(mapDst->token.id),UN(ptr->token.id),UN(mapSrc->token.id));
+        c->PushString("  %.*s res = {};\n",UN(mapDst->token.id));
+        c->PushString("  bool didIt = 0;\n");
 
         if(!useIf){
-          fprintf(f,"  switch(in){\n");
+          c->PushString("  switch(in){\n");
         }
 
         String defaultExpression = {};
@@ -1610,8 +1739,9 @@ int main(int argc,const char* argv[]){
           for(String str : values){
             const char* start = str.data;
             const char* ptr = str.data;
-          
-            while(1){
+            const char* end = str.data + str.size;
+
+            while(ptr < end){
               if(*ptr == '-' && *(ptr + 1) == '>'){
                 break;
               }
@@ -1632,9 +1762,9 @@ int main(int argc,const char* argv[]){
             }
 
             if(useIf){
-              fprintf(f,"  if(in == %.*s){res = %.*s; didIt = 1;}\n",UN(firstPart),UN(secondPart));
+              c->PushString("  if(in == %.*s){res = %.*s; didIt = 1;}\n",UN(firstPart),UN(secondPart));
             } else {
-              fprintf(f,"  case %.*s: res = %.*s; didIt = 1; break;\n",UN(firstPart),UN(secondPart));
+              c->PushString("  case %.*s: res = %.*s; didIt = 1; break;\n",UN(firstPart),UN(secondPart));
             }
           }
         }
@@ -1643,24 +1773,101 @@ int main(int argc,const char* argv[]){
           if(useIf){
             NOT_IMPLEMENTED(); // TODO: Need 2 passes to properly implement this.
           } else {
-            fprintf(f,"  default: res = %.*s; didIt = 1; break;\n",UN(defaultExpression));
+            c->PushString("  default: res = %.*s; didIt = 1; break;\n",UN(defaultExpression));
           }
         }
 
         if(!useIf){
-          fprintf(f,"  }\n");
+          c->PushString("  }\n");
         }
 
         if(!shallow){
-          fprintf(f,"  Assert(didIt);\n");
+          c->PushString("  Assert(didIt);\n");
         }
         
-        fprintf(f,"  return res;\n");
-        fprintf(f,"}\n");
+        c->PushString("  return res;\n");
+        c->PushString("}\n");
+      }
+
+      // Process files ==============================================================
+      // MARK
+      for(Node* ptr = metaTop; ptr; ptr = ptr->next){
+        if(ptr->type != NodeType_FILE){
+          continue;
+        }
+
+        String name = ptr->token.id;
+        Array<String> values = GetValue(ptr->childs,temp);
+
+        bool isSingleFile = 0;
+        String singleFilepath = {};
+        auto files = PushList<FileGroupInfo>(temp);
+
+        for(String pathWithSpaces : values){
+          String path = TrimWhitespaces(pathWithSpaces);
+          
+          FileType type = OS_GetFileTypeFromPath(path);
+          Assert(type != FileType_NIL && "Not a folder or a file, not currently handling wathever the problem is");
+
+          if(type == FileType_FILE && values.size == 1){
+            isSingleFile = 1;
+            singleFilepath = path;
+          }
+
+          if(type == FileType_FOLDER){
+            Array<FileGroupInfo> res = OS_GetFolderContents(path,temp);
+
+            for(FileGroupInfo r : res){
+              *files->PushElem() = r;
+            }
+          }
+        }
+
+        if(isSingleFile){
+          String content = PushFile(temp,singleFilepath);
+          Assert(content.size >= 0);
+
+          h->PushString("extern String %.*s;\n",UN(name));
+          
+          c->PushString("String %.*s = \"",UN(name));
+          EscapeCString(c,content);
+          c->PushString("\";\n");
+        } else {
+          Array<FileGroupInfo> allFiles = PushArray(temp,files);
+
+          h->PushString("extern Array<FileContent> %.*s;\n",UN(name));
+
+          for(int i = 0; i <  allFiles.size; i++){
+            FileGroupInfo file = allFiles[i];
+
+            String fullpath = PushString(temp,"%.*s/%.*s",UN(file.originalRelativePath),UN(file.filename));
+
+            String content = PushFile(temp,fullpath);
+            Assert(content.size >= 0);
+
+            c->PushString("static String %.*s_TEMP_%d = \"",UN(name),i);
+            EscapeCString(c,content);
+            c->PushString("\";\n");
+          }
+          
+          c->PushString("static FileContent %.*s_temp_c_array[] = {\n",UN(name));
+          
+          for(int i = 0; i <  allFiles.size; i++){
+            FileGroupInfo file = allFiles[i];
+
+            if(i != 0){
+              c->PushString(",\n");
+            }
+            c->PushString("  {\"%.*s\",\"%.*s\",{},%.*s_TEMP_%d}",UN(file.filename),UN(file.originalRelativePath),UN(name),i);
+          }
+
+          c->PushString("\n};\n");
+
+          c->PushString("Array<FileContent> %.*s = {%.*s_temp_c_array,%d};\n",UN(name),UN(name),allFiles.size);
+        }
       }
 
       // Process functions ==========================================================
-#if 0
       for(Node* ptr = metaTop; ptr; ptr = ptr->next){
         if(ptr->type != NodeType_FUNC){
           continue;
@@ -1670,22 +1877,22 @@ int main(int argc,const char* argv[]){
         Node* parameters = ptr->childs->next;
         Node* content = ptr->childs->next->next;
       
-        fprintf(f,"%.*s %.*s(",UN(returnType->token.id),UN(ptr->token.id));
+        h->PushString("%.*s %.*s(",UN(returnType->token.id),UN(ptr->token.id));
 
         b32 first = true;
         for(Node* typedParam = parameters->childs; typedParam; typedParam = typedParam->next){
           if(!first){
-            fprintf(f,",");
+            h->PushString(",");
           }
           first = false;
 
           Node* type = typedParam->childs;
           Node* name = typedParam->childs->next;
 
-          fprintf(f,"%.*s %.*s",UN(type->token.id),UN(name->token.id));
+          h->PushString("%.*s %.*s",UN(type->token.id),UN(name->token.id));
         }
 
-        fprintf(f,"){");
+        h->PushString("){");
       
         for(Node* line = content->childs; line; line = line->next){
           if(line->type == NodeType_FOR_LOOP){
@@ -1715,35 +1922,52 @@ int main(int argc,const char* argv[]){
                   i32 index = GetTableParamIndex(table,name);
                   String value = tableLine[index];
 
-                  fprintf(f,"%.*s",UN(value));
+                  h->PushString("%.*s",UN(value));
 
                   ptr = closeParan;
                 } else {
-                  fprintf(f,"%c",*ptr);
+                  h->PushString("%c",*ptr);
                 }
 
                 ptr += 1;
               }
           
-              fprintf(f,"\n");
+              h->PushString("\n");
             }
           }
 
           if(line->type == NodeType_LINE){
-            fprintf(f,"%.*s\n",UN(line->token.id));
+            h->PushString("%.*s\n",UN(line->token.id));
           }
         }
-        fprintf(f,"}\n");
+        h->PushString("}\n");
       }
-#endif
+
+      String headerContent = EndString(temp,h);
+      String sourceContent = EndString(temp,c);
+
+      if(headerContent.size > 0){
+        FILE* f = fopen(SF("%.*s",UN(metaHeaderPath)),"w");
+        if(f){
+          fprintf(f,"%.*s",UN(headerContent));
+          fclose(f);
+        }
+      }
+
+      if(sourceContent.size > 0){
+        FILE* f = fopen(SF("%.*s",UN(metaSourcePath)),"w");
+        if(f){
+          fprintf(f,"%.*s",UN(sourceContent));
+          fclose(f);
+        }
+      }
 
       printf("Processed: %.*s\n",UN(fileNameWithoutDot));
     }
   }
 
-#if 1
   // Process header parsed data =================================================
-  {
+  if(processHeaders){
     Arena* out = persistOverLoops;
 
     // Fill struct types with member data =========================================
@@ -1791,7 +2015,6 @@ int main(int argc,const char* argv[]){
     GetType("ImVec2")->flags |= TypeFlags_IS_DEFINED;
     GetType("Vec2")->flags |= TypeFlags_IS_DEFINED;
 
-#if 0
     String outputPathHeader = PushString(temp,"%s/parsedHeader_meta.hpp",argv[1]);
     FILE* h = fopen(SF("%.*s",UN(outputPathHeader)),"w");
 
@@ -1883,13 +2106,10 @@ int main(int argc,const char* argv[]){
       fprintf(h,"  return data;\n");
       fprintf(h,"}\n");
     }
-#endif
   }
-#endif
+
         
   closedir(directory);
 
   return 0;
 }
-
-

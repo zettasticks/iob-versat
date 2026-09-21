@@ -156,6 +156,12 @@ struct InstanceDeclaration{
   int shareIndex;
 };
 
+enum ConstructType{
+  ConstructType_MODULE,
+  ConstructType_MERGE,
+  ConstructType_ITERATIVE
+};
+
 enum ConnectionType{
   ConnectionType_NONE,
   ConnectionType_LOOP,

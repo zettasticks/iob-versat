@@ -52,7 +52,7 @@ String PushRepr(Arena* out,TokenType type){
   if(type == TokenType_C_KEYWORD){
     res = "C Reserved Keyword";
   }
-  if(type == TokenType_IDENTIFIER){
+  if(type == TokenType_CONTENT){
     res = "Identifier";
   }
   if(type == TokenType_NUMBER){
@@ -123,7 +123,7 @@ String PushRepr(Arena* out,TokenType type){
 String PARSE_PushDebugRepr(Arena* out,Token token){
   String res = {};
 
-  if(token.type == TokenType_IDENTIFIER){
+  if(token.type == TokenType_CONTENT){
     res = PushString(out,"[Identifier] '%.*s'",UN(token.identifier));
   }
   if(token.type == TokenType_NUMBER){
@@ -435,7 +435,7 @@ bool Parser::IfPeekToken(char singleChar,int lookahead){
 Token Parser::ExpectNext(TokenType type){
   Token tok = NextToken();
 
-  if(type == TokenType_IDENTIFIER && (options & ParsingOptions_ERROR_ON_C_VERILOG_KEYWORDS)){
+  if(type == TokenType_CONTENT && (options & ParsingOptions_ERROR_ON_C_VERILOG_KEYWORDS)){
 #if 0
     if(tok.type == TokenType_C_KEYWORD && options & ParsingOptions_ERROR_ON_C_KEYWORDS){
       ReportError("Expected identifier but instead got a C reserved keyword.\n We cannot have C keywords since we will have to generate C code and the generated code will be malformed");
@@ -487,7 +487,7 @@ Token Parser::ExpectNext(char singleChar){
 Token Parser::ExpectIdentifier(String expectedContent){
   Token token = NextToken();
 
-  if(token.type == TokenType_IDENTIFIER){
+  if(token.type == TokenType_CONTENT){
     if(token.identifier != expectedContent){
       ReportError(SF("Expected %.*s, got instead",UN(expectedContent)));
     }
@@ -733,7 +733,7 @@ TokenizeResult ParseIdentifier(const char* start,const char* end){
   identifier.size = ptr - start;
 
   res.bytesParsed = ptr - start;
-  res.token.type = TokenType_IDENTIFIER;  
+  res.token.type = TokenType_CONTENT;  
   res.token.identifier = identifier;
 
   res.token.originalData.size = res.bytesParsed;

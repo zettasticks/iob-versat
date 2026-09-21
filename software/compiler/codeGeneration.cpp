@@ -19,6 +19,8 @@
 #include "verilogParsing.hpp"
 #include "versatSpecificationParser.hpp"
 
+#include "codeGeneration_meta.hpp"
+
 // TODO: Emit functions do not need to return a String. They could just write directly the result to a file and skip having to push a new string for no reason.
 
 // TODO: Move all this stuff to a better place
@@ -2303,7 +2305,7 @@ static void Output_Makefile(VersatComputedValues val,String softwarePath){
       TE_SetString("traceType",traceType);
     }
 
-    TE_ProcessTemplate(output,META_MakefileTemplate_Content);
+    TE_ProcessTemplate(output,META_MakefileTemplate);
   }
 }
 
@@ -2984,7 +2986,7 @@ assign data_wstrb = csr_wstrb;
 
   TE_SetNumber("databusDataSize",globalOptions.databusDataSize);
     
-  TE_ProcessTemplate(s,META_TopInstanceTemplate_Content);
+  TE_ProcessTemplate(s,META_TopInstanceTemplate);
 }
 
 // TODO: Remove topLevelDecl after changing userConfig to work with Merge
@@ -3963,7 +3965,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   TE_SetNumber("nConfigs",val.nConfigs);
   TE_SetNumber("nStates",val.nStates);
 
-  TE_ProcessTemplate(f,META_HeaderTemplate_Content);
+  TE_ProcessTemplate(f,META_HeaderTemplate);
 }
 
 void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> structuredConfigs,String softwarePath,VersatComputedValues versatVal){
@@ -4343,7 +4345,7 @@ static iptr WRITE_@{0} = 0;)FOO";
   FILE* output = OpenFileAndCreateDirectories(wrapperPath,"w",FilePurpose_SOFTWARE);
   DEFER_CLOSE_FILE(output);
 
-  TE_ProcessTemplate(output,META_WrapperTemplate_Content);
+  TE_ProcessTemplate(output,META_WrapperTemplate);
 }
 
 void Output_VerilatorTopUnit(String topLevelTypeName,FUDeclaration* topLevelDecl,FILE* file){
@@ -4839,7 +4841,7 @@ void VersatPrintProfile(VersatProfile p){
     TE_SetString("profileStuff",{});
   }
   
-  TE_ProcessTemplate(file,META_FirmwareTemplate_Content);
+  TE_ProcessTemplate(file,META_FirmwareTemplate);
 }
 
 void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topDecl,String hardwarePath,String softwarePath,VersatComputedValues val){
@@ -5023,7 +5025,7 @@ assign axi_araddr_o = temp_axi_araddr_o;
       TE_SetString("addr",PushString(temp,".csr_addr(%.*siob_addr_i),",UN(globalOptions.prefixIObPort)));
     }
     
-    TE_ProcessTemplate(output,META_VersatTemplate_Content);
+    TE_ProcessTemplate(output,META_VersatTemplate);
   }
   
   {
@@ -5032,7 +5034,7 @@ assign axi_araddr_o = temp_axi_araddr_o;
     FILE* output = OpenFileAndCreateDirectories(getVerilatorScriptPath,"w",FilePurpose_SCRIPT);
     DEFER_CLOSE_FILE(output);
 
-    fprintf(output,"%.*s",UN(META_GetVerilatorRoot_Content));
+    fprintf(output,"%.*s",UN(META_GetVerilatorRoot));
     fflush(output);
     OS_SetScriptPermissions(output);
   }
@@ -5042,7 +5044,7 @@ assign axi_araddr_o = temp_axi_araddr_o;
     FILE* output = OpenFileAndCreateDirectories(extractVerilatedSignalPath,"w",FilePurpose_SCRIPT);
     DEFER_CLOSE_FILE(output);
 
-    fprintf(output,"%.*s",UN(META_ExtractVerilatedSignals_Content));
+    fprintf(output,"%.*s",UN(META_ExtractVerilatedSignals));
     fflush(output);
     OS_SetScriptPermissions(output);
   }

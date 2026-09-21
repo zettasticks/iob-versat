@@ -20,6 +20,8 @@
 #include "codeGeneration.hpp"
 #include "compiler.hpp"
 
+#include "filesystem_meta.hpp"
+
 #include <filesystem>
 namespace fs = std::filesystem;
 

@@ -1,0 +1,36 @@
+table RegisterTable(name,profile,capture){
+  Control                                   0   0
+  DmaInternalAddress                        0   0
+  DmaExternalAddress                        0   0
+  DmaTransferLength                         0   0
+  DmaControl                                0   0
+  Debug                                     0   0
+  ProfileControl                            1   0
+  ProfileRunCount                           1   0
+  ProfileRunCount2                          1   0
+  ProfileCyclesSinceLastReset               1   0
+  ProfileCyclesSinceLastReset2              1   0
+  ProfileRunningCycles                      1   0
+  ProfileRunningCycles2                     1   0
+  ProfileDatabusValid                       1   0
+  ProfileDatabusValid2                      1   0
+  ProfileDatabusValidAndReady               1   0
+  ProfileDatabusValidAndReady2              1   0
+  ProfileConfigurationsSet                  1   0
+  ProfileConfigurationsSet2                 1   0
+  ProfileConfigurationsSetWhileRunning      1   0
+  ProfileConfigurationsSetWhileRunning2     1   0
+  CaptureDatabusIndexAndReadWrite           0   1
+  CaptureDatabusCount                       0   1
+  CaptureDatabusGetAddr                     0   1
+  CaptureDatabusGetValue                    0   1
+  CaptureDatabusGetDidCapture               0   1
+}
+ 
+enum VersatRegister{
+ @(for a RegisterTable) $ VersatRegister_@(a.name) $
+}
+
+array VersatRegister ProfilingVersatRegisters { 
+  @(for a RegisterTable) @(if a.profile == 1) $ VersatRegister_@(a.name) $ 
+}

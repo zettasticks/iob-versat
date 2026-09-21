@@ -7,6 +7,11 @@ struct Accelerator;
 struct AcceleratorMapping;
 struct FUDeclaration;
 
+enum MergeModifier{
+  MergeModifier_NIL = 0x0,
+  MergeModifier_NO_UNIT_MERGED = 0x1
+};
+
 struct SpecificMerge{
   String instA;
   String instB;
@@ -192,11 +197,11 @@ FUDeclaration* MergeAccelerators(FUDeclaration* accel1,FUDeclaration* accel2,Str
 
 FUDeclaration* Merge(Array<FUDeclaration*> types,
                      String name,Array<SpecificMergeNode> specifics,
-                     MergeModifier modifier = MergeModifier_NONE,MergingStrategy strat = MergingStrategy::CONSOLIDATION_GRAPH);
+                     MergeModifier modifier = {},MergingStrategy strat = MergingStrategy::CONSOLIDATION_GRAPH);
 
 FUDeclaration* Merge2(Array<FUDeclaration*> types,
                      String name,Array<SpecificMergeNode> specifics,
-                      MergeModifier modifier = MergeModifier_NONE,MergingStrategy strat = MergingStrategy::CONSOLIDATION_GRAPH);
+                      MergeModifier modifier = {},MergingStrategy strat = MergingStrategy::CONSOLIDATION_GRAPH);
 
 /*
 

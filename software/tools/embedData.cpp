@@ -187,13 +187,13 @@ EnumDef* ParseEnum(Parser* tok,Arena* out){
   
   tok->ExpectIdentifier("enum");
 
-  Token enumTypeName = tok->ExpectNext(TokenType_IDENTIFIER);
+  Token enumTypeName = tok->ExpectNext(TokenType_CONTENT);
 
   tok->ExpectNext('{');
   
   auto memberList = PushList<Pair<String,String>>(temp);
   while(!tok->Done()){
-    Token name = tok->ExpectNext(TokenType_IDENTIFIER);
+    Token name = tok->ExpectNext(TokenType_CONTENT);
 
     String fullValue = {};
     if(tok->IfNextToken('=')){
@@ -230,14 +230,14 @@ StructDef* ParseStruct(Parser* tok,Arena* out){
 
   tok->ExpectIdentifier("struct");
 
-  Token structTypeName = tok->ExpectNext(TokenType_IDENTIFIER);
+  Token structTypeName = tok->ExpectNext(TokenType_CONTENT);
 
   tok->ExpectNext('{');
 
   auto memberList = PushList<Pair<String,String>>(temp);
   while(!tok->Done()){
-    Token type = tok->ExpectNext(TokenType_IDENTIFIER);
-    Token name = tok->ExpectNext(TokenType_IDENTIFIER);
+    Token type = tok->ExpectNext(TokenType_CONTENT);
+    Token name = tok->ExpectNext(TokenType_CONTENT);
 
     *memberList->PushElem() = {type.identifier,name.identifier};
 
@@ -259,7 +259,7 @@ StructDef* ParseStruct(Parser* tok,Arena* out){
 }
 
 TypeDef* ParseTypeDef(Parser* tok,Arena* out){
-  Token name = tok->ExpectNext(TokenType_IDENTIFIER);
+  Token name = tok->ExpectNext(TokenType_CONTENT);
 
   bool isArray = false;
   if(tok->IfNextToken('[')){
@@ -280,7 +280,7 @@ Array<String> ParseList(Parser* tok,Arena* out){
 
   auto typeList = PushList<String>(temp);
   while(!tok->Done()){
-    Token name = tok->ExpectNext(TokenType_IDENTIFIER);
+    Token name = tok->ExpectNext(TokenType_CONTENT);
 
     *typeList->PushElem() = name.identifier;
     
@@ -304,7 +304,7 @@ Array<Parameter> ParseParameterList(Parser* tok,Arena* out){
   while(!tok->Done()){
     TypeDef* def = ParseTypeDef(tok,out);
     
-    Token name = tok->ExpectNext(TokenType_IDENTIFIER);
+    Token name = tok->ExpectNext(TokenType_CONTENT);
 
     *typeList->PushElem() = {def,name.identifier};
     
@@ -398,7 +398,7 @@ TableDef* ParseTable(Parser* tok,Arena* out){
   TEMP_REGION(temp,out);
 
   tok->ExpectIdentifier("table");
-  Token tableStructName = tok->ExpectNext(TokenType_IDENTIFIER);
+  Token tableStructName = tok->ExpectNext(TokenType_CONTENT);
 
   Array<Parameter> defs = ParseParameterList(tok,out);
   Assert(defs.size > 0);
@@ -475,7 +475,7 @@ FileGroupDef* ParseFileGroup(Parser* tok,Arena* out){
 MapDef* ParseMap(Parser* tok,Arena* out){
   TEMP_REGION(temp,out);
 
-  Token type = tok->ExpectNext(TokenType_IDENTIFIER);
+  Token type = tok->ExpectNext(TokenType_CONTENT);
   bool isDefineMap = false;
 
   if(type.identifier == "define_map"){
@@ -486,7 +486,7 @@ MapDef* ParseMap(Parser* tok,Arena* out){
     tok->ReportError("Did not find either a define_map or a map");
   }
 
-  Token mapName = tok->ExpectNext(TokenType_IDENTIFIER);
+  Token mapName = tok->ExpectNext(TokenType_CONTENT);
 
   if(!isDefineMap){
     Array<Parameter> parameters = ParseParameterList(tok,out);
@@ -540,8 +540,8 @@ ArrayDef* ParseArray(Parser* tok,Arena* out){
   TEMP_REGION(temp,out);
   tok->ExpectIdentifier("array");
 
-  Token arrayType = tok->ExpectNext(TokenType_IDENTIFIER);
-  Token arrayName = tok->ExpectNext(TokenType_IDENTIFIER);
+  Token arrayType = tok->ExpectNext(TokenType_CONTENT);
+  Token arrayName = tok->ExpectNext(TokenType_CONTENT);
   
   tok->ExpectNext('=');
 
@@ -602,7 +602,7 @@ void ParseContent(String content,Arena* out){
   while(!parser->Done()){
     Token peek = parser->PeekToken();
 
-    if(peek.type != TokenType_IDENTIFIER){
+    if(peek.type != TokenType_CONTENT){
       parser->ReportError("Unexpected token at global scope");
       parser->NextToken();
       continue;

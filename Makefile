@@ -51,10 +51,10 @@ CPP_OBJ := $(VERSAT_COMMON_OBJS)
 CPP_OBJ += $(VERSAT_COMPILER_OBJS)
 CPP_OBJ += $(BUILD_DIR)/embeddedData.o
 
-COMPILE_TOOL = g++ -g -DPC -std=c++17 $(VERSAT_COMMON_FLAGS) -MMD -MP -DVERSAT_DEBUG -o $@ $< -DROOT_PATH=\"$(abspath $(VERSAT_DIR))\" $(VERSAT_COMMON_INCLUDE) $(VERSAT_COMMON_TOOLS_OBJS) -lbfd
+COMPILE_TOOL = g++ -g -DPC -std=c++17 $(VERSAT_COMMON_FLAGS) -DVERSAT_DEBUG -o $@ $< -DROOT_PATH=\"$(abspath $(VERSAT_DIR))\" $(VERSAT_COMMON_INCLUDE) $(VERSAT_COMMON_TOOLS_OBJS) -lbfd
 COMPILE_TOOL_NO_D = g++ -g -DPC -std=c++17 $(VERSAT_COMMON_FLAGS) -DVERSAT_DEBUG -o $@ $< -DROOT_PATH=\"$(abspath $(VERSAT_DIR))\" $(VERSAT_COMMON_INCLUDE) $(VERSAT_COMMON_TOOLS_OBJS) -lbfd
 
-COMPILE_OBJ  = g++ -DPC -rdynamic -std=c++17 $(VERSAT_COMMON_FLAGS) -MMD -DVERSAT_DEBUG -c -o $@ $< -DROOT_PATH=\"$(abspath $(VERSAT_DIR))\" -g $(VERSAT_COMMON_INCLUDE) $(VERSAT_INCLUDE)
+COMPILE_OBJ  = g++ -DPC -rdynamic -std=c++17 $(VERSAT_COMMON_FLAGS) -DVERSAT_DEBUG -c -o $@ $< -DROOT_PATH=\"$(abspath $(VERSAT_DIR))\" -g $(VERSAT_COMMON_INCLUDE) $(VERSAT_INCLUDE)
 COMPILE_OBJ_NO_D = g++ -DPC -rdynamic -std=c++17 $(VERSAT_COMMON_FLAGS) -DVERSAT_DEBUG -c -o $@ $< -DROOT_PATH=\"$(abspath $(VERSAT_DIR))\" -g $(VERSAT_COMMON_INCLUDE) $(VERSAT_INCLUDE)
 
 # Common objects (used by Versat and tools)
@@ -76,7 +76,7 @@ $(EMBED): $(VERSAT_TOOLS_DIR)/embedData.cpp $(VERSAT_COMMON_TOOLS_OBJS) $(VERSAT
 	$(COMPILE_TOOL_NO_D)
 
 $(META): $(VERSAT_TOOLS_DIR)/meta.cpp
-	g++ -g -DPC -std=c++17 -MMD -MP -o $@ $<
+	g++ -g -DPC -std=c++17 -o $@ $<
 
 $(VERSAT_TOOLS_DIR)/libfst/src/%.o: $(VERSAT_TOOLS_DIR)/libfst/src/%.c
 	gcc $< -c -o $@ -I$(VERSAT_TOOLS_DIR)/libfst/src
@@ -85,7 +85,7 @@ ALL_FST_C = $(wildcard $(VERSAT_TOOLS_DIR)/libfst/src/*.c)
 ALL_FST_O = $(patsubst $(VERSAT_TOOLS_DIR)/libfst/src/%.c,$(VERSAT_TOOLS_DIR)/libfst/src/%.o,$(ALL_FST_C))
 
 $(FST2SAIF): $(VERSAT_TOOLS_DIR)/fst2saif.cpp $(ALL_FST_O)
-	g++ -g -std=c++17 $(VERSAT_COMMON_FLAGS) -MMD -MP -DVERSAT_DEBUG $(VERSAT_COMMON_INCLUDE) $(VERSAT_COMMON_TOOLS_OBJS) -o $(FST2SAIF) $(VERSAT_TOOLS_DIR)/fst2saif.cpp $(wildcard $(VERSAT_TOOLS_DIR)/libfst/src/*.o) -I$(VERSAT_TOOLS_DIR)/libfst/src -lz -lbfd
+	g++ -g -std=c++17 $(VERSAT_COMMON_FLAGS) -DVERSAT_DEBUG $(VERSAT_COMMON_INCLUDE) $(VERSAT_COMMON_TOOLS_OBJS) -o $(FST2SAIF) $(VERSAT_TOOLS_DIR)/fst2saif.cpp $(wildcard $(VERSAT_TOOLS_DIR)/libfst/src/*.o) -I$(VERSAT_TOOLS_DIR)/libfst/src -lz -lbfd
 
 # Generate meta code
 $(BUILD_DIR)/embeddedData.hpp $(BUILD_DIR)/embeddedData.cpp: $(VERSAT_SW_DIR)/versat_defs.txt $(EMBED)
@@ -101,15 +101,18 @@ $(BUILD_DIR)/embeddedData.d: $(VERSAT_SW_DIR)/versat_defs.txt $(EMBED)
 
 # Versat
 $(VERSAT_DIR)/versat: $(CPP_OBJ) $(VERSAT_ALL_HEADERS)
-	g++ -MMD -std=c++17 $(VERSAT_COMMON_FLAGS) -DVERSAT_DEBUG -DVERSAT_DIR="$(VERSAT_DIR)" -rdynamic -DROOT_PATH=\"$(abspath $(VERSAT_DIR))\" -o $@ $(CPP_OBJ) $(VERSAT_INCLUDE) -lstdc++ -lm -lgcc -lc -pthread -ldl -lbfd
+	g++ -std=c++17 $(VERSAT_COMMON_FLAGS) -DVERSAT_DEBUG -DVERSAT_DIR="$(VERSAT_DIR)" -rdynamic -DROOT_PATH=\"$(abspath $(VERSAT_DIR))\" -o $@ $(CPP_OBJ) $(VERSAT_INCLUDE) -lstdc++ -lm -lgcc -lc -pthread -ldl -lbfd
 
 # TODO: This approach is stupid. There is no point in making the embedData rule file end with a .d format and juggling stuff around so that we do not overwrite our own .d file.
 #       Just make it a different ending. Something like .ded and be done with it. Just make sure that the generated .d file from gcc and the .ded file work, because both of them will put different rules for the same file and we might have problems.
--include $(BUILD_DIR)/embeddedData.d
--include $(BUILD_DIR)/*.d
+#-include $(BUILD_DIR)/embeddedData.d
+#-include $(BUILD_DIR)/*.d
 
 meta-data $(VERSAT_COMPILER_DIR)/versatSpecificationParser_meta.hpp: $(META) $(VERSAT_COMPILER_DIR)/versatSpecificationParser.meta
 	$(META) $(VERSAT_SW_DIR)/compiler
+
+debug-meta-data: $(META)
+	gdb --args $(META) $(VERSAT_SW_DIR)/compiler
 
 versat: $(VERSAT_DIR)/versat $(HASH)
 
@@ -120,8 +123,9 @@ embed-data: $(EMBED)
 	$(EMBED) $(VERSAT_SW_DIR)/versat_defs.txt $(TOOL_BUILD_DIR)/embeddedData
 
 clean:
+	-rm -fr $(TOOL_BUILD_DIR)
 	-rm -fr $(BUILD_DIR)
-	-rm -f *.a versat versat.d
+	-rm -f *.a versat 
 
 clean-all: clean
 	-rm -fr $(TOOL_BUILD_DIR)

@@ -107,27 +107,6 @@ map ParamToFlag(ParamFlags flag,String name){
    ParamFlags_ReverseOrder : reverse 
 };
 
-enum MergeModifier{
-   MergeModifier_NONE           = 0x0,
-   MergeModifier_NO_UNIT_MERGED = 0x1
-};
-
-map mergeModifiers(MergeModifier m,String name){
-   MergeModifier_NO_UNIT_MERGED : NoUnitMerged
-};
-
-enum ConstructType{
-  ConstructType_MODULE,
-  ConstructType_MERGE,
-  ConstructType_ITERATIVE
-};
-
-define_map possibleAttributes{
-   VERSAT_LATENCY : versat_latency,
-   VERSAT_STATIC  : versat_static,
-   VERSAT_STAGE   : versat_stage
-};
-
 // Note: The position of the registers is variable and depends on user flags. Some flags add registers and the position of the register on the accelerator changes based on the flags passed.
 enum VersatRegister{
    VersatRegister_Control,
@@ -151,7 +130,6 @@ enum VersatRegister{
    VersatRegister_ProfileConfigurationsSet2,
    VersatRegister_ProfileConfigurationsSetWhileRunning,
    VersatRegister_ProfileConfigurationsSetWhileRunning2,
-   
    VersatRegister_CaptureDatabusIndexAndReadWrite,
    VersatRegister_CaptureDatabusCount,
    VersatRegister_CaptureDatabusGetAddr,
@@ -177,29 +155,3 @@ table ProfilingVersatRegisters(VersatRegister t){
    VersatRegister_ProfileConfigurationsSetWhileRunning,
    VersatRegister_ProfileConfigurationsSetWhileRunning2,   
 };
-
-/*
-Not in use currently.
-map versatRegister(VersatRegister t,String name){
-   VersatRegister_Control              : "Control",
-   VersatRegister_DmaInternalAddress   : "Dma Internal Address",
-   VersatRegister_DmaExternalAddress   : "Dma External Address",
-   VersatRegister_DmaTransferLength    : "Dma Transfer Length",
-   VersatRegister_DmaControl           : "Dma Control",
-   VersatRegister_Debug                : "Debug",
-   VersatRegister_ProfileControl       : "Profile Control"
-};
-*/
-
-file ExtractVerilatedSignals = ./scripts/ExtractVerilatedSignals.py;
-file GetVerilatorRoot = ./scripts/GetVerilatorRoot.sh;
-
-file HeaderTemplate      = ./software/templates/versat_header.tpl;
-file MakefileTemplate    = ./software/templates/versat_makefile.tpl;
-file TopInstanceTemplate = ./software/templates/versat_top_instance.tpl;
-file WrapperTemplate     = ./software/templates/versat_wrapper.tpl;
-file VersatTemplate      = ./software/templates/iob_versat_template.tpl;
-file FirmwareTemplate    = ./software/templates/iob-versat.tpl;
-
-fileGroup defaultVerilogUnits = ./hardware/src/units;
-fileGroup defaultVerilogFiles = ./hardware/src | ./hardware/src/units;

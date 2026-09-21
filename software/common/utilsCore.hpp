@@ -584,7 +584,7 @@ struct FileContent{
   String fileName;
   // Without filename
   String originalRelativePath;
-  String commonFolder;
+  String commonFolder; // TODO: Remove if possible, I do not think that this is actually used for anything right now.
   String content;
 
   FileContentState state;

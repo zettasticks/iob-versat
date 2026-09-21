@@ -1,0 +1,9 @@
+file META_ExtractVerilatedSignals  { $ ./scripts/ExtractVerilatedSignals.py $ }
+file META_GetVerilatorRoot         { $ ./scripts/GetVerilatorRoot.sh $ }
+
+file META_HeaderTemplate      { $ ./software/templates/versat_header.tpl $ }
+file META_MakefileTemplate    { $ ./software/templates/versat_makefile.tpl $ }
+file META_TopInstanceTemplate { $ ./software/templates/versat_top_instance.tpl $ }
+file META_WrapperTemplate     { $ ./software/templates/versat_wrapper.tpl $ }
+file META_VersatTemplate      { $ ./software/templates/iob_versat_template.tpl $ }
+file META_FirmwareTemplate    { $ ./software/templates/iob-versat.tpl $ }

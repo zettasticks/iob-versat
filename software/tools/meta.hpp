@@ -9,6 +9,10 @@
 #include <cstring>
 #include <cstdarg>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <dirent.h>
 
 #define MIN(A,B) ((A) < (B) ? (A) : (B))
@@ -27,6 +31,15 @@ const char* GetFilename(const char* fullpath){
 
   return lastGood;
 }
+
+#define DEBUG_BREAK_IF(COND) do{ \
+  if(COND){ \
+    fflush(stdout); \
+    __asm__("int3"); \
+    __asm__("nop");} \
+  } while(0)
+
+#define DEBUG_BREAK() DEBUG_BREAK_IF(true)
 
 #define NOT_IMPLEMENTED(...) do{ printf("%s:%d:1: error: Not implemented: %s",__FILE__,__LINE__,__PRETTY_FUNCTION__); fflush(stdout); Assert(false); } while(0) // Doesn't mean that something is necessarily future planned
 #define NOT_IMPLEMENTED_IF(COND) if(COND){ printf("%s:%d:1: error: Not implemented: %s",__FILE__,__LINE__,__PRETTY_FUNCTION__); fflush(stdout); Assert(false); } 
@@ -61,6 +74,22 @@ typedef u8 b8;
 typedef u32 b32;
 typedef float f32;
 typedef double f64;
+
+struct u128{
+  u64 h;
+  u64 l;
+};
+
+static bool operator>(const u128& lhs,const u128& rhs){
+  if(lhs.h > rhs.h){
+    return true;
+  }
+  if(lhs.h < rhs.h){
+    return false;
+  }
+
+  return lhs.l > rhs.l;
+}
 
 struct Arena{
   Byte* mem;
@@ -411,6 +440,7 @@ String PushFile(Arena* out,String filepath){
     fclose(file);
   } else {
     printf("Failed to open file: %.*s\n",UN(filepath));
+    res.size = -1;
   }
   
   return res;
@@ -656,6 +686,122 @@ String EndString(Arena* out,StringBuilder* builder){
   return res;
 }
 
+String EscapeCString(String content,Arena* out){
+  TEMP_REGION(temp,out);
+  StringBuilder* b = StartString(temp);
+  for(char ch : content){
+    switch(ch){
+    case '\n': b->PushString("\\n"); break;
+    case '\"': b->PushString("\\\""); break;
+    case '\t': b->PushString("\\t"); break;
+    case '\\': b->PushString("\\\\"); break;
+    case '\r': b->PushString("\\r"); break;
+    case '\'': b->PushString("\'"); break;
+    default:{
+      Assert(ch >= 32 && ch < 127);
+
+      b->PushString("%c",ch);
+    } break;
+    }
+  }
+
+  return EndString(out,b);
+}
+
+void EscapeCString(StringBuilder* b,String content){
+  for(char ch : content){
+    switch(ch){
+    case '\n': b->PushString("\\n"); break;
+    case '\"': b->PushString("\\\""); break;
+    case '\t': b->PushString("\\t"); break;
+    case '\\': b->PushString("\\\\"); break;
+    case '\r': b->PushString("\\r"); break;
+    case '\'': b->PushString("\'"); break;
+    default:{
+      Assert(ch >= 32 && ch < 127);
+
+      b->PushString("%c",ch);
+    } break;
+    }
+  }
+}
+
+u128 OS_FileLastChange(String filepath){
+  const char* cString = CS(filepath);
+
+  struct stat info = {};
+  int res = lstat(cString,&info);
+
+  u128 timestamp = {};
+  if(res != -1){
+    struct timespec lastMod = info.st_mtim;
+    Assert(sizeof(lastMod.tv_sec) == 8);
+    Assert(sizeof(lastMod.tv_nsec) == 8);
+    
+    //timestamp = ((lastMod.tv_sec << 32) | lastMod.tv_nsec);
+    timestamp.h = lastMod.tv_sec;
+    timestamp.l = lastMod.tv_nsec;
+  }
+
+  return timestamp;
+}
+
+enum FileType{
+  FileType_NIL,
+  FileType_FILE,
+  FileType_FOLDER,
+};
+
+FileType OS_GetFileTypeFromPath(String path){
+  const char* cString = CS(path);
+  struct stat info = {};
+  int res = lstat(cString,&info);
+
+  FileType result = {};
+  if(res != -1){
+    if(S_ISREG(info.st_mode)){
+      result = FileType_FILE;
+    }
+    if(S_ISDIR(info.st_mode)){
+      result = FileType_FOLDER;
+    }
+
+    if(S_ISLNK(info.st_mode)){
+      Assert(false && "Symbolic links currently not handled");
+    }
+  }
+
+  return result;
+}
+
+struct FileGroupInfo{
+  String originalRelativePath;
+  String filename;
+  String commonFolder;
+};
+
+Array<FileGroupInfo> OS_GetFolderContents(String folderPath,Arena* out){
+  TEMP_REGION(temp,out);
+
+  DIR* directory = opendir(SF("%.*s",UN(folderPath)));
+  
+  auto list = PushList<FileGroupInfo>(temp);
+  dirent* entry = nullptr;
+  while ((entry = readdir(directory)) != NULL){
+    if (entry->d_type == DT_DIR) {
+      continue;
+    }
+
+    String fileName = PushString(out,"%s",entry->d_name);
+    FileGroupInfo* info = list->PushElem();
+    info->originalRelativePath = folderPath;
+    info->filename = fileName;
+  }
+
+  Array<FileGroupInfo> allFilePaths = PushArray(out,list);
+  return allFilePaths;
+}
+
 // ======================================
 // Meta stuff start
 
@@ -669,10 +815,11 @@ enum TokenType{
   TokenType_UNTERMINATED_MULTI_LINE_COMMENT,
   TokenType_MULTI_LINE_COMMENT,
   TokenType_EOF,
-  TokenType_IDENTIFIER,
+  TokenType_CONTENT,
   TokenType_STRING,
-  TokenType_GROUP_DELIM, // @@
   TokenType_ARROW, // ->
+  TokenType_EQ,    // ==
+  TokenType_NEQ,   // !=
   TokenType_NO_DATA,
 
   TokenType_CHAR_GROUP_0_START = '!',
@@ -696,6 +843,7 @@ enum TokenType{
   TokenType_KEYWORD_FUNC,
   TokenType_KEYWORD_FOR,
   TokenType_KEYWORD_STRUCT,
+  TokenType_KEYWORD_FILE,
 };
 
 #define TOK_TYPE(CH) ((TokenType) (CH))
@@ -723,7 +871,7 @@ enum NodeType{
   NodeType_ARRAY,
   NodeType_FUNC,
   NodeType_MAP,
-  NodeType_MAPIF,
+  NodeType_FILE,
   NodeType_LIST,
   NodeType_PARAMETER,
   NodeType_DECL_NAME,

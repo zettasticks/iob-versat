@@ -15,6 +15,12 @@
 
 typedef Value (*MathFunction)(Value f,Value g);
 
+#define VERSAT_LATENCY "versat_latency"
+#define VERSAT_STATIC "versat_static"
+#define VERSAT_STAGE "versat_stage"
+static String possibleAttributes_Raw[] = {VERSAT_LATENCY,VERSAT_STATIC,VERSAT_STAGE};
+static Array<String> possibleAttributes = {possibleAttributes_Raw,ARRAY_SIZE(possibleAttributes_Raw)};
+
 struct MathFunctionDescription{
   String name;
   int amountOfParameters;
@@ -343,7 +349,7 @@ struct VerilogTokenizerState{
     FREE_ARENA(parsing);
     Parser* parser = StartParsing(TokenizeFunction,asString,parsing);
     
-    Token result = parser->ExpectNext(TokenType_IDENTIFIER);
+    Token result = parser->ExpectNext(TokenType_CONTENT);
     
     AccumulateErrors(parser->errors);
 
@@ -387,7 +393,7 @@ struct VerilogTokenizerState{
     TEMP_REGION(temp,nullptr);
 
     parser->IfNextToken(TokenType_VERILOG_DEFINE);
-    Token id = parser->ExpectNext(TokenType_IDENTIFIER);
+    Token id = parser->ExpectNext(TokenType_CONTENT);
     
     parser->SetOptions(ParsingOptions_SKIP_COMMENTS);
     
@@ -416,7 +422,7 @@ struct VerilogTokenizerState{
         parser->SetOptions(ParsingOptions_DEFAULT);
 
         while(!parser->Done()){
-          Token t = parser->ExpectNext(TokenType_IDENTIFIER);
+          Token t = parser->ExpectNext(TokenType_CONTENT);
 
           *argList->PushElem() = t.identifier;
         
@@ -672,13 +678,13 @@ static Array<ParameterExpression> ParseParameters(Parser* tok,TrieMap<String,Val
         Parser* p = StartParsing(TokenizeFunction,possibleComment.comment,commentParsing);
 
         Token t = p->NextToken();
-        if(t.type == TokenType_IDENTIFIER && t.identifier == "versat"){
+        if(t.type == TokenType_CONTENT && t.identifier == "versat"){
           p->ExpectNext(':');
           
           while(!p->Done()){
             p->IfNextToken(',');
           
-            Token paramFlag = p->ExpectNext(TokenType_IDENTIFIER);
+            Token paramFlag = p->ExpectNext(TokenType_CONTENT);
             Opt<ParamFlags> flagOpt = META_ParamToFlag_ReverseMap(paramFlag.identifier);
 
             if(flagOpt.has_value()){
@@ -793,8 +799,8 @@ VExpr* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower){
 
     res->type = VExpr::LITERAL;
     res->val = MakeValue(number.number);
-  } else if(peek.type == TokenType_IDENTIFIER){
-    Token id = parser->ExpectNext(TokenType_IDENTIFIER);
+  } else if(peek.type == TokenType_CONTENT){
+    Token id = parser->ExpectNext(TokenType_CONTENT);
    
     res = PushStruct<VExpr>(out);
     res->type = VExpr::IDENTIFIER;
@@ -811,7 +817,7 @@ VExpr* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower){
 
     parser->NextToken();
 
-    expr->id = parser->ExpectNext(TokenType_IDENTIFIER).identifier;
+    expr->id = parser->ExpectNext(TokenType_CONTENT).identifier;
 
     Opt<MathFunctionDescription> optDescription = GetMathFunction(expr->id);
     Assert(optDescription.has_value());
@@ -959,7 +965,7 @@ static Module ParseModule(Parser* tok,Arena* out){
 
   tok->ExpectNext(TokenType_VERILOG_KEYWORD_MODULE);
 
-  module.name = tok->ExpectNext(TokenType_IDENTIFIER).identifier;
+  module.name = tok->ExpectNext(TokenType_CONTENT).identifier;
 
   //NewToken peek = C(tok->PeekToken());
   if(tok->IfNextToken('#')){
@@ -982,10 +988,10 @@ static Module ParseModule(Parser* tok,Arena* out){
       if(peek.type == TokenType_VERILOG_ATTRIBUTE_START){
         tok->NextToken();
         while(!tok->Done()){
-          Token attributeName = tok->ExpectNext(TokenType_IDENTIFIER);
+          Token attributeName = tok->ExpectNext(TokenType_CONTENT);
 
 #if 1
-          if(attributeName.type == TokenType_IDENTIFIER){
+          if(attributeName.type == TokenType_CONTENT){
             if(!Contains(possibleAttributes,attributeName.identifier)){
               printf("ERROR: Do not know attribute named: %.*s\n",UN(attributeName.identifier));
               exit(-1);
@@ -1045,7 +1051,7 @@ static Module ParseModule(Parser* tok,Arena* out){
 
       ExpressionRange res = ParseRange(tok,out);
       port.range = res;
-      port.name = tok->ExpectNext(TokenType_IDENTIFIER).identifier;
+      port.name = tok->ExpectNext(TokenType_CONTENT).identifier;
 
       *portList->PushElem() = port;
 
@@ -1109,7 +1115,7 @@ Token VerilogTokenizer(void* tokenizerState){
     res |= ParseNumber(start,end);
     res |= ParseIdentifier(start,end);
 
-    if(res.token.type == TokenType_IDENTIFIER){
+    if(res.token.type == TokenType_CONTENT){
 #define VKEYWORD(NAME,TYPE) if(res.token.identifier == NAME){ \
       res.token.type = TYPE; \
       }
@@ -1289,9 +1295,9 @@ Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths
     if(peek.type == TokenType_VERILOG_ATTRIBUTE_START){
       parser->NextToken();
 
-      Token attribute = parser->ExpectNext(TokenType_IDENTIFIER);
+      Token attribute = parser->ExpectNext(TokenType_CONTENT);
 
-      if(attribute.type == TokenType_IDENTIFIER && attribute.identifier == "source"){
+      if(attribute.type == TokenType_CONTENT && attribute.identifier == "source"){
         isSource = true;
       } else {
         // TODO: Report unused attribute.

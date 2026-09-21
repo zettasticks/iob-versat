@@ -49,9 +49,9 @@ table NodeTable(name,isExprType,constantOpCount,varAccess){
   STMT_LIST            0   0   0
 }
 
-enum SP_Type{ @(for a NodeTable) $$ SP_Type_@(a.name) $$}
+enum SP_Type{ @(for a NodeTable) $ SP_Type_@(a.name) $}
 
-map SP_Type_Name(SP_Type,String){ @(for a NodeTable) $$ SP_Type_@(a.name) -> "@(a.name)" $$ }
-map SP_Type_IsExpr(SP_Type,bool){ @(for a NodeTable) $$ SP_Type_@(a.name) -> @(a.isExprType) $$ }
-map SP_Type_OpCount(SP_Type,int){ @(for a NodeTable) $$ SP_Type_@(a.name) -> @(a.constantOpCount) $$ }
-map SP_Type_IsVarAccess(SP_Type,bool){ @(for a NodeTable) $$ SP_Type_@(a.name) -> @(a.varAccess) $$ }
+map SP_Type_Name(SP_Type,String){ @(for a NodeTable) $ SP_Type_@(a.name) -> "@(a.name)" $ }
+map SP_Type_IsExpr(SP_Type,bool){ @(for a NodeTable) $ SP_Type_@(a.name) -> @(a.isExprType) $ }
+map SP_Type_OpCount(SP_Type,int){ @(for a NodeTable) $ SP_Type_@(a.name) -> @(a.constantOpCount) $ }
+map SP_Type_IsVarAccess(SP_Type,bool){ @(for a NodeTable) $ SP_Type_@(a.name) -> @(a.varAccess) $ }
