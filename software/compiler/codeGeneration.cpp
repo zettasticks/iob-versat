@@ -5,7 +5,6 @@
 #include "accelerator.hpp"
 #include "configurations.hpp"
 #include "declaration.hpp"
-#include "embeddedData.hpp"
 #include "filesystem.hpp"
 #include "hierName.hpp"
 #include "memory.hpp"
@@ -4644,14 +4643,12 @@ void Output_IobVersatFirmware(String softwarePath,VersatComputedValues val){
   DEFER_CLOSE_FILE(file);
 
   CEmitter* c = StartCCode(CCode1,CCode2);
-  
-  for(VersatRegister reg : VersatRegisters){
-    Opt<int> index = GetOptIndex(val,reg);
-    
-    String name = META_Repr(reg);
-    if(index.has_value()){
-      c->Define(name,SF("%d",index.value() / 4));
-    }
+
+  for(int i = 0; i < val.registers.size; i++){
+    VersatRegister reg = val.registers[i];
+    String name = VersatRegister_Name(reg);
+    String fullName = PushString(temp,"VersatRegister_%.*s",UN(name));
+    c->Define(fullName,SF("%d",i * 4));
   }
 
   {

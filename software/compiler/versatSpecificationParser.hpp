@@ -3,7 +3,6 @@
 #include "declaration.hpp"
 #include "merge.hpp"
 
-#include "embeddedData.hpp"
 #include "userConfigs.hpp"
 
 struct ConfigFunctionDef;

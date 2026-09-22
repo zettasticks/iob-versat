@@ -1,0 +1,51 @@
+table AddressGenWiresTable(name,extra,memType,readType,genType){
+  start                0   0   1   1
+  duty                 0   0   1   1
+  per                  1   0   1   1
+  incr                 1   0   1   1
+  iter                 1   0   1   1
+  shift                1   0   1   1
+  ext_addr             0   0   1   0
+  length               0   0   1   0
+  amount_minus_one     0   0   1   0
+  extra_delay          0   0   1   0
+  addr_shift           0   0   1   0
+  pingPong             0   0   1   0
+  enabled              0   0   1   0
+
+  iterA                0   1   0   0
+  perA                 0   1   0   0
+  dutyA                0   1   0   0
+  startA               0   1   0   0
+  shiftA               0   1   0   0
+  incrA                0   1   0   0
+  reverseA             0   1   0   0
+  extA                 0   1   0   0
+  in0_wr               0   1   0   0
+  iterB                0   1   0   0
+  perB                 0   1   0   0
+  dutyB                0   1   0   0
+  startB               0   1   0   0
+  shiftB               0   1   0   0
+  incrB                0   1   0   0
+  reverseB             0   1   0   0
+  extB                 0   1   0   0
+  in1_wr               0   1   0   0
+}
+
+array String AddressGenExtraFormat {
+ @(for a AddressGenWiresTable) @(if a.extra == 1) $ "@(a.name)%d" $
+}
+
+array String AddressGenBaseParameters {
+ @(for a AddressGenWiresTable) @(if a.genType == 1) $ "@(a.name)" $
+}
+
+array String AddressVParameters {
+ @(for a AddressGenWiresTable) @(if a.readType == 1) $ "@(a.name)" $
+}
+
+array String AddressMemParameters {
+ @(for a AddressGenWiresTable) @(if a.memType == 1) $ "@(a.name)" $
+}
+

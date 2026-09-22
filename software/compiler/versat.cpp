@@ -1,6 +1,5 @@
 #include "versat.hpp"
 
-#include "embeddedData.hpp"
 #include "globals.hpp"
 
 #include "declaration.hpp"
@@ -10,6 +9,8 @@
 #include "utils.hpp"
 #include "utilsCore.hpp"
 #include "verilogParsing.hpp"
+
+#include "addressGen.hpp"
 
 // TODO: Need to remake this function and probably ModuleInfo as the versat compiler change is made
 Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
@@ -161,9 +162,9 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
     return true;
   };
   
-  bool isGenLike = FollowsInterface(configs,META_AddressGenBaseParameters_Members);
-  bool isExternLike = FollowsInterface(configs,META_AddressVParameters_Members);
-  bool isMemLike = FollowsInterface(configs,META_AddressMemParameters_Members);
+  bool isGenLike = FollowsInterface(configs,AddressGenBaseParameters);
+  bool isExternLike = FollowsInterface(configs,AddressVParameters);
+  bool isMemLike = FollowsInterface(configs,AddressMemParameters);
 
   Array<String> configNames = Extract(configs,temp,&Wire::name);
 
@@ -201,7 +202,7 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
     decl.supportedAddressGen.loopsSupported = CountLoops(AddressGenExtraFormat);
   } else if(isMemLike){
     decl.supportedAddressGen.type = AddressGenType_MEM;
-    decl.supportedAddressGen.loopsSupported = CountLoops(AddressGenMemExtraFormat);
+    decl.supportedAddressGen.loopsSupported = 1;
   }
   
   FUDeclaration* res = RegisterFU(decl);

@@ -1,0 +1,12 @@
+table ParamFlagsTable(name,value,verilogId){
+ UNIQUE         0x1   unique
+ ORDER          0x2   order
+ REVERSE_ORDER  0x4   reverse
+}
+
+enum ParamFlags{
+ $ ParamFlags_NIL = 0 $
+ @(for a ParamFlagsTable) $ ParamFlags_@(a.name) = @(a.value) $
+}
+
+map(ifChain,shallow) ParamFlags_FromName(String,ParamFlags){ @(for a ParamFlagsTable) $ "@(a.verilogId)" -> ParamFlags_@(a.name) $ }

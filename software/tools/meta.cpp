@@ -769,6 +769,11 @@ Node* Parse(Tokenizer* tok,Arena* out){
             printf("USER ERROR: Did not find modifier: %.*s\n",UN(modifier.id));
           }
           Assert(found);
+
+          if(IfNextToken(tok,TOK_TYPE(','))){
+            continue;
+          }
+          break;
         }
 
         AssertToken(tok,TOK_TYPE(')'));
@@ -1211,6 +1216,8 @@ Array<String> GetValue(Node* node,Arena* out){
 
     b32 found = 0;
     if(!found && modifierType->token.id == "for"){
+      found = 1;
+
       Node* iter = firstModifier->next;
       Node* iterating = iter->next;
       Table* t = GetTable(iterating->token.id);
@@ -1233,6 +1240,8 @@ Array<String> GetValue(Node* node,Arena* out){
       return PushArray<String>(temp,stringAccum);
     }
     if(!found && modifierType->token.id == "if"){
+      found = 1;
+
       Node* id = firstModifier->next;
       Node* paramName = firstModifier->next->next->next;
       Node* compareValue = firstModifier->next->next->next->next->next;
@@ -1254,17 +1263,15 @@ Array<String> GetValue(Node* node,Arena* out){
       String val = value->values[index];
       
       String toCompare = compareValue->token.id;
-
+      
       if(TrimWhitespaces(val) == TrimWhitespaces(toCompare)){
         return HandleModifier(HandleModifier,insideContent,env);
-      } else {
-        return {};
       }
-
-      // MARK
-      
-      DEBUG_BREAK();
     }
+
+    Assert(found && "Either badly named modifier start or missing implementation");
+
+    return {};
   };
 
   Array<String> res = {};
@@ -1649,7 +1656,9 @@ int main(int argc,const char* argv[]){
           continue;
         }
 
-        h->PushString("enum %.*s {\n",UN(ptr->token.id));
+        String enumName = ptr->token.id;
+
+        h->PushString("enum %.*s {\n",UN(enumName));
 
         for(Node* line = ptr->childs; line; line = line->next){
           Array<String> contents = GetValue(line,temp);
@@ -1663,6 +1672,7 @@ int main(int argc,const char* argv[]){
           }
         }
         h->PushString("};\n");
+        h->PushString("C_STYLE_ENUM(%.*s);\n",UN(enumName));
       }
 
       for(Node* ptr = metaTop; ptr; ptr = ptr->next){
@@ -1726,7 +1736,10 @@ int main(int argc,const char* argv[]){
 
         c->PushString("%.*s %.*s(%.*s in){\n",UN(mapDst->token.id),UN(ptr->token.id),UN(mapSrc->token.id));
         c->PushString("  %.*s res = {};\n",UN(mapDst->token.id));
-        c->PushString("  bool didIt = 0;\n");
+
+        if(!shallow){
+          c->PushString("  bool didIt = 0;\n");
+        }
 
         if(!useIf){
           c->PushString("  switch(in){\n");
@@ -1762,9 +1775,17 @@ int main(int argc,const char* argv[]){
             }
 
             if(useIf){
-              c->PushString("  if(in == %.*s){res = %.*s; didIt = 1;}\n",UN(firstPart),UN(secondPart));
+              if(shallow){
+                c->PushString("  if(in == %.*s){res = %.*s;}\n",UN(firstPart),UN(secondPart));
+              } else {
+                c->PushString("  if(in == %.*s){res = %.*s; didIt = 1;}\n",UN(firstPart),UN(secondPart));
+              }
             } else {
-              c->PushString("  case %.*s: res = %.*s; didIt = 1; break;\n",UN(firstPart),UN(secondPart));
+              if(shallow){
+                c->PushString("  case %.*s: res = %.*s; break;\n",UN(firstPart),UN(secondPart));
+              } else {
+                c->PushString("  case %.*s: res = %.*s; didIt = 1; break;\n",UN(firstPart),UN(secondPart));
+              }
             }
           }
         }
@@ -1773,7 +1794,11 @@ int main(int argc,const char* argv[]){
           if(useIf){
             NOT_IMPLEMENTED(); // TODO: Need 2 passes to properly implement this.
           } else {
-            c->PushString("  default: res = %.*s; didIt = 1; break;\n",UN(defaultExpression));
+            if(shallow){
+              c->PushString("  default: res = %.*s; break;\n",UN(defaultExpression));
+            } else {
+              c->PushString("  default: res = %.*s; didIt = 1; break;\n",UN(defaultExpression));
+            }
           }
         }
 

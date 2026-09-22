@@ -240,6 +240,24 @@ if(_){ \
 #define FOREACH_LIST(TYPE,ITER,START) for(TYPE ITER = START; ITER; ITER = ITER->next)
 #define FOREACH_LIST_INDEXED(TYPE,ITER,START,INDEX) for(TYPE ITER = START; ITER; ITER = ITER->next,INDEX += 1)
 
+#define C_STYLE_ENUM(NAME) \
+inline NAME operator|(NAME lhs,NAME rhs){ \
+  NAME res = (NAME) ((int) lhs | (int) rhs); \
+  return res; \
+} \
+inline NAME& operator|=(NAME& lhs,NAME rhs){ \
+  lhs = (NAME) ((int) lhs | (int) rhs); \
+  return lhs; \
+} \
+inline NAME operator&(NAME lhs,NAME rhs){ \
+  NAME res = (NAME) ((int) lhs & (int) rhs); \
+  return res; \
+} \
+inline NAME& operator&=(NAME& lhs,NAME rhs){ \
+  lhs = (NAME) ((int) lhs & (int) rhs); \
+  return lhs; \
+}
+
 #define SWAP(A,B) do { \
    auto TEMP = A; \
    A = B; \

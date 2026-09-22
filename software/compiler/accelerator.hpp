@@ -3,6 +3,8 @@
 #include "utils.hpp"
 #include "verilogParsing.hpp"
 
+#include "accelerator_meta.hpp"
+
 struct FUInstance;
 struct FUDeclaration;
 struct Accelerator;

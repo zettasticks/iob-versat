@@ -6,7 +6,6 @@
 #include "accelerator.hpp"
 #include "configurations.hpp"
 #include "debugVersat.hpp"
-#include "embeddedData.hpp"
 #include "filesystem.hpp"
 #include "globals.hpp"
 #include "memory.hpp"
@@ -602,7 +601,7 @@ int main(int argc,char* argv[]){
       return nullptr;
     };
 
-    auto PushDeclInfo = [&] -> DeclInfo*{
+    auto PushDeclInfo = [&]() -> DeclInfo*{
       DeclInfo* newDecl = PushStruct<DeclInfo>(temp);
       LL_Append(declHead,declTail,next,newDecl);
       return newDecl;
@@ -620,7 +619,7 @@ int main(int argc,char* argv[]){
       auto subtypesUsed = PushList<DeclInfo>(temp);
       String constructName = def.base.name.identifier;
       String mangledConstructName = DECL_MangleName(constructName,{},temp);
-      Array<ParamNameAndValue> metaParams;
+      //Array<ParamNameAndValue> metaParams;
 
       // Collect all the subtypes used
       FULL_SWITCH(def.type){
@@ -734,7 +733,7 @@ int main(int argc,char* argv[]){
             val->name = params.first;
             val->value = env->CalculateConstantExpression(params.second);
           }
-          Array<ParamNameAndValue> params = PushArray(temp,list);
+          //Array<ParamNameAndValue> params = PushArray(temp,list);
 
           String mangledName = DECL_MangleName(typeName,decl.metaParams,perm);
           if(mangledName != typeName){

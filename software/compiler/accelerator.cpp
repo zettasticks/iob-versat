@@ -1,7 +1,6 @@
 #include "accelerator.hpp"
 
 #include "declaration.hpp"
-#include "embeddedData.hpp"
 #include "globals.hpp"
 #include "utils.hpp"
 #include "utilsCore.hpp"
@@ -790,8 +789,8 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
   }
 
   if(globalOptions.insertProfilingRegisters){
-    for(ProfilingVersatRegisters_GenType reg : ProfilingVersatRegisters){
-      AddRegister(reg.t);
+    for(VersatRegister reg : ProfilingVersatRegisters){
+      AddRegister(reg);
     }
   }
   

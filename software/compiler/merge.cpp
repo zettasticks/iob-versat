@@ -5,7 +5,6 @@
 #include "debug.hpp"
 #include "debugVersat.hpp"
 #include "declaration.hpp"
-#include "embeddedData.hpp"
 #include "filesystem.hpp"
 #include "globals.hpp"
 #include "textualRepresentation.hpp"
@@ -54,7 +53,7 @@ bool NodeConflict(FUInstance* first,FUInstance* second){
     // If we have parameters with value X and value Y then it might fail but it could turn out
     // later that X == Y. At the same time we cannot assume this unless we know that the merged 
     // unit is the top unit.
-    if(param.flags & ParamFlags_Unique){
+    if(param.flags & ParamFlags_UNIQUE){
       SYM_Expr val1 = param1->GetOrFail(param.name);
       SYM_Expr val2 = param2->GetOrFail(param.name);
 
@@ -2718,7 +2717,7 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
         // TODO: Need to finish this and do it properly. 
         //       Also we might need to rethink our approach to merge and the best way of making sure that 
         //       parameters are properly handled.
-        if(param.flags & ParamFlags_Order){
+        if(param.flags & ParamFlags_ORDER){
           Opt<SYM_Expr> flatValOpt = flattenInst->parameterValues[i].val;
           Opt<SYM_Expr> mergeValOpt = mergedInst->parameterValues[i].val;
 

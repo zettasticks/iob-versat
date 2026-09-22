@@ -31,6 +31,8 @@ enum VersatRegister{
  @(for a RegisterTable) $ VersatRegister_@(a.name) $
 }
 
+map VersatRegister_Name(VersatRegister,String){ @(for a RegisterTable) $ VersatRegister_@(a.name) -> "@(a.name)"  $ }
+
 array VersatRegister ProfilingVersatRegisters { 
   @(for a RegisterTable) @(if a.profile == 1) $ VersatRegister_@(a.name) $ 
 }

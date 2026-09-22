@@ -3,10 +3,10 @@
 #include "utils.hpp"
 #include "memory.hpp"
 
-#include "embeddedData.hpp"
-
 #include "symbolic.hpp"
 #include "parser.hpp"
+
+#include "addressGen_meta.hpp"
 
 struct CEmitter;
 struct SpecExpression;
@@ -59,6 +59,13 @@ struct InternalMemoryAccess{
 struct CompiledAccess{
   Array<InternalMemoryAccess> internalAccess;
   SYM_Expr dutyDivExpression; // The actual value of the division (For expression on the form A/B, store B)
+};
+
+enum AddressGenType{
+   // NONE is not defined so that we do not have to implement full switch
+   AddressGenType_MEM  = 1,
+   AddressGenType_READ = 2,
+   AddressGenType_GEN  = 3
 };
 
 struct AddressGenInst{

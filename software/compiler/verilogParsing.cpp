@@ -6,7 +6,6 @@
 #include "globals.hpp"
 #include "memory.hpp"
 #include "templateEngine.hpp"
-#include "embeddedData.hpp"
 #include "utilsCore.hpp"
 
 #include "symbolic.hpp"
@@ -685,11 +684,11 @@ static Array<ParameterExpression> ParseParameters(Parser* tok,TrieMap<String,Val
             p->IfNextToken(',');
           
             Token paramFlag = p->ExpectNext(TokenType_CONTENT);
-            Opt<ParamFlags> flagOpt = META_ParamToFlag_ReverseMap(paramFlag.identifier);
+            ParamFlags flagOpt = ParamFlags_FromName(paramFlag.identifier);
 
-            if(flagOpt.has_value()){
+            if(flagOpt){
               // Better support for flag concatenation when using enums.
-              flags = (ParamFlags) ((u32) flags | (u32) flagOpt.value());
+              flags = (ParamFlags) ((u32) flags | (u32) flagOpt);
             } else {
               // TODO: Better error reporting
               printf("%.*s is not a valid param flag",UN(paramFlag.identifier));

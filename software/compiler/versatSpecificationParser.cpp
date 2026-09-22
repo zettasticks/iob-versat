@@ -3,7 +3,6 @@
 #include "accelerator.hpp"
 #include "debug.hpp"
 #include "declaration.hpp"
-#include "embeddedData.hpp"
 #include "globals.hpp"
 #include "memory.hpp"
 #include "symbolic.hpp"
@@ -1015,7 +1014,7 @@ void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
     v->name = paramName;
     v->value = val;
   }
-  Array<ParamNameAndValue> params = PushArray(temp,l);
+  //Array<ParamNameAndValue> params = PushArray(temp,l);
 
   FUDeclaration* type = GetTypeByName(decl.typeName.identifier);
   
@@ -3574,7 +3573,7 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
 
       if(var->type == SP_Type_HIER_ACCESS){
         // Var.Func()
-        SP_Node* innerVar = var->childs;
+        //SP_Node* innerVar = var->childs;
 
         var->type = SP_Type_FUNC_CALL;
         var->childs->next = argHead;

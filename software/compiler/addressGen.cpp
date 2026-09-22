@@ -1,6 +1,5 @@
 #include "addressGen.hpp"
 
-#include "embeddedData.hpp"
 #include "globals.hpp"
 #include "memory.hpp"
 #include "symbolic.hpp"

@@ -1,9 +1,9 @@
 #pragma once
 
-#include "embeddedData.hpp"
-
 #include "utils.hpp"
 #include "VerilogEmitter.hpp"
+
+#include "verilogParsing_meta.hpp"
 
 struct Arena;
 struct SymbolicExpression;
