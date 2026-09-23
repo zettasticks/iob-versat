@@ -79,24 +79,24 @@ FUDeclaration* InstantiateMerge(MergeDef def,Array<ParamNameAndValue> params){
   for(int i = 0; i <  size; i++){
     TypeAndInstance tp = def.declarations[i];
     
-    FUDeclaration* d = GetTypeByName(tp.typeName.identifier,params);
+    FUDeclaration* d = GetTypeByName(tp.typeName.val,params);
     Assert(d);
     decl[i] = d;
   }
 
-  String name = PushString(globalPermanent,def.name.identifier);
+  String name = PushString(globalPermanent,def.name.val);
 
   bool error = false;
   MergeModifier modifier = {};
 
   for(Token t : def.mergeModifiers){
     MergeModifier parsed = {};
-    if(t.identifier == "NoUnitMerged"){
+    if(t.val == "NoUnitMerged"){
       parsed = MergeModifier_NO_UNIT_MERGED;
     }
 
     if(parsed == MergeModifier_NIL){
-      printf("Error, merge does not support option: %.*s\n",UN(t.identifier));
+      printf("Error, merge does not support option: %.*s\n",UN(t.val));
       error = true;
     }
 
@@ -115,7 +115,7 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAnd
   Arena* perm = globalPermanent;
   TEMP_REGION(temp,perm);
 
-  String mangledName = DECL_MangleName(def.name.identifier,topLevelParams,temp);
+  String mangledName = DECL_MangleName(def.name.val,topLevelParams,temp);
 
   Accelerator* circuit = CreateAccelerator(mangledName,AcceleratorPurpose_MODULE);
 
@@ -128,14 +128,14 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAnd
   bool addOutputInstance = false;
   for(ConnectionDef* decl : def.connections){
     for(Var v : decl->input.vars){
-      if(v.name.identifier == "out"){
+      if(v.name.val == "out"){
         addOutputInstance = true;
         break;
       }
     }
 
     for(Var v : decl->output.vars){
-      if(v.name.identifier == "out"){
+      if(v.name.val == "out"){
         addOutputInstance = true;
         break;
       }
@@ -155,7 +155,7 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAnd
    
     bool topOverride = false;
     for(ParamNameAndValue p : topLevelParams){
-      if(p.name == param.name.identifier){
+      if(p.name == param.name.val){
         val = p.value;
         topOverride = true;
       }
@@ -169,7 +169,7 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAnd
 
     ParameterDef* def = paramList->PushElem();
     
-    def->name = param.name.identifier;
+    def->name = param.name.val;
     def->defaultValue = env->SymbolicFromMathExpression(param.defaultValue);
   }
   auto params = PushArray(temp,paramList);
@@ -329,7 +329,7 @@ Env* StartEnvironment(Arena* freeUse,Arena* freeUse2){
 
 void Env::ReportError(Token badToken,String msg){
   // TODO: More detailed error message
-  String error = PushString(miscArena,"[%.*s] %.*s: '%.*s'",UN(circuit->name),UN(msg),UN(badToken.identifier));
+  String error = PushString(miscArena,"[%.*s] %.*s: '%.*s'",UN(circuit->name),UN(msg),UN(badToken.val));
   *this->errors->PushElem() = error;
 }
 
@@ -394,7 +394,7 @@ FUInstance* Env::GetFUInstance(Token name,Array<int> arrayIndexIfArray){
 
   bool isArray = (ent.type == EntityType_FU_ARRAY);
 
-  String asStr = name.identifier;
+  String asStr = name.val;
   if(isArray){
     asStr = GetActualArrayName(asStr,arrayIndexIfArray,temp);
   }
@@ -416,7 +416,7 @@ FUInstance* Env::GetFUInstance(Var var){
   FUInstance* res = nullptr;
   Entity ent = GetEntity(var.name);
     
-  String name = var.name.identifier;
+  String name = var.name.val;
   if(ent.type == EntityType_FU_ARRAY){
     Array<int> index = ConvertRangeToIndex(var.index,temp);
     name = GetActualArrayName(name,index,temp);
@@ -428,7 +428,7 @@ FUInstance* Env::GetFUInstance(Var var){
 
 Entity Env::GetEntity(Token name){
   for(int i = this->currentScope; i >= 0; i--){
-    Entity* ent = this->scopes[i]->variable->Get(name.identifier);
+    Entity* ent = this->scopes[i]->variable->Get(name.val);
 
     if(ent){
       return *ent;
@@ -441,7 +441,7 @@ Entity Env::GetEntity(Token name){
 }
 
 void Env::PushEntity(Token name,Entity ent){
-  auto res = this->scopes[this->currentScope]->variable->GetOrAllocate(name.identifier);
+  auto res = this->scopes[this->currentScope]->variable->GetOrAllocate(name.val);
   if(res.alreadyExisted){
     ReportError(name,"An entity with this name already exists");
     ENTER_DEBUG();
@@ -464,7 +464,7 @@ void Env::PushEntity(String name,Entity ent){
 Entity Env::GetEntityFromAccess(Entity ent,Token accessName){
   Entity res = Entity_Nil;
 
-  String access = accessName.identifier;
+  String access = accessName.val;
 
   bool found = false;
   FUDeclaration* decl = ent.decl;
@@ -523,7 +523,7 @@ Entity Env::GetEntityFromAccess(Entity ent,Token accessName){
 
   for(MergePartition part : decl->info.infos){
     for(ConfigFunction* func : part.userFunctions){
-      if(func->individualName == funcName.identifier){
+      if(func->individualName == funcName.val){
         res.type = EntityType_FUNCTION;
         res.func = func;
             
@@ -565,7 +565,7 @@ Array<Entity> Env::GetEntity(ConfigIdentifier* id,Arena* out){
           ReportError({},"Outside array bounds");
         }
 
-        String arrayName = PushString(out,"%.*s_%d",UN(current.name.identifier),index);
+        String arrayName = PushString(out,"%.*s_%d",UN(current.name.val),index);
         
         Array<int> newDims = Offset(current.dims,1);
 
@@ -574,9 +574,9 @@ Array<Entity> Env::GetEntity(ConfigIdentifier* id,Arena* out){
           
           // TODO-2
           next.name = {};
-          next.name.type = TokenType_CONTENT;
-          next.name.identifier = arrayName;
-          next.name.originalData = arrayName;
+          next.name.type = TokenType_IDENTIFIER;
+          next.name.val = arrayName;
+          next.name.val = arrayName;
 
           next.dims = newDims;
         } else {
@@ -634,7 +634,7 @@ Array<Entity> Env::GetEntity(ConfigIdentifier* id,Arena* out){
       bool found = false;
       for(MergePartition part : decl->info.infos){
         for(ConfigFunction* func : part.userFunctions){
-          if(func->individualName == funcName.identifier){
+          if(func->individualName == funcName.val){
             next.type = EntityType_FUNCTION;
             next.func = func;
             
@@ -693,7 +693,7 @@ Array<Entity> Env::GetEntity(MathExpression* spec,Arena* out){
       if(isVar) {
         save = false;
         ent.type = EntityType_SYM;
-        ent.sym = SYM_Var(top->name.identifier);
+        ent.sym = SYM_Var(top->name.val);
       }
 
     } break;
@@ -736,7 +736,7 @@ Array<Entity> Env::GetEntity(MathExpression* spec,Arena* out){
 
           if(found2){
             found = true;
-            String trueName = PushString(temp,"%.*s[%d]",UN(ent.name.identifier),val);
+            String trueName = PushString(temp,"%.*s[%d]",UN(ent.name.val),val);
             ent.type = EntityType_SYM;
             ent.sym = SYM_Var(trueName);
           }
@@ -854,7 +854,7 @@ FUAccess Env::ResolveFU(MathExpression* ptr,Arena* out){
             ReportError({},"Outside array bounds");
           }
 
-          String arrayName = PushString(out,"%.*s_%d",UN(entity.name.identifier),index);
+          String arrayName = PushString(out,"%.*s_%d",UN(entity.name.val),index);
         
           Array<int> newDims = Offset(entity.dims,1);
 
@@ -863,9 +863,8 @@ FUAccess Env::ResolveFU(MathExpression* ptr,Arena* out){
           
             // TODO-2
             entity.name = {};
-            entity.name.type = TokenType_CONTENT;
-            entity.name.identifier = arrayName;
-            entity.name.originalData = arrayName;
+            entity.name.type = TokenType_IDENTIFIER;
+            entity.name.val = arrayName;
 
             entity.dims = newDims;
           } else {
@@ -983,12 +982,12 @@ void Env::AddInput(VarDeclaration var){
     for(auto iter = StartIteration(ent.dims,zeroArray,temp); iter->IsValid(); iter->Advance()){
       Array<int> index = iter->Current();
 
-      String actualName = GetActualArrayName(var.name.identifier,index,temp);
+      String actualName = GetActualArrayName(var.name.val,index,temp);
       FUInstance* input = CreateOrGetInput(circuit,actualName,insertedInputs++);
       table->Insert(input->name,input);
     }
   } else {
-    FUInstance* input = CreateOrGetInput(circuit,var.name.identifier,insertedInputs++);
+    FUInstance* input = CreateOrGetInput(circuit,var.name.val,insertedInputs++);
     table->Insert(input->name,input);
     
     ent.type = EntityType_FU;
@@ -1016,7 +1015,7 @@ void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
   }
   //Array<ParamNameAndValue> params = PushArray(temp,l);
 
-  FUDeclaration* type = GetTypeByName(decl.typeName.identifier);
+  FUDeclaration* type = GetTypeByName(decl.typeName.val);
   
   if(!type){
     ReportError(decl.typeName,"Typename does not exist");
@@ -1036,12 +1035,12 @@ void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
     for(auto iter = StartIteration(ent.dims,zeroArray,temp); iter->IsValid(); iter->Advance()){
       Array<int> index = iter->Current();
 
-      String actualName = GetActualArrayName(var.name.identifier,index,temp);
+      String actualName = GetActualArrayName(var.name.val,index,temp);
       FUInstance* inst = CreateFUInstanceWithDeclaration(type,actualName,decl);
       table->Insert(inst->name,inst);
     }
   } else {
-    FUInstance* inst = CreateFUInstanceWithDeclaration(type,var.name.identifier,decl);
+    FUInstance* inst = CreateFUInstanceWithDeclaration(type,var.name.val,decl);
     table->Insert(inst->name,inst);
 
     ent = MakeEntity(inst);
@@ -1058,7 +1057,7 @@ void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
       for(Token partialShareName : decl.shareNames){
         bool foundOne = false;
         for(int ii = 0; ii < inst->declaration->configs.size; ii++){
-          if(inst->declaration->configs[ii].name == partialShareName.identifier){
+          if(inst->declaration->configs[ii].name == partialShareName.val){
             inst->isSpecificConfigShared[ii] = false;
             foundOne = true;
           }
@@ -1066,7 +1065,7 @@ void Env::AddInstance(InstanceDeclaration decl,VarDeclaration var){
 
         if(!foundOne){
           TEMP_REGION(temp,nullptr);
-          String errorMsg = PushString(temp,"Cannot share config wire since it does not exist for instance '%.*s' of type '%.*s'",UN(inst->name),UN(decl.typeName.identifier));
+          String errorMsg = PushString(temp,"Cannot share config wire since it does not exist for instance '%.*s' of type '%.*s'",UN(inst->name),UN(decl.typeName.val));
           ReportError(partialShareName,errorMsg);
         }
       }
@@ -1151,7 +1150,7 @@ void Env::AddEquality(ConnectionDef decl){
 #endif
   }
 
-  String name = outVar.name.identifier;
+  String name = outVar.name.val;
   if(outVar.IsArrayAccess()){
     Array<int> index = ConvertRangeToIndex(outVar.index,temp);
     name = GetActualArrayName(name,index,temp);
@@ -1224,8 +1223,7 @@ Entity Env::AddComputation(String functionName,Array<SYM_Expr> expressions){
 
   Entity* newEntity = computations->PushElem();
   newEntity->type = EntityType_RUNTIME_COMPUTATION;
-  newEntity->name.identifier = entityName;
-  newEntity->name.originalData = entityName;
+  newEntity->name.val = entityName;
   newEntity->args = CopyArray(expressions,miscArena);
   newEntity->functionName = PushString(miscArena,functionName);
 
@@ -1239,7 +1237,7 @@ Array<Entity> Env::GetAllComputations(Arena* out){
 void Env::SetGenVariable(Token name,int value){
   Entity* alreadyExists = nullptr;
   for(int i = this->currentScope; i >= 0; i--){
-    alreadyExists = this->scopes[i]->variable->Get(name.identifier);
+    alreadyExists = this->scopes[i]->variable->Get(name.val);
 
     if(alreadyExists && alreadyExists->type == EntityType_GEN_VALUE){
       break;
@@ -1279,7 +1277,7 @@ FUInstance* FUInstanceIterator::Current(){
   FUInstance* inst = ent.inst;
   if(iter){
     TEMP_REGION(temp,nullptr);
-    String baseName = ent.name.identifier;
+    String baseName = ent.name.val;
     String actualName = GetActualArrayName(baseName,iter->Current(),temp);
 
     inst = GetUnit(this->env->circuit,actualName);
@@ -1328,7 +1326,7 @@ FUInstance* Env::InstantiateReduction(Var var,FUDeclaration* type){
   for(int i = 0; iter->IsValid(); i += 1,iter->Advance()){
     Array<int> index = iter->Current();
 
-    String name = GetActualArrayName(var.name.identifier,index,globalPermanent);
+    String name = GetActualArrayName(var.name.val,index,globalPermanent);
     buffer[i] = table->GetOrFail(name);
   }
       
@@ -1377,7 +1375,7 @@ PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
     // Just to remove warnings.
   case SpecType_FUNCTION_CALL:{
     Token functionToken = root->name;
-    String functionName = functionToken.identifier;
+    String functionName = functionToken.val;
     Array<Var> args = root->varArgs;
 
     if(functionName != "Reduce"){
@@ -1386,7 +1384,7 @@ PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
 
     Var toReduce = args[0];
     Token reduceTypeToken = args[1].name;
-    FUDeclaration* reduceType = GetTypeByName(reduceTypeToken.identifier);
+    FUDeclaration* reduceType = GetTypeByName(reduceTypeToken.val);
 
     res.inst = InstantiateReduction(toReduce,reduceType);
     res.extra.port.end  = res.extra.port.start  = &MATH_LITERAL_0;
@@ -1413,12 +1411,12 @@ PortExpression Env::InstantiateSpecExpression(SpecExpression* root){
   }break;
   case SpecType_VAR:{
     Var var = root->var;  
-    String name = var.name.identifier;
+    String name = var.name.val;
 
     if(var.IsArrayAccess()){
       Array<int> index = ConvertRangeToIndex(var.index,temp);
 
-      name = GetActualArrayName(var.name.identifier,index,globalPermanent);
+      name = GetActualArrayName(var.name.val,index,globalPermanent);
     }
     
     FUInstance* inst = table->GetOrFail(name);
@@ -1594,7 +1592,7 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
       }
 
       if(!found){
-        res = SYM_Var(top->name.identifier);
+        res = SYM_Var(top->name.val);
       }
     } break;
     case MathType_LITERAL:{
@@ -1610,7 +1608,7 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
         Token indexName = index->name;
         Entity indexVal = GetEntity(indexName);
 
-        String fullName = PushString(temp,"%.*s[%d]",UN(top->name.originalData),indexVal.val);
+        String fullName = PushString(temp,"%.*s[%d]",UN(top->name.val),indexVal.val);
         res = SYM_Var(fullName);
       }
     } break;
@@ -1618,7 +1616,7 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
     case MathType_FUNCTION_CALL: {
       Array<MathExpression*> args = top->expressions;
 
-      if(top->name.identifier == "Duty"){
+      if(top->name.val == "Duty"){
         res = SYM_Duty(Recurse(Recurse,top->expressions[0]),Recurse(Recurse,top->expressions[1]));
       } else {
         Array<SYM_Expr> expressions = PushArray<SYM_Expr>(temp,args.size);
@@ -1626,8 +1624,8 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
           expressions[i] = SymbolicFromMathExpression(args[i]);
         }
 
-        Entity funcEnt = AddComputation(top->name.identifier,expressions);
-        res = SYM_Var(funcEnt.name.identifier);
+        Entity funcEnt = AddComputation(top->name.val,expressions);
+        res = SYM_Var(funcEnt.name.val);
       }
     } break;
 
@@ -1646,7 +1644,7 @@ SYM_Expr Env::SymbolicFromMathExpression(MathExpression* spec){
 MathExpression* ParseNumberOnly(Parser* parser,Arena* out){
   MathExpression* res = PushStruct<MathExpression>(out);
 
-  res->val = parser->ExpectNext(TokenType_NUMBER).number;
+  res->val = ParseInt(parser->ExpectNext(TokenType_NUMBER).val);
   res->type = MathType_LITERAL;
 
   return res;
@@ -1685,7 +1683,7 @@ Range<MathExpression*> ParseExprRange(Parser* parser,Arena* out){
 Var ParseVar(Parser* parser,Arena* out){
   TEMP_REGION(temp,out);
   
-  Token name = parser->ExpectNext(TokenType_CONTENT);
+  Token name = parser->ExpectNext(TokenType_IDENTIFIER);
 
   auto list = PushList<Range<MathExpression*>>(temp); 
   while(parser->IfNextToken('[')){
@@ -1727,7 +1725,7 @@ VarDeclaration ParseVarDeclaration(Parser* parser,Arena* out){
 
   VarDeclaration res = {};
 
-  res.name = parser->ExpectNext(TokenType_CONTENT);
+  res.name = parser->ExpectNext(TokenType_IDENTIFIER);
   
   // TODO: We should integrate the array parsing logic with this one
   auto list = PushList<MathExpression*>(temp);
@@ -1799,13 +1797,13 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
 
       parsedModifier = InstanceDeclarationType_SHARE_CONFIG;
       
-      res.typeName = parser->ExpectNext(TokenType_CONTENT);
+      res.typeName = parser->ExpectNext(TokenType_IDENTIFIER);
 
       if(parser->IfNextToken('(')){
         // TODO: For now, we assume that every wire specified inside the spec file is a negative (remove share).
         auto toShare = PushList<Token>(temp);
         while(!parser->Done()){
-          Token name = parser->ExpectNext(TokenType_CONTENT);
+          Token name = parser->ExpectNext(TokenType_IDENTIFIER);
 
           *toShare->PushElem() = name;
 
@@ -1852,7 +1850,7 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
     }
   }
 
-  res.typeName = parser->ExpectNext(TokenType_CONTENT);
+  res.typeName = parser->ExpectNext(TokenType_IDENTIFIER);
 
   if(parser->IfNextToken('<')){
     auto list = PushList<ParamNameAndValue>(temp);
@@ -1861,15 +1859,15 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
         break;
       }
 
-      Token parameterName = parser->ExpectNext(TokenType_CONTENT);
+      Token parameterName = parser->ExpectNext(TokenType_IDENTIFIER);
 
       parser->ExpectNext('=');
 
       Token number = parser->ExpectNext(TokenType_NUMBER);
 
       ParamNameAndValue* val = list->PushElem();
-      val->name = parameterName.identifier;
-      val->value = number.number;
+      val->name = parameterName.val;
+      val->value = ParseInt(number.val);
 
       if(parser->IfNextToken(',')){
         continue;
@@ -1891,7 +1889,7 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
 
     while(!parser->Done()){
       parser->ExpectNext('.');
-      Token parameterName = parser->ExpectNext(TokenType_CONTENT);
+      Token parameterName = parser->ExpectNext(TokenType_IDENTIFIER);
 
       parser->ExpectNext('(');
 
@@ -1899,7 +1897,7 @@ InstanceDeclaration ParseInstanceDeclaration(Parser* parser,Arena* out){
 
       parser->ExpectNext(')');
       
-      String savedParameter = PushString(out,parameterName.identifier);
+      String savedParameter = PushString(out,parameterName.val);
       *list->PushElem() = {savedParameter,expr}; 
 
       if(parser->IfNextToken(',')){
@@ -2006,11 +2004,11 @@ MathExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
     res = PushStruct<MathExpression>(out);
 
     res->type = MathType_LITERAL;
-    res->val = number.number;
-  } else if(atom.type == TokenType_CONTENT){
+    res->val = ParseInt(number.val);
+  } else if(atom.type == TokenType_IDENTIFIER){
     TEMP_REGION(temp,out);
 
-    Token name = parser->ExpectNext(TokenType_CONTENT);
+    Token name = parser->ExpectNext(TokenType_IDENTIFIER);
 
     res = PushStruct<MathExpression>(out);
     res->name = name;
@@ -2034,7 +2032,7 @@ MathExpression* ParseMathExpression(Parser* parser,Arena* out,int bindingPower){
     // TODO: This is mostly for state right side.
     //       We might eventually just separate this into different parsing functions.
     if(parser->IfNextToken('.')){
-      Token singleAccessName = parser->ExpectNext(TokenType_CONTENT);
+      Token singleAccessName = parser->ExpectNext(TokenType_IDENTIFIER);
       
       MathExpression* singleAccess = PushStruct<MathExpression>(out);
       singleAccess->type = MathType_ACCESS;
@@ -2209,10 +2207,10 @@ SpecExpression* ParseSpecExpression(Parser* parser,Arena* out,int bindingPower){
     res = PushStruct<SpecExpression>(out);
 
     res->type = SpecType_LITERAL;
-    res->val = number.number;
-  } else if(atom.type == TokenType_CONTENT){
+    res->val = ParseInt(number.val);
+  } else if(atom.type == TokenType_IDENTIFIER){
     if(parser->IfPeekToken('(',1)){
-      Token functionName = parser->ExpectNext(TokenType_CONTENT);
+      Token functionName = parser->ExpectNext(TokenType_IDENTIFIER);
       parser->ExpectNext('(');
       
       auto args = PushList<Var>(temp);
@@ -2328,7 +2326,7 @@ ConnectionDef* ParseConnection(Parser* parser,Arena* out){
   }
 
   if(type == ConnectionType_LOOP){
-    Token loopVariable = parser->ExpectNext(TokenType_CONTENT);
+    Token loopVariable = parser->ExpectNext(TokenType_IDENTIFIER);
 
     MathExpression* start = ParseMathExpression(parser,out);
     parser->ExpectNext(TokenType_DOUBLE_DOT);
@@ -2393,7 +2391,7 @@ ConfigFunctionDef* ParseConfigFunction(Parser* parser,Arena* out);
 ParameterDeclaration ParseParameterDeclaration(Parser* parser,Arena* out){
   ParameterDeclaration res = {};
 
-  res.name = parser->ExpectNext(TokenType_CONTENT);
+  res.name = parser->ExpectNext(TokenType_IDENTIFIER);
   
   if(parser->IfNextToken('=')){
     res.defaultValue = ParseMathExpression(parser,out);
@@ -2409,7 +2407,7 @@ ModuleDef ParseModuleDef(Parser* parser,Arena* out){
 
   parser->ExpectNext(TokenType_KEYWORD_MODULE);
 
-  Token name = parser->ExpectNext(TokenType_CONTENT);
+  Token name = parser->ExpectNext(TokenType_IDENTIFIER);
 
   Array<ParameterDeclaration> params = {};
   if(parser->IfNextToken('#')){
@@ -2523,11 +2521,11 @@ ModuleDef ParseModuleDef(Parser* parser,Arena* out){
 }
 
 TypeAndInstance ParseTypeAndInstance(Parser* parser){
-  Token typeName = parser->ExpectNext(TokenType_CONTENT);
+  Token typeName = parser->ExpectNext(TokenType_IDENTIFIER);
 
   Token instanceName = {};
   if(parser->IfNextToken(':')){
-    instanceName = parser->ExpectNext(TokenType_CONTENT);
+    instanceName = parser->ExpectNext(TokenType_IDENTIFIER);
   }
 
   TypeAndInstance res = {};
@@ -2538,7 +2536,7 @@ TypeAndInstance ParseTypeAndInstance(Parser* parser){
 }
 
 HierarchicalName ParseHierarchicalName(Parser* parser,Arena* out){
-  Token topInstance = parser->ExpectNext(TokenType_CONTENT);
+  Token topInstance = parser->ExpectNext(TokenType_IDENTIFIER);
 
   parser->ExpectNext('.');
 
@@ -2567,7 +2565,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
         break;
       }
 
-      *tokenList->PushElem() = parser->ExpectNext(TokenType_CONTENT);
+      *tokenList->PushElem() = parser->ExpectNext(TokenType_IDENTIFIER);
 
       parser->IfNextToken(',');
     }
@@ -2577,7 +2575,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
     parser->ExpectNext(')');
   }
 
-  Token mergeName = parser->ExpectNext(TokenType_CONTENT);
+  Token mergeName = parser->ExpectNext(TokenType_IDENTIFIER);
 
   Array<ParameterDeclaration> params = {};
   if(parser->IfNextToken('#')){
@@ -2626,7 +2624,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
         break;
       }
 
-      Token typeName = parser->ExpectNext(TokenType_CONTENT);
+      Token typeName = parser->ExpectNext(TokenType_IDENTIFIER);
       
       auto list = PushList<ParamNameAndValue2>(temp);
       if(parser->IfNextToken('<')){
@@ -2635,7 +2633,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
             break;
           }
 
-          Token parameterName = parser->ExpectNext(TokenType_CONTENT);
+          Token parameterName = parser->ExpectNext(TokenType_IDENTIFIER);
 
           parser->ExpectNext('=');
 
@@ -2643,9 +2641,9 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
           Token next = parser->NextToken();
           
           if(next.type == TokenType_NUMBER){
-            expr = SYM_Lit(next.number);
-          } else if(next.type == TokenType_CONTENT){
-            expr = SYM_Var(next.identifier);
+            expr = SYM_Lit(ParseInt(next.val));
+          } else if(next.type == TokenType_IDENTIFIER){
+            expr = SYM_Var(next.val);
           }
 
           ParamNameAndValue2* val = list->PushElem();
@@ -2662,7 +2660,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
       }
       Array<ParamNameAndValue2> params = PushArray(out,list);
 
-      Token name = parser->ExpectNext(TokenType_CONTENT);
+      Token name = parser->ExpectNext(TokenType_IDENTIFIER);
       parser->ExpectNext(';');
 
       TypeAndInstance* inst = declarationList->PushElem();
@@ -2705,10 +2703,10 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
     int secondIndex = -1;
     for(int i = 0; i < declarations.size; i++){
       TypeAndInstance& decl = declarations[i];
-      if(CompareString(node.first.instanceName.identifier,decl.instanceName.identifier)){
+      if(CompareString(node.first.instanceName.val,decl.instanceName.val)){
         firstIndex = i;
       } 
-      if(CompareString(node.second.instanceName.identifier,decl.instanceName.identifier)){
+      if(CompareString(node.second.instanceName.val,decl.instanceName.val)){
         secondIndex = i;
       } 
     }
@@ -2724,7 +2722,7 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
     }
 #endif
 
-    *specificsNodes->PushElem() = {firstIndex,node.first.subInstance.name.identifier,secondIndex,node.second.subInstance.name.identifier};
+    *specificsNodes->PushElem() = {firstIndex,node.first.subInstance.name.val,secondIndex,node.second.subInstance.name.val};
   }
   Array<SpecificMergeNode> specifics = PushArray(out,specificsNodes);
 
@@ -2743,19 +2741,11 @@ MergeDef ParseMerge(Parser* parser,Arena* out){
 Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
   TEMP_REGION(temp,out);
 
-  auto TokenizeFunction = [](void* tokenizerState) -> Token{
+  auto TokenizeFunction = [](void* tokenizerState,const char* start,const char* end) -> Token{
     DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
-    
-    const char* start = state->ptr;
-    const char* end = state->end;
 
-    if(start >= end){
-      Token token = {};
-      token.type = TokenType_EOF;
-      return token;
-    }
-
-    TokenizeResult res = ParseWhitespace(start,end);
+    Token res = {};
+    res |= ParseWhitespace(start,end);
     res |= ParseComments(start,end);
 
     res |= ParseMultiSymbol(start,end,">><",TokenType_ROTATE_RIGHT);
@@ -2773,8 +2763,8 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
 
     res |= ParseIdentifier(start,end);
 
-    if(res.token.type == TokenType_CONTENT){
-      String id = res.token.identifier;
+    if(res.type == TokenType_IDENTIFIER){
+      String id = res.val;
       
       TokenType type = TokenType_INVALID;
 
@@ -2791,25 +2781,11 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
       if(id == "for")        type = TokenType_KEYWORD_FOR;
 
       if(type != TokenType_INVALID){
-        res.token.type = type;
+        res.type = type;
       }
     }
 
-    int size = res.bytesParsed;
-    if(size <= 0 && state->ptr != state->end){
-      size = 1;
-    }
-
-    state->ptr += size;
-
-    // NOTE: Something very bad must happen to the point where the file is 1 byte after the end.
-    //       We expect it to only reach file->end, not file->end + 1
-    Assert(state->ptr < state->end + 1);
-
-    Token ret = res.token;
-    ret.originalFile = state->content;
-
-    return ret;
+    return res;
   };
 
   FREE_ARENA(parseArena);
@@ -2867,7 +2843,7 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
 static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
   TEMP_REGION(temp,out);
   
-  Token id = parser->ExpectNext(TokenType_CONTENT);
+  Token id = parser->ExpectNext(TokenType_IDENTIFIER);
   
   ConfigIdentifier* base = PushStruct<ConfigIdentifier>(out);
   base->type = ConfigIdentifierType_BASE;
@@ -2879,7 +2855,7 @@ static ConfigIdentifier* ParseConfigIdentifier(Parser* parser,Arena* out){
     ConfigIdentifier* parsed = nullptr;
 
     if(!parsed && parser->IfNextToken('.')){
-      Token access = parser->ExpectNext(TokenType_CONTENT);
+      Token access = parser->ExpectNext(TokenType_IDENTIFIER);
 
       // Function call syntax
       if(parser->IfNextToken('(')){
@@ -2961,7 +2937,7 @@ static ConfigStatement* ParseConfigStatements(Parser* parser,Arena* out){
     ConfigStatement* child = nullptr;
 
     if(isLoop){
-      loopVariable = parser->ExpectNext(TokenType_CONTENT);
+      loopVariable = parser->ExpectNext(TokenType_IDENTIFIER);
       
       start = ParseMathExpression(parser,out);
       parser->ExpectNext(TokenType_DOUBLE_DOT);
@@ -2979,7 +2955,7 @@ static ConfigStatement* ParseConfigStatements(Parser* parser,Arena* out){
     }
     
     if(!isLoop){
-      if(parser->IfPeekToken(TokenType_CONTENT)){
+      if(parser->IfPeekToken(TokenType_IDENTIFIER)){
         lhs = ParseConfigIdentifier(parser,out);
 
         if(parser->IfNextToken('=')){
@@ -3021,7 +2997,7 @@ static ConfigStatement* ParseConfigStatements(Parser* parser,Arena* out){
 static ConfigVarDeclaration ParseConfigVarDeclaration(Parser* parser,Arena* out){
   ConfigVarDeclaration res = {};
 
-  res.name = parser->ExpectNext(TokenType_CONTENT);
+  res.name = parser->ExpectNext(TokenType_IDENTIFIER);
 
   if(parser->IfNextToken('[')){
     MathExpression* arraySize = ParseMathExpression(parser,out);
@@ -3086,7 +3062,7 @@ ConfigFunctionDef* ParseConfigFunction(Parser* parser,Arena* out){
   bool debug = parser->IfNextToken(TokenType_KEYWORD_DEBUG);
   bool sim = parser->IfNextToken(TokenType_KEYWORD_SIM);
     
-  Token configName = parser->ExpectNext(TokenType_CONTENT);
+  Token configName = parser->ExpectNext(TokenType_IDENTIFIER);
 
   Array<ConfigVarDeclaration> functionVars = {};
   if(type == UserConfigType_MEM || type == UserConfigType_CONFIG){
@@ -3388,9 +3364,8 @@ Entity MakeEntity(FUInstance* inst){
 
   // TODO-2
   res.name = {};
-  res.name.type = TokenType_CONTENT;
-  res.name.identifier = inst->name;
-  res.name.originalData = inst->name;
+  res.name.type = TokenType_IDENTIFIER;
+  res.name.val = inst->name;
 
   return res;
 }
@@ -3444,16 +3419,16 @@ String SP_Repr(SP_Node* top,Arena* out){
 
     if(isExprContainer){
       b->PushString("N: %.*s ",UN(name));
-      if(!Empty(node->token.identifier)){
-        b->PushString("%.*s",UN(node->token.identifier));
+      if(!Empty(node->token.val)){
+        b->PushString("%.*s",UN(node->token.val));
       }
       b->PushString("\n");
       
       Recurse(Recurse,node->childs,level + 1);
     } else if(exprType){
       b->PushString("E: %.*s ",UN(name));
-      if(!Empty(node->token.identifier)){
-        b->PushString("%.*s",UN(node->token.identifier));
+      if(!Empty(node->token.val)){
+        b->PushString("%.*s",UN(node->token.val));
       }
       b->PushString("\n");
 
@@ -3461,8 +3436,8 @@ String SP_Repr(SP_Node* top,Arena* out){
       Recurse(Recurse,node->second,level + 1);
     } else {
       b->PushString("N: %.*s ",UN(name));
-      if(!Empty(node->token.identifier)){
-        b->PushString("%.*s",UN(node->token.identifier));
+      if(!Empty(node->token.val)){
+        b->PushString("%.*s",UN(node->token.val));
       }
       b->PushString("\n");
 
@@ -3523,8 +3498,8 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
   } else if(peek.type == TokenType_NUMBER){
     Token number = parser->ExpectNext(TokenType_NUMBER);
     atom = SP_PushNode(out,SP_Type_LITERAL,number,0);
-  } else if(peek.type == TokenType_CONTENT){
-    Token name = parser->ExpectNext(TokenType_CONTENT);
+  } else if(peek.type == TokenType_IDENTIFIER){
+    Token name = parser->ExpectNext(TokenType_IDENTIFIER);
 
     SP_Node* var = SP_PushNode(out,SP_Type_VAR,name,0);
 
@@ -3532,7 +3507,7 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
     //
 
     while(parser->IfNextToken('.')){
-      Token access = parser->ExpectNext(TokenType_CONTENT);
+      Token access = parser->ExpectNext(TokenType_IDENTIFIER);
     
       var = SP_PushNode(out,SP_Type_HIER_ACCESS,access,var);
     }
@@ -3686,12 +3661,12 @@ SP_Node* SP_ParseRange(Parser* parser,Arena* out){
 }
 
 SP_Node* SP_ParseVar(Parser* parser,Arena* out){
-  Token name = parser->ExpectNext(TokenType_CONTENT);
+  Token name = parser->ExpectNext(TokenType_IDENTIFIER);
 
   SP_Node* var = SP_PushNode(out,SP_Type_VAR,name,0);
 
   while(parser->IfNextToken('.')){
-    Token access = parser->ExpectNext(TokenType_CONTENT);
+    Token access = parser->ExpectNext(TokenType_IDENTIFIER);
     
     var = SP_PushNode(out,SP_Type_HIER_ACCESS,access,var);
   }
@@ -3727,7 +3702,7 @@ SP_Node* SP_ParseVar(Parser* parser,Arena* out){
 }
 
 SP_Node* SP_ParseVarDeclaration(Parser* parser,Arena* out){
-  Token name = parser->ExpectNext(TokenType_CONTENT);
+  Token name = parser->ExpectNext(TokenType_IDENTIFIER);
 
   SP_Node* var = SP_PushNode(out,SP_Type_VAR_DECL,name,0);
   
@@ -3800,7 +3775,7 @@ SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
           break;
         }
 
-        Token name = parser->ExpectNext(TokenType_CONTENT);
+        Token name = parser->ExpectNext(TokenType_IDENTIFIER);
         SP_Node* node = SP_PushNode(out,SP_Type_VAR,name,0);
         SP_Append(shareHead,shareTail,node);
 
@@ -3824,7 +3799,7 @@ SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
     break;
   }
 
-  Token typeName = parser->ExpectNext(TokenType_CONTENT);
+  Token typeName = parser->ExpectNext(TokenType_IDENTIFIER);
 
   if(parser->IfNextToken('#')){
     parser->ExpectNext('(');
@@ -3834,7 +3809,7 @@ SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
       }
 
       parser->ExpectNext('.');
-      Token parameterName = parser->ExpectNext(TokenType_CONTENT);
+      Token parameterName = parser->ExpectNext(TokenType_IDENTIFIER);
       parser->ExpectNext('(');
       SP_Node* expr = SP_ParseExpression(parser,out);
       parser->ExpectNext(')');
@@ -3908,7 +3883,7 @@ SP_Node* SP_ParseConnection(Parser* parser,Arena* out){
   SP_Node* res = 0;
 
   if(parser->IfNextToken(TokenType_KEYWORD_FOR)){
-    Token loopVar = parser->ExpectNext(TokenType_CONTENT);
+    Token loopVar = parser->ExpectNext(TokenType_IDENTIFIER);
 
     SP_Node* range = SP_ParseRange(parser,out);
 
@@ -3980,7 +3955,7 @@ SP_Node* SP_ParseConfigStatements(Parser* parser,Arena* out){
     }
 
     if(isLoop){
-      Token loopVariable = parser->ExpectNext(TokenType_CONTENT);
+      Token loopVariable = parser->ExpectNext(TokenType_IDENTIFIER);
 
       // TODO: Not being set, need to figure out how to proceed for this case
       SP_Node* range = SP_ParseRange(parser,out);
@@ -4055,7 +4030,7 @@ SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out){
     break;
   }
 
-  Token funcName = parser->ExpectNext(TokenType_CONTENT);
+  Token funcName = parser->ExpectNext(TokenType_IDENTIFIER);
 
   // Parse function inputs ======================================================
   if(type == SP_Type_FUNC_MEM || type == SP_Type_FUNC_CONFIG){
@@ -4066,7 +4041,7 @@ SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out){
         break;
       }
 
-      Token name = parser->ExpectNext(TokenType_CONTENT);
+      Token name = parser->ExpectNext(TokenType_IDENTIFIER);
 
       SP_Node* arraySize = 0;
       if(parser->IfNextToken('[')){
@@ -4076,15 +4051,15 @@ SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out){
 
       SP_Type type = SP_Type_FUNC_TYPE_NONE;
       if(parser->IfNextToken(':')){
-        Token typeName = parser->ExpectNext(TokenType_CONTENT);
+        Token typeName = parser->ExpectNext(TokenType_IDENTIFIER);
         
-        if(typeName.identifier == "Buffer"){
+        if(typeName.val == "Buffer"){
           type = SP_Type_FUNC_TYPE_BUFFER;
         }
-        if(typeName.identifier == "Dyn"){
+        if(typeName.val == "Dyn"){
           type = SP_Type_FUNC_TYPE_DYN;
         }
-        if(typeName.identifier == "Fixed"){
+        if(typeName.val == "Fixed"){
           type = SP_Type_FUNC_TYPE_FIXED;
         }
       }
@@ -4113,7 +4088,7 @@ SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out){
 SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
   parser->ExpectNext(TokenType_KEYWORD_MODULE);
 
-  Token name = parser->ExpectNext(TokenType_CONTENT);
+  Token name = parser->ExpectNext(TokenType_IDENTIFIER);
 
   SP_Node* head = 0;
   SP_Node* tail = 0;
@@ -4126,7 +4101,7 @@ SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
         break;
       }
 
-      Token name = parser->ExpectNext(TokenType_CONTENT);
+      Token name = parser->ExpectNext(TokenType_IDENTIFIER);
 
       SP_Node* defaultVal = nullptr;
       if(parser->IfNextToken('=')){

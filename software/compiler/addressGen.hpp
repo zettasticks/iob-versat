@@ -62,10 +62,10 @@ struct CompiledAccess{
 };
 
 enum AddressGenType{
-   // NONE is not defined so that we do not have to implement full switch
-   AddressGenType_MEM  = 1,
-   AddressGenType_READ = 2,
-   AddressGenType_GEN  = 3
+  AddressGenType_NIL = 0,
+  AddressGenType_MEM  = 1,
+  AddressGenType_READ = 2,
+  AddressGenType_GEN  = 3
 };
 
 struct AddressGenInst{

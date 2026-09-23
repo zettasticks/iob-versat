@@ -499,7 +499,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
 
   for(int i = 0; i <  inputs.size; i++){
     Token t = inputs[i];
-    asString[i] = t.identifier;
+    asString[i] = t.val;
   }
 
   // TODO: Issue a warning if a variable is declared but not used.
@@ -546,7 +546,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
   for(int i = 0; i < loops.size; i++){
     AddressGenForDef loop = loops[i];
 
-    *loopVarBuilder->PushElem() = PushString(temp,loop.loopVariable.identifier);
+    *loopVarBuilder->PushElem() = PushString(temp,loop.loopVariable.val);
   }
   Array<String> loopVars = PushArray(out,loopVarBuilder);
 
@@ -567,7 +567,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
     if(!Equal(start,SYM_0)){
       loopEnd[i] = loopEnd[i] - start;
 
-      SYM_Expr loopVar = SYM_Var(loop.loopVariable.identifier);
+      SYM_Expr loopVar = SYM_Var(loop.loopVariable.val);
       symbolicExpr = SYM_Replace(symbolicExpr,loopVar,loopVar + start);
     }
 
@@ -594,7 +594,7 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
 
     AddressGenForDef loop = loops[i];
     
-    LoopLinearSum* sum = PushLoopLinearSumSimpleVar(loop.loopVariable.identifier,term,SYM_0,loopEnd[i],temp);
+    LoopLinearSum* sum = PushLoopLinearSumSimpleVar(loop.loopVariable.val,term,SYM_0,loopEnd[i],temp);
     expr = AddLoopLinearSum(sum,expr,temp);
   }
   

@@ -61,13 +61,18 @@ int main(int argc,const char* argv[]){
   TEMP_REGION(temp,nullptr);
 
   FREE_ARENA(parsing);
-  auto TokenizeFunction = [](const char* start,const char* end) -> TokenizeResult{
-    TokenizeResult res = ParseWhitespace(start,end);
+  auto TokenizeFunction = [](const char* start,const char* end) -> Token{
+    Token res = {};
+    res |= ParseWhitespace(start,end);
     res |= ParseComments(start,end);
+
+    // NOTE: Could just replace with a function that accums any non whitespace or comment val
+    //       We do not really care what we actually parse
     res |= ParseSymbols(start,end);
     res |= ParseNumber(start,end);
     res |= ParseIdentifier(start,end);
 
+    Assert(res.val.size > 0);
     return res;
   };
   
@@ -87,15 +92,15 @@ int main(int argc,const char* argv[]){
     printf("%p %p\n",ptr,end);
 
     while(ptr < end){
-      TokenizeResult res = TokenizeFunction(ptr,end);
-      TokenType type = res.token.type;
+      Token res = TokenizeFunction(ptr,end);
+      TokenType type = res.type;
 
       bool doHash = true;
-      if(type == TokenType_WHITESPACE || type == TokenType_COMMENT || type == TokenType_EOF){
+      if(type == TokenType_WHITESPACE || type == TokenType_COMMENT || type == TokenType_MULTILINE_COMMENT || type == TokenType_EOF){
         doHash = false;
       }
 
-      int size = res.bytesParsed;
+      int size = res.val.size;
       if(size == 0){
         size = 1;
       }

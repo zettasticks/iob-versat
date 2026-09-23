@@ -100,7 +100,7 @@ struct Work{
 };
 
 void Print(Work* work){
-  printf("Name: %.*s\n",UN(work->definition.base.name.identifier));
+  printf("Name: %.*s\n",UN(work->definition.base.name.val));
   printf("calculateDelayFixedGraph: %d\n",work->calculateDelayFixedGraph ? 1 : 0);
   printf("flattenWithMapping: %d\n",work->flattenWithMapping ? 1 : 0);
 }
@@ -110,7 +110,7 @@ void GetSubWorkRequirement(Hashmap<String,Work>* typeToWork,ConstructDef type){
   Array<Token> subTypesUsed = TypesUsed(type,temp);
   
   for(Token tok : subTypesUsed){
-    Work* work = typeToWork->Get(tok.identifier);
+    Work* work = typeToWork->Get(tok.val);
     if(!work){
       continue;
     }
@@ -210,10 +210,10 @@ parse_opt (int key, char *arg,
       }
 
       String value = String(valueStart,ptr - valueStart);
-      TokenizeResult number = ParseNumber(value.data,value.data + value.size);
+      Token number = ParseNumber(value.data,value.data + value.size);
 
-      if(number.token.type == TokenType_NUMBER){
-        i64 value = number.token.number;
+      if(number.type == TokenType_NUMBER){
+        i64 value = ParseInt(number.val);
         
         ParamNameAndValue* val = opts->paramDefinitions->PushElem();
         val->name = PushString(out,paramName);
@@ -555,13 +555,13 @@ int main(int argc,char* argv[]){
     // Check for repeated module names
     bool sameName = false;
     for(ConstructDef def : types){
-      if(checkNames->ExistsOrInsert(def.base.name.originalData)){
+      if(checkNames->ExistsOrInsert(def.base.name.val)){
         sameName = true;
         
         // TODO: Also need to check if we do not have collision with verilog files and stuff like that.
         
         // TODO: Better error reporting. Actually show the position on the file and stuff like that.
-        printf("Error, module with same name already exists: %.*s\n",UN(def.base.name.originalData));
+        printf("Error, module with same name already exists: %.*s\n",UN(def.base.name.val));
       }
     }
 
@@ -617,7 +617,7 @@ int main(int argc,char* argv[]){
       ConstructDef def = modules[i];
 
       auto subtypesUsed = PushList<DeclInfo>(temp);
-      String constructName = def.base.name.identifier;
+      String constructName = def.base.name.val;
       String mangledConstructName = DECL_MangleName(constructName,{},temp);
       //Array<ParamNameAndValue> metaParams;
 
@@ -633,7 +633,7 @@ int main(int argc,char* argv[]){
          
           auto l = PushList<ParamNameAndValue>(temp);
           for(ParamNameAndValue2 param : t.metaParams){
-            String paramName = param.name.identifier;
+            String paramName = param.name.val;
 
             SYM_Expr expr = param.value;
 
@@ -660,7 +660,7 @@ int main(int argc,char* argv[]){
 
             if(val == -1){
               for(ParameterDeclaration mergeParam : def.merge.params){
-                if(mergeParam.name.identifier == varName){
+                if(mergeParam.name.val == varName){
                   val = env->CalculateConstantExpression(mergeParam.defaultValue);
                   break;
                 }
@@ -675,13 +675,13 @@ int main(int argc,char* argv[]){
           }
           Array<ParamNameAndValue> val = PushArray(temp,l);
          
-          String mangledName = DECL_MangleName(typeName.identifier,val,perm);
+          String mangledName = DECL_MangleName(typeName.val,val,perm);
 
-          if(mangledName != typeName.identifier){
+          if(mangledName != typeName.val){
             printf("Mangled: %.*s\n",UN(mangledName));
           }
 
-          *subtypesUsed->PushElem() = DeclInfo{.mangledName = mangledName,.unmangledName = typeName.identifier,.metaParams = val};
+          *subtypesUsed->PushElem() = DeclInfo{.mangledName = mangledName,.unmangledName = typeName.val,.metaParams = val};
         }
       } break;
       case ConstructType_MODULE: {
@@ -693,7 +693,7 @@ int main(int argc,char* argv[]){
         // Build param values array and set params on environment.
         auto l = PushList<ParamNameAndValue>(temp);
         for(ParameterDeclaration decl : def.module.params){
-          String paramName = decl.name.identifier;
+          String paramName = decl.name.val;
 
           int val = -1;
           if(constructName == topLevelTypeStr){
@@ -724,7 +724,7 @@ int main(int argc,char* argv[]){
         }
         
         for(InstanceDeclaration decl : def.module.declarations){
-          String typeName = decl.typeName.identifier;
+          String typeName = decl.typeName.val;
 
           auto list = PushList<ParamNameAndValue>(temp);
           for(Pair<String,MathExpression*> params : decl.parameters){
@@ -821,7 +821,7 @@ int main(int argc,char* argv[]){
       for(int i = 0; i < modules.size; i++){
         ConstructDef def = modules[i];
 
-        if(def.base.name.identifier == decl.unmangledName){
+        if(def.base.name.val == decl.unmangledName){
           work.definition = def;
           found = 1;
           break;

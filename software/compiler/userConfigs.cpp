@@ -83,12 +83,12 @@ DecompConfigStatement DecomposeConfigStatement(Env* env,ConfigStatement* stmt,Ar
   if(stmt->type == ConfigStatementType_FUNCTION_CALL){
     res.isFunctionInvoc = true;
     res.func = lhsLast.func;
-    res.lhs.name = lhsFirst.name.identifier;
+    res.lhs.name = lhsFirst.name.val;
   }
 
   if(stmt->type == ConfigStatementType_EQUALITY){
     // Left hand side
-    res.lhs.name = lhsFirst.name.identifier;
+    res.lhs.name = lhsFirst.name.val;
 
     FULL_SWITCH(lhsLast.type){
     case EntityType_NIL:{
@@ -109,7 +109,7 @@ DecompConfigStatement DecomposeConfigStatement(Env* env,ConfigStatement* stmt,Ar
     } break;
 
     case EntityType_FU:{
-      res.lhs.name = lhsLast.name.identifier;
+      res.lhs.name = lhsLast.name.val;
       res.lhs.entity = lhsLast;
     } break;
     case EntityType_ACCESS_EXPR:{
@@ -211,7 +211,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   for(ConfigVarDeclaration varDecl : variables){
     EntityVarFlags flags = {};
     // TODO: Proper
-    if(varDecl.type.identifier == "Buffer"){
+    if(varDecl.type.val == "Buffer"){
       flags = EntityVarFlags_ADDRESS;
     }
 
@@ -290,7 +290,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         auto tokens = AccumTokens(def.startSym,temp);
 
         for(Token tok : tokens){
-          variablesUsedOnLoopExpressions->Insert(tok.identifier); 
+          variablesUsedOnLoopExpressions->Insert(tok.val); 
         }
       }
 
@@ -298,7 +298,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         auto tokens = AccumTokens(def.endSym,temp);
 
         for(Token tok : tokens){
-          variablesUsedOnLoopExpressions->Insert(tok.identifier); 
+          variablesUsedOnLoopExpressions->Insert(tok.val); 
         }
       }
     }
@@ -312,19 +312,19 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
     ConfigVarType type = ConfigVarType_SIMPLE;
 
-    if(typeTok.identifier == "Buffer"){
+    if(typeTok.val == "Buffer"){
       type = ConfigVarType_BUFFER;
-    } else if(typeTok.identifier == "Fixed"){
+    } else if(typeTok.val == "Fixed"){
       type = ConfigVarType_FIXED;
-    } else if(typeTok.identifier == "Dyn"){
+    } else if(typeTok.val == "Dyn"){
       type = ConfigVarType_DYN;
-    } else if(!Empty(typeTok.identifier)){
+    } else if(!Empty(typeTok.val)){
       // TODO: Proper error report, can only be one of three
       env->ReportError(typeTok,"Not a valid variable type: Must be one of: 'Address', 'Fixed' or 'Dyn'");
     }
     
     varInfo[i].type = type;
-    varInfo[i].name = PushString(out,decl.name.identifier);
+    varInfo[i].name = PushString(out,decl.name.val);
     
     if(decl.arraySize){
       varInfo[i].arraySize = env->CalculateConstantExpression(decl.arraySize);
@@ -340,7 +340,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         supportsSizeCalc = false;
 
         // TODO: Better error calculation.
-        printf("[WARNING] UserConfig function \"%.*s\" does not support runtime size calculations because var \"%.*s\" which is part of loop logic is not defined as Fixed or Dyn\n",UN(def->name.identifier),UN(var.name));
+        printf("[WARNING] UserConfig function \"%.*s\" does not support runtime size calculations because var \"%.*s\" which is part of loop logic is not defined as Fixed or Dyn\n",UN(def->name.val),UN(var.name));
       }
     }
   }
@@ -453,7 +453,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
                   lhsError = true;
                 }
 
-                String arrayName = PushString(out,"%.*s_%d",UN(lhsBase.name.identifier),index);
+                String arrayName = PushString(out,"%.*s_%d",UN(lhsBase.name.val),index);
         
                 Array<int> newDims = Offset(lhsBase.dims,1);
 
@@ -462,9 +462,9 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           
                   // TODO-2
                   lhsBase.name = {};
-                  lhsBase.name.type = TokenType_CONTENT;
-                  lhsBase.name.identifier = arrayName;
-                  lhsBase.name.originalData = arrayName;
+                  lhsBase.name.type = TokenType_IDENTIFIER;
+                  lhsBase.name.val = arrayName;
+                  lhsBase.name.val = arrayName;
 
                   lhsBase.dims = newDims;
                 } else {
@@ -512,7 +512,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
               bool found = false;
               for(MergePartition part : decl->info.infos){
                 for(ConfigFunction* func : part.userFunctions){
-                  if(func->individualName == funcName.identifier){
+                  if(func->individualName == funcName.val){
                     lhsSub.type = EntityType_FUNCTION;
                     lhsSub.func = func;
             
@@ -597,9 +597,9 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
                   if(!found && isExpressionConstant && isVarInputAddressable){
                     found = true;
-                    String trueName = PushString(temp,"%.*s[%d]",UN(rhsEntity.name.identifier),val);
+                    String trueName = PushString(temp,"%.*s[%d]",UN(rhsEntity.name.val),val);
                     newEntity.type = EntityType_VARIABLE_INPUT;
-                    newEntity.name.identifier = trueName;
+                    newEntity.name.val = trueName;
                     newEntity.flags = rhsEntity.flags;
                     newEntity.arrayDims = rhsEntity.arrayDims - 1;
                   }
@@ -633,7 +633,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         }
         }
 
-        String lhsName = lhsBase.name.identifier;
+        String lhsName = lhsBase.name.val;
 
         if(rhsError){
           printf("\n\n\nRHS decomp failed\n\n\n");
@@ -721,7 +721,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           }
         } else if(isLhsWireAccess && !isLhsWireVirtual){
           // We are setting a value to a constant wire.
-          String wireName = lhsSub.name.identifier;
+          String wireName = lhsSub.name.val;
 
           ConfigStuff* assign = list->PushElem();
           assign->type = ConfigStuffType_ASSIGNMENT;
@@ -753,7 +753,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           newAssign->access.dir = lhsSub.dir;
           newAssign->access.port = lhsSub.port;
 
-          newAssign->pointerVarName = PushString(out,rhsEntity.name.identifier);
+          newAssign->pointerVarName = PushString(out,rhsEntity.name.val);
           newAssign->lhs = lhsName;
         } else {
           // Decomp failed. Error already reported.
@@ -798,7 +798,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       }
 
       for(Token alreadyExist : lhsSideMembers){
-        if(lhsName.identifier == alreadyExist.identifier){
+        if(lhsName.val == alreadyExist.val){
           env->ReportError(lhsName,"Cannot repeat name of state element");
         }
       }
@@ -845,12 +845,12 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       if(rhsSubEntity.type == EntityType_FUNCTION){
         found = true;
 
-        String varName = rhsEntity.name.identifier;
+        String varName = rhsEntity.name.val;
         
         for(ConfigStuff stmt : rhsSubEntity.func->stuff){
           ConfigStuff* assign = list->PushElem();
           assign->type = ConfigStuffType_ASSIGNMENT;
-          assign->assign.lhs = lhsName.identifier;
+          assign->assign.lhs = lhsName.val;
           assign->assign.rhsId = PushString(out,"%.*s.%.*s",UN(varName),UN(stmt.assign.rhsId));
         }      
       }
@@ -858,12 +858,12 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
       if(rhsSubEntity.type == EntityType_STATE_WIRE){
         found = true;
 
-        String wireName = rhsSubEntity.name.identifier;
-        String varName = rhsEntity.name.identifier;
+        String wireName = rhsSubEntity.name.val;
+        String varName = rhsEntity.name.val;
 
         ConfigStuff* assign = list->PushElem();
         assign->type = ConfigStuffType_ASSIGNMENT;
-        assign->assign.lhs = lhsName.identifier;
+        assign->assign.lhs = lhsName.val;
         assign->assign.rhsId = PushString(out,"%.*s.%.*s",UN(varName),UN(wireName));
       }
 
@@ -872,7 +872,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
 
         ConfigStuff* assign = list->PushElem();
         assign->type = ConfigStuffType_ASSIGNMENT;
-        assign->assign.lhs = lhsName.identifier;
+        assign->assign.lhs = lhsName.val;
         assign->assign.rhsId = SYM_Repr(rhsEntity.sym,out);
         assign->assign.noAccess = true;
       }
@@ -889,12 +889,12 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     FREE_ARENA(CCode2);
     CEmitter* c = StartCCode(out,CCode2);
     
-    String structName = PushString(out,"%.*s_%.*s_Struct",UN(declaration->name),UN(def->name.identifier));
+    String structName = PushString(out,"%.*s_%.*s_Struct",UN(declaration->name),UN(def->name.val));
     structToReturnName = structName;
 
     c->Struct(structName);
     for(Token names : lhsSideMembers){
-      c->Member("int",names.identifier);
+      c->Member("int",names.val);
     }
     c->EndStruct();
 
@@ -1005,7 +1005,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
           // TODO: Need to create more complex tests to force the issue
           //       This probably only currently works because variable have the same names
           assign->transfer = stuff.transfer;
-          assign->transfer.name = simple->lhs->name.identifier + assign->transfer.name;
+          assign->transfer.name = simple->lhs->name.val + assign->transfer.name;
         }
       } 
       
@@ -1038,9 +1038,9 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         assign->type = ConfigStuffType_MEMORY_TRANSFER;
         assign->transfer.dir = dir;
         assign->transfer.size = size;
-        assign->transfer.name = assign->transfer.name + dst.name.identifier;
+        assign->transfer.name = assign->transfer.name + dst.name.val;
 
-        assign->transfer.variable = PushString(out,src.name.identifier);
+        assign->transfer.variable = PushString(out,src.name.val);
       }
 
       env->PopScope();
@@ -1067,7 +1067,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
     Entity ent = extraCompEnts[i];
     String funcName = ent.functionName;
     Array<SYM_Expr> args = ent.args;
-    String varName = ent.name.identifier;
+    String varName = ent.name.val;
 
     ConfigComputation* comp = compList->PushElem();
     
@@ -1144,7 +1144,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
         
         if(stmt->type == ConfigStatementType_FOR_LOOP){
           node->type = ConfigSimStatementType_LOOP;
-          node->varName = PushString(out,stmt->def.loopVariable.identifier);
+          node->varName = PushString(out,stmt->def.loopVariable.val);
           node->start = env->SymbolicFromMathExpression(stmt->def.startSym);
           node->end = env->SymbolicFromMathExpression(stmt->def.endSym);
 
@@ -1179,7 +1179,7 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   func->decl = declaration;
   func->stuff = PushArray(out,list);
   func->variables = varInfo;
-  func->individualName = PushString(out,def->name.identifier);
+  func->individualName = PushString(out,def->name.val);
   func->fullName = GlobalConfigFunctionName(func->individualName,declaration,out);
   func->structToReturnName = structToReturnName;
   func->stateStructContent = stateStructContent;

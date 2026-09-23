@@ -482,6 +482,7 @@ struct String{
 #define UN_REVERSE(STR) (STR).data,(STR).size
 
 String Offset(String base,int amount);
+String Cut(String base,int amount);
 
 inline u64 Hash(String str){
   u64 res = 0;

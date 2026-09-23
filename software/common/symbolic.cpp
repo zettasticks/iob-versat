@@ -1241,8 +1241,8 @@ SYM_Expr ParseSYM_Expr(Parser* parser,int bindingPower = -1){
     parser->ExpectNext(')');
   } else if(atom.type == TokenType_NUMBER){
     Token number = parser->ExpectNext(TokenType_NUMBER);
-    res = GetOrAllocateLiteral(number.number);
-  } else if(atom.type == TokenType_CONTENT){
+    res = GetOrAllocateLiteral(ParseInt(number.val));
+  } else if(atom.type == TokenType_IDENTIFIER){
     parser->NextToken();
 
     if(parser->IfNextToken('(')){
@@ -1258,7 +1258,7 @@ SYM_Expr ParseSYM_Expr(Parser* parser,int bindingPower = -1){
 #endif
       res = SYM_Nil;
     } else {
-      res = GetOrAllocateVariable(atom.identifier);
+      res = GetOrAllocateVariable(atom.val);
     }
   } else {
     // TODO: Better error reporting
@@ -1327,25 +1327,17 @@ SYM_Expr ParseSYM_Expr(Parser* parser,int bindingPower = -1){
 SYM_Expr SYM_Parse(String content){
   FREE_ARENA(parseArena);
 
-  auto tokenizer = [](void* tokenizerState) -> Token {
+  auto tokenizer = [](void* tokenizerState,const char* start,const char* end) -> Token {
     DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
-    
-    const char* start = state->ptr;
-    const char* end = state->end;
 
-    TokenizeResult result = ParseWhitespace(start,end);
+    Token result = {};
+    result |= ParseWhitespace(start,end);
     result |= ParseComments(start,end);
     result |= ParseSymbols(start,end);
     result |= ParseNumber(start,end);
     result |= ParseIdentifier(start,end);
 
-    state->ptr += result.bytesParsed;
-    result.token.originalData.size = result.bytesParsed;
-
-    Token res = result.token;
-    //res.originalFile = state->
-
-    return res;
+    return result;
   };
   
   Parser* parser = StartParsing(tokenizer,content,parseArena);

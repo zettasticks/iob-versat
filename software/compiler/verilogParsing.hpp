@@ -215,6 +215,8 @@ struct ModuleInfo{
 SYM_Expr SymbolicExpressionFromVerilog(VExpr* topExpr);
 SYM_Expr SymbolicExpressionFromVerilog(ExpressionRange range);
 
+String PreprocessVerilogFile(String content,Arena* out);
+
 Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths,Arena* out); // Only handles preprocessed files
 ModuleInfo ExtractModuleInfo(Module& module,Arena* out);
 

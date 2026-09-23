@@ -11,7 +11,9 @@ enum TokenType : u16{
   TokenType_NEWLINE,
   TokenType_WHITESPACE,
   TokenType_COMMENT,
+  TokenType_MULTILINE_COMMENT,
   TokenType_UNTERMINATED_MULTILINE_COMMENT,
+  TokenType_MISC,
 
   // Single characters are equal to their ASCII value.
   // { Start characters
@@ -26,7 +28,7 @@ enum TokenType : u16{
   // } End characters
 
   // Normal types commonly used
-  TokenType_CONTENT = 128,
+  TokenType_IDENTIFIER = 128,
   TokenType_NUMBER,
   TokenType_FILEPATH,
   
@@ -72,6 +74,18 @@ enum TokenType : u16{
   TokenType_VERILOG_ELSE,
   TokenType_VERILOG_ELSIF,
   TokenType_VERILOG_ENDIF,
+
+  TokenType_VERILOG_BEGIN_KEYWORDS,
+  TokenType_VERILOG_END_KEYWORDS,
+  TokenType_VERILOG_CELLDEFINE,
+  TokenType_VERILOG_ENDCELLDEFINE,
+  TokenType_VERILOG_DEFAULT_NETTYPE,
+  TokenType_VERILOG_LINE,
+  TokenType_VERILOG_NOUNCONNECTED_DRIVE,
+  TokenType_VERILOG_PRAGMA,
+  TokenType_VERILOG_RESETALL,
+  TokenType_VERILOG_UNCONNECTED_DRIVE,
+
   // Any token that starts with an ` but is not a define
   TokenType_VERILOG_PREPROCESS, 
   // } End VERILOG_PREPROCESS
@@ -134,29 +148,13 @@ struct TokenLocation{
 
 struct Token{
   TokenType type;
-
-  String originalData;
-  FileContent originalFile; 
-
-  union{
-    String identifier;
-    String whitespace;
-    String comment;
-    String cString;
-    String filepath;
-    i64 number;
-  };
+  String val;
 };
 
 String PARSE_PushDebugRepr(Arena* out,Token token);
 
-struct TokenizeResult{
-  Token token;
-  u32 bytesParsed;
-};
-
-inline TokenizeResult& operator|=(TokenizeResult& lhs,TokenizeResult rhs){
-  if(lhs.token.type == TokenType_INVALID){
+inline Token& operator|=(Token& lhs,Token rhs){
+  if(lhs.type == TokenType_INVALID){
     lhs = rhs;
   }
 
@@ -164,13 +162,13 @@ inline TokenizeResult& operator|=(TokenizeResult& lhs,TokenizeResult rhs){
 }
 
 struct DefaultTokenizerState{
-  const char* start;
-  const char* ptr;
-  const char* end;
+  //const char* start;
+  //const char* ptr;
+  //const char* end;
   FileContent content;
 };
 
-typedef Token (*TokenizeFunction)(void* tokenizerState);
+typedef Token (*TokenizeFunction)(void* tokenizerState,const char* ptr,const char* end);
 
 #define MAX_STORED_TOKENS 4
 
@@ -195,6 +193,10 @@ inline ParsingOptions operator|(ParsingOptions lhs,ParsingOptions rhs){
 
 struct Parser{
   void* tokenizerState;
+  const char* start;
+  const char* ptr;
+  const char* end;
+
   Arena* arena;
 
   u8 amountStored;
@@ -209,23 +211,17 @@ struct Parser{
   LocationNode* debugLocHead;
   LocationNode* debugLocTail;
 
-  ParsingOptions options;
+  //ParsingOptions options;
   const char* currentFile; // Optional, gives better error messages
 
   // Helpers
-  void EnsureTokens(int amount);
+  Token InternalConsumeToken(ParsingOptions opts);
   void ReportError(String error);
   
   void ReportUnexpectedToken(Token token,BracketList<TokenType> expectedList);
 
-  // NOTE: Options does not currently reset the stored tokens. This means that if we peek a bunch of tokens ahead
-  //       and then change options it might be possible that we ignore or return more tokens than we expected.
-  //       Regardless, the parsing process never peeks ahead more than it needs so it might be fine.
-  //       If calling Next and such then we can change options easily. If we are peeking then need to be careful.
-  ParsingOptions SetOptions(ParsingOptions options);
-
-  Token NextToken();
-  Token PeekToken(int lookahead = 0);
+  Token NextToken(ParsingOptions opts = ParsingOptions_DEFAULT);
+  Token PeekToken(int lookahead = 0,ParsingOptions opts = ParsingOptions_DEFAULT);
 
   bool IfNextToken(TokenType type);
   bool IfNextToken(char singleChar);
@@ -233,8 +229,8 @@ struct Parser{
   bool IfPeekToken(TokenType type,int lookahead = 0);
   bool IfPeekToken(char singleChar,int lookahead = 0);
   
-  Token ExpectNext(TokenType type);
-  Token ExpectNext(char singleChar);
+  Token ExpectNext(TokenType type,ParsingOptions opts = ParsingOptions_DEFAULT);
+  Token ExpectNext(char singleChar,ParsingOptions opts = ParsingOptions_DEFAULT);
 
   Token ExpectIdentifier(String expectedContent);
 
@@ -244,7 +240,7 @@ struct Parser{
 };
 
 Parser* StartParsing(TokenizeFunction tokenizer,String content,Arena* freeArena,ParsingOptions = ParsingOptions_DEFAULT);
-Parser* StartParsing(TokenizeFunction tokenizer,void* tokenizerState,Arena* freeArena,ParsingOptions = ParsingOptions_DEFAULT);
+Parser* StartParsing(TokenizeFunction tokenizer,void* tokenizerState,String content,Arena* freeArena,ParsingOptions = ParsingOptions_DEFAULT);
 
 // ============================================================================
 // Tokenizer function helpers
@@ -256,21 +252,21 @@ enum ParseWhitespaceOptions{
   ParseWhitespaceOptions_DEFAULT = ParseWhitespaceOptions_INCLUDE_NEWLINES
 };
 
-TokenizeResult ParseWhitespace(const char* start,const char* end,ParseWhitespaceOptions options = ParseWhitespaceOptions_DEFAULT);
-TokenizeResult ParseNewline(const char* start,const char* end);
-TokenizeResult ParseComments(const char* start,const char* end);
-TokenizeResult ParseSymbols(const char* start,const char* end);
-TokenizeResult ParseNumber(const char* start,const char* end);
-TokenizeResult ParseIdentifier(const char* start,const char* end);
-TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,TokenType result);
+Token ParseWhitespace(const char* start,const char* end,ParseWhitespaceOptions options = ParseWhitespaceOptions_DEFAULT);
+Token ParseNewline(const char* start,const char* end);
+Token ParseComments(const char* start,const char* end);
+Token ParseSymbols(const char* start,const char* end);
+Token ParseNumber(const char* start,const char* end);
+Token ParseIdentifier(const char* start,const char* end);
+Token ParseMultiSymbol(const char* start,const char* end,String format,TokenType result);
 
-TokenizeResult ParseVerilogPreprocess(const char* start,const char* end);
+Token ParseVerilogPreprocess(const char* start,const char* end);
 
-TokenizeResult ParseCString(const char* start,const char* end);
+Token ParseCString(const char* start,const char* end);
 
 // Since this is only for helper code, we define that all filepaths must begin with an '.'
 // This separates them from other normal identifiers 
-TokenizeResult ParseFilepath(const char* start,const char* end);
+// TokenizeResult ParseFilepath(const char* start,const char* end);
 
 //TODO: Create a parse remaining so that any other symbol does not cause problems further down the line.
 

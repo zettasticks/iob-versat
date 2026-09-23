@@ -39,6 +39,12 @@ String Offset(String base,int amount){
   return res;
 }
 
+String Cut(String base,int amount){
+  String res = base;
+  base.size = MAX(base.size - 1,0);
+  return base;
+}
+
 char* StaticFormat(const char* format,...){
   static const int BUFFER_SIZE = 1024*4;
   static char buffer[BUFFER_SIZE];

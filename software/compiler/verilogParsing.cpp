@@ -226,6 +226,7 @@ struct VerilogTokenizerStage{
   ContentState state;
 };
 
+#if 0
 struct VerilogTokenizerState{
   Arena* arena;
 
@@ -291,10 +292,8 @@ struct VerilogTokenizerState{
     const char* end = file->end;
     
     String asString = {start,(int) (end-start)};
-    auto TokenizeFunction = [](void* tokenizerState) -> Token{
+    auto TokenizeFunction = [](void* tokenizerState,const char* start,const char* end) -> TokenizeResult{
       DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
-      const char* start = state->ptr;
-      const char* end = state->end;
 
       TokenizeResult res = ParseWhitespace(start,end);
       res |= ParseComments(start,end);
@@ -305,8 +304,7 @@ struct VerilogTokenizerState{
       if(size <= 0){
         size = 1;
       }
-      state->ptr += size;
-      return res.token;
+      return res;
     };
 
     FREE_ARENA(parsing);
@@ -328,10 +326,8 @@ struct VerilogTokenizerState{
     const char* end = file->end;
     
     String asString = {start,(int) (end-start)};
-    auto TokenizeFunction = [](void* tokenizerState) -> Token{
+    auto TokenizeFunction = [](void* tokenizerState,const char* start,const char* end) -> TokenizeResult{
       DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
-      const char* start = state->ptr;
-      const char* end = state->end;
 
       TokenizeResult res = ParseWhitespace(start,end);
       res |= ParseComments(start,end);
@@ -341,14 +337,13 @@ struct VerilogTokenizerState{
       if(size <= 0){
         size = 1;
       }
-      state->ptr += size;
-      return res.token;
+      return res;
     };
     
     FREE_ARENA(parsing);
     Parser* parser = StartParsing(TokenizeFunction,asString,parsing);
     
-    Token result = parser->ExpectNext(TokenType_CONTENT);
+    Token result = parser->ExpectNext(TokenType_IDENTIFIER);
     
     AccumulateErrors(parser->errors);
 
@@ -365,10 +360,8 @@ struct VerilogTokenizerState{
     
     String asString = {start,(int) (end-start)};
     
-    auto TokenizeFunction = [](void* tokenizerState) -> Token{
+    auto TokenizeFunction = [](void* tokenizerState,const char* start,const char* end) -> TokenizeResult{
       DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
-      const char* start = state->ptr;
-      const char* end = state->end;
 
       TokenizeResult res = ParseNewline(start,end);
       res |= ParseWhitespace(start,end,ParseWhitespaceOptions_NONE);
@@ -382,8 +375,7 @@ struct VerilogTokenizerState{
       if(size <= 0){
         size = 1;
       }
-      state->ptr += size;
-      return res.token;
+      return res;
     };
 
     FREE_ARENA(parsing);
@@ -392,7 +384,7 @@ struct VerilogTokenizerState{
     TEMP_REGION(temp,nullptr);
 
     parser->IfNextToken(TokenType_VERILOG_DEFINE);
-    Token id = parser->ExpectNext(TokenType_CONTENT);
+    Token id = parser->ExpectNext(TokenType_IDENTIFIER);
     
     parser->SetOptions(ParsingOptions_SKIP_COMMENTS);
     
@@ -421,7 +413,7 @@ struct VerilogTokenizerState{
         parser->SetOptions(ParsingOptions_DEFAULT);
 
         while(!parser->Done()){
-          Token t = parser->ExpectNext(TokenType_CONTENT);
+          Token t = parser->ExpectNext(TokenType_IDENTIFIER);
 
           *argList->PushElem() = t.identifier;
         
@@ -539,6 +531,7 @@ struct VerilogTokenizerState{
     return nullptr;
   }
 };
+#endif
 
 static Value Eval(VExpr* expr,TrieMap<String,Value>* map){
   switch(expr->type){
@@ -625,9 +618,7 @@ static Array<ParameterExpression> ParseParameters(Parser* tok,TrieMap<String,Val
     Token peek = tok->PeekToken();
 
     if(peek.type == TokenType_VERILOG_KEYWORD_PARAMETER){
-      auto oldOptions = tok->SetOptions(ParsingOptions_SKIP_WHITESPACE);
-
-      Token possibleComment = tok->PeekToken();
+      Token possibleComment = tok->PeekToken(ParsingOptions_SKIP_WHITESPACE);
 
       // NOTE: We allow a comment immediatly before the parameter or after.
       // TODO: Need to properly test this.
@@ -635,63 +626,45 @@ static Array<ParameterExpression> ParseParameters(Parser* tok,TrieMap<String,Val
         tok->NextToken();
         possibleComment = tok->PeekToken();
       }
-      
-      tok->SetOptions(oldOptions);
 
       if(possibleComment.type == TokenType_COMMENT){
         tok->NextToken();
 
-        auto TokenizeFunction = [](void* tokenizerState) -> Token{
+        auto TokenizeFunction = [](void* tokenizerState,const char* start,const char* end) -> Token{
           DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
-    
-          const char* start = state->ptr;
-          const char* end = state->end;
 
-          if(start >= end){
-            Token token = {};
-            token.type = TokenType_EOF;
-            return token;
-          }
-
-          TokenizeResult res = ParseWhitespace(start,end);
+          Token res = {};
+          res |= ParseWhitespace(start,end);
           res |= ParseComments(start,end);
           res |= ParseSymbols(start,end);
           res |= ParseNumber(start,end);
           res |= ParseIdentifier(start,end);
 
-          int size = res.bytesParsed;
-          if(size <= 0 && state->ptr != state->end){
-            size = 1;
-          }
-
-          state->ptr += size;
-
           // NOTE: Something very bad must happen to the point where the file is 1 byte after the end.
           //       We expect it to only reach file->end, not file->end + 1
-          Assert(state->ptr < state->end + 1);
 
-          return res.token;
+          return res;
         };
 
         FREE_ARENA(commentParsing);
-        Parser* p = StartParsing(TokenizeFunction,possibleComment.comment,commentParsing);
+        Parser* p = StartParsing(TokenizeFunction,possibleComment.val,commentParsing);
 
         Token t = p->NextToken();
-        if(t.type == TokenType_CONTENT && t.identifier == "versat"){
+        if(t.type == TokenType_IDENTIFIER && t.val == "versat"){
           p->ExpectNext(':');
           
           while(!p->Done()){
             p->IfNextToken(',');
           
-            Token paramFlag = p->ExpectNext(TokenType_CONTENT);
-            ParamFlags flagOpt = ParamFlags_FromName(paramFlag.identifier);
+            Token paramFlag = p->ExpectNext(TokenType_IDENTIFIER);
+            ParamFlags flagOpt = ParamFlags_FromName(paramFlag.val);
 
             if(flagOpt){
               // Better support for flag concatenation when using enums.
               flags = (ParamFlags) ((u32) flags | (u32) flagOpt);
             } else {
               // TODO: Better error reporting
-              printf("%.*s is not a valid param flag",UN(paramFlag.identifier));
+              printf("%.*s is not a valid param flag",UN(paramFlag.val));
             }
           }
         }
@@ -730,10 +703,10 @@ static Array<ParameterExpression> ParseParameters(Parser* tok,TrieMap<String,Val
       VExpr* expr = VerilogParseExpression(tok,out);
       Value val = Eval(expr,map);
 
-      map->Insert(paramName.identifier,val);
+      map->Insert(paramName.val,val);
       
       ParameterExpression* p = params->PushElem();
-      p->name = paramName.identifier;
+      p->name = paramName.val;
       p->expr = expr;
       p->flags = flags;
     } else if(peek.type == ')'){
@@ -797,18 +770,18 @@ VExpr* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower){
     res = PushStruct<VExpr>(out);
 
     res->type = VExpr::LITERAL;
-    res->val = MakeValue(number.number);
-  } else if(peek.type == TokenType_CONTENT){
-    Token id = parser->ExpectNext(TokenType_CONTENT);
+    res->val = MakeValue(ParseInt(number.val));
+  } else if(peek.type == TokenType_IDENTIFIER){
+    Token id = parser->ExpectNext(TokenType_IDENTIFIER);
    
     res = PushStruct<VExpr>(out);
     res->type = VExpr::IDENTIFIER;
-    res->id = id.identifier;
+    res->id = id.val;
   } else if (peek.type == TokenType_C_STRING) {
     Token string = parser->ExpectNext(TokenType_C_STRING);
     
     res = PushStruct<VExpr>(out);
-    res->val = MakeValue(string.cString);
+    res->val = MakeValue(string.val);
     res->type = VExpr::LITERAL;
   } else if(peek.type == '$'){
     VExpr* expr = PushStruct<VExpr>(out);
@@ -816,7 +789,7 @@ VExpr* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower){
 
     parser->NextToken();
 
-    expr->id = parser->ExpectNext(TokenType_CONTENT).identifier;
+    expr->id = parser->ExpectNext(TokenType_IDENTIFIER).val;
 
     Opt<MathFunctionDescription> optDescription = GetMathFunction(expr->id);
     Assert(optDescription.has_value());
@@ -964,7 +937,7 @@ static Module ParseModule(Parser* tok,Arena* out){
 
   tok->ExpectNext(TokenType_VERILOG_KEYWORD_MODULE);
 
-  module.name = tok->ExpectNext(TokenType_CONTENT).identifier;
+  module.name = tok->ExpectNext(TokenType_IDENTIFIER).val;
 
   //NewToken peek = C(tok->PeekToken());
   if(tok->IfNextToken('#')){
@@ -987,12 +960,12 @@ static Module ParseModule(Parser* tok,Arena* out){
       if(peek.type == TokenType_VERILOG_ATTRIBUTE_START){
         tok->NextToken();
         while(!tok->Done()){
-          Token attributeName = tok->ExpectNext(TokenType_CONTENT);
+          Token attributeName = tok->ExpectNext(TokenType_IDENTIFIER);
 
 #if 1
-          if(attributeName.type == TokenType_CONTENT){
-            if(!Contains(possibleAttributes,attributeName.identifier)){
-              printf("ERROR: Do not know attribute named: %.*s\n",UN(attributeName.identifier));
+          if(attributeName.type == TokenType_IDENTIFIER){
+            if(!Contains(possibleAttributes,attributeName.val)){
+              printf("ERROR: Do not know attribute named: %.*s\n",UN(attributeName.val));
               exit(-1);
             }
           }
@@ -1004,11 +977,11 @@ static Module ParseModule(Parser* tok,Arena* out){
             VExpr* expr = VerilogParseExpression(tok,out);
             Value value = Eval(expr,values);
 
-            *attributeList->PushElem() = {attributeName.identifier,value};
+            *attributeList->PushElem() = {attributeName.val,value};
 
             peek = tok->PeekToken();
           } else {
-            *attributeList->PushElem() = {attributeName.identifier,MakeValue()};
+            *attributeList->PushElem() = {attributeName.val,MakeValue()};
           }
 
           if(peek.type == ','){
@@ -1050,7 +1023,7 @@ static Module ParseModule(Parser* tok,Arena* out){
 
       ExpressionRange res = ParseRange(tok,out);
       port.range = res;
-      port.name = tok->ExpectNext(TokenType_CONTENT).identifier;
+      port.name = tok->ExpectNext(TokenType_IDENTIFIER).val;
 
       *portList->PushElem() = port;
 
@@ -1076,176 +1049,40 @@ static Module ParseModule(Parser* tok,Arena* out){
   return module;
 }
 
-Token VerilogTokenizer(void* tokenizerState){
-  VerilogTokenizerState* state = (VerilogTokenizerState*) tokenizerState;
+Token VerilogTokenizer(void* tokenizerState,const char* start,const char* end){
+  Token res = {};
+  res |= ParseWhitespace(start,end);
+  res |= ParseComments(start,end);
+  res |= ParseVerilogPreprocess(start,end);
 
-  TokenizeResult res = {};
-  while(1){
-    if(state->IsInsideDefine()){
-      return state->GetNextDefineToken();
-    }
-    
-    ContentState* file = state->GetCurrentFileState();
-      
-    const char* start = file->ptr;
-    const char* end = file->end;
+  res |= ParseCString(start,end);
 
-    res = {};
-    if(start >= end){
-      res.token.type = TokenType_EOF;
-      if(state->currentStage == 0){
-        break;
-      } else {
-        state->PopStage();
-        continue;
-      }
-    }
+  res |= ParseMultiSymbol(start,end,"(*",TokenType_VERILOG_ATTRIBUTE_START);
+  res |= ParseMultiSymbol(start,end,"*)",TokenType_VERILOG_ATTRIBUTE_END);
 
-    res |= ParseWhitespace(start,end);
-    res |= ParseComments(start,end);
-    res |= ParseVerilogPreprocess(start,end);
+  res |= ParseSymbols(start,end);
+  res |= ParseNumber(start,end);
+  res |= ParseIdentifier(start,end);
 
-    res |= ParseCString(start,end);
-
-    res |= ParseMultiSymbol(start,end,"(*",TokenType_VERILOG_ATTRIBUTE_START);
-    res |= ParseMultiSymbol(start,end,"*)",TokenType_VERILOG_ATTRIBUTE_END);
-
-    res |= ParseSymbols(start,end);
-    res |= ParseNumber(start,end);
-    res |= ParseIdentifier(start,end);
-
-    if(res.token.type == TokenType_CONTENT){
-#define VKEYWORD(NAME,TYPE) if(res.token.identifier == NAME){ \
-      res.token.type = TYPE; \
-      }
-
-VKEYWORD("module",TokenType_VERILOG_KEYWORD_MODULE);
-VKEYWORD("endmodule",TokenType_VERILOG_KEYWORD_ENDMODULE);
-VKEYWORD("parameter",TokenType_VERILOG_KEYWORD_PARAMETER);
-VKEYWORD("signed",TokenType_VERILOG_KEYWORD_SIGNED);
-VKEYWORD("input",TokenType_VERILOG_KEYWORD_INPUT);
-VKEYWORD("output",TokenType_VERILOG_KEYWORD_OUTPUT);
-VKEYWORD("inout",TokenType_VERILOG_KEYWORD_INOUT);
-VKEYWORD("reg",TokenType_VERILOG_KEYWORD_REG);
-VKEYWORD("wire",TokenType_VERILOG_KEYWORD_WIRE);
-
-#undef VKEYWORD
-    }
-
-    TokenType t = res.token.type;
-
-    bool isTokenPreprocess = (t >= TokenType_START_OF_VERILOG_PREPROCESS && 
-                              t < TokenType_END_OF_VERILOG_PREPROCESS);
-    bool validToken = !isTokenPreprocess;
-      
-    int bytesToAdvance = res.bytesParsed;
-
-    if(isTokenPreprocess){
-      file->ptr += bytesToAdvance;
-      bytesToAdvance = 0;
-    }
-
-    if(t == TokenType_VERILOG_TIMESCALE){
-      // We do not care about timescales. We can just ignore it.
-    }
-    if(t == TokenType_VERILOG_DEFINE){
-      state->ParseDefine();
-    } 
-    if(t == TokenType_VERILOG_UNDEF){
-      String id = state->ParseOneIdentifier();
-
-      state->DisableDefine(id);
-    }
-    if(t == TokenType_VERILOG_INCLUDE){
-      String filename = state->ParseString();
-
-      FileContent content = GetContentsOfFile(filename,FilePurpose_VERILOG_INCLUDE);
-
-      if(content.state == FileContentState_FAILED_TO_LOAD){
-        state->ReportError(SF("Cannot find include file '%.*s'",UN(filename)));
-      } else {
-        VerilogTokenizerStage* newStage = state->PushStage(VerilogTokenizerStageType_FILE);
-        
-        newStage->state.content = content;
-        newStage->state.start = content.content.data;
-        newStage->state.ptr = content.content.data;
-        newStage->state.end = content.content.data + content.content.size;
-      }
-    } 
-    if(t == TokenType_VERILOG_PREPROCESS){
-      String defineIdentifier = res.token.identifier;
-        
-      state->StepInsideDefine(defineIdentifier);
-    }
-    if(t == TokenType_VERILOG_IFDEF || t == TokenType_VERILOG_IFNDEF){
-      bool checkIfExists = (t == TokenType_VERILOG_IFDEF);
-        
-      String identifierToCheck = state->ParseOneIdentifier();
-
-      VerilogTokenizerStage* stage = state->PushStage(VerilogTokenizerStageType_COND);
-
-      bool exists = state->DefineNameExists(identifierToCheck);
-      stage->type = VerilogTokenizerStageType_COND;
-      stage->condActive = (checkIfExists == exists);
-    }
-    if(t == TokenType_VERILOG_ELSE){
-      VerilogTokenizerStage* stage = state->CurrentStage();
-
-      if(stage->type != VerilogTokenizerStageType_COND){
-        state->ReportError("Else preprocessing found without associated if");
-      } else {
-        if(stage->condActive){
-          stage->condDone = true;
-        }
-
-        if(stage->condDone){
-          stage->condActive = false;
-        }
-      }
-    }
-    if(t == TokenType_VERILOG_ELSIF){
-      VerilogTokenizerStage* stage = state->CurrentStage();
-
-      if(stage->type != VerilogTokenizerStageType_COND){
-        state->ReportError("Else preprocessing found without associated if");
-      } else {
-        String identifierToCheck = state->ParseOneIdentifier();
-
-        if(stage->condActive){
-          stage->condDone = true;
-        }
-
-        if(stage->condDone){
-          stage->condActive = false;
-        } else {
-          bool exists = state->DefineNameExists(identifierToCheck);
-            
-          stage->condActive = exists;
-        }
-      }
-    }
-    if(t == TokenType_VERILOG_ENDIF){
-      VerilogTokenizerStage* stage = state->CurrentStage();
-        
-      if(stage->type != VerilogTokenizerStageType_COND){
-        state->ReportError("Endif found not associated to any if.");
-      } else {
-        state->PopStage();
-      }
-    }
-
-    file->ptr += bytesToAdvance;
-
-    // NOTE: Something very bad must happen to the point where the file is 1 byte after the end.
-    //       We expect it to only reach file->end, not file->end + 1
-    Assert(file->ptr < file->end + 1);
-      
-    if(validToken){
-      break;
-    }
+  if(res.type == TokenType_IDENTIFIER){
+  #define VKEYWORD(NAME,TYPE) if(res.val == NAME){ \
+    res.type = TYPE; \
   }
 
-  return res.token;
+  VKEYWORD("module",TokenType_VERILOG_KEYWORD_MODULE);
+  VKEYWORD("endmodule",TokenType_VERILOG_KEYWORD_ENDMODULE);
+  VKEYWORD("parameter",TokenType_VERILOG_KEYWORD_PARAMETER);
+  VKEYWORD("signed",TokenType_VERILOG_KEYWORD_SIGNED);
+  VKEYWORD("input",TokenType_VERILOG_KEYWORD_INPUT);
+  VKEYWORD("output",TokenType_VERILOG_KEYWORD_OUTPUT);
+  VKEYWORD("inout",TokenType_VERILOG_KEYWORD_INOUT);
+  VKEYWORD("reg",TokenType_VERILOG_KEYWORD_REG);
+  VKEYWORD("wire",TokenType_VERILOG_KEYWORD_WIRE);
+
+  #undef VKEYWORD
+  }
+
+  return res;
 }
 
 Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths,Arena* out){
@@ -1255,35 +1092,20 @@ Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths
   Tokenizer tokenizer = Tokenizer(fileContent,"\n:',()[]{}\"+-/*=",{"#(","+:","-:","(*","*)"});
   Tokenizer* tok = &tokenizer;
 #endif
+
+  String res = PreprocessVerilogFile(fileContent,temp);
   
   FREE_ARENA(tokenizer);
   FREE_ARENA(parsing);
 
-  VerilogTokenizerState* state = PushStruct<VerilogTokenizerState>(tokenizer);
-
-  // TODO: Since we now have the filesystem return the file content, we can just rewrite this function to receive a filepath instead of receiving the content directly.
-
-  state->arena = tokenizer;
-  state->definesMap = PushTrieMap<String,DefineInfo>(parsing);
-  state->stageBuffer = PushArray<VerilogTokenizerStage>(parsing,16);
-  state->errors = PushList<String>(parsing);
-  state->currentStage = 0;
-
-  state->stageBuffer[0].type = VerilogTokenizerStageType_FILE;
-
-  ContentState* first = &state->stageBuffer[0].state;
+  void* state = 0;
 
   FileContent fileLike = {};
   fileLike.content = fileContent;
   fileLike.fileName = "";
   fileLike.state = FileContentState_OK;
 
-  first->content = fileLike;
-  first->start = fileContent.data;
-  first->ptr = first->start;
-  first->end = fileContent.data + fileContent.size;
-
-  Parser* parser = StartParsing(VerilogTokenizer,state,parsing);
+  Parser* parser = StartParsing(VerilogTokenizer,state,fileContent,parsing);
 
   ArenaList<Module>* modules = PushList<Module>(temp);
 
@@ -1294,9 +1116,9 @@ Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths
     if(peek.type == TokenType_VERILOG_ATTRIBUTE_START){
       parser->NextToken();
 
-      Token attribute = parser->ExpectNext(TokenType_CONTENT);
+      Token attribute = parser->ExpectNext(TokenType_IDENTIFIER);
 
-      if(attribute.type == TokenType_CONTENT && attribute.identifier == "source"){
+      if(attribute.type == TokenType_IDENTIFIER && attribute.val == "source"){
         isSource = true;
       } else {
         // TODO: Report unused attribute.
@@ -1320,9 +1142,9 @@ Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths
     parser->NextToken();
   }
 
-  for(String error : state->errors){
-    printf("%.*s\n",UN(error));
-  }
+  //for(String error : state->errors){
+  //  printf("%.*s\n",UN(error));
+  //}
 
   for(String error : parser->errors){
     printf("%.*s\n",UN(error));
@@ -1550,6 +1372,7 @@ ModuleInfo ExtractModuleInfo(Module& module,Arena* out){
 }
 
 void ParseVerilogFileTest(){
+#if 0
   TEMP_REGION(temp,nullptr);
   
   FREE_ARENA(tokenizer);
@@ -1617,7 +1440,7 @@ B
     first->ptr = first->start;
     first->end = content.data + content.size;
 
-    Parser* p = StartParsing(VerilogTokenizer,state,parsing);
+    Parser* p = StartParsing(VerilogTokenizer,state,content,parsing);
 
     while(!p->Done()){
       Token t = p->NextToken();
@@ -1625,4 +1448,179 @@ B
       printf("%.*s\n",UN(res));
     }
   }
+#endif
+}
+
+String PreprocessVerilogFile(String content,Arena* out){
+  TEMP_REGION(temp,out);
+
+  auto Tokenizer = [](void* tokenizerState,const char* start,const char* end) -> Token{
+    DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
+    
+    Token res = {};
+    if(res.type == TokenType_INVALID) res |= ParseWhitespace(start,end,ParseWhitespaceOptions_NONE);
+    if(res.type == TokenType_INVALID) res |= ParseNewline(start,end);
+    if(res.type == TokenType_INVALID) res |= ParseVerilogPreprocess(start,end);
+    if(res.type == TokenType_INVALID) res |= ParseComments(start,end);
+    if(res.type == TokenType_INVALID) res |= ParseCString(start,end);
+    if(res.type == TokenType_INVALID) res |= ParseIdentifier(start,end);
+    if(res.type == TokenType_INVALID) res |= ParseSymbols(start,end);
+    if(res.type == TokenType_INVALID) res |= ParseNumber(start,end);
+    
+    return res;
+  };
+
+  FREE_ARENA(parsing);
+  Parser* p = StartParsing(Tokenizer,content,parsing,ParsingOptions_NONE);
+
+  printf("\n\n\nContent:\n%.*s\n\n\n",UN(content));
+
+  struct DefineInfo{
+    DefineInfo* next;
+
+    String name;
+    Array<String> args;
+    Array<Token> tokens;
+    bool disabled;
+  };
+
+  struct Env{
+    Env* parent;
+
+    DefineInfo* defineHead;
+    DefineInfo* defineTail;
+
+    bool active;
+  };
+
+  Env* env = PushStruct<Env>(temp);
+  env->active = 1;
+  
+  auto b = StartString(temp);
+
+  while(!p->Done()){
+    Token t = p->NextToken(ParsingOptions_NONE);
+
+    if(t.type == TokenType_VERILOG_INCLUDE){
+      Token tokenString = p->ExpectNext(TokenType_C_STRING);
+      String filepath = Cut(Offset(tokenString.val,1),1);
+      FileContent content = GetContentsOfFile(filepath,FilePurpose_VERILOG_INCLUDE);
+
+      if(content.state == FileContentState_FAILED_TO_LOAD){
+        p->ReportError(SF("Cannot find include file '%.*s'",UN(filepath)));
+      } else {
+        String processed = PreprocessVerilogFile(content.content,temp);
+
+        b->PushString(processed);
+      }
+    }
+
+    if(t.type == TokenType_VERILOG_DEFINE){
+      Token toDefine = p->ExpectNext(TokenType_IDENTIFIER);
+
+      -- LEFT HERE -- Copy code from the old approach and implement the rest of the logic.
+      while(!p->Done()){
+        
+      }
+
+      continue;
+    }
+
+    if(t.type == TokenType_VERILOG_UNDEF){
+      Token toUndef = p->ExpectNext(TokenType_IDENTIFIER);
+      continue;
+    }
+
+    if(t.type == TokenType_VERILOG_TIMESCALE){
+      p->ExpectNext(TokenType_NUMBER);
+      p->ExpectNext(TokenType_IDENTIFIER);
+
+      p->ExpectNext(TOK_TYPE('/'));
+
+      p->ExpectNext(TokenType_NUMBER);
+      p->ExpectNext(TokenType_IDENTIFIER);
+      continue;
+    }
+
+    if(t.type == TokenType_VERILOG_IFDEF){
+
+      continue;
+    }
+
+    if(t.type == TokenType_VERILOG_IFNDEF){
+      
+      continue;
+    }
+
+    if(t.type == TokenType_VERILOG_LINE){
+      p->ExpectNext(TokenType_NUMBER);
+      p->ExpectNext(TokenType_C_STRING);
+      p->ExpectNext(TokenType_NUMBER);
+      continue;
+    }
+
+    if(t.type == TokenType_VERILOG_UNCONNECTED_DRIVE){
+      p->ExpectNext(TokenType_IDENTIFIER);
+      continue;
+    }
+
+    if(t.type == TokenType_VERILOG_NOUNCONNECTED_DRIVE){
+      continue;
+    }
+
+    if(t.type == TokenType_VERILOG_CELLDEFINE){
+      continue;
+    }
+    if(t.type == TokenType_VERILOG_ENDCELLDEFINE){
+      continue;
+    }
+
+    if(t.type == TokenType_VERILOG_PRAGMA){
+      // NOTE: Not proper but we do not care too 
+      while(!p->Done()){
+        Token t = p->NextToken();
+        if(t.type == TokenType_NEWLINE){
+          break;
+        }
+      }
+
+      continue;
+    }
+
+    if(t.type == TokenType_VERILOG_RESETALL){
+      continue;
+    }
+
+    if(t.type == TokenType_VERILOG_BEGIN_KEYWORDS){
+      p->ExpectNext(TokenType_C_STRING);
+      continue;
+    }
+
+    if(t.type == TokenType_VERILOG_END_KEYWORDS){
+      continue;
+    }
+
+    if(t.type == TokenType_VERILOG_DEFAULT_NETTYPE){
+      Token nettype = p->ExpectNext(TokenType_IDENTIFIER); // Consume default nettype
+      // TODO: Check if value is correct and report error if not.
+      continue;
+    }
+
+    if(t.type == TokenType_VERILOG_RESETALL){
+      continue;
+    }
+
+    b->PushString(t.val);
+
+    printf("%d\n",t.type);
+  }
+    DEBUG_BREAK();
+
+  String res = EndString(out,b);
+
+  printf("\n\n\nResult:\n%.*s\n\n",UN(res));
+  
+  exit(0);
+
+  return {};
 }

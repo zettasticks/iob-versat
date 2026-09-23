@@ -52,7 +52,7 @@ String PushRepr(Arena* out,TokenType type){
   if(type == TokenType_C_KEYWORD){
     res = "C Reserved Keyword";
   }
-  if(type == TokenType_CONTENT){
+  if(type == TokenType_IDENTIFIER){
     res = "Identifier";
   }
   if(type == TokenType_NUMBER){
@@ -123,17 +123,17 @@ String PushRepr(Arena* out,TokenType type){
 String PARSE_PushDebugRepr(Arena* out,Token token){
   String res = {};
 
-  if(token.type == TokenType_CONTENT){
-    res = PushString(out,"[Identifier] '%.*s'",UN(token.identifier));
+  if(token.type == TokenType_IDENTIFIER){
+    res = PushString(out,"[Identifier] '%.*s'",UN(token.val));
   }
   if(token.type == TokenType_NUMBER){
-    res = PushString(out,"[Number] '%ld'",token.number);
+    res = PushString(out,"[Number] '%.*s'",UN(token.val));
   }
   if(token.type == TokenType_C_STRING){
-    res = PushString(out,"\"%.*s\"",UN(token.cString));
+    res = PushString(out,"\"%.*s\"",UN(token.val));
   }
   if(token.type == TokenType_FILEPATH){
-    res = PushString(out,"[Filepath] %.*s",UN(token.filepath));
+    res = PushString(out,"[Filepath] %.*s",UN(token.val));
   }
 
   if(Empty(res)){
@@ -191,45 +191,53 @@ Parser* StartParsing(TokenizeFunction tokenizer,String content,Arena* freeArena,
   Parser* res = PushStruct<Parser>(freeArena);
 
   DefaultTokenizerState* tokenizerState = PushStruct<DefaultTokenizerState>(freeArena);
-  tokenizerState->start = content.data;
-  tokenizerState->ptr = content.data;
-  tokenizerState->end = content.data + content.size;
 
   res->errors = PushList<String>(freeArena);
 
   res->tokenizerState = (void*) tokenizerState;
   res->tokenizer = tokenizer;
   res->arena = freeArena;
-  res->options = options;
+
+  res->start = content.data;
+  res->ptr = content.data;
+  res->end = content.data + content.size;
   
   return res;
 }
 
-Parser* StartParsing(TokenizeFunction tokenizer,void* tokenizerState,Arena* freeArena,ParsingOptions options){
+Parser* StartParsing(TokenizeFunction tokenizer,void* tokenizerState,String content,Arena* freeArena,ParsingOptions options){
   Parser* res = PushStruct<Parser>(freeArena);
 
   res->tokenizerState = (void*) tokenizerState;
   res->tokenizer = tokenizer;
   res->arena = freeArena;
-  res->options = options;
   res->errors = PushList<String>(freeArena);
+
+  res->start = content.data;
+  res->ptr = content.data;
+  res->end = content.data + content.size;
 
   return res;
 }
 
-void Parser::EnsureTokens(int amount){
-  while(this->amountStored < amount){
-    Token token = this->tokenizer(this->tokenizerState);
-    if(options & ParsingOptions_SKIP_WHITESPACE && token.type == TokenType_WHITESPACE){
+Token Parser::InternalConsumeToken(ParsingOptions opts){
+  Token token = {};
+  token.type = TokenType_EOF;
+
+  while(this->ptr < this->end){
+    token = this->tokenizer(this->tokenizerState,this->ptr,this->end);
+    this->ptr += token.val.size;
+
+    if(opts & ParsingOptions_SKIP_WHITESPACE && token.type == TokenType_WHITESPACE){
       continue;
     }
-    if(options & ParsingOptions_SKIP_WHITESPACE && token.type == TokenType_NEWLINE){
+    if(opts & ParsingOptions_SKIP_WHITESPACE && token.type == TokenType_NEWLINE){
       continue;
     }
-    if(options & ParsingOptions_SKIP_COMMENTS && token.type == TokenType_COMMENT){
+    if(opts & ParsingOptions_SKIP_COMMENTS && token.type == TokenType_COMMENT){
       continue;
     }
-    if(options & ParsingOptions_SKIP_COMMENTS && token.type == TokenType_UNTERMINATED_MULTILINE_COMMENT){
+    if(opts & ParsingOptions_SKIP_COMMENTS && token.type == TokenType_UNTERMINATED_MULTILINE_COMMENT){
       // TODO: Improve error messages, We can show user the start of the multiline comment
       ReportError("Unterminated multiline comment");
       continue;
@@ -241,19 +249,15 @@ void Parser::EnsureTokens(int amount){
       }
       token.type = TokenType_EOF;
     }
+    
+    break;
+  }
 
-    this->storedTokens[this->amountStored++] = token;
-  } 
+  return token;
 }
 
 void Parser::ReportError(String error){
   *errors->PushElem() = PushString(arena,error);
-}
-
-ParsingOptions Parser::SetOptions(ParsingOptions options){
-  ParsingOptions old = this->options;
-  this->options = options;
-  return old;
 }
 
 void Parser::ReportUnexpectedToken(Token token,BracketList<TokenType> expectedList){
@@ -276,7 +280,8 @@ void Parser::ReportUnexpectedToken(Token token,BracketList<TokenType> expectedLi
   *errors->PushElem() = EndString(this->arena,builder);
 }
 
-Token Parser::NextToken(){
+Token Parser::NextToken(ParsingOptions opts){
+#if 0
   EnsureTokens(1);
 
   Token res = this->storedTokens[0];
@@ -284,6 +289,9 @@ Token Parser::NextToken(){
     this->storedTokens[i] = this->storedTokens[i+1];
   }
   this->amountStored -= 1;
+#endif
+
+  Token res = InternalConsumeToken(opts);
 
   if(this->debug){
     TEMP_REGION(temp,arena);
@@ -322,83 +330,29 @@ Token Parser::NextToken(){
 
       printf("[%d] %.*s:%u",node->level,UN(node->loc.functionName),node->loc.line);
       
-      if(node->level == lastLevel  && !Empty(res.originalData)){
-        printf(" Token: '%.*s'",UN(res.originalData));
+      if(node->level == lastLevel  && !Empty(res.val)){
+        printf(" Token: '%.*s'",UN(res.val));
       }
 
       printf("\n");
     }
     lastDebugIndex = list.size;
   }
-  
-  //static int lastIndex = 0;
-#if 0
-  if(this->debug){
-    TEMP_REGION(temp,nullptr);
-
-    Array<Location> stackTrace = CollectStackTrace(temp);
-    DEBUG_BREAK();
-    ReverseInPlace(stackTrace);
-    Array<Location> reversed = stackTrace;
-
-    auto PrintStack = [&reversed] (int i) -> void{
-      for(int j = 0; j < i; j++){
-        printf("  ");
-      }
-        
-      printf("[%d] %.*s:%d: ",i,UN(reversed[i].functionName),reversed[i].line);
-    };
-
-    int currentIndex = -1;
-    for(int i = reversed.size - 1; i >= 0; i--){
-      if(Contains(reversed[i].functionName,"SP")){
-        currentIndex = i;
-        break;
-      }
-    }
-
-    //PrintStack(reversed.size - 1);
-    //printf("\n");
-
-#if 1
-    if(lastIndex + 1 < currentIndex){
-      for(int i = lastIndex + 1; i < currentIndex; i++){
-        if(this->errors->head){
-          printf("-->");
-        } else {
-          printf("   ");
-        }
-        PrintStack(i);
-        printf("NO TOKEN\n");
-      }
-    }
-#endif
-
-    if(this->errors->head){
-      printf("-->");
-    } else {
-      printf("   ");
-    }
-    
-    PrintStack(currentIndex);
-    if(!Empty(res.identifier)){
-      printf("%.*s",UN(res.identifier));
-    }
-    //DEBUG_BREAK();
-    //String res = V_PushRepr(res,temp);
-    //printf("%.*s\n",UN(res));
-    printf("\n");
-    lastIndex = currentIndex;
-  }
-#endif
 
   return res;
 }
 
-Token Parser::PeekToken(int lookahead){
-  EnsureTokens(lookahead + 1);
+Token Parser::PeekToken(int lookahead,ParsingOptions opts){
+  const char* saved = this->ptr;
+  
+  Token res = {};
+  for(int i = 0; i < lookahead + 1; i++){
+    res = InternalConsumeToken(opts);
+  }
 
-  return this->storedTokens[lookahead];
+  this->ptr = saved;
+
+  return res;
 }
 
 bool Parser::IfNextToken(TokenType type){
@@ -432,10 +386,10 @@ bool Parser::IfPeekToken(char singleChar,int lookahead){
   return IfPeekToken(TOK_TYPE(singleChar),lookahead);
 }
 
-Token Parser::ExpectNext(TokenType type){
+Token Parser::ExpectNext(TokenType type,ParsingOptions opts){
   Token tok = NextToken();
 
-  if(type == TokenType_CONTENT && (options & ParsingOptions_ERROR_ON_C_VERILOG_KEYWORDS)){
+  if(type == TokenType_IDENTIFIER && (opts & ParsingOptions_ERROR_ON_C_VERILOG_KEYWORDS)){
 #if 0
     if(tok.type == TokenType_C_KEYWORD && options & ParsingOptions_ERROR_ON_C_KEYWORDS){
       ReportError("Expected identifier but instead got a C reserved keyword.\n We cannot have C keywords since we will have to generate C code and the generated code will be malformed");
@@ -444,16 +398,18 @@ Token Parser::ExpectNext(TokenType type){
     }
 #endif
   } else if(tok.type != type){
+    //NOT_IMPLEMENTED("FileContent should just be the file currently parsing, should be optional and stored in the parser");
+#if 1
     TEMP_REGION(temp,nullptr);
 
-    FileContent content = tok.originalFile;
+    FileContent content = {};
 
-    LocInfo loc = PARSE_GetLinesAroundLocation(tok.originalData.data,content.content,1,1,temp);
+    LocInfo loc = PARSE_GetLinesAroundLocation(tok.val.data,content.content,1,1,temp);
 
     String typeRepr = PushRepr(temp,type);
     String repr = PARSE_PushDebugRepr(temp,tok);
     String error = PushString(temp,"Unexpected token. Expected type: %.*s , Got: %.*s",UN(typeRepr),UN(repr));
-    String pointing = PushPointingString(temp,loc.column,tok.originalData.size);
+    String pointing = PushPointingString(temp,loc.column,tok.val.size);
 
     auto b = StartString(temp);
 
@@ -473,22 +429,23 @@ Token Parser::ExpectNext(TokenType type){
     }
 
     ReportError(EndString(temp,b));
+#endif
   }
 
   return tok;
 }
 
-Token Parser::ExpectNext(char singleChar){
+Token Parser::ExpectNext(char singleChar,ParsingOptions opts){
   Assert(IsCharSingleToken(singleChar));
 
-  return ExpectNext(TOK_TYPE(singleChar));
+  return ExpectNext(TOK_TYPE(singleChar),opts);
 }
 
 Token Parser::ExpectIdentifier(String expectedContent){
   Token token = NextToken();
 
-  if(token.type == TokenType_CONTENT){
-    if(token.identifier != expectedContent){
+  if(token.type == TokenType_IDENTIFIER){
+    if(token.val != expectedContent){
       ReportError(SF("Expected %.*s, got instead",UN(expectedContent)));
     }
   } else {
@@ -523,11 +480,8 @@ bool Parser::Done(){
 // ============================================================================
 // Tokenizer function helpers
 
-TokenizeResult ParseWhitespace(const char* start,const char* end,ParseWhitespaceOptions options){
-  TokenizeResult res = {};
-
+Token ParseWhitespace(const char* start,const char* end,ParseWhitespaceOptions options){
   const char* ptr = start;
-  res.token.originalData.data = start;
   
   auto IsWhitespace = [options](char ch){
     bool res = (ch == ' ' || 
@@ -552,27 +506,16 @@ TokenizeResult ParseWhitespace(const char* start,const char* end,ParseWhitespace
 
     ptr += 1;
   }
-  
-  String allWhitespace = {};
-  allWhitespace.data = start;
-  allWhitespace.size = ptr - start;
 
-  res.bytesParsed = allWhitespace.size;
+  Token res = {};
+  res.type = (ptr > start ? TokenType_WHITESPACE : TokenType_INVALID);
+  res.val = String(start,ptr - start);
 
-  if(res.bytesParsed > 0){
-    res.token.type = TokenType_WHITESPACE;
-    res.token.whitespace = allWhitespace;
-  }
-
-  res.token.originalData.size = res.bytesParsed;
   return res;
 }
 
-TokenizeResult ParseNewline(const char* start,const char* end){
-  TokenizeResult res = {};
-
+Token ParseNewline(const char* start,const char* end){
   const char* ptr = start;
-  res.token.originalData.data = start;
   char ch = *ptr;
 
   TokenType type = TokenType_INVALID;
@@ -580,22 +523,15 @@ TokenizeResult ParseNewline(const char* start,const char* end){
     type = TokenType_NEWLINE;
   }
 
-  res.bytesParsed = (type == TokenType_INVALID ? 0 : 1);
-  res.token.type = type;
+  Token res = {};
+  res.type = type;
+  res.val = String(start,type == TokenType_NEWLINE ? 1 : 0);
 
-  res.token.originalData.size = res.bytesParsed;
   return res;
 }
 
-TokenizeResult ParseComments(const char* start,const char* end){
-  TokenizeResult res = {};
-
+Token ParseComments(const char* start,const char* end){
   const char* ptr = start;
-  res.token.originalData.data = start;
-
-  if(ptr + 1 >= end){
-    return res;
-  }
 
   bool unterminated = false;
   bool multiLine = false;
@@ -629,43 +565,33 @@ TokenizeResult ParseComments(const char* start,const char* end){
     }
   }
 
-  String comment = {};
-  comment.data = start;
-  comment.size = ptr - start;
+  String comment = String(start,ptr - start);
 
-  res.bytesParsed = ptr - start;
+  Token res = {};
+  res.val = comment;
   
-  if(res.bytesParsed > 0){
+  if(ptr > start){
     if(unterminated){
-      res.token.type = TokenType_UNTERMINATED_MULTILINE_COMMENT;
+      res.type = TokenType_UNTERMINATED_MULTILINE_COMMENT;
+    } else if(multiLine) {
+      res.type = TokenType_MULTILINE_COMMENT;
     } else {
-      res.token.type = TokenType_COMMENT;
+      res.type = TokenType_COMMENT;
     }
-    
-    comment = Offset(comment,2);
-    if(multiLine){
-      comment.size -= 2;
-   }
+  }
 
-    res.token.comment = comment;
-  }  
-
-  res.token.originalData.size = res.bytesParsed;
   return res;
 }
 
-TokenizeResult ParseSymbols(const char* start,const char* end){
-  TokenizeResult res = {};
-
+Token ParseSymbols(const char* start,const char* end){
   const char* ptr = start;
-  res.token.originalData.data = start;
-  char ch = *ptr;
 
   // TODO: We are only parsing single character digits and we might want to parse more characters than this one.
   //       Check how we want to progress when we start using this function more times.
+
+  char ch = *ptr;
   
   TokenType type = TokenType_INVALID;
-
   if(ch >= TokenType_CHAR_GROUP_0_START && ch <= TokenType_CHAR_GROUP_0_LAST){
     type = TOK_TYPE(ch);
   }
@@ -679,18 +605,15 @@ TokenizeResult ParseSymbols(const char* start,const char* end){
     type = TOK_TYPE(ch);
   }
 
-  res.bytesParsed = (type == TokenType_INVALID ? 0 : 1);
-  res.token.type = type;
-  
-  res.token.originalData.size = res.bytesParsed;
+  Token res = {};
+  res.val = String(start,(type == TokenType_INVALID ? 0 : 1));
+  res.type = type;
+
   return res;
 }
 
-TokenizeResult ParseNumber(const char* start,const char* end){
-  TokenizeResult res = {};
-
+Token ParseNumber(const char* start,const char* end){
   const char* ptr = start;
-  res.token.originalData.data = start;
   
   int number = 0;
   while(ptr < end && (*ptr) >= '0' && (*ptr) <= '9'){
@@ -699,26 +622,19 @@ TokenizeResult ParseNumber(const char* start,const char* end){
     ptr += 1;
   }
 
-  res.bytesParsed = ptr - start;
-  
-  if(res.bytesParsed > 0){
-    res.token.type = TokenType_NUMBER;
-    res.token.number = number;
-  }  
+  Token res = {};
+  res.type = (ptr > start ? TokenType_NUMBER : TokenType_INVALID);
+  res.val = String(start,ptr - start);
 
-  res.token.originalData.size = res.bytesParsed;
   return res;
 }
 
-TokenizeResult ParseIdentifier(const char* start,const char* end){
-  TokenizeResult res = {};
-
+Token ParseIdentifier(const char* start,const char* end){
   const char* ptr = start;
-  res.token.originalData.data = start;
   char ch = *ptr;
 
   if(!IsAlpha(ch)){
-    return res;
+    return {};
   }
 
   ptr += 1;
@@ -728,40 +644,31 @@ TokenizeResult ParseIdentifier(const char* start,const char* end){
     } 
   }
 
-  String identifier = {};
-  identifier.data = start;
-  identifier.size = ptr - start;
+  Token res = {};
+  res.type = (ptr > start ? TokenType_IDENTIFIER : TokenType_INVALID);
+  res.val = String(start,ptr - start);
 
-  res.bytesParsed = ptr - start;
-  res.token.type = TokenType_CONTENT;  
-  res.token.identifier = identifier;
-
-  res.token.originalData.size = res.bytesParsed;
   return res;
 }
 
-TokenizeResult ParseMultiSymbol(const char* start,const char* end,String format,TokenType result){
-  TokenizeResult res = {};
-
-  res.token.originalData.data = start;
-
+Token ParseMultiSymbol(const char* start,const char* end,String format,TokenType result){
   if(start + format.size >= end){
-    return res;
+    return {};
   }
 
   for(int i = 0; i < format.size; i++){
     if(start[i] != format[i]){
-      return res;
+    return {};
     }
   }
 
-  res.bytesParsed = format.size;
-  res.token.type = result;  
-
-  res.token.originalData.size = res.bytesParsed;
+  Token res = {};
+  res.type = result;
+  res.val = String(start,format.size);
   return res;
 }
 
+#if 0
 TokenizeResult ParseFilepath(const char* start,const char* end){
   TokenizeResult res = {};
 
@@ -770,7 +677,7 @@ TokenizeResult ParseFilepath(const char* start,const char* end){
   char ch = *ptr;
 
   if(ch != '.'){
-    return res;
+    return {};
   }
 
   ptr += 1;
@@ -791,16 +698,14 @@ TokenizeResult ParseFilepath(const char* start,const char* end){
   res.token.originalData.size = res.bytesParsed;
   return res;
 }
+#endif
 
-TokenizeResult ParseVerilogPreprocess(const char* start,const char* end){
-  TokenizeResult res = {};
-
+Token ParseVerilogPreprocess(const char* start,const char* end){
   const char* ptr = start;
-  res.token.originalData.data = start;
   char ch = *ptr;
 
   if(ch != '`'){
-    return res;
+    return {};
   }
 
   ptr += 1;
@@ -822,33 +727,38 @@ TokenizeResult ParseVerilogPreprocess(const char* start,const char* end){
     type = TokenType_INVALID;
   }
 
-  if(identifier == "define" ){ type = TokenType_VERILOG_DEFINE; }
-  if(identifier == "timescale" ){ type = TokenType_VERILOG_TIMESCALE; }
-  if(identifier == "undef"  ){ type = TokenType_VERILOG_UNDEF; }
-  if(identifier == "include"){ type = TokenType_VERILOG_INCLUDE;}
-  if(identifier == "ifdef"  ){ type = TokenType_VERILOG_IFDEF; }
-  if(identifier == "ifndef" ){ type = TokenType_VERILOG_IFNDEF; }
-  if(identifier == "else"   ){ type = TokenType_VERILOG_ELSE; }
-  if(identifier == "elsif"  ){ type = TokenType_VERILOG_ELSIF; }
-  if(identifier == "endif"  ){ type = TokenType_VERILOG_ENDIF; }
+  if(identifier == "define" )             { type = TokenType_VERILOG_DEFINE; }
+  if(identifier == "timescale")           { type = TokenType_VERILOG_TIMESCALE; }
+  if(identifier == "undef"  )             { type = TokenType_VERILOG_UNDEF; }
+  if(identifier == "include")             { type = TokenType_VERILOG_INCLUDE;}
+  if(identifier == "ifdef"  )             { type = TokenType_VERILOG_IFDEF; }
+  if(identifier == "ifndef" )             { type = TokenType_VERILOG_IFNDEF; }
+  if(identifier == "else"   )             { type = TokenType_VERILOG_ELSE; }
+  if(identifier == "elsif"  )             { type = TokenType_VERILOG_ELSIF; }
+  if(identifier == "endif"  )             { type = TokenType_VERILOG_ENDIF; }
+  if(identifier == "begin_keywords")      { type = TokenType_VERILOG_BEGIN_KEYWORDS; }
+  if(identifier == "end_keywords")        { type = TokenType_VERILOG_END_KEYWORDS; }
+  if(identifier == "celldefine")          { type = TokenType_VERILOG_CELLDEFINE; }
+  if(identifier == "default_nettype")     { type = TokenType_VERILOG_DEFAULT_NETTYPE; }
+  if(identifier == "endcelldefine")       { type = TokenType_VERILOG_ENDCELLDEFINE; }
+  if(identifier == "line")                { type = TokenType_VERILOG_LINE; }
+  if(identifier == "nounconnected_drive") { type = TokenType_VERILOG_NOUNCONNECTED_DRIVE; }
+  if(identifier == "pragma")              { type = TokenType_VERILOG_PRAGMA; }
+  if(identifier == "resetall")            { type = TokenType_VERILOG_RESETALL; }
+  if(identifier == "unconnected_drive")   { type = TokenType_VERILOG_UNCONNECTED_DRIVE; }
 
-  res.token.type = type;
-  res.bytesParsed = ptr - start;
-  res.token.identifier = identifier;
-
-  res.token.originalData.size = res.bytesParsed;
+  Token res = {};
+  res.type = type;
+  res.val = String(start,ptr - start);
   return res;
 }
 
-TokenizeResult ParseCString(const char* start,const char* end){
-  TokenizeResult res = {};
-
+Token ParseCString(const char* start,const char* end){
   const char* ptr = start;
-  res.token.originalData.data = start;
   char ch = *ptr;
 
   if(ch != '\"'){
-    return res;
+    return {};
   }
 
   ptr += 1;
@@ -928,15 +838,9 @@ TokenizeResult ParseCString(const char* start,const char* end){
 
   String total = String(start,ptr - start);
 
-  // Remove the first '"' and the last '"' from the content
-  String cStringContent = Offset(total,1);
-  cStringContent.size -= 1;
-  
-  res.token.type = TokenType_C_STRING;
-  res.bytesParsed = ptr - start;
-  res.token.identifier = cStringContent;
-
-  res.token.originalData.size = res.bytesParsed;
+  Token res = {};
+  res.type = (ptr > start ? TokenType_C_STRING : TokenType_INVALID);
+  res.val = String(start,ptr - start);
   return res;
 }
 
