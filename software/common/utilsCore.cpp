@@ -41,7 +41,7 @@ String Offset(String base,int amount){
 
 String Cut(String base,int amount){
   String res = base;
-  base.size = MAX(base.size - 1,0);
+  base.size = MAX(base.size - amount,0);
   return base;
 }
 

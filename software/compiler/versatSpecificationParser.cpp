@@ -2789,7 +2789,7 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
   };
 
   FREE_ARENA(parseArena);
-  Parser* parser = StartParsing(TokenizeFunction,content,parseArena,ParsingOptions_DEFAULT);
+  Parser* parser = StartParsing(TokenizeFunction,content,parseArena,{});
   parser->debug = 0;
 
   // TODO:

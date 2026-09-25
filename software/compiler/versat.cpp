@@ -21,7 +21,7 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
   // Check same name
   for(FUDeclaration* decl : globalDeclarations){
     if(CompareString(decl->name,info->name)){
-      printf("Found a module with a same name (%.*s). Cannot proceed",UN(info->name));
+      printf("Found a module with same name (%.*s). Cannot proceed",UN(info->name));
       return {};
     }
   }

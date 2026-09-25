@@ -276,6 +276,9 @@ typedef int64_t i64;
 typedef intptr_t iptr;
 typedef uintptr_t uptr;
 typedef unsigned int uint;
+typedef u32 b32;
+typedef float f32;
+typedef double f64;
 
 inline u64 Hash(void* ptr){
   return (u64) ptr;
@@ -870,15 +873,33 @@ inline bool Contains(Array<String> array,String toCheck){
 //       Next is set immediatly every iteration with the next of the node
 //       Prev is only set if the node is not removed.
 #define LL_Remove(HEAD,TAIL,NEXT,NODE,PREV) \
-  if(!PREV) { \
-    Assert(NODE == HEAD); \
-    HEAD = NODE->NEXT; \
-    if(!HEAD){ \
-      TAIL = HEAD; \
+  if(NODE) { \
+    if(!PREV) { \
+      Assert(NODE == HEAD); \
+      HEAD = NODE->NEXT; \
+      if(!HEAD){ \
+        TAIL = HEAD; \
+      } \
+    } else { \
+      PREV->NEXT = NODE->NEXT; \
+      if(TAIL == NODE) TAIL = PREV; \
     } \
-  } else { \
-    PREV->NEXT = NODE->NEXT; \
-    if(TAIL == NODE) TAIL = PREV; \
+  }
+
+#define LL_Find(HEAD,NEXT,RES,COND) \
+  for(auto* it = HEAD; it; it = it->NEXT){ \
+    if(COND){ \
+      RES = it; \
+      break; \
+    } \
+  }
+
+#define LL_FindPrev(HEAD,NEXT,RES,PREV,COND) \
+  for(auto* it = HEAD; it; PREV = it,it = it->NEXT){ \
+    if(COND){ \
+      RES = it; \
+      break; \
+    } \
   }
 
 #define DLL_Append(HEAD,TAIL,NEXT,PREV,NODE) \

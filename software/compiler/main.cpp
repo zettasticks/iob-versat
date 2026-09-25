@@ -462,7 +462,7 @@ int main(int argc,char* argv[]){
       exit(-1);
     }
 
-    Array<Module> modules = ParseVerilogFile(content,globalOptions.includePaths,temp);
+    Array<Module> modules = ParseVerilogFile(content,globalOptions.includePaths,perm);
 
     for(Module& mod : modules){
       ModuleInfo info = ExtractModuleInfo(mod,perm);

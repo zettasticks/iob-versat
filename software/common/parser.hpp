@@ -151,6 +151,11 @@ struct Token{
   String val;
 };
 
+struct TokenNode{
+  TokenNode* next;
+  Token val;
+};
+
 String PARSE_PushDebugRepr(Arena* out,Token token);
 
 inline Token& operator|=(Token& lhs,Token rhs){
@@ -162,9 +167,6 @@ inline Token& operator|=(Token& lhs,Token rhs){
 }
 
 struct DefaultTokenizerState{
-  //const char* start;
-  //const char* ptr;
-  //const char* end;
   FileContent content;
 };
 
@@ -175,21 +177,13 @@ typedef Token (*TokenizeFunction)(void* tokenizerState,const char* ptr,const cha
 enum ParsingOptions{
   ParsingOptions_NONE = 0,
 
-  ParsingOptions_SKIP_WHITESPACE = (1 << 0),
-  ParsingOptions_SKIP_COMMENTS   = (1 << 1),
+  ParsingOptions_ALLOW_WHITESPACE = (1 << 0),
+  ParsingOptions_ALLOW_COMMENTS   = (1 << 1),
+  ParsingOptions_ALLOW_NEWLINE    = (1 << 2),
 
-  ParsingOptions_ERROR_ON_C_KEYWORDS = (1 << 2),
-  ParsingOptions_ERROR_ON_VERILOG_KEYWORDS = (1 << 3),
-
-  ParsingOptions_ERROR_ON_C_VERILOG_KEYWORDS = (ParsingOptions_ERROR_ON_C_KEYWORDS | ParsingOptions_ERROR_ON_VERILOG_KEYWORDS),
-
-  ParsingOptions_DEFAULT = (ParsingOptions_SKIP_WHITESPACE | ParsingOptions_SKIP_COMMENTS)
+  ParsingOptions_ALLOW_ALL = (ParsingOptions_ALLOW_WHITESPACE | ParsingOptions_ALLOW_COMMENTS | ParsingOptions_ALLOW_NEWLINE),
 };
-
-inline ParsingOptions operator|(ParsingOptions lhs,ParsingOptions rhs){
-  ParsingOptions res = (ParsingOptions) ((int) lhs | (int) rhs);
-  return res;
-}
+C_STYLE_ENUM(ParsingOptions);
 
 struct Parser{
   void* tokenizerState;
@@ -220,8 +214,10 @@ struct Parser{
   
   void ReportUnexpectedToken(Token token,BracketList<TokenType> expectedList);
 
-  Token NextToken(ParsingOptions opts = ParsingOptions_DEFAULT);
-  Token PeekToken(int lookahead = 0,ParsingOptions opts = ParsingOptions_DEFAULT);
+  Token NextToken(ParsingOptions opts = {});
+  Token PeekToken(int lookahead = 0,ParsingOptions opts = {});
+
+  void Advance(Token tok);
 
   bool IfNextToken(TokenType type);
   bool IfNextToken(char singleChar);
@@ -229,8 +225,8 @@ struct Parser{
   bool IfPeekToken(TokenType type,int lookahead = 0);
   bool IfPeekToken(char singleChar,int lookahead = 0);
   
-  Token ExpectNext(TokenType type,ParsingOptions opts = ParsingOptions_DEFAULT);
-  Token ExpectNext(char singleChar,ParsingOptions opts = ParsingOptions_DEFAULT);
+  Token ExpectNext(TokenType type,ParsingOptions opts = {});
+  Token ExpectNext(char singleChar,ParsingOptions opts = {});
 
   Token ExpectIdentifier(String expectedContent);
 
@@ -239,8 +235,16 @@ struct Parser{
   bool Done();
 };
 
-Parser* StartParsing(TokenizeFunction tokenizer,String content,Arena* freeArena,ParsingOptions = ParsingOptions_DEFAULT);
-Parser* StartParsing(TokenizeFunction tokenizer,void* tokenizerState,String content,Arena* freeArena,ParsingOptions = ParsingOptions_DEFAULT);
+Parser* StartParsing(TokenizeFunction tokenizer,String content,Arena* freeArena,ParsingOptions = {});
+Parser* StartParsing(TokenizeFunction tokenizer,void* tokenizerState,String content,Arena* freeArena,ParsingOptions = {});
+
+// ======================================
+// Type
+
+bool PARSE_IsComment(TokenType in);
+
+String PARSE_GetStringContent(Token stringType);
+String PARSE_GetCommentContent(Token commentType);
 
 // ============================================================================
 // Tokenizer function helpers
@@ -251,6 +255,8 @@ enum ParseWhitespaceOptions{
 
   ParseWhitespaceOptions_DEFAULT = ParseWhitespaceOptions_INCLUDE_NEWLINES
 };
+
+bool IsWhitespace(char ch,bool includeNewline);
 
 Token ParseWhitespace(const char* start,const char* end,ParseWhitespaceOptions options = ParseWhitespaceOptions_DEFAULT);
 Token ParseNewline(const char* start,const char* end);
@@ -278,6 +284,7 @@ Token ParseCString(const char* start,const char* end);
 
 bool PARSE_IsCKeyword(String identifier);
 bool PARSE_IsVerilogKeyword(String identifier);
+
 
 // ======================================
 // Location

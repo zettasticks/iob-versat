@@ -726,3 +726,15 @@ Array<D> Replace(Array<K> in,TrieMap<K,D>* map,Arena* out){
   
   return res;
 }
+
+static inline String Reverse(String in,Arena* out){
+  char* mem = (char*) PushBytes(out,in.size);
+  int size = in.size;
+
+  for(int i = 0; i < size; i++){
+    mem[size - i - 1] = in[i];
+  }
+
+  String res = String(mem,size);
+  return res;
+}

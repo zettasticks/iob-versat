@@ -5,6 +5,8 @@
 
 #include "verilogParsing_meta.hpp"
 
+#include "parser.hpp"
+
 struct Arena;
 struct SymbolicExpression;
 
@@ -20,6 +22,7 @@ struct VExpr{
   
   enum {UNDEFINED,OPERATION,IDENTIFIER,FUNCTION,LITERAL} type;
 };
+readonly static VExpr VExpr_Nil = {};
 
 void PrintExpression(VExpr* exp);
 
@@ -215,9 +218,35 @@ struct ModuleInfo{
 SYM_Expr SymbolicExpressionFromVerilog(VExpr* topExpr);
 SYM_Expr SymbolicExpressionFromVerilog(ExpressionRange range);
 
-String PreprocessVerilogFile(String content,Arena* out);
-
 Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths,Arena* out); // Only handles preprocessed files
 ModuleInfo ExtractModuleInfo(Module& module,Arena* out);
 
-void ParseVerilogFileTest();
+String PreprocessVerilogFile(String content,Arena* out);
+
+enum V_NumberType{
+  V_NumberType_NIL,
+  V_NumberType_DECIMAL,
+  V_NumberType_REAL,
+  V_NumberType_BINARY,
+  V_NumberType_OCTO,
+  V_NumberType_HEXADECIMAL
+};
+
+struct V_ParsedNumber{
+  V_NumberType type;
+  b32 anyError;
+
+  // NOTE: If sized then number is given as binary
+  b32 isSized;
+  u32 bitsizeGiven;
+  
+  b32 isSigned;
+
+  f64 realNumber;
+  u64 decimalNumber;
+  
+  u32 bytesParsed;
+  String asBinary; // NOTE: Only what user gives (Ex: 10'b0 would have bitsize of 10, and asBinary of "0").
+};
+
+V_ParsedNumber V_ParseNumber(const char* start,const char* end,Arena* out = nullptr);

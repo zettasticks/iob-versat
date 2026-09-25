@@ -226,313 +226,6 @@ struct VerilogTokenizerStage{
   ContentState state;
 };
 
-#if 0
-struct VerilogTokenizerState{
-  Arena* arena;
-
-  Array<VerilogTokenizerStage> stageBuffer;
-  int currentStage;
-
-  ArenaList<String>* errors;
-  TrieMap<String,DefineInfo>* definesMap;
-
-  VerilogTokenizerStage* CurrentStage(){
-    return &stageBuffer[currentStage];
-  }
-  
-  VerilogTokenizerStage* PushStage(VerilogTokenizerStageType type){
-    currentStage += 1;
-    VerilogTokenizerStage* res = &stageBuffer[currentStage];
-    *res = {};
-    res->type = type;
-    return res;
-  }
-
-  void ReportError(String err){
-    *errors->PushElem() = err;
-  }
-
-  void AccumulateErrors(ArenaList<String>* errors){
-    for(String str : errors){
-      ReportError(str);
-    }
-  }
-
-  void PopStage(){
-    currentStage -= 1;
-  }
-
-  bool IsInsideDefine(){
-    bool res = (stageBuffer[currentStage].type == VerilogTokenizerStageType_DEFINE);
-    return res;
-  }
-
-  Token GetNextDefineToken(){
-    auto* stage = CurrentStage();
-    Assert(stage->type == VerilogTokenizerStageType_DEFINE);
-
-    DefineInfo* def = stage->define;
-    Token toReturn = {};
-    if(def->type == DefineType_SIMPLE_REPLACE){
-      toReturn = def->tokens[stage->currentDefineToken];
-      stage->currentDefineToken += 1;
-
-      if(stage->currentDefineToken >= def->tokens.size){
-        PopStage();
-      } 
-    }
-
-    return toReturn;
-  }
-  
-  String ParseString(){
-    ContentState* file = GetCurrentFileState();
-
-    const char* start = file->ptr;
-    const char* end = file->end;
-    
-    String asString = {start,(int) (end-start)};
-    auto TokenizeFunction = [](void* tokenizerState,const char* start,const char* end) -> TokenizeResult{
-      DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
-
-      TokenizeResult res = ParseWhitespace(start,end);
-      res |= ParseComments(start,end);
-      res |= ParseIdentifier(start,end);
-      res |= ParseCString(start,end);
-
-      int size = res.bytesParsed;
-      if(size <= 0){
-        size = 1;
-      }
-      return res;
-    };
-
-    FREE_ARENA(parsing);
-    Parser* parser = StartParsing(TokenizeFunction,asString,parsing);
-    
-    Token result = parser->ExpectNext(TokenType_C_STRING);
-    
-    AccumulateErrors(parser->errors);
-
-    file->ptr = result.cString.data + result.cString.size + 1;
-
-    return result.cString;
-  }
-  
-  String ParseOneIdentifier(){
-    ContentState* file = GetCurrentFileState();
-
-    const char* start = file->ptr;
-    const char* end = file->end;
-    
-    String asString = {start,(int) (end-start)};
-    auto TokenizeFunction = [](void* tokenizerState,const char* start,const char* end) -> TokenizeResult{
-      DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
-
-      TokenizeResult res = ParseWhitespace(start,end);
-      res |= ParseComments(start,end);
-      res |= ParseIdentifier(start,end);
-
-      int size = res.bytesParsed;
-      if(size <= 0){
-        size = 1;
-      }
-      return res;
-    };
-    
-    FREE_ARENA(parsing);
-    Parser* parser = StartParsing(TokenizeFunction,asString,parsing);
-    
-    Token result = parser->ExpectNext(TokenType_IDENTIFIER);
-    
-    AccumulateErrors(parser->errors);
-
-    file->ptr = result.identifier.data + result.identifier.size;
-
-    return result.identifier;
-  };
-
-  void ParseDefine(){
-    ContentState* file = GetCurrentFileState();
-
-    const char* start = file->ptr;
-    const char* end = file->end;
-    
-    String asString = {start,(int) (end-start)};
-    
-    auto TokenizeFunction = [](void* tokenizerState,const char* start,const char* end) -> TokenizeResult{
-      DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
-
-      TokenizeResult res = ParseNewline(start,end);
-      res |= ParseWhitespace(start,end,ParseWhitespaceOptions_NONE);
-      res |= ParseComments(start,end);
-      res |= ParseVerilogPreprocess(start,end);
-      res |= ParseSymbols(start,end);
-      res |= ParseNumber(start,end);
-      res |= ParseIdentifier(start,end);
-
-      int size = res.bytesParsed;
-      if(size <= 0){
-        size = 1;
-      }
-      return res;
-    };
-
-    FREE_ARENA(parsing);
-    Parser* parser = StartParsing(TokenizeFunction,asString,parsing);
-
-    TEMP_REGION(temp,nullptr);
-
-    parser->IfNextToken(TokenType_VERILOG_DEFINE);
-    Token id = parser->ExpectNext(TokenType_IDENTIFIER);
-    
-    parser->SetOptions(ParsingOptions_SKIP_COMMENTS);
-    
-    Token peek = parser->PeekToken();
-    
-    if(peek.type == TokenType_WHITESPACE){
-      peek = parser->NextToken();
-    }
-
-    if(peek.type == TokenType_NEWLINE){
-      // Only define, no text.
-      DefineInfo info = {};
-      info.type = DefineType_SIMPLE_REPLACE;
-      info.tokens = {};
-      info.args = {};
-      definesMap->Insert(id.identifier,info);
-
-      AccumulateErrors(parser->errors);
-
-      file->ptr = peek.originalData.data;
-    } else {
-      Array<String> funcArgs = {};
-      if(parser->IfNextToken('(')){
-        auto argList = PushList<String>(temp);
-      
-        parser->SetOptions(ParsingOptions_DEFAULT);
-
-        while(!parser->Done()){
-          Token t = parser->ExpectNext(TokenType_IDENTIFIER);
-
-          *argList->PushElem() = t.identifier;
-        
-          if(parser->IfNextToken(',')){
-            continue;
-          }
-
-          if(parser->IfPeekToken(')')){
-            break;
-          }
-        }
-      
-        parser->ExpectNext(')');
-        funcArgs = PushArray(arena,argList);
-      }
-      parser->IfNextToken(TokenType_WHITESPACE);
-
-      parser->SetOptions(ParsingOptions_DEFAULT);
-
-      auto list = PushList<Token>(temp);
-      
-      Token newLineToken = {};
-      bool foundNewLine = false;
-      bool foundBackslash = false;
-      while(!parser->Done()){
-        Token token = parser->NextToken();
-
-        if(token.type == '\\'){
-          foundBackslash = true;
-          continue;
-        }
-
-        if(token.type == TokenType_NEWLINE){
-          if(foundBackslash){
-            foundBackslash= false;
-            continue;
-          }
-
-          foundNewLine = true;
-          newLineToken = token;
-          break;
-        }
-
-        if(foundBackslash){
-          // TODO: How to handle any other type of token after a backslash?
-        }
-
-        *list->PushElem() = token;
-      }
-    
-      DefineInfo info = {};
-      info.type = DefineType_SIMPLE_REPLACE;
-      info.tokens = PushArray(arena,list);
-      info.args = funcArgs;
-      definesMap->Insert(id.identifier,info);
-
-      int size = newLineToken.originalData.data - start;
-      if(!foundNewLine){
-        size = end - start;
-      }
-
-      AccumulateErrors(parser->errors);
-
-      file->ptr += size;
-    }
-  }
-
-  void DisableDefine(String defineName){
-    DefineInfo* res = definesMap->Get(defineName);
-
-    if(!res){
-      return;
-    }
-
-    res->disabled = true;
-  }
-
-  void StepInsideDefine(String defineName){
-    DefineInfo* res = definesMap->Get(defineName);
-
-    if(!res){
-      ReportError(SF("Unknown define encountered: %.*s\n",UN(defineName)));
-      return;
-    }
-
-    if(res->tokens.size == 0){
-      return;
-    }
-    
-    VerilogTokenizerStage* stage = PushStage(VerilogTokenizerStageType_DEFINE);
-    stage->define = res;
-  }
-
-  bool DefineNameExists(String defineName){
-    DefineInfo* res = definesMap->Get(defineName);
-
-    if(!res){
-      return false;
-    }
-    
-    return res->disabled;
-  }
-
-  ContentState* GetCurrentFileState(){
-    for(int i = currentStage; i >= 0; i--){
-      VerilogTokenizerStage* stage = &stageBuffer[i];
-
-      if(stage->type == VerilogTokenizerStageType_FILE){
-        return &stage->state;
-      }
-    }
-
-    // Stage 0 should always be a file so we should never reach this point ever.
-    Assert(false);
-    return nullptr;
-  }
-};
-#endif
-
 static Value Eval(VExpr* expr,TrieMap<String,Value>* map){
   switch(expr->type){
   case VExpr::OPERATION:{
@@ -598,7 +291,7 @@ static Value Eval(VExpr* expr,TrieMap<String,Value>* map){
   return MakeValue();
 }
 
-static ExpressionRange ParseRange(Parser* tok,Arena* out);
+static ExpressionRange ParseOptionalRange(Parser* tok,Arena* out);
 VExpr* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower = 99);
 
 static Array<ParameterExpression> ParseParameters(Parser* tok,TrieMap<String,Value>* map,Arena* out){
@@ -613,29 +306,24 @@ static Array<ParameterExpression> ParseParameters(Parser* tok,TrieMap<String,Val
 
   // TODO: Not used but must parse it anyway.
   ExpressionRange range = {};
-  ParamFlags flags = {};
   while(1){
     Token peek = tok->PeekToken();
 
     if(peek.type == TokenType_VERILOG_KEYWORD_PARAMETER){
-      Token possibleComment = tok->PeekToken(ParsingOptions_SKIP_WHITESPACE);
+      tok->Advance(peek);
 
-      // NOTE: We allow a comment immediatly before the parameter or after.
-      // TODO: Need to properly test this.
-      if(possibleComment.type == TokenType_VERILOG_KEYWORD_PARAMETER){
-        tok->NextToken();
-        possibleComment = tok->PeekToken();
-      }
+      Token possibleComment = tok->PeekToken(0,ParsingOptions_ALLOW_COMMENTS);
 
-      if(possibleComment.type == TokenType_COMMENT){
-        tok->NextToken();
+      // We allow comments before or after parameter keyword
+      ParamFlags flags = {};
+      if(PARSE_IsComment(possibleComment.type)){
+        tok->Advance(possibleComment);
 
         auto TokenizeFunction = [](void* tokenizerState,const char* start,const char* end) -> Token{
           DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
 
           Token res = {};
           res |= ParseWhitespace(start,end);
-          res |= ParseComments(start,end);
           res |= ParseSymbols(start,end);
           res |= ParseNumber(start,end);
           res |= ParseIdentifier(start,end);
@@ -646,8 +334,10 @@ static Array<ParameterExpression> ParseParameters(Parser* tok,TrieMap<String,Val
           return res;
         };
 
+        String content = PARSE_GetCommentContent(possibleComment);
+
         FREE_ARENA(commentParsing);
-        Parser* p = StartParsing(TokenizeFunction,possibleComment.val,commentParsing);
+        Parser* p = StartParsing(TokenizeFunction,content,commentParsing);
 
         Token t = p->NextToken();
         if(t.type == TokenType_IDENTIFIER && t.val == "versat"){
@@ -664,7 +354,8 @@ static Array<ParameterExpression> ParseParameters(Parser* tok,TrieMap<String,Val
               flags = (ParamFlags) ((u32) flags | (u32) flagOpt);
             } else {
               // TODO: Better error reporting
-              printf("%.*s is not a valid param flag",UN(paramFlag.val));
+              printf("%.*s is not a valid param flag\n",UN(paramFlag.val));
+              ENTER_DEBUG();
             }
           }
         }
@@ -676,35 +367,17 @@ static Array<ParameterExpression> ParseParameters(Parser* tok,TrieMap<String,Val
 
       tok->IfNextToken(TokenType_VERILOG_KEYWORD_SIGNED);
 
-      range = ParseRange(tok,out);
+      range = ParseOptionalRange(tok,out);
 
       Token paramName = tok->NextToken();
 
       tok->ExpectNext('=');
 
-      Token peek = tok->PeekToken();
-      // TODO: Kinda hacky way of parsing strings, we do not care about them but must parse them anyway.
-      if(peek.type == '\"'){
-        tok->NextToken();
-        while(!tok->Done()){
-          Token token = tok->PeekToken();
-
-          if(token.type == '\"'){
-            break;
-          }
-
-          tok->NextToken();
-        }
-        tok->ExpectNext('\"');
-        
-        continue;
-      }
-      
       VExpr* expr = VerilogParseExpression(tok,out);
       Value val = Eval(expr,map);
 
       map->Insert(paramName.val,val);
-      
+
       ParameterExpression* p = params->PushElem();
       p->name = paramName.val;
       p->expr = expr;
@@ -770,7 +443,40 @@ VExpr* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower){
     res = PushStruct<VExpr>(out);
 
     res->type = VExpr::LITERAL;
-    res->val = MakeValue(ParseInt(number.val));
+
+    const char* start = number.val.data;
+    const char* end = start + number.val.size;
+
+    TEMP_REGION(temp,out);
+    V_ParsedNumber num = V_ParseNumber(start,end,temp);
+
+    if(num.anyError){
+      // Report Error
+      Assert(false);
+    }
+
+    i64 val = num.decimalNumber;
+    if(num.type == V_NumberType_BINARY){
+      val = 0;
+
+      int size = num.asBinary.size;
+      for(int i = 0; i < size; i++){
+        char ch = num.asBinary[size - i - 1];
+
+        if(ch == '1'){
+          val |= (1 << i);
+        } else if(ch == '0'){
+          // Nothing
+        } else {
+          // Report error, cannot handle x or z since we only care about port sizes.
+          Assert(false);
+        }
+      }
+    } else if(num.type != V_NumberType_DECIMAL){
+      Assert(false);
+    }
+
+    res->val = MakeValue(val);
   } else if(peek.type == TokenType_IDENTIFIER){
     Token id = parser->ExpectNext(TokenType_IDENTIFIER);
    
@@ -778,10 +484,12 @@ VExpr* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower){
     res->type = VExpr::IDENTIFIER;
     res->id = id.val;
   } else if (peek.type == TokenType_C_STRING) {
-    Token string = parser->ExpectNext(TokenType_C_STRING);
+    Token token = parser->ExpectNext(TokenType_C_STRING);
     
+    String string = PARSE_GetStringContent(token);
+
     res = PushStruct<VExpr>(out);
-    res->val = MakeValue(string.val);
+    res->val = MakeValue(string);
     res->type = VExpr::LITERAL;
   } else if(peek.type == '$'){
     VExpr* expr = PushStruct<VExpr>(out);
@@ -898,16 +606,15 @@ VExpr* VerilogParseExpression(Parser* parser,Arena* out,int bindingPower){
   return res;
 }
 
-static ExpressionRange ParseRange(Parser* tok,Arena* out){
+static ExpressionRange ParseOptionalRange(Parser* tok,Arena* out){
   static VExpr zeroExpression = {};
+  zeroExpression.type = VExpr::LITERAL;
+  zeroExpression.val = MakeValue(0);
 
   Token peek = tok->PeekToken();
 
   if(peek.type != '['){ // No range is equal to range [0:0]. Do not known if it's worth/need to  differentiate
     ExpressionRange range = {};
-
-    zeroExpression.type = VExpr::LITERAL;
-    zeroExpression.val = MakeValue(0);
     
     range.top = &zeroExpression;
     range.bottom = &zeroExpression;
@@ -973,7 +680,8 @@ static Module ParseModule(Parser* tok,Arena* out){
 
           Token peek = tok->PeekToken();
           if(peek.type == '='){
-            tok->NextToken();
+            tok->Advance(peek);
+
             VExpr* expr = VerilogParseExpression(tok,out);
             Value value = Eval(expr,values);
 
@@ -1021,7 +729,7 @@ static Module ParseModule(Parser* tok,Arena* out){
         break;
       }
 
-      ExpressionRange res = ParseRange(tok,out);
+      ExpressionRange res = ParseOptionalRange(tok,out);
       port.range = res;
       port.name = tok->ExpectNext(TokenType_IDENTIFIER).val;
 
@@ -1051,17 +759,24 @@ static Module ParseModule(Parser* tok,Arena* out){
 
 Token VerilogTokenizer(void* tokenizerState,const char* start,const char* end){
   Token res = {};
-  res |= ParseWhitespace(start,end);
-  res |= ParseComments(start,end);
-  res |= ParseVerilogPreprocess(start,end);
+  if(res.type == TokenType_INVALID) res |= ParseWhitespace(start,end);
+  if(res.type == TokenType_INVALID) res |= ParseComments(start,end);
+  if(res.type == TokenType_INVALID) res |= ParseVerilogPreprocess(start,end);
+  if(res.type == TokenType_INVALID) res |= ParseCString(start,end);
+  if(res.type == TokenType_INVALID) res |= ParseMultiSymbol(start,end,"(*",TokenType_VERILOG_ATTRIBUTE_START);
+  if(res.type == TokenType_INVALID) res |= ParseMultiSymbol(start,end,"*)",TokenType_VERILOG_ATTRIBUTE_END);
+  if(res.type == TokenType_INVALID) res |= ParseSymbols(start,end);
 
-  res |= ParseCString(start,end);
+  if(res.type == TokenType_INVALID){
+    V_ParsedNumber num = V_ParseNumber(start,end);
 
-  res |= ParseMultiSymbol(start,end,"(*",TokenType_VERILOG_ATTRIBUTE_START);
-  res |= ParseMultiSymbol(start,end,"*)",TokenType_VERILOG_ATTRIBUTE_END);
+    if(num.bytesParsed > 0){
+      res.type = TokenType_NUMBER;
+      res.val = String(start,num.bytesParsed);
+    }
+  }
 
-  res |= ParseSymbols(start,end);
-  res |= ParseNumber(start,end);
+  //res |= ParseNumber(start,end);
   res |= ParseIdentifier(start,end);
 
   if(res.type == TokenType_IDENTIFIER){
@@ -1093,19 +808,12 @@ Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths
   Tokenizer* tok = &tokenizer;
 #endif
 
-  String res = PreprocessVerilogFile(fileContent,temp);
+  String res = PreprocessVerilogFile(fileContent,out);
   
   FREE_ARENA(tokenizer);
   FREE_ARENA(parsing);
 
-  void* state = 0;
-
-  FileContent fileLike = {};
-  fileLike.content = fileContent;
-  fileLike.fileName = "";
-  fileLike.state = FileContentState_OK;
-
-  Parser* parser = StartParsing(VerilogTokenizer,state,fileContent,parsing);
+  Parser* parser = StartParsing(VerilogTokenizer,res,parsing);
 
   ArenaList<Module>* modules = PushList<Module>(temp);
 
@@ -1142,10 +850,6 @@ Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths
     parser->NextToken();
   }
 
-  //for(String error : state->errors){
-  //  printf("%.*s\n",UN(error));
-  //}
-
   for(String error : parser->errors){
     printf("%.*s\n",UN(error));
   }
@@ -1165,7 +869,7 @@ ModuleInfo ExtractModuleInfo(Module& module,Arena* out){
   auto configs = StartGrowableArray<WireExpression>(out);
   auto states = StartGrowableArray<WireExpression>(out);
 
-  info.name = module.name;
+  info.name = PushString(out,module.name);
   info.isSource = module.isSource;
 
   auto* external = PushTrieMap<ExternalMemoryID,ExternalMemoryInfo>(temp);
@@ -1318,11 +1022,15 @@ ModuleInfo ExtractModuleInfo(Module& module,Arena* out){
       VersatStage stage = VersatStage_COMPUTE;
       
       if(stageValue && stageValue->type == ValueType_STRING){
-        if(CompareString(stageValue->str,"Write")){
+        String val = stageValue->str;
+
+        if(CompareString(val,"Write")){
           stage = VersatStage_WRITE;
-        } else if(CompareString(stageValue->str,"Read")){
+        } else if(CompareString(val,"Read")){
           stage = VersatStage_READ;
-        } 
+        } else {
+          Assert(false);
+        }
       }
       
       wire->bitSize = decl.range;
@@ -1371,86 +1079,6 @@ ModuleInfo ExtractModuleInfo(Module& module,Arena* out){
   return info;
 }
 
-void ParseVerilogFileTest(){
-#if 0
-  TEMP_REGION(temp,nullptr);
-  
-  FREE_ARENA(tokenizer);
-  FREE_ARENA(parsing);
-
-  VerilogTokenizerState* state = PushStruct<VerilogTokenizerState>(tokenizer);
-
-  state->arena = tokenizer;
-  state->definesMap = PushTrieMap<String,DefineInfo>(parsing);
-  state->stageBuffer = PushArray<VerilogTokenizerStage>(parsing,16);
-  state->errors = PushList<String>(parsing);
-  state->currentStage = 0;
-
-  state->stageBuffer[0].type = VerilogTokenizerStageType_FILE;
-
-  String tests[] = {
-#if 1
-{R"FOO(`define A
-B
-)FOO"},
-#endif
-#if 0
-{R"FOO(`define A B
-`A
-)FOO"},
-#endif
-#if 0
-{R"FOO(`define A \
-B
-`A
-)FOO"},
-#endif
-#if 0
-{R"FOO(`ifdef TEST
-`define A B
-`else
-`define A C
-`endif
-`A
-`ifdef A
-`define D 0
-`else
-`define D 1
-`endif
-`D
-)FOO"},
-#endif
-#if 0
-{"`include \"Buffer.v\""}
-#endif
-  };
-
-  for(String test : tests){
-    FileContent fileLike = {};
-    fileLike.content = test;
-    fileLike.fileName = "";
-    fileLike.state = FileContentState_OK;
-
-    String content = fileLike.content;
-    
-    ContentState* first = &state->stageBuffer[0].state;
-
-    first->content = fileLike;
-    first->start = content.data;
-    first->ptr = first->start;
-    first->end = content.data + content.size;
-
-    Parser* p = StartParsing(VerilogTokenizer,state,content,parsing);
-
-    while(!p->Done()){
-      Token t = p->NextToken();
-      String res = PARSE_PushDebugRepr(temp,t);
-      printf("%.*s\n",UN(res));
-    }
-  }
-#endif
-}
-
 String PreprocessVerilogFile(String content,Arena* out){
   TEMP_REGION(temp,out);
 
@@ -1473,154 +1101,893 @@ String PreprocessVerilogFile(String content,Arena* out){
   FREE_ARENA(parsing);
   Parser* p = StartParsing(Tokenizer,content,parsing,ParsingOptions_NONE);
 
-  printf("\n\n\nContent:\n%.*s\n\n\n",UN(content));
-
   struct DefineInfo{
     DefineInfo* next;
 
     String name;
     Array<String> args;
     Array<Token> tokens;
-    bool disabled;
   };
 
   struct Env{
     Env* parent;
-
-    DefineInfo* defineHead;
-    DefineInfo* defineTail;
-
+    bool onceActive;
     bool active;
   };
 
-  Env* env = PushStruct<Env>(temp);
-  env->active = 1;
+  DefineInfo* defineHead = 0;
+  DefineInfo* definePtr = 0;
+
+  Env topEnv = {};
+  topEnv.active = 1;
+
+  Env* env = &topEnv;
   
   auto b = StartString(temp);
 
-  while(!p->Done()){
-    Token t = p->NextToken(ParsingOptions_NONE);
+  struct Work{
+    Work* parent;
+    DefineInfo* currentDefine;
+    Array<TokenNode*> paramValues;
+    TokenNode* currentParam;
+    int currentToken;
+  };
 
-    if(t.type == TokenType_VERILOG_INCLUDE){
-      Token tokenString = p->ExpectNext(TokenType_C_STRING);
-      String filepath = Cut(Offset(tokenString.val,1),1);
-      FileContent content = GetContentsOfFile(filepath,FilePurpose_VERILOG_INCLUDE);
+  Work* workPtr = nullptr;
 
-      if(content.state == FileContentState_FAILED_TO_LOAD){
-        p->ReportError(SF("Cannot find include file '%.*s'",UN(filepath)));
-      } else {
-        String processed = PreprocessVerilogFile(content.content,temp);
+  auto PeekToken = [&](ParsingOptions opts = {}) -> Token{
+    Token t = {};
+    if(workPtr){
+      DefineInfo* define = workPtr->currentDefine;
+      TokenNode* currentParam = workPtr->currentParam;
 
-        b->PushString(processed);
-      }
-    }
-
-    if(t.type == TokenType_VERILOG_DEFINE){
-      Token toDefine = p->ExpectNext(TokenType_IDENTIFIER);
-
-      -- LEFT HERE -- Copy code from the old approach and implement the rest of the logic.
-      while(!p->Done()){
-        
+      // Check if we just outputting define tokens ==================================
+      if(!currentParam){
+        if(workPtr->currentToken < define->tokens.size){
+          t = define->tokens[workPtr->currentToken];
+        }
       }
 
-      continue;
-    }
-
-    if(t.type == TokenType_VERILOG_UNDEF){
-      Token toUndef = p->ExpectNext(TokenType_IDENTIFIER);
-      continue;
-    }
-
-    if(t.type == TokenType_VERILOG_TIMESCALE){
-      p->ExpectNext(TokenType_NUMBER);
-      p->ExpectNext(TokenType_IDENTIFIER);
-
-      p->ExpectNext(TOK_TYPE('/'));
-
-      p->ExpectNext(TokenType_NUMBER);
-      p->ExpectNext(TokenType_IDENTIFIER);
-      continue;
-    }
-
-    if(t.type == TokenType_VERILOG_IFDEF){
-
-      continue;
-    }
-
-    if(t.type == TokenType_VERILOG_IFNDEF){
-      
-      continue;
-    }
-
-    if(t.type == TokenType_VERILOG_LINE){
-      p->ExpectNext(TokenType_NUMBER);
-      p->ExpectNext(TokenType_C_STRING);
-      p->ExpectNext(TokenType_NUMBER);
-      continue;
-    }
-
-    if(t.type == TokenType_VERILOG_UNCONNECTED_DRIVE){
-      p->ExpectNext(TokenType_IDENTIFIER);
-      continue;
-    }
-
-    if(t.type == TokenType_VERILOG_NOUNCONNECTED_DRIVE){
-      continue;
-    }
-
-    if(t.type == TokenType_VERILOG_CELLDEFINE){
-      continue;
-    }
-    if(t.type == TokenType_VERILOG_ENDCELLDEFINE){
-      continue;
-    }
-
-    if(t.type == TokenType_VERILOG_PRAGMA){
-      // NOTE: Not proper but we do not care too 
-      while(!p->Done()){
-        Token t = p->NextToken();
-        if(t.type == TokenType_NEWLINE){
+      // If token is a param then start replacing tokens with args ==================
+      String name = t.val;
+      int argIndex = -1;
+      for(int i = 0; i <  define->args.size; i++){
+        String str  =  define->args[i];
+        if(name == str){
+          argIndex = i;
           break;
         }
       }
 
-      continue;
+      if(argIndex != -1){
+        currentParam = workPtr->paramValues[argIndex];
+      }
+
+      if(currentParam){
+        t = currentParam->val;
+      } 
+    } else {
+      t = p->PeekToken(opts);
     }
 
-    if(t.type == TokenType_VERILOG_RESETALL){
-      continue;
+    return t;
+  };
+
+  auto NextToken = [&](ParsingOptions opts = {}) -> Token{
+    Token t = {};
+    if(workPtr){
+      DefineInfo* define = workPtr->currentDefine;
+      TokenNode* currentParam = workPtr->currentParam;
+
+      // Check if we just outputting define tokens ==================================
+      if(!currentParam){
+        if(workPtr->currentToken < define->tokens.size){
+          t = define->tokens[workPtr->currentToken];
+        }
+        workPtr->currentToken += 1;
+      }
+
+      // If token is a param then start replacing tokens with args ==================
+      String name = t.val;
+      int argIndex = -1;
+      for(int i = 0; i <  define->args.size; i++){
+        String str  =  define->args[i];
+        if(name == str){
+          argIndex = i;
+          break;
+        }
+      }
+
+      if(argIndex != -1){
+        currentParam = workPtr->paramValues[argIndex];
+      }
+
+      if(currentParam){
+        t = currentParam->val;
+        currentParam = currentParam->next;
+      } 
+
+      workPtr->currentParam = currentParam;
+
+      // After processing last token delete current work ============================
+      if(workPtr->currentToken >= define->tokens.size && !currentParam){
+        workPtr = workPtr->parent;
+      }
+    } else {
+      t = p->NextToken(opts);
     }
 
-    if(t.type == TokenType_VERILOG_BEGIN_KEYWORDS){
-      p->ExpectNext(TokenType_C_STRING);
-      continue;
+    return t;
+  };
+
+  auto Done = [&]() -> bool{
+    if(!workPtr && p->Done()){
+      return true;
+    }
+    return false;
+  };
+
+  auto ExpectNext = [&](TokenType type) -> Token{
+    Token t = NextToken();
+    return t;
+  };
+
+  auto IfPeekToken = [&](TokenType type) -> bool{
+    Token t = PeekToken();
+    if(t.type == type){
+      return true;
+    }
+    return false;
+  };
+
+  auto IfNextToken = [&](TokenType type) -> bool{
+    Token t = PeekToken();
+    if(t.type == type){
+      NextToken();
+      return true;
+    }
+    return false;
+  };
+
+  while(!Done()){
+    Token t = NextToken(ParsingOptions_ALLOW_ALL);
+    
+    // This is the code to process a token.
+    // Define only stores tokens (does not process).
+    // Instantiantion then processes the tokens from a define.
+    bool active = 1;
+
+    for(Env* ptr = env; ptr; ptr = ptr->parent){
+      active &= ptr->active;
     }
 
-    if(t.type == TokenType_VERILOG_END_KEYWORDS){
-      continue;
+    bool isCond = t.type == TokenType_VERILOG_IFDEF ||
+                  t.type == TokenType_VERILOG_IFNDEF ||
+                  t.type == TokenType_VERILOG_ELSIF ||
+                  t.type == TokenType_VERILOG_ELSE ||
+                  t.type == TokenType_VERILOG_ENDIF;
+
+    if(active || (!active && isCond)){
+      bool negateCond = 0;
+      bool skip = 1;
+
+      switch(t.type){
+      case TokenType_VERILOG_INCLUDE:{
+        Token tokenString = ExpectNext(TokenType_C_STRING);
+        String filepath = PARSE_GetStringContent(tokenString);
+        FileContent content = GetContentsOfFile(filepath,FilePurpose_VERILOG_INCLUDE);
+
+        if(content.state == FileContentState_FAILED_TO_LOAD){
+          p->ReportError(SF("Cannot find include file '%.*s'",UN(filepath)));
+          // Better error reporting, specify which folders we looked for
+        } else {
+          String processed = PreprocessVerilogFile(content.content,temp);
+          b->PushString(processed);
+        }
+      } break;
+
+      case TokenType_VERILOG_DEFINE:{
+        Token toDefine = ExpectNext(TokenType_IDENTIFIER);
+        String name = toDefine.val;
+
+        Array<String> args = {};
+        Array<Token> tokens = {};
+
+        Token peek = PeekToken(ParsingOptions_ALLOW_NEWLINE);
+        if(peek.type == TOK_TYPE('(')){
+          NextToken(ParsingOptions_ALLOW_NEWLINE);
+
+          auto l = PushList<String>(temp);
+          while(!Done()){
+            if(IfPeekToken(TOK_TYPE(')'))){
+              break;
+            }
+
+            Token arg = ExpectNext(TokenType_IDENTIFIER);
+            *l->PushElem() = arg.val;
+
+            if(IfNextToken(TOK_TYPE(','))){
+              continue;
+            }
+
+            break;
+          }
+          ExpectNext(TOK_TYPE(')'));
+
+          args = PushArray(temp,l);
+        }
+
+        auto t = PushList<Token>(temp);
+        bool ignoreNewline = false;
+        while(!Done()){
+          Token token = NextToken(ParsingOptions_ALLOW_NEWLINE | ParsingOptions_ALLOW_NEWLINE);
+
+          if(token.type == TOK_TYPE('\\')){
+            ignoreNewline = true;
+            continue;
+          }
+
+          if(token.type == TokenType_NEWLINE){
+            if(ignoreNewline){
+              ignoreNewline = false;
+            } else {
+              break;
+            }
+          }
+
+          *t->PushElem() = token;
+        }
+        tokens = PushArray(temp,t);
+
+        DefineInfo* node = 0;
+        LL_Find(defineHead,next,node,it->name == name);
+
+        bool alreadyExists = (node != nullptr);
+        if(!node){
+          node = PushStruct<DefineInfo>(temp);
+        }
+
+        node->args = args;
+        node->name = toDefine.val;
+        node->tokens = tokens;
+
+        if(!alreadyExists){
+          LL_Append(defineHead,definePtr,next,node);
+        }
+      } break;
+
+      case TokenType_VERILOG_PREPROCESS:{
+        Token define = t;
+        String name = Offset(define.val,1);
+
+        Array<TokenNode*> args = {};
+        if(IfNextToken(TOK_TYPE('('))){
+          auto l = PushList<TokenNode*>(temp);
+          while(!Done()){
+            if(IfPeekToken(TOK_TYPE(')'))){
+              break;
+            }
+
+            TokenNode* head = 0;
+            TokenNode* ptr = 0;
+
+            while(!Done()){
+              if(IfPeekToken(TOK_TYPE(')'))){
+                break;
+              }
+
+              if(IfPeekToken(TOK_TYPE(','))){
+                break;
+              }
+
+              Token arg = NextToken();
+              TokenNode* node = PushStruct<TokenNode>(temp);
+              node->val = arg;
+              LL_Append(head,ptr,next,node);
+            }
+
+            *l->PushElem() = head;
+
+            if(IfNextToken(TOK_TYPE(','))){
+              continue;
+            }
+
+            break;
+          }
+          args = PushArray(temp,l);
+
+          ExpectNext(TOK_TYPE(')'));
+        }
+
+        DefineInfo* node = 0;
+        LL_Find(defineHead,next,node,it->name == name);
+
+        if(!node){
+          // Error, define not found
+        }
+
+        if(node){
+          if(node->args.size != args.size){
+            // Error, not enough args.
+          }
+        
+          Work* newWork = PushStruct<Work>(temp);
+          newWork->parent = workPtr;
+          newWork->currentDefine = node;
+          newWork->paramValues = args;
+
+          workPtr = newWork;
+        }
+      } break;
+
+      case TokenType_VERILOG_UNDEF:{
+        Token toUndef = ExpectNext(TokenType_IDENTIFIER);
+        String name = toUndef.val;
+
+        DefineInfo* prev = 0;
+        DefineInfo* node = 0;
+        LL_FindPrev(defineHead,next,node,prev,it->name == name);
+        LL_Remove(defineHead,definePtr,next,node,prev);
+      } break;
+
+      case TokenType_VERILOG_TIMESCALE:{
+        ExpectNext(TokenType_NUMBER);
+        ExpectNext(TokenType_IDENTIFIER);
+
+        ExpectNext(TOK_TYPE('/'));
+
+        ExpectNext(TokenType_NUMBER);
+        ExpectNext(TokenType_IDENTIFIER);
+      } break;
+
+      case TokenType_VERILOG_IFNDEF: negateCond = 1; // fallthrough
+      case TokenType_VERILOG_IFDEF:{
+        Token def = ExpectNext(TokenType_IDENTIFIER);
+        String name = def.val;
+
+        DefineInfo* node = 0;
+        LL_Find(defineHead,next,node,it->name == name);
+
+        Env* layer = PushStruct<Env>(temp);
+        layer->parent = env;
+        env = layer;
+
+        if(negateCond && !node){
+          layer->active = 1;
+        }
+        if(!negateCond && node){
+          layer->active = 1;
+        }
+      } break;
+
+      case TokenType_VERILOG_ELSE:{
+        env->active = !env->active;
+      } break;
+
+      case TokenType_VERILOG_ELSIF:{
+        Token def = ExpectNext(TokenType_IDENTIFIER);
+        String name = def.val;
+
+        DefineInfo* node = 0;
+        LL_Find(defineHead,next,node,it->name == name);
+
+        if(node && !env->onceActive){
+          env->active = 1;
+        }
+      } break;
+
+      case TokenType_VERILOG_ENDIF:{
+        if(env == &topEnv){
+          // Error, naked endif
+        }
+
+        env = env->parent;
+      } break;
+
+      case TokenType_VERILOG_LINE:{
+        ExpectNext(TokenType_NUMBER);
+        ExpectNext(TokenType_C_STRING);
+        ExpectNext(TokenType_NUMBER);
+      } break;
+
+      case TokenType_VERILOG_UNCONNECTED_DRIVE:{
+        ExpectNext(TokenType_IDENTIFIER);
+      } break;
+
+      case TokenType_VERILOG_NOUNCONNECTED_DRIVE:// fallthrough
+      case TokenType_VERILOG_CELLDEFINE:// fallthrough
+      case TokenType_VERILOG_ENDCELLDEFINE:// fallthrough
+      case TokenType_VERILOG_END_KEYWORDS:{
+        // Nothing
+      } break;
+
+      case TokenType_VERILOG_PRAGMA:{
+        // NOTE: Not proper but do not care about pragmas right now
+        while(!Done()){
+          Token t = NextToken();
+          if(t.type == TokenType_NEWLINE){
+            break;
+          }
+        }
+      } break;
+      
+      case TokenType_VERILOG_BEGIN_KEYWORDS:{
+        ExpectNext(TokenType_C_STRING);
+      } break;
+
+      case TokenType_VERILOG_DEFAULT_NETTYPE:{
+        /* Token nettype = */ ExpectNext(TokenType_IDENTIFIER); // Consume default nettype
+        // TODO: Can improve error reporting if needed by checking nettype;
+      } break;
+
+      case TokenType_VERILOG_RESETALL:{
+        defineHead = 0;
+        definePtr = 0;
+      } break;
+
+      default: skip = 0; break;
+      }
+
+      env->onceActive |= env->active;
+
+      if(!skip && env->active){
+        b->PushString(t.val);
+      }
     }
-
-    if(t.type == TokenType_VERILOG_DEFAULT_NETTYPE){
-      Token nettype = p->ExpectNext(TokenType_IDENTIFIER); // Consume default nettype
-      // TODO: Check if value is correct and report error if not.
-      continue;
-    }
-
-    if(t.type == TokenType_VERILOG_RESETALL){
-      continue;
-    }
-
-    b->PushString(t.val);
-
-    printf("%d\n",t.type);
   }
-    DEBUG_BREAK();
 
   String res = EndString(out,b);
 
-  printf("\n\n\nResult:\n%.*s\n\n",UN(res));
-  
-  exit(0);
+  // TODO: Errors
+  return res;
+}
 
-  return {};
+static b32 V_IsWhitespace(char ch){
+  b32 res = (ch == '\n' || ch == '\t' || ch == '\r' || ch == ' ');
+  return res;
+}
+
+static b32 V_IsSymbol(char ch){
+  b32 res = false;
+  res |= (ch >= 33 && ch <= 47);
+  res |= (ch >= 58 && ch <= 64);
+  res |= (ch >= 91 && ch <= 96);
+  res |= (ch >= 123 && ch <= 126);
+  return res;
+}
+
+static b32 V_IsAlpha(char ch){
+  b32 res = ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_');
+  return res;
+}
+
+static b32 V_IsErrorDigit(char ch){
+  b32 res = (ch == 'z' || ch == 'Z' || ch == 'x' || ch == 'X' || ch == '?');
+  return res;
+}
+
+static b32 V_IsBinaryDigit(char ch){
+  b32 res = (ch == '0' || ch == '1');
+  return res;
+}
+
+static b32 V_IsDecimalDigit(char ch){
+  b32 res = (ch >= '0' && ch <= '9');
+  return res;
+}
+
+static b32 V_IsHexadecimalDigit(char ch){
+  b32 res = V_IsDecimalDigit(ch) || ((ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F'));
+  return res;
+}
+
+
+V_ParsedNumber V_ParseNumber(const char* start,const char* end,Arena* out){
+  const char* ptr = start;
+
+  if(start >= end){
+    return {};
+  }
+
+  char ch = *start;
+
+  if(ch >= '0' && ch <= '9' ||
+     ch == '\''){
+  } else {
+    return {}; // Definitely not a number, return early.
+  }
+
+  // TODO: In theory every time we see a non valid character we could error report it.
+  //       Currently we just ignore it and break from loops early, but we know that 
+  //       something like a (Ex: 100y) is not allowed since y is never a valid character.
+  //       Symbols terminate early since 100+200 is allowed. Basically only certains parts of 
+  //       the alphanumeric group of characters can trigger invalid errors. Symbols and whitespaces
+  //       just end the parsing immediatly.
+
+  // Parse first section ========================================================
+  const char* startOfFirstSection = ptr;
+
+  b32 anyError = 0;
+
+  b32 isReal = 0;
+  b32 seenExp = 0;
+  b32 seenDot = 0;
+
+  b32 isSized = 0;
+  b32 canBeSize = 0;
+
+  b32 finished = 0; // Only asserted if we see a character that is not allowed.
+  
+  auto NotDone = [&finished,ptr,end](){return (!finished && ptr < end);};
+  
+  while(NotDone()){
+    b32 firstChar = (ptr == startOfFirstSection);
+    char ch = *ptr;
+    
+    if(ch == '.'){
+      isReal = 1;
+      seenDot = 1;
+      ptr += 1;
+      break;
+    }
+    if(ch == '\''){
+      isSized = 1;
+      ptr += 1;
+      break;
+    }
+    if(ch == 'e' || ch == 'E'){
+      isReal = 1;
+      seenExp = 1;
+      ptr += 1;
+      break;
+    }
+
+    b32 validChar = 0;
+
+    if(!firstChar && ch == '_'){
+      validChar = 1;
+    }
+    if(V_IsDecimalDigit(ch)){
+      validChar = 1;
+    }
+    if(V_IsWhitespace(ch) || V_IsSymbol(ch)){
+      finished = 1;
+      break;
+    }
+    
+    // NOTE: Size cannot start with a zero, for some reason.
+    if(firstChar && ch == '0'){
+      canBeSize = 0;
+    }
+
+    if(validChar){
+      ptr += 1;
+      continue;
+    }
+
+    break;
+  }
+
+  b32 isUnsizedDecimal = 0;
+  if(!isReal && !isSized){
+    isUnsizedDecimal = 1;
+  }
+
+  V_NumberType numberType = V_NumberType_NIL;
+
+  String firstSection = String(startOfFirstSection,ptr - startOfFirstSection);
+
+  // Handle real numbers ========================================================
+  f64 realNumber = 0.0f;
+  if(isReal){
+    String afterDot = {};
+
+    if(seenDot){
+      const char* afterDotStart = ptr;
+      while(NotDone()){
+        b32 firstChar = (ptr == afterDotStart);
+        char ch = *ptr;
+        
+        if(ch == 'e' || ch == 'E'){
+          seenExp = 1;
+          ptr += 1;
+          break;
+        }
+
+        b32 validChar = 0;
+
+        if(!firstChar && ch == '_'){
+          validChar = 1;
+        }
+        if(V_IsDecimalDigit(ch)){
+          validChar = 1;
+        }
+        if(V_IsWhitespace(ch) || V_IsSymbol(ch)){
+          finished = 1;
+          break;
+        }
+
+        if(validChar){
+          ptr += 1;
+          continue;
+        }
+
+        break;
+      }
+
+      afterDot = String(afterDotStart,ptr - afterDotStart);
+    }
+
+    String afterExp = {};
+    if(seenExp){
+      b32 minus = 0;
+
+      if(NotDone()){
+        if(*ptr == '+'){
+          ptr += 1;
+        }
+        if(*ptr == '-'){
+          minus = 1;
+          ptr += 1;
+        }
+      }
+
+      const char* afterExpStart = ptr;
+      
+      while(NotDone()){
+        b32 firstChar = (ptr == afterExpStart);
+        char ch = *ptr;
+        
+        b32 validChar = 0;
+
+        if(!firstChar && ch == '_'){
+          validChar = 1;
+        }
+        if(V_IsDecimalDigit(ch)){
+          validChar = 1;
+        }
+        if(V_IsWhitespace(ch) || V_IsSymbol(ch)){
+          finished = 1;
+          break;
+        }
+
+        if(validChar){
+          ptr += 1;
+          continue;
+        }
+
+        break;
+      }
+      
+      afterExp = String(afterExpStart,ptr - afterExpStart);
+    }
+
+    if(seenDot && Empty(afterDot)){
+      // TODO: Error
+    }
+    if(seenExp && Empty(afterExp)){
+      // TODO: Error
+    }
+
+    NOT_IMPLEMENTED("TODO: firstSection + afterDot + afterExp -> f64 number");
+    
+    numberType = V_NumberType_REAL;
+  }
+
+  // Handle sized ===============================================================
+  b32 bitsizeGiven = 0;
+  b32 signedSpecificer = 0;
+  String asBinary = {};
+  if(isSized){
+    if(NotDone()){
+      if(*ptr == 's' || *ptr == 'S'){
+        signedSpecificer = 1;
+        ptr += 1;
+      }
+    }
+    
+    if(NotDone()){
+      char ch = *ptr;
+
+      switch(ch){
+      case 'd': // fallthrough
+      case 'D': {
+        numberType = V_NumberType_DECIMAL;
+      } break;
+      
+      case 'b': // fallthrough
+      case 'B': {
+        numberType = V_NumberType_BINARY;
+      } break;
+
+      case 'o': // fallthrough
+      case 'O': {
+        numberType = V_NumberType_OCTO;
+      } break;
+
+      case 'h': // fallthrough
+      case 'H': {
+        numberType = V_NumberType_HEXADECIMAL;
+      } break;
+
+      default: break;// TODO:Error on base
+      }
+
+      ptr += 1;
+    }
+
+    const char* afterBaseStart = ptr;
+    while(NotDone()){
+      b32 firstChar = (ptr == afterBaseStart);
+      char ch = *ptr;
+        
+      b32 validChar = 0;
+
+      if(!firstChar && ch == '_'){
+        validChar = 1;
+      }
+      // TODO: Only parse the type specifics and report error otherwise
+      if(V_IsHexadecimalDigit(ch)){
+        validChar = 1;
+      }
+      if(V_IsWhitespace(ch) || V_IsSymbol(ch)){
+        finished = 1;
+        break;
+      }
+
+      if(validChar){
+        ptr += 1;
+        continue;
+      }
+
+      break;
+    }
+    
+    String afterBase = String(afterBaseStart,ptr - afterBaseStart);
+
+    firstSection.size -= 1; // NOTE: Remove the '
+    for(char ch : firstSection){
+      b32 isDigit = ch >= '0' && ch <= '9';
+      if(!isDigit){
+        anyError = 1;
+        break;
+      }
+      
+      bitsizeGiven *= 10;
+      bitsizeGiven += (ch - '0');
+    }
+    
+    if(out && !anyError){
+      TEMP_REGION(temp,out);
+      
+      auto b = StartString(temp);
+
+      if(numberType == V_NumberType_DECIMAL){
+        u64 asNumber = 0;
+        for(char ch : firstSection){
+          if(ch == '_'){
+            continue;
+          }
+
+          b32 isDigit = ch >= '0' && ch <= '9';
+          if(!isDigit){
+            anyError = 1;
+            break;
+          }
+
+          asNumber *= 10;
+          asNumber += (ch - '0');
+        }
+        
+        while(!anyError && asNumber != 0){
+          u32 offset = asNumber % 2;
+          b->PushString(offset ? "1" : "0");
+          asNumber /= 2;
+        }
+
+        String reversedBinary = EndString(temp,b);
+        asBinary = Reverse(reversedBinary,out);
+      } else {
+        for(char ch : afterBase){
+          if(ch == '_'){
+            continue;
+          }
+
+          switch(numberType){
+          case V_NumberType_BINARY:{
+            b->PushChar(ch);
+          } break;
+          case V_NumberType_OCTO:{
+            switch(ch){
+            case '0': b->PushString("000"); break;
+            case '1': b->PushString("001"); break;
+            case '2': b->PushString("010"); break;
+            case '3': b->PushString("011"); break;
+            case '4': b->PushString("100"); break;
+            case '5': b->PushString("101"); break;
+            case '6': b->PushString("110"); break;
+            case '7': b->PushString("111"); break;
+            case 'x': 
+            case 'X': b->PushString("xxx"); break;
+            case 'z': 
+            case 'Z': b->PushString("zzz"); break;
+            case '?': b->PushString("???"); break;
+            default: anyError = 1;
+            }
+          } break;
+          case V_NumberType_HEXADECIMAL:{
+            switch(ch){
+            case '0': b->PushString("0000"); break;
+            case '1': b->PushString("0001"); break;
+            case '2': b->PushString("0010"); break;
+            case '3': b->PushString("0011"); break;
+            case '4': b->PushString("0100"); break;
+            case '5': b->PushString("0101"); break;
+            case '6': b->PushString("0110"); break;
+            case '7': b->PushString("0111"); break;
+            case '8': b->PushString("1000"); break;
+            case '9': b->PushString("1001"); break;
+            case 'a':
+            case 'A': b->PushString("1010"); break;
+            case 'b':
+            case 'B': b->PushString("1011"); break;
+            case 'c':
+            case 'C': b->PushString("1100"); break;
+            case 'd':
+            case 'D': b->PushString("1101"); break;
+            case 'e':
+            case 'E': b->PushString("1110"); break;
+            case 'f':
+            case 'F': b->PushString("1111"); break;
+            case 'x': 
+            case 'X': b->PushString("xxxx"); break;
+            case 'z': 
+            case 'Z': b->PushString("zzzz"); break;
+            case '?': b->PushString("????"); break;
+            default: anyError = 1;
+            }
+          } break;
+
+          default: anyError = 1;
+          }
+        }
+
+        asBinary = EndString(out,b);
+      }
+    }
+  }
+
+  // Handle unsized decimals ====================================================
+  u64 decimalNumber = 0;
+  if(isUnsizedDecimal){
+    for(char ch : firstSection){
+      if(ch == '_'){
+        continue;
+      }
+      b32 isDigit = ch >= '0' && ch <= '9';
+
+      if(!isDigit){
+        anyError = 1;
+        break;
+      }
+
+      decimalNumber *= 10;
+      decimalNumber += (ch - '0');
+    }
+    numberType = V_NumberType_DECIMAL;
+  }  
+
+  // Pack =======================================================================
+  V_ParsedNumber res = {};
+  res.type = numberType;
+  res.isSized = isSized;
+  res.bitsizeGiven = bitsizeGiven;
+  res.isSigned = signedSpecificer;
+  res.realNumber = realNumber;
+  res.decimalNumber = decimalNumber;
+  res.bytesParsed = ptr - start;
+  res.asBinary = asBinary;
+  res.anyError = anyError;
+
+  return res;
 }

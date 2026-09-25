@@ -3,12 +3,12 @@
 `define COMPLEX_INTERFACE
 
 (* source *) module Mem #(
-   parameter DATA_W        = 32,
-   parameter SIZE_W        = 32,
-   parameter DELAY_W       = 7,
-   parameter ADDR_W        = 12,
-   parameter PERIOD_W      = 10
-) (
+   parameter DATA_W = 32,
+   parameter SIZE_W = 32,
+   parameter DELAY_W = 7,
+   parameter ADDR_W = 12,
+   parameter PERIOD_W = 10
+) (   
    //control
    input clk,
    input rst,

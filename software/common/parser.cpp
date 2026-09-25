@@ -46,6 +46,9 @@ String PushRepr(Arena* out,TokenType type){
   if(type == TokenType_COMMENT){
     res = "Comment";
   }
+  if(type == TokenType_MULTILINE_COMMENT){
+    res = "Comment";
+  }
   if(type == TokenType_EOF){
     res = "EOF";
   }
@@ -225,30 +228,39 @@ Token Parser::InternalConsumeToken(ParsingOptions opts){
   token.type = TokenType_EOF;
 
   while(this->ptr < this->end){
-    token = this->tokenizer(this->tokenizerState,this->ptr,this->end);
-    this->ptr += token.val.size;
+    Token parsed = this->tokenizer(this->tokenizerState,this->ptr,this->end);
+    this->ptr += parsed.val.size;
 
-    if(opts & ParsingOptions_SKIP_WHITESPACE && token.type == TokenType_WHITESPACE){
-      continue;
+    bool skip = 0;
+
+    if(!(opts & ParsingOptions_ALLOW_NEWLINE) && parsed.type == TokenType_NEWLINE){
+      skip = 1;
     }
-    if(opts & ParsingOptions_SKIP_WHITESPACE && token.type == TokenType_NEWLINE){
-      continue;
+    if(!(opts & ParsingOptions_ALLOW_WHITESPACE) && parsed.type == TokenType_WHITESPACE){
+      skip = 1;
     }
-    if(opts & ParsingOptions_SKIP_COMMENTS && token.type == TokenType_COMMENT){
-      continue;
+    if(!(opts & ParsingOptions_ALLOW_COMMENTS) && PARSE_IsComment(parsed.type)){
+      skip = 1;
     }
-    if(opts & ParsingOptions_SKIP_COMMENTS && token.type == TokenType_UNTERMINATED_MULTILINE_COMMENT){
+    
+    if(parsed.type == TokenType_UNTERMINATED_MULTILINE_COMMENT){
       // TODO: Improve error messages, We can show user the start of the multiline comment
       ReportError("Unterminated multiline comment");
+      skip = 1;
+    }
+
+    if(skip){
       continue;
     }
 
-    if(token.type == TokenType_INVALID){
+    if(parsed.type == TokenType_INVALID){
       if(currentFile){
         printf("Invalid token: %s\n",currentFile);
       }
-      token.type = TokenType_EOF;
+      parsed.type = TokenType_EOF;
     }
+
+    token = parsed;
     
     break;
   }
@@ -355,6 +367,10 @@ Token Parser::PeekToken(int lookahead,ParsingOptions opts){
   return res;
 }
 
+void Parser::Advance(Token tok){
+  this->ptr = tok.val.data + tok.val.size;
+}
+
 bool Parser::IfNextToken(TokenType type){
   Token tok = PeekToken();
   if(tok.type == type){
@@ -389,15 +405,17 @@ bool Parser::IfPeekToken(char singleChar,int lookahead){
 Token Parser::ExpectNext(TokenType type,ParsingOptions opts){
   Token tok = NextToken();
 
-  if(type == TokenType_IDENTIFIER && (opts & ParsingOptions_ERROR_ON_C_VERILOG_KEYWORDS)){
 #if 0
+  if(type == TokenType_IDENTIFIER && (opts & ParsingOptions_ERROR_ON_C_VERILOG_KEYWORDS)){
     if(tok.type == TokenType_C_KEYWORD && options & ParsingOptions_ERROR_ON_C_KEYWORDS){
       ReportError("Expected identifier but instead got a C reserved keyword.\n We cannot have C keywords since we will have to generate C code and the generated code will be malformed");
     } else if(tok.type == TokenType_VERILOG_KEYWORD && options & ParsingOptions_ERROR_ON_VERILOG_KEYWORDS){
       ReportError("Expected identifier but instead got a Verilog reserved keyword.\n We cannot have Verilog keywords since we will have to generate Verilog code and the generated code will be malformed");
     }
-#endif
   } else if(tok.type != type){
+#endif
+
+  if(tok.type != type){
     //NOT_IMPLEMENTED("FileContent should just be the file currently parsing, should be optional and stored in the parser");
 #if 1
     TEMP_REGION(temp,nullptr);
@@ -477,26 +495,66 @@ bool Parser::Done(){
   return false;
 }
 
+
+// ======================================
+// Type
+
+bool PARSE_IsComment(TokenType in){
+  bool res = (in == TokenType_COMMENT ||
+              in == TokenType_MULTILINE_COMMENT ||
+              in == TokenType_UNTERMINATED_MULTILINE_COMMENT);
+
+  return res;
+}
+
+String PARSE_GetStringContent(Token stringType){
+  String res = stringType.val;
+  Assert(stringType.type == TokenType_C_STRING);
+
+  res = Offset(Cut(res,1),1);
+  return res;
+}
+
+String PARSE_GetCommentContent(Token commentType){
+  String res = commentType.val;
+  Assert(PARSE_IsComment(commentType.type));
+
+  switch(commentType.type){
+    case TokenType_COMMENT:{
+      res = Offset(res,2);
+    } break;
+    case TokenType_MULTILINE_COMMENT:{
+      res = Cut(Offset(res,2),2);
+    } break;
+    case TokenType_UNTERMINATED_MULTILINE_COMMENT:{
+      res = Offset(res,2);
+    } break;
+  }
+
+  return res;
+}
+
 // ============================================================================
 // Tokenizer function helpers
 
+bool IsWhitespace(char ch,bool includeNewline){
+  bool res = (ch == ' ' || 
+              ch == '\r' || 
+              ch == '\t');
+ 
+  if(includeNewline){
+    res |= (ch == '\n');
+  }
+ 
+  return res;
+}
+
 Token ParseWhitespace(const char* start,const char* end,ParseWhitespaceOptions options){
   const char* ptr = start;
-  
-  auto IsWhitespace = [options](char ch){
-    bool res = (ch == ' ' || 
-                ch == '\r' || 
-                ch == '\t');
-
-    if(options & ParseWhitespaceOptions_INCLUDE_NEWLINES){
-      res |= (ch == '\n');
-    }
-    return res;
-  };
 
   int lines = 0;
   int column = 0;
-  while(ptr < end && IsWhitespace(*ptr)){
+  while(ptr < end && IsWhitespace(*ptr,options & ParseWhitespaceOptions_INCLUDE_NEWLINES)){
     if(*ptr == '\n'){
       column += 1;
       lines = 0;

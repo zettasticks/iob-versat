@@ -66,13 +66,22 @@ int main(int argc,const char* argv[]){
     res |= ParseWhitespace(start,end);
     res |= ParseComments(start,end);
 
-    // NOTE: Could just replace with a function that accums any non whitespace or comment val
-    //       We do not really care what we actually parse
-    res |= ParseSymbols(start,end);
-    res |= ParseNumber(start,end);
-    res |= ParseIdentifier(start,end);
+    if(res.type == TokenType_INVALID){
+      const char* ptr = start;
+      
+      ptr += 1;
+      while(ptr < end){
+        if(IsWhitespace(*ptr,true) || *ptr == '/'){
+          break;
+        }
+        
+        ptr += 1;
+      }
 
-    Assert(res.val.size > 0);
+      res.type = TokenType_MISC;
+      res.val = String(start,ptr - start);
+    }
+
     return res;
   };
   
@@ -89,7 +98,7 @@ int main(int argc,const char* argv[]){
     const char* ptr = content.data;
     const char* end = content.data + content.size;
 
-    printf("%p %p\n",ptr,end);
+    //printf("%p %p\n",ptr,end);
 
     while(ptr < end){
       Token res = TokenizeFunction(ptr,end);

@@ -91,7 +91,7 @@ meta-data $(VERSAT_COMPILER_DIR)/versatSpecificationParser_meta.hpp: $(META) $(V
 debug-meta-data: $(META)
 	gdb --args $(META) $(VERSAT_SW_DIR)/compiler
 
-versat: $(VERSAT_DIR)/versat $(HASH)
+versat: meta-data $(VERSAT_DIR)/versat $(HASH)
 
 clean:
 	-rm -fr $(TOOL_BUILD_DIR)
