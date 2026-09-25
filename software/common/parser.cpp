@@ -3,6 +3,8 @@
 #include "utilsCore.hpp"
 #include "debug.hpp"
 
+#include "parser_meta.hpp"
+
 static bool IsAlpha(char ch){
   bool res = ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_'); 
   return res;
@@ -36,156 +38,24 @@ String PushRepr(Arena* out,TokenType type){
   String res = {};
   if(IsCharSingleToken((char) type)){
     res = PushString(out,"'%c'",(char) type);
+  } else {
+    res = TokenType_Repr(type);
   }
-  if(type == TokenType_WHITESPACE){
-    res = "Whitespace";
-  }
-  if(type == TokenType_NEWLINE){
-    res = "Newline";
-  }
-  if(type == TokenType_COMMENT){
-    res = "Comment";
-  }
-  if(type == TokenType_MULTILINE_COMMENT){
-    res = "Comment";
-  }
-  if(type == TokenType_EOF){
-    res = "EOF";
-  }
-  if(type == TokenType_C_KEYWORD){
-    res = "C Reserved Keyword";
-  }
-  if(type == TokenType_IDENTIFIER){
-    res = "Identifier";
-  }
-  if(type == TokenType_NUMBER){
-    res = "Number";
-  }
-  if(type == TokenType_FILEPATH){
-    res = "Filepath";
-  }
-
-  if(type >= TokenType_START_OF_KEYWORDS && type < TokenType_END_OF_KEYWORDS){
-    res = "Keyword";
-  }
-
-#define SIMPLE(TYPE,TYPENAME,RET) if(type == TYPE) res = PushString(out,"[%s] '%s'",TYPENAME,RET)
-  SIMPLE(TokenType_DOUBLE_DOT,"DoubleChar","..");
-  SIMPLE(TokenType_DOUBLE_HASHTAG,"DoubleChar","##");
-  SIMPLE(TokenType_ARROW,"DoubleChar","->");
-  SIMPLE(TokenType_SHIFT_RIGHT,"DoubleChar",">>");
-  SIMPLE(TokenType_SHIFT_LEFT,"DoubleChar","<<");
-
-  SIMPLE(TokenType_ROTATE_RIGHT,"TripleChar",">><");
-  SIMPLE(TokenType_ROTATE_LEFT,"DoubleChar","><<");
-
-  SIMPLE(TokenType_VERILOG_ATTRIBUTE_START,"DoubleChar","(*");
-  SIMPLE(TokenType_VERILOG_ATTRIBUTE_END,"DoubleChar","*)");
-
-  SIMPLE(TokenType_KEYWORD_MODULE,"Keyword","module");
-  SIMPLE(TokenType_KEYWORD_MERGE,"Keyword","merge");
-  SIMPLE(TokenType_KEYWORD_SHARE,"Keyword","share");
-  SIMPLE(TokenType_KEYWORD_STATIC,"Keyword","static");
-  SIMPLE(TokenType_KEYWORD_DEBUG,"Keyword","debug");
-  SIMPLE(TokenType_KEYWORD_SIM,"Keyword","sim");
-  SIMPLE(TokenType_KEYWORD_CONFIG,"Keyword","config");
-  SIMPLE(TokenType_KEYWORD_STATE,"Keyword","state");
-  SIMPLE(TokenType_KEYWORD_MEM,"Keyword","mem");
-  SIMPLE(TokenType_KEYWORD_GEN,"Keyword","gen");
-  SIMPLE(TokenType_KEYWORD_FOR,"Keyword","for");
-
-  SIMPLE(TokenType_VERILOG_DEFINE,"Verilog","define");
-  SIMPLE(TokenType_VERILOG_UNDEF,"Verilog","undef");
-
-  SIMPLE(TokenType_VERILOG_INCLUDE,"Verilog","include");
-  SIMPLE(TokenType_VERILOG_INCLUDE,"Verilog","timescale");
-
-  SIMPLE(TokenType_VERILOG_PREPROCESS,"Verilog","preprocess");
-
-  SIMPLE(TokenType_VERILOG_IFDEF,"Verilog","ifdef");
-  SIMPLE(TokenType_VERILOG_IFNDEF,"Verilog","ifndef");
-  SIMPLE(TokenType_VERILOG_ELSE,"Verilog","else");
-  SIMPLE(TokenType_VERILOG_ELSIF,"Verilog","elsif");
-  SIMPLE(TokenType_VERILOG_ENDIF,"Verilog","endif");
-
-  SIMPLE(TokenType_VERILOG_KEYWORD_PARAMETER,"Verilog","parameter");
-
-  SIMPLE(TokenType_VERILOG_KEYWORD_MODULE,"Verilog","module");
-  SIMPLE(TokenType_VERILOG_KEYWORD_ENDMODULE,"Verilog","endmodule");
-  SIMPLE(TokenType_VERILOG_KEYWORD_SIGNED,"Verilog","signed");
-  SIMPLE(TokenType_VERILOG_KEYWORD_INPUT,"Verilog","input");
-  SIMPLE(TokenType_VERILOG_KEYWORD_OUTPUT,"Verilog","output");
-  SIMPLE(TokenType_VERILOG_KEYWORD_INOUT,"Verilog","inout");
-  SIMPLE(TokenType_VERILOG_KEYWORD_REG,"Verilog","reg");
-  SIMPLE(TokenType_VERILOG_KEYWORD_WIRE,"Verilog","wire");
-#undef SIMPLE 
 
   return res;
 }
 
 String PARSE_PushDebugRepr(Arena* out,Token token){
   String res = {};
+  
+  String customRepr = TokenType_CustomRepr(token.type);
+  if(customRepr.size > 0){
+    const char* format = CS(customRepr);
 
-  if(token.type == TokenType_IDENTIFIER){
-    res = PushString(out,"[Identifier] '%.*s'",UN(token.val));
-  }
-  if(token.type == TokenType_NUMBER){
-    res = PushString(out,"[Number] '%.*s'",UN(token.val));
-  }
-  if(token.type == TokenType_C_STRING){
-    res = PushString(out,"\"%.*s\"",UN(token.val));
-  }
-  if(token.type == TokenType_FILEPATH){
-    res = PushString(out,"[Filepath] %.*s",UN(token.val));
-  }
-
-  if(Empty(res)){
+    PushString(out,format,UN(token.val));
+  } else {
     res = PushRepr(out,token.type);
   }
-
-#define SIMPLE(TYPE,TYPENAME,RET) if(token.type == TYPE) res = PushString(out,"[%s] '%s'",TYPENAME,RET)
-  SIMPLE(TokenType_KEYWORD_MODULE,"Keyword","module");
-  SIMPLE(TokenType_KEYWORD_MERGE,"Keyword","merge");
-  SIMPLE(TokenType_KEYWORD_SHARE,"Keyword","share");
-  SIMPLE(TokenType_KEYWORD_STATIC,"Keyword","static");
-  SIMPLE(TokenType_KEYWORD_DEBUG,"Keyword","debug");
-  SIMPLE(TokenType_KEYWORD_SIM,"Keyword","sim");
-  SIMPLE(TokenType_KEYWORD_CONFIG,"Keyword","config");
-  SIMPLE(TokenType_KEYWORD_STATE,"Keyword","state");
-  SIMPLE(TokenType_KEYWORD_MEM,"Keyword","mem");
-  SIMPLE(TokenType_KEYWORD_GEN,"Keyword","gen");
-  SIMPLE(TokenType_KEYWORD_FOR,"Keyword","for");
-
-  SIMPLE(TokenType_VERILOG_DEFINE,"Verilog","define");
-  SIMPLE(TokenType_VERILOG_UNDEF,"Verilog","undef");
-
-  SIMPLE(TokenType_VERILOG_INCLUDE,"Verilog","timescale");
-  SIMPLE(TokenType_VERILOG_INCLUDE,"Verilog","include");
-
-  SIMPLE(TokenType_VERILOG_PREPROCESS,"Verilog","preprocess");
-
-  SIMPLE(TokenType_VERILOG_IFDEF,"Verilog","ifdef");
-  SIMPLE(TokenType_VERILOG_IFNDEF,"Verilog","ifndef");
-  SIMPLE(TokenType_VERILOG_ELSE,"Verilog","else");
-  SIMPLE(TokenType_VERILOG_ELSIF,"Verilog","elsif");
-  SIMPLE(TokenType_VERILOG_ENDIF,"Verilog","endif");
-
-  SIMPLE(TokenType_VERILOG_KEYWORD_PARAMETER,"Verilog","parameter");
-
-  SIMPLE(TokenType_VERILOG_KEYWORD_MODULE,"Verilog","module");
-  SIMPLE(TokenType_VERILOG_KEYWORD_ENDMODULE,"Verilog","endmodule");
-  SIMPLE(TokenType_VERILOG_KEYWORD_SIGNED,"Verilog","signed");
-  SIMPLE(TokenType_VERILOG_KEYWORD_INPUT,"Verilog","input");
-  SIMPLE(TokenType_VERILOG_KEYWORD_OUTPUT,"Verilog","output");
-  SIMPLE(TokenType_VERILOG_KEYWORD_INOUT,"Verilog","inout");
-  SIMPLE(TokenType_VERILOG_KEYWORD_REG,"Verilog","reg");
-  SIMPLE(TokenType_VERILOG_KEYWORD_WIRE,"Verilog","wire");
-#undef SIMPLE 
-
-  if(Empty(res)){
-    printf("Token type: %d\n",(int) token.type);
-    Assert(false);
-  }  
 
   return res;
 }
@@ -287,7 +157,7 @@ void Parser::ReportUnexpectedToken(Token token,BracketList<TokenType> expectedLi
     builder->PushString("  '%.*s'\n",UN(repr));
   }
 
-  ENTER_DEBUG();
+  //ENTER_DEBUG();
 
   *errors->PushElem() = EndString(this->arena,builder);
 }

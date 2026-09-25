@@ -93,9 +93,11 @@ versat: $(VERSAT_DIR)/versat $(HASH)
 
 meta-data: $(META)
 	$(META) $(VERSAT_SW_DIR)/compiler
+	$(META) $(VERSAT_SW_DIR)/common
 
 debug-meta-data: $(META)
 	gdb --args $(META) $(VERSAT_SW_DIR)/compiler
+	gdb --args $(META) $(VERSAT_SW_DIR)/common
 
 clean:
 	-rm -fr $(TOOL_BUILD_DIR)

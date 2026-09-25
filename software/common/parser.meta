@@ -1,0 +1,85 @@
+table TokenTable(name,enumVal,customRepr){
+  INVALID                           0     ''
+  EOF                               ''    ''
+  NEWLINE                           ''    ''
+  WHITESPACE                        ''    ''
+  COMMENT                           ''    ''
+  MULTILINE_COMMENT                 ''    ''
+  UNTERMINATED_MULTILINE_COMMENT    ''    ''
+  MISC                              ''    ''
+  CHAR_GROUP_0_START                '!'   ''
+  CHAR_GROUP_0_LAST                 '/'   ''
+  CHAR_GROUP_1_START                ':'   ''
+  CHAR_GROUP_1_LAST                 '@'   ''
+  CHAR_GROUP_2_START                '['   ''
+  CHAR_GROUP_2_LAST                 '`'   ''
+  CHAR_GROUP_3_START                '{'   ''
+  CHAR_GROUP_3_LAST                 '~'   ''
+  IDENTIFIER                        128   $[Identifier] %.*s$
+  NUMBER                            ''    $[Number] %.*s$
+  FILEPATH                          ''    $[FilePath] %.*s$
+  DOUBLE_DOT                        ''    ''
+  DOUBLE_HASHTAG                    ''    ''
+  ARROW                             ''    ''
+  SHIFT_RIGHT                       ''    ''
+  SHIFT_LEFT                        ''    ''
+  XOR_EQUAL                         ''    ''
+  ROTATE_RIGHT                      ''    ''
+  ROTATE_LEFT                       ''    ''
+  VERILOG_ATTRIBUTE_START           ''    ''
+  VERILOG_ATTRIBUTE_END             ''    ''
+  KEYWORD_MODULE                    ''    ''
+  KEYWORD_MERGE                     ''    ''
+  KEYWORD_SHARE                     ''    ''
+  KEYWORD_STATIC                    ''    ''
+  KEYWORD_DEBUG                     ''    ''
+  KEYWORD_SIM                       ''    ''
+  KEYWORD_CONFIG                    ''    ''
+  KEYWORD_STATE                     ''    ''
+  KEYWORD_MEM                       ''    ''
+  KEYWORD_GEN                       ''    ''
+  KEYWORD_FOR                       ''    ''
+  VERILOG_DEFINE                    ''    ''
+  VERILOG_UNDEF                     ''    ''
+  VERILOG_TIMESCALE                 ''    ''
+  VERILOG_INCLUDE                   ''    ''
+  VERILOG_IFDEF                     ''    ''
+  VERILOG_IFNDEF                    ''    ''
+  VERILOG_ELSE                      ''    ''
+  VERILOG_ELSIF                     ''    ''
+  VERILOG_ENDIF                     ''    ''
+  VERILOG_BEGIN_KEYWORDS            ''    ''
+  VERILOG_END_KEYWORDS              ''    ''
+  VERILOG_CELLDEFINE                ''    ''
+  VERILOG_ENDCELLDEFINE             ''    ''
+  VERILOG_DEFAULT_NETTYPE           ''    ''
+  VERILOG_LINE                      ''    ''
+  VERILOG_NOUNCONNECTED_DRIVE       ''    ''
+  VERILOG_PRAGMA                    ''    ''
+  VERILOG_RESETALL                  ''    ''
+  VERILOG_UNCONNECTED_DRIVE         ''    ''
+  VERILOG_PREPROCESS                ''    ''
+  VERILOG_KEYWORD_MODULE            ''    ''
+  VERILOG_KEYWORD_ENDMODULE         ''    ''
+  VERILOG_KEYWORD_PARAMETER         ''    ''
+  VERILOG_KEYWORD_SIGNED            ''    ''
+  VERILOG_KEYWORD_INPUT             ''    ''
+  VERILOG_KEYWORD_OUTPUT            ''    ''
+  VERILOG_KEYWORD_INOUT             ''    ''
+  VERILOG_KEYWORD_REG               ''    ''
+  VERILOG_KEYWORD_WIRE              ''    ''
+  C_KEYWORD                         ''    ''
+  C_STRING                          ''    $%.*s$
+  VERILOG_KEYWORD                   ''    ''
+}
+
+enum TokenType{
+  @(for a TokenTable) 
+  ${
+  @(if a.enumVal == '') $ TokenType_@(a.name) $
+  @(if a.enumVal != '') $ TokenType_@(a.name) = @(a.enumVal) $
+  $}
+}
+
+map TokenType_Repr(TokenType,String){ @(for a TokenTable) $ TokenType_@(a.name) -> "@(a.name)" $ }
+map(shallow) TokenType_CustomRepr(TokenType,String){ @(for a TokenTable) @(if a.customRepr != '') $ TokenType_@(a.name) -> "@(a.customRepr)" $ }

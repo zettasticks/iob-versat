@@ -2807,16 +2807,20 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
     ConstructDef def = {};
     if(tok.type == TokenType_KEYWORD_MODULE){
       def.type = ConstructType_MODULE;
-      #if 1
+
+      const char* saved = parser->ptr;
+
       def.module = ParseModuleDef(parser,out);
-      #else
+
+#if 0
+      parser->ptr = saved;
       // MARK
       def.node = SP_ParseModuleDef(parser,out);
       def.module.node = def.node;
 
       String repr = SP_Repr(def.node,temp);
       printf("%.*s\n",UN(repr));
-      #endif
+#endif
     } else if(tok.type == TokenType_KEYWORD_MERGE){
       def.type = ConstructType_MERGE;
       def.merge = ParseMerge(parser,out);

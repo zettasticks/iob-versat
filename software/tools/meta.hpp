@@ -819,6 +819,8 @@ enum TokenType{
   TokenType_ARROW, // ->
   TokenType_EQ,    // ==
   TokenType_NEQ,   // !=
+  TokenType_GROUP_START, // ${
+  TokenType_GROUP_END,   // $}
   TokenType_NO_DATA,
 
   TokenType_CHAR_GROUP_0_START = '!',
@@ -864,6 +866,7 @@ struct Tokenizer{
 };
 
 enum NodeType{
+  NodeType_NIL,
   NodeType_TOP,
   NodeType_TABLE,
   NodeType_ENUM,

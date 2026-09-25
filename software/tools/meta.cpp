@@ -60,20 +60,7 @@ Token ConsumeToken(Tokenizer* tok){
     return res;
   };
 
-  // Start with common ==========================================================
-
-  if(!Found() && ch == '\n'){
-    type = TokenType_NEWLINE;
-    tok->ptr += 1;
-  }
-
-  if(!Found() && IsWhitespace(ch)){
-    while(tok->ptr < tok->end && IsWhitespace(*tok->ptr)){
-      tok->ptr += 1;
-    }
-    
-    type = TokenType_WHITESPACE;
-  }
+  // Two character symbols ======================================================
 
   if(!Found() && ch == '/' && ch2 == '/'){
     while(tok->ptr < tok->end && tok->ptr[0] != '\n'){
@@ -112,6 +99,66 @@ Token ConsumeToken(Tokenizer* tok){
     }
   }
 
+  if(!Found() && ch == '-' && ch2 == '>'){
+    tok->ptr += 2;
+
+    type = TokenType_ARROW;
+  }
+
+  if(!Found() && ch == '=' && ch2 == '='){
+    tok->ptr += 2;
+
+    type = TokenType_EQ;
+  }
+  if(!Found() && ch == '!' && ch2 == '='){
+    tok->ptr += 2;
+
+    type = TokenType_NEQ;
+  }
+
+  if(!Found() && ch == '$' && ch2 == '{'){
+    tok->ptr += 2;
+
+    type = TokenType_GROUP_START;
+  }
+  if(!Found() && ch == '$' && ch2 == '}'){
+    tok->ptr += 2;
+
+    type = TokenType_GROUP_END;
+  }
+
+  // NOTE: A $ string acts like a proper string type and the $ are removed from consideration by the rest of the code.
+  //       $ ABC $ is treated as ABC by the rest of the code, with the $ removed.
+  //       Multiple $ can be used to change the start and end terminators. A $$ start only matches a $$ end.
+  // NOTE: If needed add '$$$' and so on, altough two levels should be enough for anyone.
+  if(!Found() && ch == '$' && ch2 == '$'){
+    tok->ptr += 2;
+    savedPtr = tok->ptr;
+
+    while(tok->ptr + 1 < tok->end && *tok->ptr != '$' && *(tok->ptr + 1) != '$'){
+      tok->ptr += 1;
+    }
+    tok->ptr += 2;
+
+    sizeOffset = -2;
+    type = TokenType_CONTENT;
+  }
+
+  // Commons ====================================================================
+
+  if(!Found() && ch == '\n'){
+    type = TokenType_NEWLINE;
+    tok->ptr += 1;
+  }
+
+  if(!Found() && IsWhitespace(ch)){
+    while(tok->ptr < tok->end && IsWhitespace(*tok->ptr)){
+      tok->ptr += 1;
+    }
+    
+    type = TokenType_WHITESPACE;
+  }
+
   // Strings ====================================================================
 
   // NOTE: ' and " are passed directly. 
@@ -136,23 +183,7 @@ Token ConsumeToken(Tokenizer* tok){
     type = TokenType_CONTENT;
   }
 
-  // NOTE: A $ string acts like a proper string type and the $ are removed from consideration by the rest of the code.
-  //       $ ABC $ is treated as ABC by the rest of the code, with the $ removed.
-  //       Multiple $ can be used to change the start and end terminators. A $$ start only matches a $$ end.
-  // NOTE: If needed add '$$$' and so on, altough two levels should be enough for anyone.
-  if(!Found() && ch == '$' && ch2 == '$'){
-    tok->ptr += 2;
-    savedPtr = tok->ptr;
-
-    while(tok->ptr + 1 < tok->end && *tok->ptr != '$' && *(tok->ptr + 1) != '$'){
-      tok->ptr += 1;
-    }
-    tok->ptr += 2;
-
-    sizeOffset = -2;
-    type = TokenType_CONTENT;
-  }
-
+  // Single '$' String ==========================================================
   if(!Found() && ch == '$'){
     tok->ptr += 1;
     savedPtr = tok->ptr;
@@ -164,23 +195,6 @@ Token ConsumeToken(Tokenizer* tok){
 
     sizeOffset = -1;
     type = TokenType_CONTENT;
-  }
-
-  if(!Found() && ch == '-' && ch2 == '>'){
-    tok->ptr += 2;
-
-    type = TokenType_ARROW;
-  }
-
-  if(!Found() && ch == '=' && ch2 == '='){
-    tok->ptr += 2;
-
-    type = TokenType_EQ;
-  }
-  if(!Found() && ch == '!' && ch2 == '='){
-    tok->ptr += 2;
-
-    type = TokenType_NEQ;
   }
 
   // Single chars symbols =======================================================
@@ -460,8 +474,28 @@ Node* ParseValue(Tokenizer* tok,Arena* out){
     }
     
     AssertToken(tok,TOK_TYPE(')'));
+    
+    Node* contentInside = 0;
 
-    Node* contentInside = ParseValue(tok,out);
+    if(IfNextToken(tok,TokenType_GROUP_START)){
+      Node* contentPtr = 0;
+      while(!Done(tok)){
+        if(IfPeekToken(tok,TokenType_GROUP_END)){
+          break;
+        }
+
+        Node* value = ParseValue(tok,out);
+        LL_Append(contentInside,contentPtr,next,value);
+      }
+      
+      AssertToken(tok,TokenType_GROUP_END);
+
+      if(!contentInside){
+        contentInside = MakeNode(out,NodeType_NIL);
+      }
+    } else {
+      contentInside = ParseValue(tok,out);
+    }
 
     res = MakeModifierNode(out,modHead,contentInside);
   }
@@ -996,6 +1030,8 @@ i32 GetTableParamIndex(Table* t,String paramName){
     }
   }
 
+  printf("Param '%.*s' does not exist for table: %.*s\n",UN(paramName),UN(t->name));
+
   Assert(false);
   return -1;
 };
@@ -1230,9 +1266,11 @@ Array<String> GetValue(Node* node,Arena* out){
       for(Array<String> values : t->values){
         envNode.values = values;
 
-        Array<String> results = HandleModifier(HandleModifier,insideContent,&envNode);
-        for(String str : results){
-          *stringAccum->PushElem() = str;
+        for(Node* content = insideContent; content; content = content->next){
+          Array<String> results = HandleModifier(HandleModifier,content,&envNode);
+          for(String str : results){
+            *stringAccum->PushElem() = str;
+          }
         }
       }
 
@@ -1243,6 +1281,7 @@ Array<String> GetValue(Node* node,Arena* out){
 
       Node* id = firstModifier->next;
       Node* paramName = firstModifier->next->next->next;
+      Node* compareType = firstModifier->next->next->next->next;
       Node* compareValue = firstModifier->next->next->next->next->next;
 
       TempEnv* value = nullptr;
@@ -1262,8 +1301,11 @@ Array<String> GetValue(Node* node,Arena* out){
       String val = value->values[index];
       
       String toCompare = compareValue->token.id;
+
+      bool compResult = TrimWhitespaces(val) == TrimWhitespaces(toCompare);
+      bool expectedResult = (compareType->token.id == "==");
       
-      if(TrimWhitespaces(val) == TrimWhitespaces(toCompare)){
+      if(compResult == expectedResult){
         return HandleModifier(HandleModifier,insideContent,env);
       }
     }
@@ -1697,6 +1739,9 @@ int main(int argc,const char* argv[]){
       auto h = StartString(temp);
       auto c = StartString(temp);
 
+      h->PushString("#ifndef META_INCLUDED_%.*s\n",UN(fileNameWithoutDot));
+      h->PushString("#define META_INCLUDED_%.*s\n",UN(fileNameWithoutDot));
+
       h->PushString("#include \"utils.hpp\"\n\n");
       c->PushString("#include \"%.*s_meta.hpp\"\n\n",UN(fileNameWithoutDot));
       
@@ -2017,6 +2062,8 @@ int main(int argc,const char* argv[]){
         h->PushString("}\n");
       }
 
+      h->PushString("#endif // META_INCLUDED_%.*s\n",UN(fileNameWithoutDot));
+
       String headerContent = EndString(temp,h);
       String sourceContent = EndString(temp,c);
 
@@ -2051,6 +2098,7 @@ int main(int argc,const char* argv[]){
 
           if(printHeader){
             fseek(f,0,SEEK_SET);
+            ftruncate(fileno(f),0);
             fprintf(f,"%.*s",UN(headerContent));
             fclose(f);
           }
