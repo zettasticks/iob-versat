@@ -23,6 +23,8 @@ table TokenTable(name,enumVal,customRepr){
   ARROW                             ''    ''
   SHIFT_RIGHT                       ''    ''
   SHIFT_LEFT                        ''    ''
+  DELAY_START                       ''    ''
+  DELAY_END                         ''    ''
   XOR_EQUAL                         ''    ''
   ROTATE_RIGHT                      ''    ''
   ROTATE_LEFT                       ''    ''

@@ -157,8 +157,6 @@ void Parser::ReportUnexpectedToken(Token token,BracketList<TokenType> expectedLi
     builder->PushString("  '%.*s'\n",UN(repr));
   }
 
-  //ENTER_DEBUG();
-
   *errors->PushElem() = EndString(this->arena,builder);
 }
 
@@ -169,9 +167,16 @@ Token Parser::NextToken(ParsingOptions opts){
     TEMP_REGION(temp,arena);
     
     bool hasError = !Empty(this->errors);
+    DEBUG_AddLocationTagged(debugLocHead,debugLocTail,arena,hasError);
 
-    DEBUG_AddLocation(debugLocHead,debugLocTail,arena);
-    
+#if 0    
+    static int val = 0;
+    String repr = DEBUG_Repr(debugLocHead,temp);
+    {
+      printf("%d:\n%.*s",val++,UN(repr));
+    }
+#endif
+
     // NOTE: Slow but we want to output immediatly
     Array<LocationNode*> list = DEBUG_DepthFirst(debugLocHead,temp);
     int lastLevel = 0;
@@ -190,7 +195,7 @@ Token Parser::NextToken(ParsingOptions opts){
         continue;
       }
       
-      if(hasError){
+      if(node->tag){
         printf("--->");
       } else {
         printf("    ");
@@ -265,8 +270,7 @@ bool Parser::IfPeekToken(char singleChar,int lookahead){
 Token Parser::ExpectNext(TokenType type,ParsingOptions opts){
   Token tok = NextToken();
 
-  if(tok.type != type && !anyError){
-    anyError = 1;
+  if(tok.type != type){
     TEMP_REGION(temp,arena);
 
     String content = String(start,end - start);

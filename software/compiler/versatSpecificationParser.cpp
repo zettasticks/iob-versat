@@ -1694,12 +1694,12 @@ Var ParseVar(Parser* parser,Arena* out){
   
   MathExpression* delayStart = &MATH_LITERAL_0;
   MathExpression* delayEnd = &MATH_LITERAL_0;
-  if(parser->IfNextToken('{')){
+  if(parser->IfNextToken(TokenType_DELAY_START)){
     Range<MathExpression*> range = ParseExprRange(parser,out);
     delayStart = range.start;
     delayEnd = range.end;
 
-    parser->ExpectNext('}');
+    parser->ExpectNext(TokenType_DELAY_END);
   }
 
   MathExpression* portStart = &MATH_LITERAL_0;
@@ -2757,6 +2757,8 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
     res |= ParseMultiSymbol(start,end,">>",TokenType_SHIFT_RIGHT);
     res |= ParseMultiSymbol(start,end,"<<",TokenType_SHIFT_LEFT);
     res |= ParseMultiSymbol(start,end,"^=",TokenType_XOR_EQUAL);
+    res |= ParseMultiSymbol(start,end,"{{",TokenType_DELAY_START);
+    res |= ParseMultiSymbol(start,end,"}}",TokenType_DELAY_END);
 
     res |= ParseSymbols(start,end);
     res |= ParseNumber(start,end);
@@ -2807,10 +2809,7 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
     ConstructDef def = {};
     if(tok.type == TokenType_KEYWORD_MODULE){
       def.type = ConstructType_MODULE;
-
       const char* saved = parser->ptr;
-
-      def.module = ParseModuleDef(parser,out);
 
 #if 1
       parser->ptr = saved;
@@ -2821,6 +2820,12 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
       String repr = SP_Repr(def.node,temp);
       //printf("%.*s\n",UN(repr));
 #endif
+
+#if 0
+      parser->ptr = saved;
+      def.module = ParseModuleDef(parser,out);
+#endif
+
     } else if(tok.type == TokenType_KEYWORD_MERGE){
       def.type = ConstructType_MERGE;
       def.merge = ParseMerge(parser,out);
@@ -3594,11 +3599,14 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
     atom = topUnary;
   }
 
-  struct OpInfo{
-    TokenType type;
-    int bindingPower;
-    SP_Type op;
-  };
+  if(parser->IfNextToken(TokenType_DELAY_START)){
+    SP_Node* delay = SP_ParseRange(parser,out);
+    
+    atom->next = delay;
+    atom = SP_PushNode(out,SP_Type_DELAY_ACCESS,{},atom);
+
+    parser->ExpectNext(TokenType_DELAY_END);
+  }
 
   if(parser->IfNextToken(TokenType_DOUBLE_DOT)){
     SP_Node* right = SP_ParseExpressionInternal(parser,out,99);
@@ -3606,6 +3614,12 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
 
     atom = SP_PushNode(out,SP_Type_RANGE,{},atom);
   }
+
+  struct OpInfo{
+    TokenType type;
+    int bindingPower;
+    SP_Type op;
+  };
 
   // TODO: This should be outside the function itself.
   auto infos = PushArray<OpInfo>(temp,11);
@@ -3702,16 +3716,14 @@ SP_Node* SP_ParseVar(Parser* parser,Arena* out){
     parser->ExpectNext(']');
   }
 
-#if 0
-  if(parser->IfNextToken('{')){
+  if(parser->IfNextToken(TokenType_DELAY_START)){
     SP_Node* delay = SP_ParseRange(parser,out);
     
     var->next = delay;
     var = SP_PushNode(out,SP_Type_DELAY_ACCESS,{},var);
 
-    parser->ExpectNext('}');
+    parser->ExpectNext(TokenType_DELAY_END);
   }
-#endif
 
   if(parser->IfNextToken(':')){
     SP_Node* port = SP_ParseRange(parser,out);
@@ -3771,7 +3783,7 @@ SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
   SP_Node* head = 0;
   SP_Node* tail = 0;
 
-  bool isVarGroup = 0;
+  bool isShareGroup = 0;
   while(1){
     Token peek = parser->PeekToken();
     
@@ -3790,27 +3802,7 @@ SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
       parser->ExpectNext(TokenType_KEYWORD_CONFIG);
       parser->ExpectNext(')');
 
-      SP_Node* shareHead = 0;
-      SP_Node* shareTail = 0;
-      while(!parser->Done()){
-        if(parser->IfPeekToken(')')){
-          break;
-        }
-
-        Token name = parser->ExpectNext(TokenType_IDENTIFIER);
-        SP_Node* node = SP_PushNode(out,SP_Type_VAR,name,0);
-        SP_Append(shareHead,shareTail,node);
-
-        if(parser->IfNextToken(',')){
-          continue;
-        } else {
-          break;
-        }
-      }
-      parser->ExpectNext(')');
-
-      mod = SP_PushNode(out,SP_Type_MODIFIER_SHARE,{},shareHead);
-      isVarGroup = 1;
+      isShareGroup = 1;
     }
 
     if(mod){
@@ -3849,7 +3841,32 @@ SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
     parser->ExpectNext(')');
   }
 
-  if(isVarGroup){
+  if(isShareGroup){
+    SP_Node* shareHead = 0;
+    SP_Node* shareTail = 0;
+
+    if(parser->IfNextToken('(')){
+      while(!parser->Done()){
+        if(parser->IfPeekToken(')')){
+          break;
+        }
+
+        Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+        SP_Node* node = SP_PushNode(out,SP_Type_VAR,name,0);
+        SP_Append(shareHead,shareTail,node);
+
+        if(parser->IfNextToken(',')){
+          continue;
+        } else {
+          break;
+        }
+      }
+      parser->ExpectNext(')');
+
+      SP_Node* mod = SP_PushNode(out,SP_Type_MODIFIER_SHARE,{},shareHead);
+      SP_Append(head,tail,mod);
+    }
+
     parser->ExpectNext('{');
 
     while(!parser->Done()){
@@ -3867,6 +3884,8 @@ SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
   } else {
     SP_Node* decl = SP_ParseVarDeclaration(parser,out);
     SP_Append(head,tail,decl);
+
+    parser->ExpectNext(';');
   }
 
   SP_Node* res = SP_PushNode(out,SP_Type_VARIABLE_DECL,typeName,head);
@@ -4187,9 +4206,6 @@ SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
       // Parse variable declarations only ===========================================
       SP_Node* var = SP_ParseInstanceDeclaration(parser,out);
       SP_Append(head,tail,var);
-
-      parser->ExpectNext(';');
-
     } else {
       // Parser connections and function definitions ================================
       

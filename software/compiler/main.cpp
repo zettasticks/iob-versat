@@ -330,7 +330,7 @@ int main(int argc,char* argv[]){
   InitDebug(argv[0]);
 
   for(int i = 0; i < 8; i++){
-    singleUseCasesArenas[i] = InitArena(Megabyte(1));
+    singleUseCasesArenas[i] = InitArena(Megabyte(16));
   }
   
   TEMP_REGION(temp,nullptr);
