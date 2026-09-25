@@ -77,6 +77,7 @@ struct Parser{
   TokenizeFunction tokenizer;
 
   ArenaList<String>* errors;
+  bool anyError;
 
   bool debug;
   int lastDebugIndex;

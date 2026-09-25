@@ -2812,14 +2812,14 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
 
       def.module = ParseModuleDef(parser,out);
 
-#if 0
+#if 1
       parser->ptr = saved;
       // MARK
       def.node = SP_ParseModuleDef(parser,out);
       def.module.node = def.node;
 
       String repr = SP_Repr(def.node,temp);
-      printf("%.*s\n",UN(repr));
+      //printf("%.*s\n",UN(repr));
 #endif
     } else if(tok.type == TokenType_KEYWORD_MERGE){
       def.type = ConstructType_MERGE;
@@ -3505,31 +3505,8 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
   } else if(peek.type == TokenType_IDENTIFIER){
     Token name = parser->ExpectNext(TokenType_IDENTIFIER);
 
-    SP_Node* var = SP_PushNode(out,SP_Type_VAR,name,0);
-
-    // TODO: Logic is not fully working, we cannot do something like: Var[].Func().
-    //
-
-    while(parser->IfNextToken('.')){
-      Token access = parser->ExpectNext(TokenType_IDENTIFIER);
-    
-      var = SP_PushNode(out,SP_Type_HIER_ACCESS,access,var);
-    }
-    
-    while(parser->IfNextToken('[')){
-      // MARK
-      SP_Node* expr = SP_ParseExpression(parser,out);
-      var->next = expr;
-      var = SP_PushNode(out,SP_Type_RANGE_ACCESS,{},var);
-
-      parser->ExpectNext(']');
-    }
-
-    // NOTE: Either we have a function or accesses, cannot have both.
-    bool isFunction = 0;
+    SP_Node* var = 0;
     if(parser->IfNextToken('(')){
-      isFunction = 1;
-
       SP_Node* argHead = 0;
       SP_Node* argTail = 0;
 
@@ -3549,27 +3526,61 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
       }
 
       parser->ExpectNext(')');
-
-      if(var->type == SP_Type_HIER_ACCESS){
-        // Var.Func()
-        //SP_Node* innerVar = var->childs;
-
-        var->type = SP_Type_FUNC_CALL;
-        var->childs->next = argHead;
-      } else if(var->type == SP_Type_VAR){
-        // Func()
-        var->type = SP_Type_FUNC_CALL;
-        var->childs = argHead;
-      }
+      var = SP_PushNode(out,SP_Type_FUNC_CALL,name,0);
+    } else {
+      var = SP_PushNode(out,SP_Type_VAR,name,0);
     }
 
-    if(!isFunction){
-      if(parser->IfNextToken(':')){
-        SP_Node* port = SP_ParseRange(parser,out);
-    
-        var->next = port;
-        var = SP_PushNode(out,SP_Type_PORT_ACCESS,{},var);
+    while(!parser->Done()){
+      if(parser->IfNextToken('.')){
+        Token access = parser->ExpectNext(TokenType_IDENTIFIER);
+
+        if(parser->IfNextToken('(')){
+          SP_Node* argHead = 0;
+          SP_Node* argTail = 0;
+
+          while(!parser->Done()){
+            if(parser->IfPeekToken(')')){
+              break;
+            }
+
+            SP_Node* arg = SP_ParseExpressionInternal(parser,out,99);
+            SP_Append(argHead,argTail,arg);
+
+            if(parser->IfNextToken(',')){
+              continue;
+            }
+        
+            break;
+          }
+
+          parser->ExpectNext(')');
+          var = SP_PushNode(out,SP_Type_FUNC_CALL,name,var);
+        } else {
+          var = SP_PushNode(out,SP_Type_HIER_ACCESS,name,var);
+        }
+
+        continue;
       }
+    
+      if(parser->IfNextToken('[')){
+        SP_Node* expr = SP_ParseExpression(parser,out);
+        var->next = expr;
+        var = SP_PushNode(out,SP_Type_RANGE_ACCESS,{},var);
+
+        parser->ExpectNext(']');
+
+        continue;
+      }
+
+      break;
+    }
+
+    if(parser->IfNextToken(':')){
+      SP_Node* port = SP_ParseRange(parser,out);
+    
+      var->next = port;
+      var = SP_PushNode(out,SP_Type_PORT_ACCESS,{},var);
     }
     
     atom = var;
@@ -3588,6 +3599,13 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
     int bindingPower;
     SP_Type op;
   };
+
+  if(parser->IfNextToken(TokenType_DOUBLE_DOT)){
+    SP_Node* right = SP_ParseExpressionInternal(parser,out,99);
+    atom->next = right;
+
+    atom = SP_PushNode(out,SP_Type_RANGE,{},atom);
+  }
 
   // TODO: This should be outside the function itself.
   auto infos = PushArray<OpInfo>(temp,11);
@@ -3929,6 +3947,7 @@ SP_Node* SP_ParseConnection(Parser* parser,Arena* out){
     } else {
       inPart = SP_ParseVarGroup(parser,out);
     }
+    parser->ExpectNext(';');
 
     outPart->next = inPart;
     res = SP_PushNode(out,type,{},outPart);
@@ -4191,8 +4210,6 @@ SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
         node = SP_ParseConfigFunction(parser,out);
       } else {
         node = SP_ParseConnection(parser,out);
-
-        parser->ExpectNext(';');
       }
 
       SP_Append(head,tail,node);

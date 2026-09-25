@@ -37,7 +37,7 @@ static bool IsCharSingleToken(char ch){
 String PushRepr(Arena* out,TokenType type){
   String res = {};
   if(IsCharSingleToken((char) type)){
-    res = PushString(out,"'%c'",(char) type);
+    res = PushString(out,"%c",(char) type);
   } else {
     res = TokenType_Repr(type);
   }
@@ -163,16 +163,6 @@ void Parser::ReportUnexpectedToken(Token token,BracketList<TokenType> expectedLi
 }
 
 Token Parser::NextToken(ParsingOptions opts){
-#if 0
-  EnsureTokens(1);
-
-  Token res = this->storedTokens[0];
-  for(int i = 0; i < this->amountStored - 1; i++){
-    this->storedTokens[i] = this->storedTokens[i+1];
-  }
-  this->amountStored -= 1;
-#endif
-
   Token res = InternalConsumeToken(opts);
 
   if(this->debug){
@@ -275,24 +265,13 @@ bool Parser::IfPeekToken(char singleChar,int lookahead){
 Token Parser::ExpectNext(TokenType type,ParsingOptions opts){
   Token tok = NextToken();
 
-#if 0
-  if(type == TokenType_IDENTIFIER && (opts & ParsingOptions_ERROR_ON_C_VERILOG_KEYWORDS)){
-    if(tok.type == TokenType_C_KEYWORD && options & ParsingOptions_ERROR_ON_C_KEYWORDS){
-      ReportError("Expected identifier but instead got a C reserved keyword.\n We cannot have C keywords since we will have to generate C code and the generated code will be malformed");
-    } else if(tok.type == TokenType_VERILOG_KEYWORD && options & ParsingOptions_ERROR_ON_VERILOG_KEYWORDS){
-      ReportError("Expected identifier but instead got a Verilog reserved keyword.\n We cannot have Verilog keywords since we will have to generate Verilog code and the generated code will be malformed");
-    }
-  } else if(tok.type != type){
-#endif
+  if(tok.type != type && !anyError){
+    anyError = 1;
+    TEMP_REGION(temp,arena);
 
-  if(tok.type != type){
-    //NOT_IMPLEMENTED("FileContent should just be the file currently parsing, should be optional and stored in the parser");
-#if 1
-    TEMP_REGION(temp,nullptr);
+    String content = String(start,end - start);
 
-    FileContent content = {};
-
-    LocInfo loc = PARSE_GetLinesAroundLocation(tok.val.data,content.content,1,1,temp);
+    LocInfo loc = PARSE_GetLinesAroundLocation(tok.val.data,content,1,1,temp);
 
     String typeRepr = PushRepr(temp,type);
     String repr = PARSE_PushDebugRepr(temp,tok);
@@ -317,7 +296,7 @@ Token Parser::ExpectNext(TokenType type,ParsingOptions opts){
     }
 
     ReportError(EndString(temp,b));
-#endif
+    ENTER_DEBUG();
   }
 
   return tok;
