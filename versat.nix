@@ -12,7 +12,7 @@ let pkgs2 = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/cf8cc
 in
 let
 fs = tweag.lib.fileset;
-sourceFiles = (fs.union ./scripts (fs.union ./Makefile (fs.union ./config.mk (fs.union ./hardware ./software))));
+sourceFiles = (fs.union ./scripts (fs.union ./Makefile (fs.union ./build.sh (fs.union ./hardware ./software))));
 in
 pkgs.stdenv.mkDerivation rec {
   pname = "versat";
@@ -31,7 +31,7 @@ pkgs.stdenv.mkDerivation rec {
   enableParallelBuilding = true;
 
   buildPhase = ''
-    make -j 8 versat
+    ./build.sh
   '';
 
   installPhase = ''

@@ -814,7 +814,6 @@ Node* Parse(Tokenizer* tok,Arena* out){
       node = MakeNode(out,NodeType_MAP,name,mapTypes,flags);
     }
     
-    // MARK
     if(!node && IfNextToken(tok,TokenType_KEYWORD_FILE)){
       Token name = AssertToken(tok,TokenType_CONTENT);
       
@@ -1294,7 +1293,7 @@ Array<String> GetValue(Node* node,Arena* out){
 
 int main(int argc,const char* argv[]){
   bool processHeaders = 0;
-  bool skipIfOlder = 0;
+  bool skipIfOlder = 1;
 
   Arena* arena0 = InitArena(Megabyte(128));
   Arena* arena1 = InitArena(Megabyte(128));
@@ -1377,16 +1376,80 @@ int main(int argc,const char* argv[]){
     String metaHeaderPath = PushString(temp,"%s/%.*s_meta.hpp",argv[1],UN(fileNameWithoutDot));
     String metaSourcePath = PushString(temp,"%s/%.*s_meta.cpp",argv[1],UN(fileNameWithoutDot));
 
+    u128 outputLastChange = MAX(OS_FileLastChange(metaHeaderPath),OS_FileLastChange(metaSourcePath));
+
+    // Process meta file ==========================================================
+    Node* metaTop = nullptr;
+    {
+      Tokenizer tokInst = {};
+      Tokenizer* tok = &tokInst;
+      tok->func = ConsumeToken;
+      tok->start = metaFileContent.data;
+      tok->end = metaFileContent.data + metaFileContent.size;
+      tok->ptr = tok->start;
+
+      metaTop = Parse(tok,temp);
+    }
+
     // Check if the output is outdated ============================================
-    bool metaIsNewer = true;
+    bool processMeta = false;
 
     if(skipIfOlder){
-      u128 outputChange = OS_FileLastChange(metaHeaderPath);
-      u128 inputChange = OS_FileLastChange(fullMetaPath);
-      metaIsNewer = inputChange > outputChange;
+      u128 metaLastChange = OS_FileLastChange(fullMetaPath);
+      bool metaIsNewer = metaLastChange > outputLastChange;
 
       if(metaIsNewer){
         printf("Meta file is newer than meta header\n");
+        processMeta = true;
+      }
+    } else {
+      processMeta = true;
+    }
+
+    // Check if we have a file embedding and if newer than meta ===================
+    if(!processMeta){
+      for(Node* ptr = metaTop; ptr; ptr = ptr->next){
+        if(ptr->type != NodeType_FILE){
+          continue;
+        }
+
+        String name = ptr->token.id;
+        Array<String> values = GetValue(ptr->childs,temp);
+
+        auto files = PushList<String>(temp);
+        for(String pathWithSpaces : values){
+          String path = TrimWhitespaces(pathWithSpaces);
+          
+          FileType type = OS_GetFileTypeFromPath(path);
+          Assert(type != FileType_NIL && "Not a folder or a file, not currently handling wathever the problem is");
+
+          if(type == FileType_FILE && values.size == 1){
+            *files->PushElem() = path;
+          }
+
+          if(type == FileType_FOLDER){
+            DIR* directory = opendir(SF("%.*s",UN(path)));
+  
+            dirent* entry = nullptr;
+            while ((entry = readdir(directory)) != NULL){
+              if (entry->d_type == DT_DIR) {
+                continue;
+              }
+
+              *files->PushElem() = PushString(temp,"%.*s/%s",UN(path),entry->d_name);
+            }
+          }
+        }
+
+        Array<String> allFiles = PushArray(temp,files);
+        
+        for(String path : allFiles){
+          u128 lastChange = OS_FileLastChange(path);
+          if(lastChange > outputLastChange){
+            printf("Input file is newer than meta header\n");
+            processMeta =  true;
+          }
+        }
       }
     }
 
@@ -1506,19 +1569,6 @@ int main(int argc,const char* argv[]){
         printf("Parsed header: %.*s\n",UN(fileName));
         b32 process = 1;
       }
-    }
-    
-    // Meta file processing =======================================================
-    Node* metaTop = nullptr;
-    {
-      Tokenizer tokInst = {};
-      Tokenizer* tok = &tokInst;
-      tok->func = ConsumeToken;
-      tok->start = metaFileContent.data;
-      tok->end = metaFileContent.data + metaFileContent.size;
-      tok->ptr = tok->start;
-
-      metaTop = Parse(tok,temp);
     }
 
 #if 1
@@ -1641,7 +1691,7 @@ int main(int argc,const char* argv[]){
       }
     }
     
-    if(metaIsNewer && metaTop){
+    if(processMeta && metaTop){
       Arena* out = temp;
 
       auto h = StartString(temp);
@@ -1815,7 +1865,6 @@ int main(int argc,const char* argv[]){
       }
 
       // Process files ==============================================================
-      // MARK
       for(Node* ptr = metaTop; ptr; ptr = ptr->next){
         if(ptr->type != NodeType_FILE){
           continue;
@@ -1972,19 +2021,52 @@ int main(int argc,const char* argv[]){
       String sourceContent = EndString(temp,c);
 
       if(headerContent.size > 0){
-        FILE* f = fopen(SF("%.*s",UN(metaHeaderPath)),"w");
-        if(f){
-          fprintf(f,"%.*s",UN(headerContent));
-          fclose(f);
+        const char* name = SF("%.*s",UN(metaHeaderPath));
+        FILE* f = fopen(name,"r+");
+        if(!f){
+          f = fopen(name,"w+");
         }
-      }
+        if(f){
+          // Do not emit header if equal (saves recompilations) =========================
+          fseek(f,0,SEEK_SET);
+          String content = PushFile(temp,f);
+         
+          bool printHeader = 1;
+          bool equal = 1;
+          if(content.size == headerContent.size){
+            for(int i = 0; i < headerContent.size; i++){
+              if(content[i] != headerContent[i]){
+                equal = 0;
+                break;
+              }
+            }
+          } else {
+            equal = 0;
+          }
 
+          if(equal){
+            printHeader = 0;
+            printf("Header is equal, no change required\n");
+          }
+
+          if(printHeader){
+            fseek(f,0,SEEK_SET);
+            fprintf(f,"%.*s",UN(headerContent));
+            fclose(f);
+          }
+        }
+        printf("Created file: %s\n",name);
+      }
+      
+      // NOTE: We do not check source since recompiling a single source file is almost free.
       if(sourceContent.size > 0){
-        FILE* f = fopen(SF("%.*s",UN(metaSourcePath)),"w");
+        const char* name = SF("%.*s",UN(metaSourcePath));
+        FILE* f = fopen(name,"w");
         if(f){
           fprintf(f,"%.*s",UN(sourceContent));
           fclose(f);
         }
+        printf("Created file: %s\n",name);
       }
 
       printf("Processed: %.*s\n",UN(fileNameWithoutDot));

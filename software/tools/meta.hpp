@@ -777,7 +777,6 @@ FileType OS_GetFileTypeFromPath(String path){
 struct FileGroupInfo{
   String originalRelativePath;
   String filename;
-  String commonFolder;
 };
 
 Array<FileGroupInfo> OS_GetFolderContents(String folderPath,Arena* out){
