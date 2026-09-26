@@ -119,6 +119,7 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAnd
   Arena* perm = globalPermanent;
   // MARK
 
+#if 0
   COM_Module mod  = COM_InstantiateModule(def.node,{},perm);
   String repr = COM_Repr(mod.units,perm);
   printf("%.*s\n",UN(repr));
@@ -127,6 +128,7 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAnd
 
   DEBUG_BREAK();
   exit(-1);
+#endif
 
   TEMP_REGION(temp,perm);
 
