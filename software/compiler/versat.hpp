@@ -56,7 +56,6 @@ void FillDeclarationWithAcceleratorValues(FUDeclaration* decl,Accelerator* accel
 void FillDeclarationWithDelayType(FUDeclaration* decl);
 
 // Declaration functions
-FUDeclaration* RegisterIterativeUnit(Accelerator* accel,FUInstance* inst,int latency,String name);
 FUDeclaration* RegisterSubUnit(Accelerator* circuit,Array<ParameterDef> params = {}, SubUnitOptions options = SubUnitOptions_FULL);
 
 // Helper functions, useful to implement custom units

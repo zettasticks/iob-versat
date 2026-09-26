@@ -14,6 +14,8 @@
 #include "parser.hpp"
 #include "versat.hpp"
 
+#include "compiler.hpp"
+
 // ======================================
 // Constants
 
@@ -112,7 +114,20 @@ FUDeclaration* InstantiateMerge(MergeDef def,Array<ParamNameAndValue> params){
 
 // TODO: Merge this function with the RegisterSubUnit function. There is no purpose to having this be separated.
 FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAndValue> topLevelParams){
+  DEBUG_PATH("InstantiateModule");
+  
   Arena* perm = globalPermanent;
+  // MARK
+
+  COM_Module mod  = COM_InstantiateModule(def.node,{},perm);
+  String repr = COM_Repr(mod.units,perm);
+  printf("%.*s\n",UN(repr));
+  
+  COM_DebugPushDotGraph("Test",mod.units,mod.edges);
+
+  DEBUG_BREAK();
+  exit(-1);
+
   TEMP_REGION(temp,perm);
 
   String mangledName = DECL_MangleName(def.name.val,topLevelParams,temp);
@@ -2813,17 +2828,17 @@ Array<ConstructDef> ParseVersatSpecification(String content,Arena* out){
 
 #if 1
       parser->ptr = saved;
+      def.module = ParseModuleDef(parser,out);
+#endif
+
+#if 1
+      parser->ptr = saved;
       // MARK
       def.node = SP_ParseModuleDef(parser,out);
       def.module.node = def.node;
 
-      String repr = SP_Repr(def.node,temp);
+      //String repr = SP_Repr(def.node,temp);
       //printf("%.*s\n",UN(repr));
-#endif
-
-#if 0
-      parser->ptr = saved;
-      def.module = ParseModuleDef(parser,out);
 #endif
 
     } else if(tok.type == TokenType_KEYWORD_MERGE){

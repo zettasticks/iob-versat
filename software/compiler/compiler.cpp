@@ -1,6 +1,6 @@
 #include "compiler.hpp"
 
-#if 0
+#if 1
 
 // ======================================
 // Constants
@@ -114,7 +114,7 @@ SYM_Expr COM_SymbolicFromExpression(COM_Env* env,SP_Node* node){
       }
 
       if(!found){
-        res = SYM_Var(top->token.identifier);
+        res = SYM_Var(top->token.val);
       } else {
         res = SYM_Lit(val);
       }
@@ -138,7 +138,7 @@ SYM_Expr COM_SymbolicFromExpression(COM_Env* env,SP_Node* node){
     } break;
 
     case SP_Type_LITERAL:{
-      res = SYM_Lit(top->token.number);
+      res = SYM_Lit(ParseInt(top->token.val));
     } break;
 
 #if 0
@@ -315,7 +315,7 @@ COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail){
     } else {
       FUDeclaration* decl = varSide.unit->decl;
     
-      String name = access.identifier;
+      String name = access.val;
 
       bool found = 0;
       COM_EntType type = {};
@@ -429,9 +429,15 @@ COM_EntPort COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out){
       COM_ReportError(env,SF("Did not find declaration '%.*s'",UN(typeName)));
     }
     
-    unit = PushStruct<COM_Unit>(out);
+    unit = COM_PushUnit(env);
     unit->decl = decl;
     unit->name = PushString(out,"%.*s_%d",UN(typeName),env->tempIndex++);
+
+    COM_Ent* ent = COM_PushEnt(env,unit->name,COM_EntType_GENERATED_UNIT);
+    ent->unit = unit;
+
+    COM_Connect(env,lhs.ent,lhs.port,*ent,0,0);
+    COM_Connect(env,rhs.ent,rhs.port,*ent,1,0);
   } else {
     switch(top->type){
     case SP_Type_FUNCTION_CALL:{
@@ -510,7 +516,7 @@ COM_UnpackedExpr COM_UnpackExpr(COM_Env* env,SP_Node* node){
 
       if(!found && ent.type == COM_EntType_NIL && node->type == SP_Type_VAR){
         type = COM_ExprType_NAME;
-        name = node->token.identifier;
+        name = node->token.val;
         found = 1;
       }
     }
@@ -546,12 +552,13 @@ COM_UnpackedExpr COM_UnpackExpr(COM_Env* env,SP_Node* node){
 COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> topLevelParams,Arena* out){
   Assert(moduleDef->type = SP_Type_MODULE_DECL);
 
-  String moduleName = moduleDef->token.identifier;
+  String moduleName = moduleDef->token.val;
 
   FREE_ARENA(envArena);
   FREE_ARENA(envErrorArena);
   COM_Env envInst = {};
   COM_Env* env = &envInst;
+  env->outArena = out;
   env->arena = envArena;
   env->errorArena = envErrorArena;
 
@@ -587,7 +594,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> top
     case SP_Type_VARIABLE_DECL:{
       TEMP_REGION(temp,out);
 
-      String typeName = ptr->token.identifier;
+      String typeName = ptr->token.val;
 
       ArenaList<ParamNameAndValue>* paramList = PushList<ParamNameAndValue>(temp);
       Array<ParamNameAndValue> params = {};
@@ -622,7 +629,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> top
             }
 
             ParamNameAndValue* val = paramList->PushElem();
-            val->name = paramName.identifier;
+            val->name = paramName.val;
             val->value = valuation.value;
           } break;
           case SP_Type_VAR_DECL:{
@@ -636,15 +643,14 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> top
               decl = DECL_GetType(typeName,params);
             }
 
-            COM_Unit* unit = PushStruct<COM_Unit>(out);
-            unit->name = PushString(out,name.identifier);
+            COM_Unit* unit = COM_PushUnit(env);
+
+            unit->name = PushString(out,name.val);
             unit->decl = decl;
             unit->debug = modDebug;
             unit->isShared = modShare;
             unit->isStatic = modStatic;
             unit->sharedIndex = shareIndex;
-
-            DLL_Append(env->head,env->tail,next,prev,unit);
             
             COM_Ent* var = COM_PushEnt(env,name,COM_EntType_MODULE_UNIT);
             var->unit = unit;
@@ -669,14 +675,12 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> top
         for(SP_NodeNode* ptr = flatten; ptr; ptr = ptr->next){
           SP_Node* node = ptr->node;
 
-          if(node->type == SP_Type_VAR && node->token.identifier == "out"){
+          if(node->type == SP_Type_VAR && node->token.val == "out"){
             String name = "out";
 
-            COM_Unit* unit = PushStruct<COM_Unit>(out);
+            COM_Unit* unit = COM_PushUnit(env);
             unit->name = name;
             unit->decl = BasicDeclaration::output;
-
-            DLL_Append(env->head,env->tail,next,prev,unit);
             
             COM_Ent* var = COM_PushEnt(env,node->token,COM_EntType_MODULE_UNIT);
             var->unit = unit;
@@ -704,7 +708,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> top
       COM_ConnectInfo* rhs = rhsList.head;
 
       while(lhs && rhs){
-        COM_Connect(env,lhs->ent,lhs->port,rhs->ent,rhs->port,lhs->delay,out);
+        COM_Connect(env,lhs->ent,lhs->port,rhs->ent,rhs->port,lhs->delay);
 
         if(broadcastLhs){
           rhs = rhs->next;
@@ -864,7 +868,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> top
             SP_Node* start = rangeExpr->first;
             SP_Node* end = rangeExpr->second;
             
-            forLoops[i].loopVariable = loopVar.identifier;
+            forLoops[i].loopVariable = loopVar.val;
             forLoops[i].startSym = COM_SymbolicFromExpression(env,start);
             forLoops[i].endSym = COM_SymbolicFromExpression(env,end);
           }
@@ -905,7 +909,6 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> top
               rhs.expr = rhs.expr;
               found = 1;
             }
-
 
             Assert(found && "Can we handle Var - Var ???");
           }
@@ -966,7 +969,8 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> top
   // Pack =======================================================================
   COM_Module mod = {}; 
   mod.name = PushString(out,moduleName);
-  mod.units = env->head;
+  mod.units = env->unitHead;
+  mod.edges = env->conHead;
   mod.funcs = funcHead;
   
   return mod;
@@ -975,9 +979,9 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> top
 // ====================================== 
 // Env
 
-COM_Ent* COM_PushEnt(COM_Env* env,Token name,COM_EntType type){
+COM_Ent* COM_PushEnt(COM_Env* env,String name,COM_EntType type){
   for(COM_EntNode* ptr = env->entHead; ptr; ptr = ptr->next){
-    if(ptr->v.name.identifier == name.identifier){
+    if(ptr->v.name == name){
       return &ptr->v;
     }
   }
@@ -995,16 +999,25 @@ COM_Ent* COM_PushEnt(COM_Env* env,Token name,COM_EntType type){
 
   LL_Append(env->entHead,env->entTail,next,res);
 
-  printf("Added entity: %.*s\n",UN(name.identifier));
+  printf("Added entity: %.*s\n",UN(name));
 
   // TODO: Error report on trying to insert out.
 
   return &res->v;
 }
 
+COM_Ent* COM_PushEnt(COM_Env* env,Token token,COM_EntType type){
+  String name = token.val;
+
+  COM_Ent* ent = COM_PushEnt(env,name,type);
+  ent->token = token;
+
+  return ent;
+}
+
 COM_Ent COM_GetEnt(COM_Env* env,Token name,bool canFail){
   for(COM_EntNode* ptr = env->entHead; ptr; ptr = ptr->next){
-    if(ptr->v.name.identifier == name.identifier){
+    if(ptr->v.name == name.val){
       return ptr->v;
     }
   }
@@ -1023,6 +1036,13 @@ COM_Ent COM_ArrayAccess(COM_Env* env,COM_Ent array,int index){
 
   NOT_IMPLEMENTED("TODO");
   return COM_Ent_Nil;
+}
+
+
+COM_Unit* COM_PushUnit(COM_Env* env){
+  COM_Unit* unit = PushStruct<COM_Unit>(env->outArena);
+  DLL_Append(env->unitHead,env->unitTail,next,prev,unit);
+  return unit;
 }
 
 void COM_PushScope(COM_Env* env){
@@ -1055,7 +1075,7 @@ void COM_PopScope(COM_Env* env){
 // ======================================
 // Env Connections
 
-void COM_Connect(COM_Env* env,COM_Ent out,int outPort,COM_Ent in,int inPort,int delay,Arena* arenaOut){
+void COM_Connect(COM_Env* env,COM_Ent out,int outPort,COM_Ent in,int inPort,int delay){
   FUDeclaration* outDecl = out.unit->decl;
   FUDeclaration* inDecl = in.unit->decl;
 
@@ -1065,14 +1085,14 @@ void COM_Connect(COM_Env* env,COM_Ent out,int outPort,COM_Ent in,int inPort,int 
           
     // TODO: We can also show the offending expression since we could get the node representation
     if(outPort >= outPortCount){
-      COM_ReportError(env,SF("Unit does not contain port index: %d",outPort),out.name);
+      COM_ReportError(env,SF("Unit does not contain port index: %d",outPort),out.token);
     }
     // TODO: We can also show the offending expression since we could get the node representation
     if(inPort >= inPortCount){
-      COM_ReportError(env,SF("Unit does not contain port index: %d",inPort),in.name);
+      COM_ReportError(env,SF("Unit does not contain port index: %d",inPort),in.token);
     }
 
-    COM_Connection* con = PushStruct<COM_Connection>(arenaOut);
+    COM_Connection* con = PushStruct<COM_Connection>(env->outArena);
     con->out = out.unit;
     con->outPort = outPort;
     con->in = in.unit;
@@ -1098,7 +1118,7 @@ void COM_ReportError(COM_Env* env,String msg,SP_Node* top){
 }
 
 void COM_ReportError(COM_Env* env,String msg,Token token){
-  printf("%.*s: %.*s\n",UN(msg),UN(token.identifier));
+  printf("%.*s: %.*s\n",UN(msg),UN(token.val));
   env->anyError = 1;
 }
 
@@ -1114,6 +1134,38 @@ String COM_Repr(COM_Unit* top,Arena* out){
   }
   String res = EndString(out,b);
   return res;
+}
+
+void COM_DebugPushDotGraph(String filename,COM_Unit* top,COM_Connection* edges){
+  TEMP_REGION(temp,nullptr);
+
+  auto l = PushList<GraphPrintingNodeInfo>(temp);
+  for(COM_Unit* ptr = top; ptr; ptr = ptr->next){
+    GraphPrintingNodeInfo* info = l->PushElem();
+    info->name = PushString(temp,"%p",ptr);
+    info->content = PushString(temp,ptr->name);
+    info->color = Color_BLUE;
+  }
+
+  auto e = PushList<GraphPrintingEdgeInfo>(temp);
+  for(COM_Connection* con = edges; con; con = con->next){
+    GraphPrintingEdgeInfo* info = e->PushElem();
+
+    info->firstNode = PushString(temp,"%p",con->out);
+    info->secondNode = PushString(temp,"%p",con->in);
+    info->content = PushString(temp,"%d -> %d",con->outPort,con->inPort);
+    info->color = Color_BLACK;
+  }
+
+  GraphPrintingContent content = {};
+  content.graphLabel = filename;
+  content.nodes = PushArray(temp,l);
+  content.edges = PushArray(temp,e);
+
+  String result = GenerateDotGraph(content,temp);
+
+  String filePath = GetDebugRegionFilepath(filename,temp);
+  OutputContentToFile(filePath,result);
 }
 
 #endif

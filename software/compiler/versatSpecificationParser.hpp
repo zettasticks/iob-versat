@@ -552,7 +552,7 @@ bool SP_Type_IsLoop(SP_Type in);
 // Parsing Helpers
 
 SP_Node* SP_PushNode(Arena* out,SP_Type type,Token token,SP_Node* childs);
-#define SP_Append(HEAD,TAIL,NODE) LL_Append(HEAD,TAIL,next,NODE)
+#define  SP_Append(HEAD,TAIL,NODE) LL_Append(HEAD,TAIL,next,NODE)
 
 // ======================================
 // Print

@@ -415,23 +415,6 @@ DAGOrderNodes CalculateDAGOrder(Accelerator* accel,Arena* out){
   return res;
 }
 
-bool IsUnitCombinatorial(FUInstance* instance){
-  NOT_IMPLEMENTED("Implement if needed after AccelInfo change");
-  return {};
-#if 0
-  FUDeclaration* type = instance->declaration;
-
-  // TODO: Could check if it's a multiple type situation and check each one to make sure.
-  for(int i = 0; i < type->NumberOutputs(); i++){
-    if(type->baseConfig.outputLatencies[i] != 0){
-      return false;
-    }
-  }
-
-  return true;
-#endif
-}
-
 void FixDelays(Accelerator* accel,Hashmap<Edge,DelayInfo>* edgeDelays){
   TEMP_REGION(temp,nullptr);
 
@@ -500,34 +483,6 @@ FUInstance* GetOutputInstance(Pool<FUInstance>* nodes){
   }
 
   return nullptr;
-}
-
-PortInstance GetAssociatedOutputPortInstance(FUInstance* unit,int portIndex){
-  PortInstance inPort = unit->inputs[portIndex];
-  FUInstance* outInst = inPort.inst;
-
-  for(ConnectionNode* ptr = outInst->allOutputs; ptr; ptr = ptr->next){
-    if(ptr->instConnectedTo.inst == unit && ptr->instConnectedTo.port == portIndex && ptr->port == inPort.port){
-      PortInstance res = MakePortOut(outInst,ptr->port);
-      return res;
-    }
-  }
-  Assert(false); // This function is not supposed to fail
-  return {};
-}
-
-bool IsCombinatorial(Accelerator* accel){
-  for(FUInstance* ptr : accel->allocated){
-    if(ptr->declaration->fixedDelayCircuit == nullptr){
-      continue;
-    }
-    
-    bool isComb = IsCombinatorial(ptr->declaration->fixedDelayCircuit);
-    if(!isComb){
-      return false;
-    }
-  }
-  return true;
 }
 
 Array<FUDeclaration*> MemSubTypes(AccelInfo* info,Arena* out){
@@ -1138,40 +1093,6 @@ void ConnectUnitsGetEdge(FUInstance* out,int outIndex,FUInstance* in,int inIndex
   CalculateNodeType(inputNode);
   CalculateNodeType(outputNode);
 }
-
-Array<int> GetNumberOfInputConnections(FUInstance* node,Arena* out){
-  Array<int> res = PushArray<int>(out,node->inputs.size);
-  Memset(res,0);
-
-  FOREACH_LIST(ConnectionNode*,ptr,node->allInputs){
-    int port = ptr->port;
-    res[port] += 1;
-  }
-
-  return res;
-}
-
-Array<Array<PortInstance>> GetAllInputs(FUInstance* node,Arena* out){
-  Array<int> connections = GetNumberOfInputConnections(node,out); // Wastes a bit of memory because not deallocated after, its irrelevant
-
-  Array<Array<PortInstance>> res = PushArray<Array<PortInstance>>(out,node->inputs.size);
-  Memset(res,{});
-
-  for(int i = 0; i < res.size; i++){
-    res[i] = PushArray<PortInstance>(out,connections[i]);
-  }
-
-  FOREACH_LIST(ConnectionNode*,ptr,node->allInputs){
-    int port = ptr->port;
-
-    Array<PortInstance> array = res[port];
-    int index = connections[port] - 1;
-    connections[port] -= 1;
-    array[index] = ptr->instConnectedTo;
-  }
-
-  return res;
-}
   
 void RemoveConnection(Accelerator* accel,FUInstance* out,int outPort,FUInstance* in,int inPort){
   // TODO: This is currently leaking. Need to add a free list to Accelerator.
@@ -1444,28 +1365,6 @@ void MappingInsertOutput(AcceleratorMapping* mapping,PortInstance first,PortInst
 
 void MappingPrintInfo(AcceleratorMapping* map){
   printf("%d -> %d",map->firstId,map->secondId);
-}
-
-void MappingPrintAll(AcceleratorMapping* map){
-  MappingPrintInfo(map);
-  printf("\n");
-
-  printf("Instance map:\n");
-  for(Pair<FUInstance*,FUInstance*> p : map->instanceMap){
-    printf("%.*s -> %.*s\n",UN(p.first->name),UN(p.second->name));
-  }
-
-  printf("Input map:\n");
-  for(Pair<PortInstance,PortInstance> p : map->inputMap){
-    printf("%.*s:%d(%d) -> %.*s:%d(%d)\n",UN(p.first.inst->name),p.first.port,p.first.inst->id,
-                                         UN(p.second.inst->name),p.second.port,p.second.inst->id);
-  }
-
-  printf("Output map:\n");
-  for(Pair<PortInstance,PortInstance> p : map->outputMap){
-    printf("%.*s:%d(%d) -> %.*s:%d(%d)\n",UN(p.first.inst->name),p.first.port,p.first.inst->id,
-                                         UN(p.second.inst->name),p.second.port,p.second.inst->id);
-  }
 }
 
 FUInstance* MappingMapNode(AcceleratorMapping* mapping,FUInstance* inst){
@@ -1793,15 +1692,4 @@ Pair<Accelerator*,SubMap*> Flatten(Accelerator* accel,int times){
   newAccel->name = accel->name;
   
   return {newAccel,subMappingDone};
-}
-
-void PrintSubMappingInfo(SubMap* info){
-  for(Pair<SubMappingInfo,PortInstance> f : info){
-    SubMappingInfo map = f.first;
-    PortInstance inst = f.second;
-    printf("%.*s",UN(map.subDeclaration->name));
-    printf("::%.*s:%d %s\n",UN(map.higherName),map.subPort,map.isInput ? "in" : "out");
-    printf("%.*s:%d\n",UN(inst.inst->name),inst.port);
-    printf("\n");
-  }
 }

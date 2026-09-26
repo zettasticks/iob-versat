@@ -379,14 +379,6 @@ FUInstance* CreateFUInstance(Accelerator* accel,FUDeclaration* type,String entit
 FUInstance* CopyInstance(Accelerator* newAccel,FUInstance* oldInstance,bool preserveIds,String newName);
 FUInstance* GetUnit(Accelerator* accel,String name);
 
-bool IsUnitCombinatorial(FUInstance* inst);
-
-Array<int> GetNumberOfInputConnections(FUInstance* node,Arena* out);
-Array<Array<PortInstance>> GetAllInputs(FUInstance* node,Arena* out);
-
-// If we have A:X -> B:Y and we give this function B:Y, it returns A:X
-PortInstance GetAssociatedOutputPortInstance(FUInstance* unit,int portIndex);
-
 // Fixes edges such that unit before connected to after, are reconnected to new unit
 void InsertUnit(Accelerator* accel,PortInstance before, PortInstance after, PortInstance newUnitOutput,PortInstance newUnitInput,int delay = 0);
 void RemoveFUInstance(Accelerator* accel,FUInstance* toRemove);
@@ -399,7 +391,6 @@ void ConnectUnitsGetEdge(FUInstance* out,int outIndex,FUInstance* in,int inIndex
 void ConnectUnitsIfNotConnected(FUInstance* out,int outIndex,FUInstance* in,int inIndex,int delay = 0);
 void ConnectUnits(FUInstance* out,int outIndex,FUInstance* in,int inIndex,int delay = 0);
 void ConnectUnits(PortInstance out,PortInstance in,int delay = 0);
-void ConnectUnits(PortInstance out,PortInstance in,int delay);
 
 void RemoveConnection(Accelerator* accel,FUInstance* out,int outPort,FUInstance* in,int inPort);
 
@@ -432,7 +423,6 @@ void FixDelays(Accelerator* accel,Hashmap<Edge,DelayInfo>* edgeDelays);
 Pair<Accelerator*,SubMap*> Flatten(Accelerator* accel,int times);
 DAGOrderNodes CalculateDAGOrder(Accelerator* accel,Arena* out);
 
-bool IsCombinatorial(Accelerator* accel);
 bool NameExists(Accelerator* accel,String name);
 String GenerateNewValidName(Accelerator* accel,String base,Arena* out);
 
@@ -458,10 +448,7 @@ void MappingInsertEqualNode(AcceleratorMapping* mapping,FUInstance* first,FUInst
 void MappingInsertInput(AcceleratorMapping* mapping,PortInstance first,PortInstance second);
 void MappingInsertOutput(AcceleratorMapping* mapping,PortInstance first,PortInstance second);
 void MappingPrintInfo(AcceleratorMapping* map);
-void MappingPrintAll(AcceleratorMapping* map);
 
 FUInstance* MappingMapNode(AcceleratorMapping* mapping,FUInstance* inst);
 
 Set<PortInstance>* MappingMapInput(AcceleratorMapping* map,Set<PortInstance>* set,Arena* out);
-
-void PrintSubMappingInfo(SubMap* info);

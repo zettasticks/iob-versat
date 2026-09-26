@@ -4,7 +4,7 @@
 #include "configurations.hpp"
 #include "parser.hpp"
 
-#if 0
+#if 1
 
 // Remember, because of stuff like inserting buffers/delays/muxs, we need to be able to write to this.
 // Changing name is required. Or maybe not. If we have access to the partitions we could just compute the 
@@ -15,8 +15,6 @@
 
 // COM_Instance needs to contain a bunch of read-only data that needs to be simply copied
 // While also containing a bunch of data that can change 
-
-struct COM_Connection;
 
 #if 1
 struct COM_Unit{
@@ -118,8 +116,6 @@ struct COM_Unit{
 
   StructInfo* structInfo;
 #endif
-
-  COM_Connection* outputs;
 };
 #endif
 //typedef InstanceInfo COM_Unit;
@@ -153,6 +149,7 @@ enum COM_EntType{
   COM_EntType_MODULE_INPUT,
   COM_EntType_MODULE_UNIT,
   COM_EntType_MODULE_UNIT_ARRAY,
+  COM_EntType_GENERATED_UNIT,
 
   COM_EntType_ARG_NONE,
   COM_EntType_ARG_FIXED,
@@ -168,8 +165,9 @@ enum COM_EntType{
 
 struct COM_Ent{
   COM_EntType type;
-  Token name;
+  String name;
 
+  Token token;
   COM_Unit* unit;
   int currentValue;
   int scope;
@@ -192,14 +190,15 @@ struct COM_EntPort{
 extern COM_EntPort COM_EntPort_Nil;
 
 struct COM_Env{
+  Arena* outArena;
   Arena* arena;
   Arena* errorArena;
 
   int shareIndex;
   int tempIndex;
 
-  COM_Unit* head;
-  COM_Unit* tail;
+  COM_Unit* unitHead;
+  COM_Unit* unitTail;
 
   COM_Connection* conHead;
   COM_Connection* conTail;
@@ -294,6 +293,7 @@ struct COM_Function{
 struct COM_Module{
   String name;
   COM_Unit* units;
+  COM_Connection* edges;
   COM_Function* funcs;
 };
 
@@ -331,9 +331,12 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> top
 // ======================================
 // Env
 
+COM_Ent* COM_PushEnt(COM_Env* env,String name,COM_EntType type);
 COM_Ent* COM_PushEnt(COM_Env* env,Token name,COM_EntType type);
 COM_Ent  COM_GetEnt(COM_Env* env,Token name,bool canFail);
 COM_Ent  COM_ArrayAccess(COM_Env* env,COM_Ent array,int index);
+
+COM_Unit* COM_PushUnit(COM_Env* env);
 
 void COM_PushScope(COM_Env* env);
 void COM_PopScope(COM_Env* env);
@@ -341,7 +344,8 @@ void COM_PopScope(COM_Env* env);
 // ======================================
 // Env Connections
 
-void COM_Connect(COM_Env* env,COM_Ent out,int outPort,COM_Ent in,int inPort,int delay,Arena* arenaOut);
+void COM_Connect(COM_Env* env,COM_Ent out,int outPort,COM_Ent in,int inPort,int delay);
+void COM_Connect(COM_Env* env,COM_Unit* out,int outPort,COM_Unit* in,int inPort,int delay);
 
 // ======================================
 // Env error reporting
@@ -354,5 +358,6 @@ void COM_ReportError(COM_Env* env,String msg,Token token);
 // Repr
 
 String COM_Repr(COM_Unit* top,Arena* out);
+void   COM_DebugPushDotGraph(String filename,COM_Unit* top,COM_Connection* edges);
 
 #endif

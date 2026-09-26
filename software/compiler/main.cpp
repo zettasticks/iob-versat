@@ -539,7 +539,6 @@ int main(int argc,char* argv[]){
     // Parse spec file
     Array<ConstructDef> types = ParseVersatSpecification(content,temp);
     
-    
 #if 0
     // MARK
     for(ConstructDef def : types){
@@ -910,6 +909,8 @@ int main(int argc,char* argv[]){
 
       Work work = *p.second;
       ConstructDef def = work.definition;
+
+      DEBUG_BREAK();
       
       FUDeclaration* decl = nullptr;
       if(def.type == ConstructType_MODULE){
