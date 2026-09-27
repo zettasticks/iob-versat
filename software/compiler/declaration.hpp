@@ -104,7 +104,6 @@ struct FUDeclaration{
   DelayType delayType;
 
   SingleInterfaces singleInterfaces;
-  bool isOperation;
   
   // Simple access functions
   int NumberInputs(){
@@ -134,11 +133,11 @@ struct FUDeclaration{
   // TODO: Probably better to see all the outputs and all the infos, at the very least in Debug mode.
   // NOTE: This only works because operations only have one output.
   bool IsCombinatorialOperation(){
-    bool res = (isOperation && info.infos[0].outputLatencies[0] == 0);
+    bool res = (!Empty(operation) && info.infos[0].outputLatencies[0] == 0);
     return res;
   }
   bool IsSequentialOperation(){
-    bool res = (isOperation && info.infos[0].outputLatencies[0] != 0);
+    bool res = (!Empty(operation) && info.infos[0].outputLatencies[0] != 0);
     return res;
   }
 

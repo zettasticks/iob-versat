@@ -63,6 +63,8 @@ Array<Array<MuxInfo>> CalculateMuxInformation(AccelInfoIterator* iter,Arena* out
     auto alreadySet = StartGrowableArray<bool>(temp);
     
     auto builder = StartGrowableArray<MuxInfo>(out);
+
+#if 1
     for(; iter.IsValid(); iter = iter.Step()){
       InstanceInfo* info = iter.CurrentUnit();
       if(info->isMergeMultiplexer && !info->doesNotBelong){
@@ -76,6 +78,7 @@ Array<Array<MuxInfo>> CalculateMuxInformation(AccelInfoIterator* iter,Arena* out
         }
       }
     }
+#endif
 
     return EndArray(builder);
   };
@@ -116,7 +119,7 @@ Array<Array<InstanceInfo*>> VUnitInfoPerMerge(AccelInfo info,Arena* out){
     it.SetMergeIndex(i);
 
     auto list = PushList<InstanceInfo*>(temp);
-    for(; it.IsValid(); it = it.Step()){
+    for(; it.IsValid(); it = it.Next()){
       InstanceInfo* info = it.CurrentUnit();
       if(info->doesNotBelong){
         continue;
@@ -902,6 +905,63 @@ String GEN_GetStructMemberName(InstanceInfo* info,Wire wire,Arena* out){
 void EmitDisableReadsAndWrites(CEmitter* c,String basePointerName,AccelInfo* info){
   TEMP_REGION(temp,nullptr);
 
+#if 0
+  struct Work{
+    Work* next;
+    Work* parent;
+    InstanceInfo* ptr;
+  };
+
+  Work* head = 0;
+  Work* tail = 0;
+
+  Work top = {};
+  top.ptr = &info->infos[0].info[0];
+  
+  LL_Append(head,tail,next,&top);
+  
+  while(head){
+    Work* top = head;
+    InstanceInfo* ptr = top->ptr;
+    head = head->next;
+
+    for(Wire w : ptr->decl->configs){
+      if(w.name == "enabled"){
+        
+        auto b = PushList<String>(temp);
+        for(Work* ptr = top; ptr; ptr = ptr->parent){
+          *b->PushElem() = ptr->ptr->name;
+        }
+        Array<String> name = PushArray(temp,b);
+        ReverseInPlace(name);
+
+        String fullName = JoinStrings(name,"_",temp);
+        String fullMemberAccessExpr = PushString(temp,"%.*s->%.*s_%.*s",UN(basePointerName),UN(fullName),UN(w.name));
+        
+        c->Assignment(fullMemberAccessExpr,"0");
+        //printf("A:%.*s\n",UN(fullMemberAccessExpr));
+      }
+    }
+    
+    if(ptr->decl->info.nIOs != 0){
+      if(ptr->decl->info.infos.size > 0 && ptr->decl->info.infos[0].info.size > 0){
+        Work* w = PushStruct<Work>(temp);
+        w->ptr = &ptr->decl->info.infos[0].info[0];
+        w->parent = top;
+        LL_Append(head,tail,next,w);
+      }
+    }
+
+    if(ptr->next){
+      Work* w = PushStruct<Work>(temp);
+      w->ptr = ptr->next;
+      w->parent = top->parent;
+      LL_Append(head,tail,next,w);
+    }
+  }
+#endif
+
+#if 1
   // TODO: The basePointerName is stupid. Need to normalize between wrapper and firmware names
   for(auto iter = StartIteration(info); iter.IsValid(); iter = iter.Step()){
     InstanceInfo* info = iter.CurrentUnit();
@@ -924,8 +984,10 @@ void EmitDisableReadsAndWrites(CEmitter* c,String basePointerName,AccelInfo* inf
     String memberName = GEN_GetStructMemberName(info,*wire.value(),temp);
     String fullMemberAccessExpr = PushString(temp,"%.*s->%.*s",UN(basePointerName),UN(memberName));
     
+    //printf("B:%.*s\n",UN(fullMemberAccessExpr));
     c->Assignment(fullMemberAccessExpr,"0");
   }
+#endif
 }
 
 VerilogModuleInterface* GenerateModuleInterface(FUDeclaration* decl,Arena* out){
@@ -1798,6 +1860,7 @@ StructInfo* GenerateStateStruct(AccelInfoIterator iter,Arena* out){
   return res;
 }
 
+// MARK
 StructInfo* GenerateConfigStructRecurse(AccelInfoIterator iter,TrieMap<StructInfo,StructInfo*>* generatedStructs,Arena* out){
   StructInfo res = {};//PushStruct<StructInfo>(out);
 
@@ -1829,7 +1892,7 @@ StructInfo* GenerateConfigStructRecurse(AccelInfoIterator iter,TrieMap<StructInf
 
     if(unit->isMerge){
       // Merge struct is different, we do not iterate members but instead iterate the base types.
-      auto GenerateMergeStruct =[](InstanceInfo* topUnit,AccelInfoIterator iter,TrieMap<StructInfo,StructInfo*>* generatedStructs,Arena* out)->StructInfo*{
+      auto GenerateMergeStruct =[](InstanceInfo* topUnit,AccelInfoIterator iter,TrieMap<StructInfo,StructInfo*>* generatedStructs,Arena* out) -> StructInfo*{
         auto list = PushArenaDoubleList<StructElement>(out);
         StructInfo res = {}; //PushStruct<StructInfo>(out);
         
@@ -1986,15 +2049,6 @@ StructInfo* GenerateConfigStruct(AccelInfoIterator iter,Arena* out){
   TrieMap<StructInfo,StructInfo*>* generatedStructs = PushTrieMap<StructInfo,StructInfo*>(temp);
 
   StructInfo* result = GenerateConfigStructRecurse(iter,generatedStructs,out);
-
-  for(; iter.IsValid(); iter = iter.Step()){
-    InstanceInfo* unit = iter.CurrentUnit();
-
-    if(unit->structInfo){
-      unit->structInfo = generatedStructs->GetOrFail(*unit->structInfo);
-    }
-  }
-  
   return result;
 }
 
@@ -2482,7 +2536,6 @@ void Output_VersatInstance(AccelInfo info,FUDeclaration* topLevelDecl,Array<Type
     TE_SetString("profilingStuff",{});
   }
 
-  // MARK
   #if 1
   if(globalOptions.insertCaptureDatabusRegisters){
     VEmitter* m = StartVCode(temp);
@@ -3031,6 +3084,13 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   // NOTE: This function also fills the instance info member of the acceleratorInfo. This function only fills the first partition, but I think that it is fine because that is the only one we use. We generate the same structs either way.
   StructInfo* structInfo = GenerateConfigStruct(iter,temp);
 
+#if 0
+  GEN_StructInfo* testInfo = GEN_GenerateConfigStruct("TEST",&info.infos[0].info[0],temp);
+  String repr = GEN_Repr(testInfo,temp);
+  printf("%.*s\n",UN(repr));
+  exit(-1);
+#endif
+
   Array<TypeStructInfo> structs = {};
   // If we only contain static configs, this will appear empty.
   if(!Empty(structInfo->memberList)){
@@ -3210,8 +3270,6 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
 
         String varDeclareList = JoinStrings(list,",",temp);
         String varDeclare = PushString(temp,"{%.*s}",UN(varDeclareList));
-
-        // MARK
       
         c->VarDeclare("VersatVarSpec*","buffer[]",varDeclare);
       
@@ -3449,7 +3507,6 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
           }
         }
 
-        // MARK
         for(ConfigComputation comp : func->extraComputations){
           c->InsertCode(comp.cCode);
         }
@@ -3843,10 +3900,12 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   {
     CEmitter* c = StartCCode(CCode1,CCode2);
 
+    // TODO: Check what is going on with variable delay, current tests all pass even if this is set to false.
     bool hasVariableDelay = false;
 
+#if 0
     for(int i = 0; i <  info.infos.size; i++){
-      for(AccelInfoIterator iter = StartIteration(&info,i); iter.IsValid(); iter = iter.Step()){
+      for(AccelInfoIterator iter = StartIteration(&info,i); iter.IsValid(); iter = iter.Next()){
         InstanceInfo* info = iter.CurrentUnit();
 
         if(info->specialType == SpecialUnitType_VARIABLE_BUFFER){
@@ -3880,6 +3939,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
         
       c->EndBlock();
     }
+#endif
 
     if(names.size > 1){
       for(int i = 0; i <  allDelays.size; i++){
@@ -3928,6 +3988,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
 
       c->RawLine("VersatLoadDelay(delayBuffers[asInt]);");
 
+#if 0
       if(hasVariableDelay){
         int index = 0;
         for(AccelInfoIterator iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
@@ -3944,6 +4005,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
           c->Assignment(PushString(temp,"ACCEL_%.*s",UN(name)),SF("bufferValues[asInt][%d]",index++));
         }
       }
+#endif
       
       c->EndBlock();
     }
@@ -5394,4 +5456,133 @@ void OutputTestbench(FUDeclaration* decl,FILE* file){
   String content = EndString(temp,builder);
 
   fprintf(file,"%.*s",UN(content));
+}
+
+
+// ======================================
+// Gen Type
+
+//GEN_StructElem* //GenerateConfigStructRecurse(AccelInfoIterator iter,TrieMap<StructInfo,StructInfo*>* generatedStructs,Arena* out){
+
+#include "configurations.hpp"
+
+GEN_StructInfo* GEN_GenerateConfigStruct(String topName,InstanceInfo* top,Arena* out){
+  GEN_StructElem* head = 0;
+  GEN_StructElem* tail = 0;
+
+  for(InstanceInfo* ptr = top; ptr; ptr = ptr->next){
+    DEBUG_BREAK();
+    if(ptr->decl->configs.size == 0){
+      continue;
+    }
+
+    if(ptr->isMerge){
+      GEN_StructElem* mergeHead = 0;
+      GEN_StructElem* mergeTail = 0;
+
+      InstanceInfo* newTop = &ptr->decl->info.infos[0].info[0];
+
+      int partIndex = 0;
+      for(InstanceInfo* newPtr = newTop; newPtr; partIndex++,newPtr = newPtr->mergeNext){
+        MergePartition part = ptr->decl->info.infos[partIndex];
+        
+        String partName = part.name;
+
+        GEN_StructInfo* info = GEN_GenerateConfigStruct(partName,newPtr,out);
+
+        GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
+        elem->name = PushString(out,partName);
+        elem->type = info;
+
+        LL_Append(mergeHead,mergeTail,next,elem);
+      }
+
+      GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
+      elem->childs = mergeHead;
+
+      LL_Append(head,tail,next,elem);
+    } else {
+      GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
+
+      if(ptr->isComposite){
+        InstanceInfo* newTop = &ptr->decl->info.infos[0].info[0];
+        elem->type = GEN_GenerateConfigStruct(ptr->decl->name,newTop,out);
+      } else {
+        elem->simpleTypename = "int";
+      }
+
+      elem->name = PushString(out,ptr->name);
+
+      if(ptr->isMergeMultiplexer){
+        elem->isMuxMultiplexer;
+      }
+
+      LL_Append(head,tail,next,elem);
+    }
+  }
+
+  GEN_StructInfo* res = PushStruct<GEN_StructInfo>(out);
+  res->elements = head;
+  res->name = PushString(out,"%.*sConfig",UN(topName));
+
+  return res;
+}
+
+bool GEN_IsSimpleType(GEN_StructElem* elem){
+  bool res = !Empty(elem->simpleTypename);
+
+  if(res){
+    Assert(elem->type == 0);
+  }
+  return res;
+}
+
+bool GEN_IsUnion(GEN_StructElem* top){
+  bool res = (top->childs && top->childs->next); // Union needs at least two childs
+  return res;
+}
+
+String GEN_TypeName(GEN_StructElem* elem){
+  String res = {};
+  if(GEN_IsSimpleType(elem)){
+    res = elem->simpleTypename;
+  } else {
+    res = elem->type->name;
+  }
+  return res;
+}
+
+String GEN_Repr(GEN_StructInfo* info,Arena* out){
+  TEMP_REGION(temp,out);
+
+  auto b = StartString(temp);
+
+  b->PushString("typedef struct{\n");
+
+  for(GEN_StructElem* ptr = info->elements; ptr; ptr = ptr->next){
+    if(GEN_IsUnion(ptr)){
+      b->PushString("  union {\n");
+    }
+
+    if(ptr->childs){
+      for(GEN_StructElem* child = ptr->childs; child; child = child->next){
+        String typeName = GEN_TypeName(child);
+        
+        b->PushString("    %.*s %.*s;\n",UN(typeName),UN(child->name));
+      }
+    } else {
+      String typeName = GEN_TypeName(ptr);
+
+      b->PushString("  %.*s %.*s;\n",UN(typeName),UN(ptr->name));
+    }
+
+    if(GEN_IsUnion(ptr)){
+      b->PushString("  };\n");
+    }
+  }
+
+  b->PushString("} %.*s;\n",UN(info->name));
+
+  String res = EndString(out,b);
+  return res;
 }

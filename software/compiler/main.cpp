@@ -909,8 +909,6 @@ int main(int argc,char* argv[]){
 
       Work work = *p.second;
       ConstructDef def = work.definition;
-
-      DEBUG_BREAK();
       
       FUDeclaration* decl = nullptr;
       if(def.type == ConstructType_MODULE){
@@ -919,44 +917,7 @@ int main(int argc,char* argv[]){
         decl = InstantiateMerge(p.second->definition.merge,work.params);
       }
       decl->singleInterfaces |= SingleInterfaces_SIGNAL_LOOP;
-      
-#if 0
-      if(work.calculateDelayFixedGraph){
-        Accelerator* copy = CopyAccelerator(decl->baseCircuit,AcceleratorPurpose_FIXED_DELAY,true,nullptr);
 
-        DAGOrderNodes order = CalculateDAGOrder(&copy->allocated,temp);
-        CalculateDelayResult delays = CalculateDelay(copy,order,temp);
-
-        decl->baseConfig.calculatedDelays = PushArray<int>(perm,delays.nodeDelay->nodesUsed);
-        Memset(decl->baseConfig.calculatedDelays,0);
-        int index = 0;
-        for(Pair<FUInstance*,DelayInfo*> p : delays.nodeDelay){
-          if(p.first->declaration->baseConfig.delayOffsets.max > 0){
-            decl->baseConfig.calculatedDelays[index] = p.second->value;
-            index += 1;
-          }
-        }
-
-        region(temp){
-          FixDelays(copy,delays.edgesDelay,temp);
-        }
-
-        decl->fixedDelayCircuit = copy;
-        decl->fixedDelayCircuit->name = decl->name;
-
-        FillDeclarationWithDelayType(decl);
-      }
-#endif
-
-#if 0
-      if(work.definition.type == ConstructType_MODULE && work.definition.module.name == "ModuleWithExtra"){
-        auto p = FlattenWithMerge(decl->baseCircuit,0);
-
-        DebugRegionOutputDotGraph(p.accel,"FlattenReconAttemp0");
-      }
-#endif
-
-#if 1
       // Flatten with mapping seems to be specific to modules.
       // Merge circuits are already flatten by the way the merge is performed.
       if(work.definition.type != ConstructType_MERGE && work.flattenWithMapping){
@@ -965,8 +926,6 @@ int main(int argc,char* argv[]){
         decl->flattenedBaseCircuit = p.first;
         decl->flattenMapping = p.second;
       }
-#endif
-
     }
   }
 

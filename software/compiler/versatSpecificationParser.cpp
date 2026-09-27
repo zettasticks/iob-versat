@@ -126,6 +126,29 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAnd
   
   COM_DebugPushDotGraph("Test",mod.units,mod.edges);
 
+  FUDeclaration* decl = PushStruct<FUDeclaration>(perm);
+
+  decl->info.infos = PushArray<MergePartition>(perm,1);
+  MergePartition* part = &decl->info.infos[0];
+  
+  int unitCount = 0;
+  LL_Count(mod.units,next,unitCount);
+
+  part->info = PushArray<InstanceInfo>(perm,unitCount);
+
+  COM_Unit* ptr = mod.units;
+  for(int i = 0; i < unitCount; i += 1,ptr = ptr->next){
+    InstanceInfo* info = &part->info[i];
+
+    info->decl = ptr->decl;
+    info->id = ptr->id;
+    info->name = ptr->name;
+    info->isShared = ptr->isShared;
+    info->isStatic = ptr->isStatic;
+    info->debug = ptr->debug;
+    info->sharedIndex = ptr->sharedIndex;
+  }
+
   DEBUG_BREAK();
   exit(-1);
 #endif

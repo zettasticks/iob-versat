@@ -902,6 +902,11 @@ inline bool Contains(Array<String> array,String toCheck){
     } \
   }
 
+#define LL_Count(HEAD,NEXT,VAR) \
+  for(auto* it = HEAD; it; it = it->NEXT){ \
+    VAR += 1; \
+  }
+
 #define DLL_Append(HEAD,TAIL,NEXT,PREV,NODE) \
   if(NODE) { \
   Assert(!NODE->PREV); \
@@ -915,3 +920,4 @@ inline bool Contains(Array<String> array,String toCheck){
   } \
   while(TAIL->NEXT) TAIL = TAIL->NEXT; \
   }
+

@@ -16,7 +16,6 @@
 // COM_Instance needs to contain a bunch of read-only data that needs to be simply copied
 // While also containing a bunch of data that can change 
 
-#if 1
 struct COM_Unit{
   COM_Unit* next;
   COM_Unit* prev;
@@ -25,101 +24,33 @@ struct COM_Unit{
 
   String name;
   FUDeclaration* decl;
+  int id;
 
   bool isShared;
   bool isStatic;
   bool debug;
   int sharedIndex;
-
-#if 0  
-  int level;
-  FUDeclaration* decl;
-  String typeName;
-  String parentTypeName;
-
-  int localIndex;
-
-  int id;
-  String name;
-  String baseName; // NOTE: If the unit does not belong to the merge partition the baseName will equal name.
-  //String fullName;
-
-  //Array<Wire> configs;
-  //Array<Wire> states;
-
-  //Array<ExternalMemorySymbolic> externalMemory;
-  SingleInterfaces singleInterfaces;
-  
-  Opt<int> globalStaticPos; // Separating static from global makes stuff simpler. If mixing together, do not forget that struct generation cares about source of configPos.
-  Opt<int> globalConfigPos;
-  Opt<int> localConfigPos;
-
-  //Array<int> individualWiresGlobalStaticPos;
-  //Array<int> individualWiresGlobalConfigPos;
-  //Array<int> individualWiresLocalConfigPos;
-  //Array<bool> individualWiresShared;
-  
-  //Array<ParamAndValue> params;
-
-  bool isGloballyStatic;
-  
-  
-  Opt<int> statePos;
-  
-  // Nil if no mem map, 0 if mem mapped with no address bits and any positive number is the number of bits.
-  SYM_Expr memMapSym;
-  iptr memMapped; // If memMapSym is non nil then this contains the start address
-
-  int memGlobalIndex;
-  int memSize;
-  //String globalMemDecisionMask;
-  int memStart;
-  int memEnd;
-
-  Opt<int> delayPos;
-  //Array<int> extraDelay;
-  int baseNodeDelay;
-  int numberDelays;
-
-  // TODO: There are a couple of variables like these that we could just put into an union.
-  // Only makes sense on buffer units.
-  int variableBufferDelay;
-
-  bool isComposite;
-  bool isMerge;
-
-  int nIOs;
-
-  // Sepcific to merge muxs
-  bool isMergeMultiplexer;
-  int mergePort;
-  int muxGroup; // TODO: I think that we can remove muxGroup. We know which units belong or not to a given merge partition and we know their input value so there is no point in keeping the harder to understand and compute muxGroups.
-
-  bool doesNotBelong; // For merge units, if true then this unit does not actually exist for the given partition
-  int special;
-  int localOrder;
-  //FUInstance* inst; // Points to the recon instance for merge declarations.
-
-  //Array<int> inputDelays;
-  //Array<int> outputLatencies;
-  //Array<int> portDelay;
-  int partitionIndex; // TODO: What does this do? Probably a remnant from the old implementation.
-
-  //Array<SimplePortConnection> inputs; 
-
-  //Array<SimplePortInstance> inputsDirectly;
-  //Array<bool> outputIsConnected;
-
-  AddressGenInst supportedAddressGen;
-
-  SpecialUnitType specialType;
-
-  StructInfo* structInfo;
-#endif
 };
-#endif
-//typedef InstanceInfo COM_Unit;
 extern COM_Unit COM_Unit_Nil;
+
+struct FUDeclaration2{
+  String name;
+  Array<Wire> configs;
+  Array<Wire> states;
+  Array<int> inputs;
+  Array<int> outputs;
+
+  COM_Unit* units;
+
+  Array<Parameter> parameters;
+  Array<ExternalMemorySymbolic> externalMemorySymbol;
+  String operation;
+  AddressGenInst supportedAddressGen;
+  FUDeclarationType type;
+  DelayType delayType;
+
+  SingleInterfaces singleInterfaces;
+};
 
 // ======================================
 // Connections

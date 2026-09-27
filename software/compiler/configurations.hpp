@@ -74,6 +74,11 @@ enum SpecialUnitType{
 //          every in the same place) or we divide the members into groups according to how they are used
 //          and put some comments explaining stuff.
 struct InstanceInfo{
+  InstanceInfo* next;
+  InstanceInfo* prev;
+  InstanceInfo* mergeNext;
+  InstanceInfo* mergePrev;
+
   int level;
   FUDeclaration* decl;
   String typeName;
@@ -223,8 +228,6 @@ struct MergePartition{
   // TODO: Weird that this is inside MergePartition but at the same time we need to know which merge partition this function belongs to in order to generate the 
   //       The weirdness is mostly the fact that userFunctions are mostly "Global" in the sense that they cannot repeat but at the same time we need the MergePartition info which means that we might just take this out and have to store the merge partition info in some other way.
   Array<ConfigFunction*> userFunctions;
-
-  Accelerator* recon;
   
   // TODO: All these are useless. We can just store the data in the units themselves.
   Array<int> inputDelays;
@@ -256,13 +259,14 @@ struct AccelInfo{
   SYM_Expr memMapBitsSym;
 
   int unitsMapped;
-  bool isMemoryMapped;
   bool signalLoop;
   bool implementsDone;
 };
 
 // NOTE: The member 'level' of InstanceInfo needs to be valid in order for this iterator to work. 
 //       Do not know how to handle merged. Should we iterate Array<InstanceInfo> and let outside code work, or do we take the accelInfo and then allow the iterator to switch between different merges and stuff?      
+
+// MARK
 struct AccelInfoIterator{
   String accelName; // Usually for debug purposes.
   AccelInfo* info;
@@ -300,7 +304,6 @@ struct AccelInfoIterator{
 struct Partition{
   int value;
   int max;
-  int mergeIndexStart;
   FUDeclaration* decl;
 };
 
@@ -312,6 +315,7 @@ Array<InstanceInfo*> GetAllSameLevelUnits(AccelInfo* info,int level,int mergeInd
 
 // TODO: mergeIndex seems to be the wrong approach. Check the correct approach when trying to simplify merge.
 Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Array<Partition> partitions,bool calculateOrder = true);
+
 Array<Partition> GenerateInitialPartitions(Accelerator* accel,Arena* out);
 
 void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out);
@@ -351,3 +355,7 @@ void InstantiateParameters(AccelInfo* info,Arena* temp);
 
 // TODO: Reorganize
 InstanceInfo* Find(AccelInfoIterator iter,HIER_Name hierarchicalNames);
+
+// HACK: ======================================================================
+
+void HACK_InitNode(AccelInfo* info);

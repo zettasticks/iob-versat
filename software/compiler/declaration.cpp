@@ -79,7 +79,6 @@ static void RegisterOperators(){
 
   FUDeclaration decl = {};
   decl.type = FUDeclarationType_SINGLE;
-  decl.isOperation = true;
 
   for(unsigned int i = 0; i < ARRAY_SIZE(unary); i++){
     decl.info.infos = PushArray<MergePartition>(globalPermanent,1);

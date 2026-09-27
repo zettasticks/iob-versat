@@ -178,3 +178,39 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topLevelDecl,String h
 
 void OutputTestbench(FUDeclaration* decl,FILE* file);
 
+
+// ======================================
+// New struct generation code
+
+struct GEN_StructInfo;
+
+struct GEN_StructElem{
+  GEN_StructElem* next;
+  GEN_StructElem* childs;
+
+  String name;
+  
+  // Type info;
+  GEN_StructInfo* type;
+  String simpleTypename;
+  bool isMuxMultiplexer;
+};
+
+struct GEN_StructInfo{
+  GEN_StructInfo* next;
+
+  String name;
+  GEN_StructElem* elements;
+};
+
+// ======================================
+// Gen Type
+
+GEN_StructInfo* GEN_GenerateConfigStruct(String topName,InstanceInfo* top,Arena* out);
+
+bool GEN_IsSimpleType(GEN_StructElem* elem);
+bool GEN_IsUnion(GEN_StructElem* top);
+
+String GEN_TypeName(GEN_StructElem* elem);
+
+String GEN_Repr(GEN_StructInfo* info,Arena* out);

@@ -506,8 +506,15 @@ Array<FUDeclaration*> MemSubTypes(AccelInfo* info,Arena* out){
 Hashmap<StaticId,StaticData>* CollectStaticUnits(AccelInfo* info,Arena* out){
   Hashmap<StaticId,StaticData>* staticUnits = PushHashmap<StaticId,StaticData>(out,999);
 
-  for(AccelInfoIterator iter = StartIteration(info); iter.IsValid(); iter = iter.Step()){
+  for(AccelInfoIterator iter = StartIteration(info); iter.IsValid(); iter = iter.Next()){
     InstanceInfo* info = iter.CurrentUnit();
+    FUDeclaration* decl = info->decl;
+
+    for(Pair<StaticId,StaticData*> p : decl->staticUnits){
+      staticUnits->InsertIfNotExist(p.first,*p.second);
+      DEBUG_BREAK();
+    }
+
     if(info->isStatic){
       StaticId id = {};
       id.name = info->name;
@@ -517,6 +524,7 @@ Hashmap<StaticId,StaticData>* CollectStaticUnits(AccelInfo* info,Arena* out){
       data.decl = GetTypeByName(info->typeName);
       data.configs = info->configs;
       staticUnits->InsertIfNotExist(id,data);
+      DEBUG_BREAK();
     }
   }
 
@@ -539,49 +547,6 @@ int DataWidthToByteOffset(int dataWidth){
   int res = log2i((dataWidth - 1) / 8);
   return res;
 }
-
-// TODO: We appear to only use this for displaying the size of memories just to inform the user. It is not mandatory to have this working, it was just nice to have.
-#if 0
-int ExternalMemoryByteSize(ExternalMemoryInterface* inter){
-  Assert(VerifyExternalMemory(inter));
-
-  // TODO: The memories size and address is still error prone. We should just store the total size and the address width in the structures (and then we can derive the data width from the given address width and the total size). Storing data width and address size at the same time gives more degrees of freedom than need. The parser is responsible in ensuring that the data is given in the correct format and this code should never have to worry about having to deal with values out of phase
-  int addressBitSize = 0;
-  int byteOffset = 0;
-  switch(inter->type){
-  case ExternalMemoryType::ExternalMemoryType_2P:{
-    addressBitSize = inter->tp.bitSizeIn;
-    byteOffset = MIN(DataWidthToByteOffset(inter->tp.dataSizeIn),DataWidthToByteOffset(inter->tp.dataSizeOut));
-  }break;
-  case ExternalMemoryType::ExternalMemoryType_DP:{
-    addressBitSize = inter->dp[0].bitSize;
-    byteOffset = MIN(DataWidthToByteOffset(inter->dp[0].dataSizeIn),DataWidthToByteOffset(inter->dp[1].dataSizeIn));
-  }break;
-  }
-
-  int byteSize = (1 << (addressBitSize + byteOffset));
-
-  return byteSize;
-}
-
-int ExternalMemoryByteSize(Array<ExternalMemoryInterface> interfaces){
-  int size = 0;
-
-  // Not to sure about this logic. So far we do not allow different DATA_W values for the same port memories, but technically this should work
-  for(ExternalMemoryInterface& inter : interfaces){
-    int max = ExternalMemoryByteSize(&inter);
-
-    // Aligns
-    int nextPower2 = AlignNextPower2(max);
-    int boundary = log2i(nextPower2);
-
-    int aligned = AlignBitBoundary(size,boundary);
-    size = aligned + max;
-  }
-
-  return size;
-}
-#endif
 
 VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Arena* out){
   TEMP_REGION(temp,out);

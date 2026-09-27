@@ -2254,6 +2254,8 @@ FUDeclaration* Merge(Array<FUDeclaration*> types,
     decl->info.infos[i].inputDelays = ExtractInputDelays(iter,globalPermanent);
     decl->info.infos[i].outputLatencies = ExtractOutputLatencies(iter,globalPermanent);
   }
+  
+  HACK_InitNode(&decl->info);
 
   // Need to set the parent decl after registering stuff.
   // TODO: Need to simplify this part in here and inside the register module. Have the accelInfo calculation take parent decl.
@@ -2965,8 +2967,7 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
   decl->info.infos = PushArray<MergePartition>(globalPermanent,size);
   
   for(int i = 0; i < size; i++){
-    decl->info.infos[i].recon = merged->recons[i];
-    decl->info.infos[i].name  = types[i]->name;
+    decl->info.infos[i].name = types[i]->name;
 
     decl->info.infos[i].info = GenerateInitialInstanceInfo(mergedGraph,globalPermanent,{},false);
 
@@ -3012,6 +3013,8 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
       }
     }
   }
+
+  HACK_InitNode(&decl->info);
 
   for(int i = 0; i < size; i++){
     decl->info.infos[i].baseType = types[i];

@@ -278,13 +278,11 @@ static bool Next(Array<Partition> arr){
 
 Array<Partition> GenerateInitialPartitions(Accelerator* accel,Arena* out){
   auto partitionsArr = StartGrowableArray<Partition>(out);
-  int mergedPossibility = 0;
   for(FUInstance* node : accel->allocated){
     FUDeclaration* decl = node->declaration;
 
     if(decl->MergePartitionSize() > 1){
-      *partitionsArr.PushElem() = (Partition){.value = 0,.max = decl->MergePartitionSize(),.mergeIndexStart = mergedPossibility,.decl = decl};
-      mergedPossibility += log2i(decl->MergePartitionSize());
+      *partitionsArr.PushElem() = (Partition){.value = 0,.max = decl->MergePartitionSize(),.decl = decl};
     }
   }
   Array<Partition> partitions = EndArray(partitionsArr);
@@ -428,7 +426,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     if(decl == BasicDeclaration::variableBuffer){
       elem->specialType = SpecialUnitType_VARIABLE_BUFFER;
     }
-    if(decl->isOperation){
+    if(!Empty(decl->operation)){
       elem->specialType = SpecialUnitType_OPERATION;
     }
 
@@ -642,8 +640,6 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
         portInst->otherPort = otherPort;
         portInst->port = ptr->port;
       }
-
-      //info->outputs = PushArray(out,list);
     }
     
     info->outputIsConnected = CopyArray(inst->outputs,out);
@@ -664,7 +660,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
       }
     }
   }
-  
+
   return res;
 }
 
@@ -1230,8 +1226,6 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
     FUDeclaration* type = inst->declaration;
     
     if(!SYM_IsNil(type->info.memMapBitsSym)){
-      info->isMemoryMapped = true;
-
       unitsMapped += 1;
     }
 
@@ -1376,6 +1370,8 @@ AccelInfo CalculateAcceleratorInfo(Accelerator* accel,bool recursive,Arena* out,
     result.infos[i].name = GetName(partitions,out);
   }
   
+  HACK_InitNode(&result);
+
   AccelInfoIterator iter = StartIteration(&result);
   iter.accelName = accel->name;
 
@@ -1656,4 +1652,42 @@ InstanceInfo* Find(AccelInfoIterator iter,HIER_Name name){
 
   InstanceInfo* res = iter.IsValid() ? iter.CurrentUnit() : nullptr;
   return res;
+}
+
+// HACK: ======================================================================
+
+void HACK_InitNode(AccelInfo* info){
+  int unitCount = info->infos[0].info.size;
+  int mergeCount = info->infos.size;
+
+  for(int i = 0; i < unitCount; i++){
+    for(int merge = 0; merge < mergeCount; merge++){
+      InstanceInfo* inst = &info->infos[merge].info[i];
+
+      InstanceInfo* prev = nullptr;
+      InstanceInfo* next = nullptr;
+
+      if(i > 0){
+        prev = &info->infos[merge].info[i-1];
+      }
+      if(i < unitCount - 1){
+        next = &info->infos[merge].info[i+1];
+      }
+
+      InstanceInfo* mergePrev = nullptr;
+      InstanceInfo* mergeNext = nullptr;
+
+      if(merge > 0){
+        mergePrev = &info->infos[merge-1].info[i];
+      }
+      if(merge < mergeCount - 1){
+        mergeNext = &info->infos[merge+1].info[i];
+      }
+
+      inst->next = next;
+      inst->prev = prev;
+      inst->mergeNext = mergeNext;
+      inst->mergePrev = mergePrev;
+    }
+  }
 }

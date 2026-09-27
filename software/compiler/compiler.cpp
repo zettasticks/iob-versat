@@ -966,6 +966,12 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> top
      exit(-1);
   }
 
+  // Update id ==================================================================
+  int id = 0;
+  for(COM_Unit* ptr = env->unitHead; ptr; ptr = ptr->next){
+    ptr->id = id++;
+  }
+
   // Pack =======================================================================
   COM_Module mod = {}; 
   mod.name = PushString(out,moduleName);

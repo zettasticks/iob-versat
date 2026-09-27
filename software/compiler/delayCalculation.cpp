@@ -394,6 +394,8 @@ CalculateDelayResult CalculateDelay(Accelerator* accel,Arena* out){
   info.infos = PushArray<MergePartition>(out,1);
   info.infos[0].info = GenerateInitialInstanceInfo(accel,out,{});
 
+  HACK_InitNode(&info);
+
   AccelInfoIterator top = StartIteration(&info);
   top.accelName = accel->name;
 
