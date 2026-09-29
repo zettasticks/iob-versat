@@ -70,6 +70,10 @@ table TokenTable(name,enumVal,customRepr){
   VERILOG_KEYWORD_INOUT             ''    ''
   VERILOG_KEYWORD_REG               ''    ''
   VERILOG_KEYWORD_WIRE              ''    ''
+  VERILOG_KEYWORD_INTEGER           ''    ''
+  VERILOG_KEYWORD_REAL              ''    ''
+  VERILOG_KEYWORD_REALTIME          ''    ''
+  VERILOG_KEYWORD_TIME              ''    ''
   C_KEYWORD                         ''    ''
   C_STRING                          ''    $%.*s$
   VERILOG_KEYWORD                   ''    ''

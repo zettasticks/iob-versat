@@ -63,11 +63,8 @@ String PARSE_PushDebugRepr(Arena* out,Token token){
 Parser* StartParsing(TokenizeFunction tokenizer,String content,Arena* freeArena,ParsingOptions options){
   Parser* res = PushStruct<Parser>(freeArena);
 
-  DefaultTokenizerState* tokenizerState = PushStruct<DefaultTokenizerState>(freeArena);
-
   res->errors = PushList<String>(freeArena);
 
-  res->tokenizerState = (void*) tokenizerState;
   res->tokenizer = tokenizer;
   res->arena = freeArena;
 
@@ -81,7 +78,6 @@ Parser* StartParsing(TokenizeFunction tokenizer,String content,Arena* freeArena,
 Parser* StartParsing(TokenizeFunction tokenizer,void* tokenizerState,String content,Arena* freeArena,ParsingOptions options){
   Parser* res = PushStruct<Parser>(freeArena);
 
-  res->tokenizerState = (void*) tokenizerState;
   res->tokenizer = tokenizer;
   res->arena = freeArena;
   res->errors = PushList<String>(freeArena);
@@ -98,7 +94,7 @@ Token Parser::InternalConsumeToken(ParsingOptions opts){
   token.type = TokenType_EOF;
 
   while(this->ptr < this->end){
-    Token parsed = this->tokenizer(this->tokenizerState,this->ptr,this->end);
+    Token parsed = this->tokenizer(this->ptr,this->end);
     this->ptr += parsed.val.size;
 
     bool skip = 0;
@@ -124,9 +120,6 @@ Token Parser::InternalConsumeToken(ParsingOptions opts){
     }
 
     if(parsed.type == TokenType_INVALID){
-      if(currentFile){
-        printf("Invalid token: %s\n",currentFile);
-      }
       parsed.type = TokenType_EOF;
     }
 
@@ -746,8 +739,6 @@ Token ParseCString(const char* start,const char* end){
 
     ptr += 1;
   }
-
-  String total = String(start,ptr - start);
 
   Token res = {};
   res.type = (ptr > start ? TokenType_C_STRING : TokenType_INVALID);

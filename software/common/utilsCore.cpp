@@ -41,8 +41,8 @@ String Offset(String base,int amount){
 
 String Cut(String base,int amount){
   String res = base;
-  base.size = MAX(base.size - amount,0);
-  return base;
+  res.size = MAX(res.size - amount,0);
+  return res;
 }
 
 char* StaticFormat(const char* format,...){

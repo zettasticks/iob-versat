@@ -194,6 +194,7 @@ enum ModuleSource{
   ModuleSource_USER_UNIT
 };
 
+#if 1
 struct ModuleInfo{
   String name;
   Array<ParameterExpression> defaultParameters;
@@ -214,14 +215,32 @@ struct ModuleInfo{
   bool isSource;
   ModuleSource moduleSource;
 };
+#endif
 
+struct V_Node{
+  union{
+    V_Node* first;
+    V_Node* next;
+  };
+  union{
+    V_Node* second;
+    V_Node* childs;
+  };
+
+  V_Node* attributes;
+  V_NodeType type;
+
+  Token token;
+};
+
+#if 0
 SYM_Expr SymbolicExpressionFromVerilog(VExpr* topExpr);
 SYM_Expr SymbolicExpressionFromVerilog(ExpressionRange range);
 
 Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths,Arena* out); // Only handles preprocessed files
-ModuleInfo ExtractModuleInfo(Module& module,Arena* out);
+//ModuleInfo ExtractModuleInfo(Module& module,Arena* out);
 
-String PreprocessVerilogFile(String content,Arena* out);
+#endif
 
 enum V_NumberType{
   V_NumberType_NIL,
@@ -236,7 +255,7 @@ struct V_ParsedNumber{
   V_NumberType type;
   b32 anyError;
 
-  // NOTE: If sized then number is given as binary
+  // NOTE: If sized then number is given as binary if the parsing function is called with an Arena
   b32 isSized;
   u32 bitsizeGiven;
   
@@ -249,4 +268,43 @@ struct V_ParsedNumber{
   String asBinary; // NOTE: Only what user gives (Ex: 10'b0 would have bitsize of 10, and asBinary of "0").
 };
 
+struct V_ParseResult{
+  V_Node* node;
+  Array<String> errors;
+};
+
+// ======================================
+// Helpers
+
+V_Node* V_MakeNode(Arena* out,V_NodeType type,Token token = {},V_Node* childs = {});
+
+// ======================================
+// Tokenizer Helpers
+
 V_ParsedNumber V_ParseNumber(const char* start,const char* end,Arena* out = nullptr);
+
+// ======================================
+// Parsing Helpers
+
+V_Node* V_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower);
+V_Node* V_ParseExpression(Parser* parser,Arena* out);
+V_Node* V_ParseOptionalAttributeList(Parser* parser,Arena* out);
+void    V_ParseOptionalType(Parser* parser,Arena* out); // No return since we ignore this mostly
+V_Node* V_ParseOptionalRange(Parser* parser,Arena* out);
+V_Node* V_ParseParameterList(Parser* parser,Arena* out);
+V_Node* V_ParsePortList(Parser* parser,Arena* out);
+
+// ======================================
+// Preprocessing
+
+String  V_PreprocessVerilogFile(String content,Array<String> includeFilepaths,Arena* out);
+
+// ======================================
+// Parsing
+
+V_ParseResult V_ParseVerilogFile(String content,Arena* out);
+
+// ======================================
+// Repr
+
+String V_Repr(V_Node* top,Arena* out);

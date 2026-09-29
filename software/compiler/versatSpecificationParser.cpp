@@ -3604,9 +3604,9 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
           }
 
           parser->ExpectNext(')');
-          var = SP_PushNode(out,SP_Type_FUNC_CALL,name,var);
+          var = SP_PushNode(out,SP_Type_FUNC_CALL,access,var);
         } else {
-          var = SP_PushNode(out,SP_Type_HIER_ACCESS,name,var);
+          var = SP_PushNode(out,SP_Type_HIER_ACCESS,access,var);
         }
 
         continue;
@@ -3678,7 +3678,7 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
   infos[5] = {TokenType_SHIFT_LEFT,1,SP_Type_SHL};
   infos[6] = {TokenType_SHIFT_RIGHT,1,SP_Type_SHR};
 
-  infos[7]  = {TOK_TYPE('*'),2,SP_Type_MUL};
+  infos[7] = {TOK_TYPE('*'),2,SP_Type_MUL};
   infos[8] = {TOK_TYPE('/'),2,SP_Type_DIV};
 
   infos[9] = {TOK_TYPE('+'),3,SP_Type_ADD};
@@ -4288,9 +4288,7 @@ SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
 SP_Node* SP_ParseSpec(String content,Arena* out){
   TEMP_REGION(temp,out);
 
-  auto TokenizeFunction = [](void* tokenizerState,const char* start,const char* end) -> Token{
-    DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
-
+  auto TokenizeFunction = [](const char* start,const char* end) -> Token{
     Token res = {};
     res |= ParseWhitespace(start,end);
     res |= ParseComments(start,end);

@@ -48,7 +48,7 @@ struct DefaultTokenizerState{
   FileContent content;
 };
 
-typedef Token (*TokenizeFunction)(void* tokenizerState,const char* ptr,const char* end);
+typedef Token (*TokenizeFunction)(const char* ptr,const char* end);
 
 #define MAX_STORED_TOKENS 4
 
@@ -64,27 +64,21 @@ enum ParsingOptions{
 C_STYLE_ENUM(ParsingOptions);
 
 struct Parser{
-  void* tokenizerState;
   const char* start;
   const char* ptr;
   const char* end;
 
   Arena* arena;
 
-  u8 amountStored;
-  Token storedTokens[MAX_STORED_TOKENS];
-
   TokenizeFunction tokenizer;
 
   ArenaList<String>* errors;
 
+  // Debug helpers ==============================================================
   bool debug;
   int lastDebugIndex;
   LocationNode* debugLocHead;
   LocationNode* debugLocTail;
-
-  //ParsingOptions options;
-  const char* currentFile; // Optional, gives better error messages
 
   // Helpers
   Token InternalConsumeToken(ParsingOptions opts);

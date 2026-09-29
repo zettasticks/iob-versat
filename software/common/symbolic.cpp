@@ -1327,9 +1327,7 @@ SYM_Expr ParseSYM_Expr(Parser* parser,int bindingPower = -1){
 SYM_Expr SYM_Parse(String content){
   FREE_ARENA(parseArena);
 
-  auto tokenizer = [](void* tokenizerState,const char* start,const char* end) -> Token {
-    DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
-
+  auto tokenizer = [](const char* start,const char* end) -> Token {
     Token result = {};
     result |= ParseWhitespace(start,end);
     result |= ParseComments(start,end);

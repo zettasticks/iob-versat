@@ -22,12 +22,9 @@
 #define MIN(A,B) ((A) < (B) ? (A) : (B))
 #define MAX(A,B) ((A) > (B) ? (A) : (B))
 
-// TODO: Not portable without also defining the linker script.
-//#define readonly __attribute__((section(".versat_rodata,\"a\"")))
-//#define readonly __attribute__((section(".rodata,\"a\"")))
+#define UNUSED __attribute__((unused))
 
-#define readonly __attribute__((section("versat.rodata,\"a\"")))
-//#define readonly
+#define readonly UNUSED __attribute__((section(".data.rel.ro")))
 
 inline float ABS(float f){return (f < 0.0f ? -f : f);};
 

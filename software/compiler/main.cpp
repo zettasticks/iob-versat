@@ -406,6 +406,37 @@ int main(int argc,char* argv[]){
     exit(-1);
   }
 
+  bool anyError = 0;
+  for(FileContent file : defaultVerilogUnits){
+    String content = file.content;
+    V_ParseResult parsed = V_ParseVerilogFile(content,perm);
+
+    if(parsed.errors.size > 0){
+      for(String str : parsed.errors){
+        printf("%.*s\n",UN(str));
+      }
+      
+      anyError = 1;
+      continue;
+    }
+
+    for(V_Node* ptr = parsed.node->childs; ptr; ptr = ptr->next){
+      Assert(ptr->type == V_NodeType_MODULE);
+
+      String name = ptr->token.val;
+      DECL_RegisterMeta(name,ptr);
+    }
+  }
+  
+  if(anyError){
+    return -1;
+  }
+
+  DECL_GetType("Mem",{});
+
+  return 0;
+
+#if 0
   Array<ParamNameAndValue> globalParams = PushArray(perm,gather.paramDefinitions);
 
   for(ParamNameAndValue p : globalParams){
@@ -479,6 +510,7 @@ int main(int argc,char* argv[]){
   if(error){
     return -1;
   }
+#endif
 
 #if 0
   for(Pair<String,ModuleInfo> p : allModules){
@@ -528,7 +560,7 @@ int main(int argc,char* argv[]){
   }
 #endif  
 
-
+#if 0
   String specFilepath = globalOptions.specificationFilepath;
 
   // TODO: Simplify this part. 
@@ -536,6 +568,7 @@ int main(int argc,char* argv[]){
   FUDeclaration* simpleType = DECL_GetType(topLevelTypeStr,globalParams);
 
   bool anyError = false;
+#endif
 
 #if 0
   

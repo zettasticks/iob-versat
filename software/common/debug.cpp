@@ -722,7 +722,6 @@ LocationNode* DEBUG_AddLocation_(LocationNode* topTail,Arena* out,iptr tag){
 
   // Find true ptr ==============================================================
   LocationNode* ptr = top;
-  LocationNode* parent = 0;
   int index = 0;
 
   while(ptr && index < size){
@@ -735,7 +734,6 @@ LocationNode* DEBUG_AddLocation_(LocationNode* topTail,Arena* out,iptr tag){
     
     // If equal then check children 
     if(equal && ptr->child){
-      parent = ptr;
       ptr = ptr->child;
     
       // Move until last ptr inside chain

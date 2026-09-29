@@ -9,6 +9,9 @@
 struct COM_Unit;
 struct COM_Edge;
 
+struct SP_Node;
+struct V_Node;
+
 enum SpecialUnitType{
   SpecialUnitType_NONE = 0,
   SpecialUnitType_INPUT = 1,
@@ -32,7 +35,6 @@ struct ParamNameAndValue2{
   Token name;
   SYM_Expr value;
 };
-
 
 enum DeclarationType{
   DeclarationType_NIL,
@@ -58,7 +60,7 @@ struct FUDeclaration{
   String metaName;
 
   String name;
-  Array<Parameter> parameters;
+  Array<Parameter> parameters; // Only the parameters that differ from basic declaration
 
   Array<Wire> configs;
   Array<Wire> states;
@@ -126,6 +128,26 @@ namespace BasicDeclaration{
 #endif
 }
 
+enum DECL_MetaType{
+  DECL_MetaType_NIL,
+  DECL_MetaType_SIMPLE,
+  DECL_MetaType_COMPOSITE
+};
+
+// TODO: We might implement a validation step for DECL_Meta in the future to make sure
+//       that we do not have problems with duplicated parameters and stuff like that.
+//       Just preserving the nodes and doing instantiation when needed is a bit clubersome.
+struct DECL_Meta{
+  DECL_Meta* next;
+  DECL_MetaType type;
+  String name;
+
+  union{
+    V_Node* simpleUnit;
+    SP_Node* compositeUnit;
+  };
+};
+
 // ======================================
 // Type
 
@@ -137,11 +159,26 @@ bool IsNil(FUDeclaration* decl);
 void DECL_Init();
 
 // ======================================
+// Parameter handling
+
+Array<ParamNameAndValue> DECL_GetDefaultParams(DECL_Meta* meta,Arena* out);
+
+// ======================================
 // Register (does not exist)
+
+// Returns true if already exists
+// TODO: Could we just reuse the node struct and have everything use the same struct?
+bool DECL_RegisterMeta(String name,V_Node* module);
+bool DECL_RegisterMeta(String name,SP_Node* module);
 
 FUDeclaration* DECL_RegisterFU(String name);
 
 // ======================================
 // Get or create if needed
 
-FUDeclaration* DECL_GetType(String name,Array<ParamNameAndValue> metaParams);
+FUDeclaration* DECL_GetType(String name,Array<ParamNameAndValue> params);
+
+// ======================================
+// Instantiation
+
+FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<ParamNameAndValue> normalizedParams);

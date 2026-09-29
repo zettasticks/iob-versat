@@ -1363,6 +1363,11 @@ int main(int argc,const char* argv[]){
       continue;
     }
 
+    Meta_State.tableHead = 0;
+    Meta_State.tableTail = 0;
+    Meta_State.typeHead = 0;
+    Meta_State.typeTail = 0;
+
     String fileName = PushString(persistOverLoops,"%s",entry->d_name);
 
     String fileNameWithoutDot = fileName;

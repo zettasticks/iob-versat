@@ -904,7 +904,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamAndValue> topLeve
              rhs.type == COM_ExprType_VAR){
 
             bool found = 0;
-            if(lhs.type == COM_EntType_VAR_WITH_CONFIG){
+            if(lhs.ent.type == COM_EntType_VAR_WITH_CONFIG){
               rhs.type = COM_ExprType_EXPR;
               rhs.expr = rhs.expr;
               found = 1;
@@ -953,7 +953,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamAndValue> topLeve
 
       // Pack into function =========================================================
       COM_Function* func = PushStruct<COM_Function>(out);
-      
+
       LL_Append(funcHead,funcTail,next,func);
     } break;
 
