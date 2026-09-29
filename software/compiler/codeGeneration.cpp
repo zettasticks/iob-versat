@@ -1,5 +1,7 @@
 #include "codeGeneration.hpp"
 
+#if 0
+
 #include "CEmitter.hpp"
 #include "VerilogEmitter.hpp"
 #include "accelerator.hpp"
@@ -60,27 +62,32 @@ Array<Array<MuxInfo>> CalculateMuxInformation(AccelInfoIterator* iter,Arena* out
   auto ExtractMuxInfo = [](AccelInfoIterator iter,Arena* out) -> Array<MuxInfo>{
     TEMP_REGION(temp,out);
 
-    auto alreadySet = StartGrowableArray<bool>(temp);
-    
-    auto builder = StartGrowableArray<MuxInfo>(out);
+    auto alreadySet = PushTrieSet<String>(temp);
+    auto b = PushList<MuxInfo>(temp);
 
-#if 1
-    for(; iter.IsValid(); iter = iter.Step()){
+    for(; iter.IsValid(); iter = iter.Next()){
       InstanceInfo* info = iter.CurrentUnit();
-      if(info->isMergeMultiplexer && !info->doesNotBelong){
-        int muxGroup = info->muxGroup;
-        if(!alreadySet[muxGroup]){
-          builder[muxGroup].configIndex = info->globalConfigPos.value();
-          builder[muxGroup].val = info->mergePort;
-          builder[muxGroup].name = info->baseName;
-          builder[muxGroup].fullName = info->fullName;
-          alreadySet[muxGroup] = true;
-        }
-      }
-    }
-#endif
 
-    return EndArray(builder);
+      if(!info->isMergeMultiplexer || info->doesNotBelong){
+        continue;
+      }
+      
+      if(alreadySet->Exists(info->fullName)){
+        continue;
+      }
+
+      alreadySet->Insert(info->fullName);
+
+      MuxInfo* mux = b->PushElem();
+
+      mux->configIndex = info->globalConfigPos.value();
+      mux->val = info->mergePort;
+      mux->name = info->baseName;
+      mux->fullName = info->fullName;
+    }
+    Array<MuxInfo> res = PushArray(out,b);
+
+    return res;
   };
 
   Array<Array<MuxInfo>> muxInfo = PushArray<Array<MuxInfo>>(out,iter->MergeSize());
@@ -536,8 +543,7 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
     int instIndex = iter.GetIndex();
 
     if(unit->specialType == SpecialUnitType_INPUT ||
-       unit->specialType == SpecialUnitType_OUTPUT ||
-       unit->specialType == SpecialUnitType_OPERATION){
+       unit->specialType == SpecialUnitType_OUTPUT){
       continue;
     }
 
@@ -568,14 +574,14 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
 
     // Configs and dealing with static configs if the unit is static
     if(unit->isStatic){
-      for(Wire w : unit->configs){
+      for(Wire w : unit->decl->configs){
         String repr = GetStaticWireFullName(unit,w,temp);
         m->PortConnect(w.name,repr);
       }
     } else {
       Array<int> ind = unit->individualWiresGlobalConfigPos;
       for(int i = 0; i < ind.size; i++){
-        m->PortConnect(PushString(temp,"%.*s",UN(unit->configs[i].name)),configs[ind[i]].name);
+        m->PortConnect(PushString(temp,"%.*s",UN(unit->decl->configs[i].name)),configs[ind[i]].name);
       }
     }
 
@@ -601,8 +607,8 @@ void EmitInstanciateUnits(AccelInfo accelInfo,VEmitter* m,FUDeclaration* module,
     }
 
     // External memories
-    for(int i = 0; i <  unit->externalMemory.size; i++){
-      ExternalMemorySymbolic ext = unit->externalMemory[i];
+    for(int i = 0; i <  unit->decl->externalMemorySymbol.size; i++){
+      ExternalMemorySymbolic ext = unit->decl->externalMemorySymbol[i];
       if(ext.type == ExternalMemoryType::ExternalMemoryType_DP){
         m->PortConnectIndexed("ext_dp_addr_%d_port_0",i,"ext_dp_addr_%d_port_0",externalSeen);
         m->PortConnectIndexed("ext_dp_out_%d_port_0",i,"ext_dp_out_%d_port_0",externalSeen);
@@ -704,9 +710,9 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
   int externalSeen = 0;
   int memoryRDataSeen = 0;
 
-  for(auto iter = StartIteration(accelInfo); iter.IsValid(); iter = iter.Next()){
+  int index = 0;
+  for(auto iter = StartIteration(accelInfo); iter.IsValid(); index++,iter = iter.Next()){
     InstanceInfo* unit = iter.CurrentUnit();
-    int instIndex = unit->localIndex;
 
     // TODO: REMOVE DEPENDENCY ON FUDECLARATION.
     FUDeclaration* decl = unit->decl;
@@ -715,7 +721,7 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
       continue;
     }
 
-    m->StartInstance(unit->typeName,SF("%.*s_%d",UN(unit->name),instIndex));
+    m->StartInstance(unit->decl->name,SF("%.*s_%d",UN(unit->name),index));
 
     for(ParamAndValue p : unit->params){
       m->InstanceParam(p.name,p.val);
@@ -739,7 +745,7 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
     }
 
     SYM_Expr configDataExpr = SYM_0;
-    for(Wire w : unit->configs){
+    for(Wire w : unit->decl->configs){
       String repr = SYM_Repr(configDataExpr,temp);
       String size = SYM_Repr(w.sizeExpr,temp);
       
@@ -778,8 +784,8 @@ void EmitTopLevelInstanciateUnits(VEmitter* m,VersatComputedValues val){
     }
 
     // External memories
-    for(int i = 0; i <  unit->externalMemory.size; i++){
-      ExternalMemorySymbolic ext = unit->externalMemory[i];
+    for(int i = 0; i <  unit->decl->externalMemorySymbol.size; i++){
+      ExternalMemorySymbolic ext = unit->decl->externalMemorySymbol[i];
       if(ext.type == ExternalMemoryType::ExternalMemoryType_DP){
         m->PortConnectIndexed("ext_dp_addr_%d_port_0",i,"ext_dp_addr_%d_port_0_o",externalSeen);
         m->PortConnectIndexed("ext_dp_out_%d_port_0",i,"ext_dp_out_%d_port_0_o",externalSeen);
@@ -963,7 +969,7 @@ void EmitDisableReadsAndWrites(CEmitter* c,String basePointerName,AccelInfo* inf
 
 #if 1
   // TODO: The basePointerName is stupid. Need to normalize between wrapper and firmware names
-  for(auto iter = StartIteration(info); iter.IsValid(); iter = iter.Step()){
+  for(auto iter = StartIteration(info); iter.IsValid(); iter = iter.Step()){ // RESOLVED
     InstanceInfo* info = iter.CurrentUnit();
 
     if(info->isComposite){
@@ -1003,13 +1009,13 @@ VerilogModuleInterface* GenerateModuleInterface(FUDeclaration* decl,Arena* out){
 
   m->StartGroup("Inputs");
   for(int i = 0; i < decl->NumberInputs(); i++){
-    m->AddPortIndexed("in%d",i,decl->inputSize[i],WireDir_INPUT);
+    m->AddPortIndexed("in%d",i,decl->inputs[i],WireDir_INPUT);
   }
   m->EndGroup();
 
   m->StartGroup("Outputs");
   for(int i = 0; i < decl->NumberOutputs(); i++){
-    m->AddPortIndexed("out%d",i,decl->outputSize[i],WireDir_OUTPUT);
+    m->AddPortIndexed("out%d",i,decl->outputs[i],WireDir_OUTPUT);
   }
   m->EndGroup();
 
@@ -1088,8 +1094,8 @@ VerilogModuleInterface* GenerateModuleInterface(FUDeclaration* decl,Arena* out){
   }
   
   m->StartGroup("ExternalMemory");
-  for(int i = 0; i <  decl->externalMemorySymbol.size; i++){
-    ExternalMemorySymbolic ext = decl->externalMemorySymbol[i];
+  for(int i = 0; i <  decl->externalMemory.size; i++){
+    ExternalMemorySymbolic ext = decl->externalMemory[i];
     FULL_SWITCH(ext.type){
     case ExternalMemoryType_DP: {
       m->AddPortIndexed("ext_dp_addr_%d_port_0",i,ext.dp[0].bitSize,WireDir_OUTPUT);
@@ -1205,8 +1211,8 @@ void OutputCircuitSource(FUDeclaration* module,FILE* file){
   }
   
   // External Memory interface
-  for(int i = 0; i <  module->externalMemorySymbol.size; i++){
-    ExternalMemorySymbolic sym_ext = module->externalMemorySymbol[i];
+  for(int i = 0; i <  module->externalMemory.size; i++){
+    ExternalMemorySymbolic sym_ext = module->externalMemory[i];
 
     if(sym_ext.type == ExternalMemoryType::ExternalMemoryType_DP){
       m->OutputIndexed("ext_dp_addr_%d_port_0",i,sym_ext.dp[0].bitSize);
@@ -1636,7 +1642,7 @@ Array<TypeStructInfoElement> ExtractStructuredConfigs(Array<InstanceInfo> info,A
       continue;
     }
     
-    for(int i = 0; i < in.configs.size; i++){
+    for(int i = 0; i < in.decl->configs.size; i++){
       int config = in.individualWiresGlobalConfigPos[i];
 
       maxConfig = std::max(maxConfig,config);
@@ -1647,7 +1653,7 @@ Array<TypeStructInfoElement> ExtractStructuredConfigs(Array<InstanceInfo> info,A
       }
 
       ArenaList<String>* list = *res.data;
-      String name = PushString(out,"%.*s_%.*s",UN(in.fullName),UN(in.configs[i].name));
+      String name = PushString(out,"%.*s_%.*s",UN(in.fullName),UN(in.decl->configs[i].name));
 
       // Quick and dirty way of skipping same name
       bool skip = false;
@@ -1766,6 +1772,8 @@ StructInfo* GenerateStateStruct(AccelInfoIterator iter,Arena* out){
 
   StructInfo* res = PushStruct<StructInfo>(out);
 
+#if 0
+
   InstanceInfo* parent = iter.GetParentUnit();
   if(parent){
     res->name = parent->typeName;
@@ -1856,6 +1864,7 @@ StructInfo* GenerateStateStruct(AccelInfoIterator iter,Arena* out){
   }
   
   res->memberList = list;
+#endif
   
   return res;
 }
@@ -1869,7 +1878,7 @@ StructInfo* GenerateConfigStructRecurse(AccelInfoIterator iter,TrieMap<StructInf
   if(parent && parent->isMerge){
     res.name = iter.GetMergeName();
   } else if(parent){
-    res.name = parent->typeName;
+    res.name = parent->decl->name;
   }
 
   // TODO: HACK
@@ -1905,13 +1914,13 @@ StructInfo* GenerateConfigStructRecurse(AccelInfoIterator iter,TrieMap<StructInf
           elem.name = iter.GetMergeName();
           elem.childStruct = subInfo;
           elem.localPos = 0; // Zero because the merge struct is basically a wrapper. 
-          elem.size = topUnit->configs.size;
+          elem.size = topUnit->decl->configs.size;
           elem.isMergeMultiplexer = topUnit->isMergeMultiplexer;
 
           *list->PushElem() = elem;
         }
         
-        res.name = topUnit->typeName;
+        res.name = topUnit->decl->name;
         res.originalName = res.name;
         res.memberList = list;
 
@@ -1941,7 +1950,7 @@ StructInfo* GenerateConfigStructRecurse(AccelInfoIterator iter,TrieMap<StructInf
       if(ContainsPartialShare(unit)){
         StructInfo simpleSubInfo = {};
         
-        Array<Wire> configs = unit->configs;
+        Array<Wire> configs = unit->decl->configs;
         
         ArenaDoubleList<StructElement>* elements = PushArenaDoubleList<StructElement>(out);
         int index = 0;
@@ -1959,8 +1968,8 @@ StructInfo* GenerateConfigStructRecurse(AccelInfoIterator iter,TrieMap<StructInf
           elem->childStruct = &integer;
         }
         
-        simpleSubInfo.name = unit->typeName;
-        simpleSubInfo.originalName = unit->typeName;
+        simpleSubInfo.name = unit->decl->name;
+        simpleSubInfo.originalName = unit->decl->name;
         simpleSubInfo.memberList = elements;
 
         auto res = generatedStructs->GetOrAllocate(simpleSubInfo);
@@ -1978,7 +1987,7 @@ StructInfo* GenerateConfigStructRecurse(AccelInfoIterator iter,TrieMap<StructInf
         // NOTE: As such, we can detect in here wether we are generating something that already exists or not. Instead of using the TrieMap approach later in the ExtractStructs.
         StructInfo simpleSubInfo = {};
         
-        Array<Wire> configs = unit->configs;
+        Array<Wire> configs = unit->decl->configs;
         
         ArenaDoubleList<StructElement>* elements = PushArenaDoubleList<StructElement>(out);
         int index = 0;
@@ -1994,8 +2003,8 @@ StructInfo* GenerateConfigStructRecurse(AccelInfoIterator iter,TrieMap<StructInf
           elem->childStruct = &integer;
         }
         
-        simpleSubInfo.name = unit->typeName;
-        simpleSubInfo.originalName = unit->typeName;
+        simpleSubInfo.name = unit->decl->name;
+        simpleSubInfo.originalName = unit->decl->name;
         simpleSubInfo.memberList = elements;
 
         auto res = generatedStructs->GetOrAllocate(simpleSubInfo);
@@ -2863,6 +2872,7 @@ assign data_wstrb = csr_wstrb;
       m->Set("unit_valids[0]","1'b1");
       m->EndIf();
     } else {
+#if 0
       for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
         InstanceInfo* unit = iter.CurrentUnit();
 
@@ -2877,6 +2887,7 @@ assign data_wstrb = csr_wstrb;
         m->Set(SF("unit_valids[%d]",unit->memGlobalIndex),"1'b1");
         m->EndIf();
       }
+#endif
     }
     m->EndBlock();
 
@@ -3053,8 +3064,10 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
   AccelInfoIterator iter = StartIteration(&info);
   Array<Wire> allStaticsVerilatorSide = info.allStaticWires;
 
-  StructInfo* stateStructInfo = GenerateStateStruct(iter,temp);
   Array<TypeStructInfo> stateStructs = {};
+
+#if 0 // nocheckin: HACK - State disabled 
+  StructInfo* stateStructInfo = GenerateStateStruct(iter,temp);
   if(!Empty(stateStructInfo->memberList)){
     // We generate an extra level, so we just remove it here.
     stateStructInfo = stateStructInfo->memberList->head->elem.childStruct;
@@ -3080,6 +3093,7 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
 
     stateStructs = GenerateStructs(allStateStructs,"State",false,temp);
   }
+#endif
 
   // NOTE: This function also fills the instance info member of the acceleratorInfo. This function only fills the first partition, but I think that it is fine because that is the only one we use. We generate the same structs either way.
   StructInfo* structInfo = GenerateConfigStruct(iter,temp);
@@ -3221,14 +3235,19 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
 
         for(ConfigStuff stuff : func->stuff){
           if(stuff.type == ConfigStuffType_ADDRESS_GEN){
+#if 0 // nocheckin: HACK
             AccelInfoIterator iter = StartIteration(&info,mergeIndex);
             InstanceInfo* info = Find(iter.StepInsideOnly(),stuff.lhs);
             
             Assert(info);
 
+
             // TODO: Currently this is hardcoded for the VUnits. Need to actually start modelling the concept of address interface size and do it right.
             Opt<SYM_Expr> valOpt = GetParameterValue(info,"ADDR_W");
             Assert(valOpt.has_value());
+#endif
+            // nocheckin: HACK
+            Opt<SYM_Expr> valOpt = SYM_Lit(12);
 
             String symRepr = SYM_Repr(valOpt.value(),temp);
             String maxSize = PushString(temp,"(1 << %.*s)",UN(symRepr));
@@ -3521,12 +3540,19 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
             String varName = transf.variable;
             String sizeExpr = SYM_Repr(transf.size,temp);
             
+#if 0
             AccelInfoIterator iter = StartIteration(&info,0);
             InstanceInfo* unitInfo = Find(iter.StepInsideOnly(),transf.name);
 
             Assert(unitInfo);
 
+            TEST_MARK();
+
             String entityMemName = GetEntityMemName(unitInfo,temp);
+#else
+            String name = HIER_GetFullName(transf.name,"_",temp);
+            String entityMemName = PushString(temp,"TOP_%.*s_addr",UN(name));
+#endif
             
             FULL_SWITCH(transf.dir){
             case TransferDirection_NONE: Assert(false); break;
@@ -4040,7 +4066,7 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
   auto build = PushList<WireExtra>(temp);
   
   for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Next()){
-    for(Wire config : iter.CurrentUnit()->configs){
+    for(Wire config : iter.CurrentUnit()->decl->configs){
       WireExtra* ptr = build->PushElem();
       ptr->w = config;
       ptr->source = "config->TOP_";
@@ -4342,7 +4368,8 @@ static iptr WRITE_@{0} = 0;)FOO";
     TE_SetString("memoryAccessDefines",content);
   }
   
-  {
+  if(0){ // nocheckin: HACK - Disabled 
+#if 0
     CEmitter* c = StartCCode(CCode1,CCode2);
 
     int varIndex = 0;
@@ -4368,6 +4395,9 @@ static iptr WRITE_@{0} = 0;)FOO";
 
     String content = PushASTRepr(c,temp);
     TE_SetString("memoryUnpack",content);
+#endif
+  } else {
+    TE_SetString("memoryUnpack",{});
   }
 
   {
@@ -4497,7 +4527,7 @@ void Output_VerilatorTopUnit(String topLevelTypeName,FUDeclaration* topLevelDecl
     m->Output("rdata","DATA_W");
   }
  
-  Array<ExternalMemorySymbolic> external = module->externalMemorySymbol;
+  Array<ExternalMemorySymbolic> external = module->externalMemory;
 
   // TODO: Repeated code. Compress.
   for(int i = 0; i < external.size; i++){
@@ -5304,8 +5334,8 @@ void OutputTestbench(FUDeclaration* decl,FILE* file){
   }
 
   if(containsMemories){
-    for(int i = 0; i <  decl->externalMemorySymbol.size; i++){
-      ExternalMemorySymbolic ext  =  decl->externalMemorySymbol[i];
+    for(int i = 0; i <  decl->externalMemory.size; i++){
+      ExternalMemorySymbolic ext  =  decl->externalMemory[i];
       FULL_SWITCH(ext.type){
       case ExternalMemoryType_DP: {
         m->StartInstance(DP_ModuleName,SF("ext_dp_%d",i));
@@ -5471,7 +5501,6 @@ GEN_StructInfo* GEN_GenerateConfigStruct(String topName,InstanceInfo* top,Arena*
   GEN_StructElem* tail = 0;
 
   for(InstanceInfo* ptr = top; ptr; ptr = ptr->next){
-    DEBUG_BREAK();
     if(ptr->decl->configs.size == 0){
       continue;
     }
@@ -5527,6 +5556,68 @@ GEN_StructInfo* GEN_GenerateConfigStruct(String topName,InstanceInfo* top,Arena*
 
   return res;
 }
+
+GEN_StructInfo* GEN_GenerateStateStruct(String topName,InstanceInfo* top,Arena* out){
+  GEN_StructElem* head = 0;
+  GEN_StructElem* tail = 0;
+
+  for(InstanceInfo* ptr = top; ptr; ptr = ptr->next){
+    if(ptr->decl->states.size == 0){
+      continue;
+    }
+
+    if(ptr->isMerge){
+      GEN_StructElem* mergeHead = 0;
+      GEN_StructElem* mergeTail = 0;
+
+      InstanceInfo* newTop = &ptr->decl->info.infos[0].info[0];
+
+      int partIndex = 0;
+      for(InstanceInfo* newPtr = newTop; newPtr; partIndex++,newPtr = newPtr->mergeNext){
+        MergePartition part = ptr->decl->info.infos[partIndex];
+        
+        String partName = part.name;
+
+        GEN_StructInfo* info = GEN_GenerateStateStruct(partName,newPtr,out);
+
+        GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
+        elem->name = PushString(out,partName);
+        elem->type = info;
+
+        LL_Append(mergeHead,mergeTail,next,elem);
+      }
+
+      GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
+      elem->childs = mergeHead;
+
+      LL_Append(head,tail,next,elem);
+    } else {
+      GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
+
+      if(ptr->isComposite){
+        InstanceInfo* newTop = &ptr->decl->info.infos[0].info[0];
+        elem->type = GEN_GenerateStateStruct(ptr->decl->name,newTop,out);
+      } else {
+        elem->simpleTypename = "int";
+      }
+
+      elem->name = PushString(out,ptr->name);
+
+      if(ptr->isMergeMultiplexer){
+        elem->isMuxMultiplexer;
+      }
+
+      LL_Append(head,tail,next,elem);
+    }
+  }
+
+  GEN_StructInfo* res = PushStruct<GEN_StructInfo>(out);
+  res->elements = head;
+  res->name = PushString(out,"%.*sState",UN(topName));
+
+  return res;
+}
+
 
 bool GEN_IsSimpleType(GEN_StructElem* elem){
   bool res = !Empty(elem->simpleTypename);
@@ -5586,3 +5677,5 @@ String GEN_Repr(GEN_StructInfo* info,Arena* out){
   String res = EndString(out,b);
   return res;
 }
+
+#endif

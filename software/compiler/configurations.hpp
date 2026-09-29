@@ -1,10 +1,14 @@
 #pragma once
 
+#if 0
+
 #include "memory.hpp"
 #include "accelerator.hpp"
 #include "addressGen.hpp"
 #include "verilogParsing.hpp"
 #include "hierName.hpp"
+
+#include "compiler.hpp"
 
 struct SimplePortInstance{
   int inst;
@@ -18,202 +22,7 @@ struct SimplePortConnection{
 };
 
 struct StructInfo;
-
-// How does this work?
-
-// Data that is carried directly from the units is set inside GenerateInitialInstanceInfo
-// Data that is computed from graph / data that depends on other units is calculated inside FillInstanceInfo
-
-// We currently just stuff everything into this struct, so it's easier to visualize all the info that we need for the current accelerator.
-// Some of this data is duplicated/unnecessary, but for now we just carry on since this simplifies debugging a lot, being able to see all the info for a given accelerator directly.
-// This approach is very slow but easier to debug since everything related to one unit is all in the same place.
-// Until I find a better way of debugging (visualizing) SoA, this will stay like this for a while.
-
-struct ParamAndValue{
-  String name;
-  SYM_Expr val;
-};
-
-enum SpecialUnitType{
-  SpecialUnitType_NONE = 0,
-  SpecialUnitType_INPUT = 1,
-  SpecialUnitType_OUTPUT = 2,
-  SpecialUnitType_FIXED_BUFFER = 3,
-  SpecialUnitType_VARIABLE_BUFFER = 4,
-  SpecialUnitType_OPERATION = 5
-};
-
-// TODO: Put some note explaining the required changes when inserting stuff here.
-
-// TODO: IMPORTANT: A lot of this data is not properly handling parameters.
-//       As an example, the mem mapped bits and all that stuff is not actually being influenced by the parameters
-//       This means that a lot of this info does not change if we have different parameters or not to the units.
-//       We are also getting "lucky" because some of the codeGeneration code is not actually using these values
-//       when it should. We are essentially bypassing the logic that we have in here because the data that is 
-//       calculated in here is not proper.
-
-// NOTE: How to fix this? The way I see it is that the simplest way of doing this is to first do a pass where we
-//       calculate all the values of the parameters globally. Meaning that if I have a unit instantiated with
-//       unit #(.PARAM_A(5),.PARAM_B(PARAM_X)) and the module above has unit #(.PARAM_X(7)) then we 
-//       have the values of the unit parameters being .PARAM_A = 5, .PARAM_B = 7.
-
-//       After doing this first pass we can then calculated everything that requires parameters by making a 
-//       a reference to these values.
-
-// NOTE: Basically, 1) Instantiate everything, every unit knows what the final value of its parameter is.
-//                  2) Calculate all the other stuff based on the "environment" of its parameters.
-//                  3) All the codeGeneration data is provided from InstanceInfo meaning that if something is 
-//                     miss calculated the problem is in here not in codeGeneration.cpp.
-
-// TODO - A bunch of members have different purposes and we are not keeping track of it.
-//        Some members are extracted directly from the inst so not important.
-//        Some members are symbolic expressions because they might depend on parameters and such.
-//        Some members are instantiation of symbolic expressions. These members only make sense 
-//          for the final AccelInfo, the one used to generate the Verilog/C code.
-//        Either we separate stuff into proper structures (which I do not like since I prefer to have
-//          every in the same place) or we divide the members into groups according to how they are used
-//          and put some comments explaining stuff.
-struct InstanceInfo{
-  InstanceInfo* next;
-  InstanceInfo* prev;
-  InstanceInfo* mergeNext;
-  InstanceInfo* mergePrev;
-
-  int level;
-  FUDeclaration* decl;
-  String typeName;
-  String parentTypeName;
-
-  int localIndex;
-
-  int id;
-  String name;
-  String baseName; // NOTE: If the unit does not belong to the merge partition the baseName will equal name.
-  String fullName;
-
-  Array<Wire> configs;
-  Array<Wire> states;
-
-  Array<ExternalMemorySymbolic> externalMemory;
-  SingleInterfaces singleInterfaces;
-  
-  Opt<int> globalStaticPos; // Separating static from global makes stuff simpler. If mixing together, do not forget that struct generation cares about source of configPos.
-  Opt<int> globalConfigPos;
-  Opt<int> localConfigPos;
-
-  Array<int> individualWiresGlobalStaticPos;
-  Array<int> individualWiresGlobalConfigPos;
-  Array<int> individualWiresLocalConfigPos;
-  Array<bool> individualWiresShared;
-  
-  Array<ParamAndValue> params;
-
-  bool isStatic;
-  bool isGloballyStatic;
-  
-  bool isShared;
-  int sharedIndex;
-  
-  Opt<int> statePos;
-  
-  // Nil if no mem map, 0 if mem mapped with no address bits and any positive number is the number of bits.
-  SYM_Expr memMapSym;
-  iptr memMapped; // If memMapSym is non nil then this contains the start address
-
-  int memGlobalIndex;
-  int memSize;
-  String globalMemDecisionMask;
-  int memStart;
-  int memEnd;
-
-  Opt<int> delayPos;
-  Array<int> extraDelay;
-  int baseNodeDelay;
-  int numberDelays;
-
-  // TODO: There are a couple of variables like these that we could just put into an union.
-  // Only makes sense on buffer units.
-  int variableBufferDelay;
-
-  bool isComposite;
-  bool isMerge;
-
-  int nIOs;
-
-  // Sepcific to merge muxs
-  bool isMergeMultiplexer;
-  int mergePort;
-  int muxGroup; // TODO: I think that we can remove muxGroup. We know which units belong or not to a given merge partition and we know their input value so there is no point in keeping the harder to understand and compute muxGroups.
-
-  bool doesNotBelong; // For merge units, if true then this unit does not actually exist for the given partition
-  int special;
-  int localOrder;
-  FUInstance* inst; // Points to the recon instance for merge declarations.
-  bool debug;
-
-  Array<int> inputDelays;
-  Array<int> outputLatencies;
-  Array<int> portDelay;
-  int partitionIndex; // TODO: What does this do? Probably a remnant from the old implementation.
-
-  Array<SimplePortConnection> inputs; 
-
-  Array<SimplePortInstance> inputsDirectly;
-  Array<bool> outputIsConnected;
-
-  AddressGenInst supportedAddressGen;
-
-  SpecialUnitType specialType;
-
-  StructInfo* structInfo;
-};
-
 struct ConfigFunction;
-
-/*
-
-Approach:
-
-Push the parameter stuff to the AcceleratorInfo.
-Make a function that iterates over the AcceleratorInfo and instantiates parameters.
-
-From that point on everything that requires information uses it from an instantiated AcceleratorInfo.
-The Circuits still output parameters, but the final product, the top level instance instantiates everything that is instantiated. The circuits are parameterized, the versat top level instance is not (unless we can sneak in a few stuff, as long as the software does not depend on it we can still provide it).
-
-The only thing that needs parameters is the 
-
-Change top level code generation function to use the instantiated values inside the AcceleratorInfo.
-
-What problem are we trying to solve?
-
-When an accelerator contains multiple merged units, we view it as a single partition that contains each unit activated to a single type.
-
-If we have Module {A,B} where A = a | b and X = x | y, then we have 4 merge partitions: (a,x),(a,y),(b,x),(b,y).
-
-Each partition contains two activated types at the same time. The first partition (a,x) contains the activated type a for the unit A and the activated type x for the unit B.
-
-If a contains a user function and x contains a user function then this "partition" contains two user functions. One that activates the a side of the A unit and configures it and the other that activates the x side of the B unit and configures it.
-
-Which means that:
-
-  Activating one merge unit cannot change the activation of another merge unit. They need to be separated. 
-
-Info that is tied to an unit is stored inside the InstanceInfo.
-Info that is tied to a merge unit is stored inside each MergePartition.
-
-What about info that is tied to a module?
-If a module contains two merged units (of size 2) how do I save info that is tied to that unit?
-
-The thing is that I can tie info to the unit by putting it into InstanceInfo.
-  The problem is that we now have two ways of tying the UserConfig into units. The InstanceInfo and MergePartition way.
-
-Maybe I can uplift this if we change ConfigFunctions to contain the merge index that is associated to. We can also have the struct contain the name of the unit instead of putting directly to it.
-
-As long as the userFunctions can be instantiated for a given configuration 
-
-For now, lets process to handle Composite units first and then we can tackle the merge stuff.
-
-*/
 
 struct MergePartition{
   String name;
@@ -234,72 +43,8 @@ struct MergePartition{
   Array<int> outputLatencies;
 };
 
-// TODO: A lot of values are repeated between merge partitions and the like. Not a problem for now, maybe tackle it when things become stable. Or maybe leave it be, could be easier in future if we want to implement something more complex.
-struct AccelInfo{
-  Array<MergePartition> infos;
-    
-  int inputs;
-  int outputs;
-
-  int amountOfMemMappedInterfaces;
-  int configs;
-  int states;
-  int delays;
-  int nIOs;
-  int statics;
-  int externalMemoryInterfaces;
-  int numberConnections;
-  int nDones;
-
-  Array<Wire> allStaticWires;
-
-  SYM_Expr staticBits;
-
-  // This value is now the MAXIMUM of the units addresses.
-  SYM_Expr memMapBitsSym;
-
-  int unitsMapped;
-  bool signalLoop;
-  bool implementsDone;
-};
-
 // NOTE: The member 'level' of InstanceInfo needs to be valid in order for this iterator to work. 
 //       Do not know how to handle merged. Should we iterate Array<InstanceInfo> and let outside code work, or do we take the accelInfo and then allow the iterator to switch between different merges and stuff?      
-
-// MARK
-struct AccelInfoIterator{
-  String accelName; // Usually for debug purposes.
-  AccelInfo* info;
-  int index;
-  int mergeIndex;
-  int iterSize;
-
-  void SetMergeIndex(int index){mergeIndex = index;};
-  Array<InstanceInfo>& GetCurrentMerge();
-  int MergeSize();
-
-  String GetMergeName();
-  
-  bool IsValid();
-  
-  int GetIndex();
-  int GetIndex(InstanceInfo* instance);
-  
-  AccelInfoIterator GetParent();
-  InstanceInfo* GetParentUnit();
-  InstanceInfo* CurrentUnit();
-  InstanceInfo* GetUnit(int index);
-  Array<InstanceInfo*> GetAllSubUnits(Arena* out);
-
-  // Next and step mimick gdb like commands. Does not update current, instead returning the advanced iterator
-  WARN_UNUSED AccelInfoIterator Next(); // Next unit in current level only.
-  WARN_UNUSED AccelInfoIterator Step(); // Next unit in the array. Goes down and up the levels as it progresses.
-  WARN_UNUSED AccelInfoIterator StepInsideOnly(); // Returns NonValid if non composite unit
-
-  // Going in reverse might be helpful to simplify code. Sometimes it is capable of removing recursing entirely, although it takes a bit to get used to.
-  WARN_UNUSED AccelInfoIterator ReverseStep();
-  int CurrentLevelSize();
-};
 
 struct Partition{
   int value;
@@ -347,7 +92,6 @@ Opt<Wire*> CONF_GetEnableWire(InstanceInfo* info); // Memory accessing units mig
 // ======================================
 // Static naming conventions
 
-String GetStaticFullName(InstanceInfo* info,Arena* out);
 String GetStaticWireFullName(InstanceInfo* info,Wire wire,Arena* out);
 
 // TODO: Reorganize, must be to a better place.
@@ -359,3 +103,27 @@ InstanceInfo* Find(AccelInfoIterator iter,HIER_Name hierarchicalNames);
 // HACK: ======================================================================
 
 void HACK_InitNode(AccelInfo* info);
+
+/*
+
+Parameters:
+
+There are two kinds of parameters. Verilog parameters and Versat parameters.
+
+Verilog parameters could in theory be propagated so that the final code generated keeps these parameters around. They become actual Verilog parameters and therefore the user instantiating the Verilog code can decide what they are.
+
+Versat parameters on the other had have no Verilog counterpart. In fact they might affect the entire generated accelerator in such a way that is basically impossible to generalize to the runtime (it technically could be possible but we would need to compute a lot of stuff at runtime in order to do that).
+
+Versat parameters are easy to handle. We make it so that we have a function that given a typename and the parameters we return a FUDeclaration that is an instantiation of those parameters. FUDeclaration now becomes an instantiation of a more generic form which might just be the result of the parsing step that we have at the beginning:
+
+Parse -> Store parsed somewhere -> Parameter + ParsedResult = Compiled module.
+
+The problem is the Verilog Parameters. If we make it so that we also follow the Versat parameters approach, then that means that a VWrite (.ADDR_W=8) and a VWrite (.ADDR_W=9) would be completely different FUDeclarations. We can still store the fact that they are the instances of a common unit, but we would then need to add another declaration type.
+
+FUDeclaration and MetaFUDeclaration or something.
+
+At the same time, because we still want to propagate parameters, we still need to represent stuff using symbolic expressions. We cannot escape them.
+
+*/
+
+#endif

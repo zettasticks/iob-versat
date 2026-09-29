@@ -1,9 +1,11 @@
 #pragma once
 
-#include "declaration.hpp"
-#include "merge.hpp"
-
 #include "userConfigs.hpp"
+
+#if 0
+
+//#include "declaration.hpp"
+#include "merge.hpp"
 
 struct ConfigFunctionDef;
 struct SpecExpression;
@@ -519,8 +521,12 @@ struct GroupIterator{
 
 GroupIterator IterateGroup(Env* env,VarGroup* group,Arena* out);
 
+#endif
+
 // Parser stuff ===============================================================
 // TODO: Remove all the list nodes, we can just have them be free and the "compiler" will just switch on the base type instead, no need to group stuff like we are currently doing.
+
+#include "parser.hpp"
 #include "versatSpecificationParser_meta.hpp"
 
 struct SP_Node{
@@ -573,11 +579,12 @@ SP_Node* SP_ParseVarGroup(Parser* parser,Arena* out);
 SP_Node* SP_ParseConnection(Parser* parser,Arena* out);
 SP_Node* SP_ParseConfigStatements(Parser* parser,Arena* out);
 SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out);
+SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out);
 
 // ======================================
 // Parsing
 
-SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out);
+SP_Node* SP_ParseSpec(String content,Arena* out);
 
 // ======================================
 // Helpers

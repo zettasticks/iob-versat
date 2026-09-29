@@ -2,6 +2,8 @@
 
 #include "versat.hpp"
 
+#if 0
+
 struct FUInstance;
 struct Accelerator;
 struct AcceleratorMapping;
@@ -202,6 +204,8 @@ FUDeclaration* Merge(Array<FUDeclaration*> types,
 FUDeclaration* Merge2(Array<FUDeclaration*> types,
                      String name,Array<SpecificMergeNode> specifics,
                       MergeModifier modifier = {},MergingStrategy strat = MergingStrategy::CONSOLIDATION_GRAPH);
+
+#endif
 
 /*
 

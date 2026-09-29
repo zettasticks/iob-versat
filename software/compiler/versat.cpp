@@ -1,5 +1,7 @@
 #include "versat.hpp"
 
+#if 0
+
 #include "globals.hpp"
 
 #include "declaration.hpp"
@@ -118,7 +120,7 @@ Opt<FUDeclaration*> RegisterModuleInfo(ModuleInfo* info,Arena* out){
   
   decl.configs = configs;
   decl.states = states;
-  decl.externalMemorySymbol = extSym;
+  decl.externalMemory = extSym;
   decl.numberDelays = info->nDelays;
   decl.info.nIOs = info->nIO;
 
@@ -221,14 +223,6 @@ void FillDeclarationWithAcceleratorValues(FUDeclaration* decl,Accelerator* accel
   
   AccelInfo val = CalculateAcceleratorInfo(accel,true,out,calculateOrder);
   decl->info = val;
-
-  for(int i = 0; i < val.infos.size; i++){
-    for(auto iter = StartIteration(&val,i); iter.IsValid(); iter = iter.Next()){
-      InstanceInfo* info = iter.CurrentUnit();
-
-      info->parentTypeName = decl->name;
-    }
-  }
  
   // All the single interfaces are simple of propagating. We can just do an OR of everything.
   for(FUInstance* ptr : accel->allocated){
@@ -242,7 +236,7 @@ void FillDeclarationWithAcceleratorValues(FUDeclaration* decl,Accelerator* accel
   decl->singleInterfaces |= SingleInterfaces_CLK;
   decl->singleInterfaces |= SingleInterfaces_RESET;
   
-  decl->externalMemorySymbol = PushArray<ExternalMemorySymbolic>(out,val.externalMemoryInterfaces);
+  decl->externalMemory = PushArray<ExternalMemorySymbolic>(out,val.externalMemoryInterfaces);
   int externalIndex = 0;
   for(AccelInfoIterator iter = StartIteration(&val); iter.IsValid(); iter = iter.Step()){
     InstanceInfo* unit = iter.CurrentUnit();
@@ -251,7 +245,7 @@ void FillDeclarationWithAcceleratorValues(FUDeclaration* decl,Accelerator* accel
       continue;
     }
     
-    auto arr = unit->externalMemory;
+    auto arr = unit->decl->externalMemorySymbol;
     for(int i = 0; i < arr.size; i++){
       decl->externalMemorySymbol[externalIndex] = arr[i];
       decl->externalMemorySymbol[externalIndex].interface = externalIndex;
@@ -289,7 +283,7 @@ void FillDeclarationWithAcceleratorValues(FUDeclaration* decl,Accelerator* accel
         continue;
       }
 
-      Wire wire = unit->configs[i];
+      Wire wire = unit->decl->configs[i];
       decl->configs[configIndex] = wire;
 
       // TODO: We need to do this for state as well. And we probably want to make this more explicit.
@@ -646,3 +640,4 @@ bool IsTypeHierarchical(FUDeclaration* decl){
    return res;
 }
 
+#endif

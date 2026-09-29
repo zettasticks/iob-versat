@@ -148,6 +148,20 @@ const char* GetFilename(const char* fullpath);
 #define PRINTF_WITH_LOCATION(...) do{ printf("%s:%d-",__FILE__,__LINE__); printf(__VA_ARGS__); fflush(stdout);} while(0)
 #define PRINT_STRING(STR) do{ printf("%.*s\n",UN((STR))); fflush(stdout);} while(0)
 
+// When run the test script picks up on this and displays which tests executed this.
+// Helpful to check which tests run a specific part of the code.
+#define TEST_MARK() \
+once(){ \
+  printf("\n\nTEST_MARK_TO_BE_CAPTURED_BY_TEST_PY\n\n"); \
+  DEBUG_BREAK(); \
+} \
+
+#define TEST_MARK_VAL(C_STR) \
+once(){ \
+  printf("\n\nTEST_MARK_TO_BE_CAPTURED_BY_TEST_PY:%s\n\n",C_STR); \
+  DEBUG_BREAK(); \
+} \
+
 // Use when debugging, easier to search due to the 'd' at the beginning, less confusion with non-debugging printfs
 int dprintf(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 

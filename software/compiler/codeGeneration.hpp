@@ -158,6 +158,9 @@ inline bool operator==(StructInfo& l,StructInfo& r){
 // wires "concatenated" to generate the final identifier and so on).
 //  TODO: Put more stuff in here.
 
+
+#if 0
+
 String GEN_GetStructMemberName(InstanceInfo* info,Wire wire,Arena* out);
 
 int GetIndex(VersatComputedValues val,VersatRegister reg);
@@ -177,7 +180,7 @@ void OutputIterativeSource(FUDeclaration* decl,FILE* file);
 void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topLevelDecl,String hardwarePath,String softwarePath,VersatComputedValues val);
 
 void OutputTestbench(FUDeclaration* decl,FILE* file);
-
+#endif
 
 // ======================================
 // New struct generation code
@@ -207,6 +210,7 @@ struct GEN_StructInfo{
 // Gen Type
 
 GEN_StructInfo* GEN_GenerateConfigStruct(String topName,InstanceInfo* top,Arena* out);
+GEN_StructInfo* GEN_GenerateStateStruct(String topName,InstanceInfo* top,Arena* out);
 
 bool GEN_IsSimpleType(GEN_StructElem* elem);
 bool GEN_IsUnion(GEN_StructElem* top);

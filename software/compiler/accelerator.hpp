@@ -5,6 +5,8 @@
 
 #include "accelerator_meta.hpp"
 
+#if 0
+
 struct FUInstance;
 struct FUDeclaration;
 struct Accelerator;
@@ -113,12 +115,6 @@ inline bool operator==(const Edge& e0,const Edge& e1){
 struct EdgeDelayInfo{
   int* value;
   bool isAny;
-};
-
-// Need to formalize this. 
-struct DelayInfo{
-  int value;
-  bool isAny; // True if the edge can have any delay at runtime (because attached to a variable buffer). If true, the value represents the minimum amount of delay needed by the edge (we can't have negative delays, even in an isAny edge)
 };
 
 // Three possibilities. A node contains zero isAny edges. A node contains all isAny edges. A node contains some isAny edges.
@@ -271,7 +267,6 @@ struct VersatComputedValues{
   int nDelays;
   SYM_Expr delayBitsStart;
 
-  int nUnits;
   int nDones;
   
   // Configurations = config + static + delays
@@ -328,13 +323,6 @@ struct EdgeIterator{
 struct CalculatedOffsets{
    Array<int> offsets;
    int max;
-};
-
-struct DelayToAdd{
-  Edge edge;
-  String bufferName;
-  String bufferParameters;
-  int bufferAmount;
 };
 
 struct SubMappingInfo{
@@ -452,3 +440,5 @@ void MappingPrintInfo(AcceleratorMapping* map);
 FUInstance* MappingMapNode(AcceleratorMapping* mapping,FUInstance* inst);
 
 Set<PortInstance>* MappingMapInput(AcceleratorMapping* map,Set<PortInstance>* set,Arena* out);
+
+#endif

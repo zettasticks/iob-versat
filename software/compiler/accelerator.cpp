@@ -1,3 +1,5 @@
+#if 0
+
 #include "accelerator.hpp"
 
 #include "declaration.hpp"
@@ -458,8 +460,6 @@ void FixDelays(Accelerator* accel,Hashmap<Edge,DelayInfo>* edgeDelays){
 
     InsertUnit(accel,edge.units[0],edge.units[1],MakePortOut(buffer,0),MakePortIn(buffer,0));
 
-    //OutputDebugDotGraph(accel,SF("fixDelay_%d.dot",buffersInserted),buffer);
-
     buffersInserted += 1;
   }
 }
@@ -494,7 +494,7 @@ Array<FUDeclaration*> MemSubTypes(AccelInfo* info,Arena* out){
     Array<InstanceInfo> test = info->infos[0].info;
     for(InstanceInfo& info : test){
       if(!SYM_IsNil(info.memMapSym)){
-        maps->Insert(GetTypeByName(info.typeName));
+        maps->Insert(GetTypeByName(info.decl->name));
       }
     }
   }
@@ -518,11 +518,11 @@ Hashmap<StaticId,StaticData>* CollectStaticUnits(AccelInfo* info,Arena* out){
     if(info->isStatic){
       StaticId id = {};
       id.name = info->name;
-      id.parent = GetTypeByName(info->parentTypeName);
+      id.parent = nullptr;
 
       StaticData data = {};
-      data.decl = GetTypeByName(info->typeName);
-      data.configs = info->configs;
+      data.decl = GetTypeByName(info->decl->name);
+      data.configs = info->decl->configs;
       staticUnits->InsertIfNotExist(id,data);
       DEBUG_BREAK();
     }
@@ -557,9 +557,10 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
 
   int maxMemMapBits = 0;
 
+#if 0
   // Calculate memory mapping bits
   // Memory info needs to be instantiated. We cannot handle parameters in memory mapping interfaces at this point
-  {
+  if(0){
     struct HuffmanNode{
       InstanceInfo* unit;
       int value;
@@ -567,6 +568,8 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
       HuffmanNode* left;
       HuffmanNode* right;
     }; 
+
+    // MARK
 
     for(int i = 0; i < info->infos.size; i++){
       auto builder = PushList<HuffmanNode*>(temp);
@@ -588,6 +591,9 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
       }
 
       Array<HuffmanNode*> baseNodes = PushArray(temp,builder);
+
+      DEBUG_BREAK();
+      //TEST_MARK_VAL(SF("%d",baseNodes.size));
 
       if(baseNodes.size > 0){
         auto Sort = [](Array<HuffmanNode*>& toSort){
@@ -637,6 +643,7 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
       }
     }
   }
+#endif
 
   SYM_Expr defaultDelaySize = SYM_Var("DELAY_W");
   SYM_Expr configExpr = SYM_0;
@@ -651,8 +658,8 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
       res.unitsMapped += 1;
     }
 
-    res.nConfigs += unit->configs.size;
-    for(Wire& wire : unit->configs){
+    res.nConfigs += unit->decl->configs.size;
+    for(Wire& wire : unit->decl->configs){
       configExpr += wire.sizeExpr;
     }
 
@@ -664,19 +671,12 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
     res.nDelays += unit->numberDelays;
     delayBits += SYM_Lit(unit->numberDelays) * defaultDelaySize;
 
-    externalMemoryInterfaces += unit->externalMemory.size;
+    externalMemoryInterfaces += unit->decl->externalMemorySymbol.size;
 
     if(unit->singleInterfaces & SingleInterfaces_DONE){
       numberDones += 1;
     }
   }
-
-  for(AccelInfoIterator iter = StartIteration(info); iter.IsValid(); iter = iter.Step()){
-    InstanceInfo* unit = iter.CurrentUnit();
-    if(!unit->isComposite){
-      numberUnits += 1;
-    }
-  }    
 
   res.nDones = numberDones;
  
@@ -743,13 +743,11 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
   
   res.numberConnections = info->numberConnections;
 
-  res.nUnits = numberUnits;
-
   Array<ExternalMemorySymbolic> external = PushArray<ExternalMemorySymbolic>(out,externalMemoryInterfaces);
   int externalIndex = 0;
   for(InstanceInfo& in : info->infos[0].info){
     if(!in.isComposite){
-      for(ExternalMemorySymbolic& inter : in.externalMemory){
+      for(ExternalMemorySymbolic& inter : in.decl->externalMemorySymbol){
         external[externalIndex++] = inter;
       }
     }
@@ -1658,3 +1656,5 @@ Pair<Accelerator*,SubMap*> Flatten(Accelerator* accel,int times){
   
   return {newAccel,subMappingDone};
 }
+
+#endif

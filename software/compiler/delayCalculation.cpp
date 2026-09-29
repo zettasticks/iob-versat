@@ -4,6 +4,7 @@
 #include "declaration.hpp"
 #include "versat.hpp"
 
+#if 0
 struct AccelEdgeIterator{
   AccelInfoIterator iter;
   int edgeIndex;
@@ -68,7 +69,9 @@ SimpleEdge Get(AccelEdgeIterator iter){
 
   return res;
 }
+#endif
 
+#if 0
 // TODO: We probably want to remove this 
 static ConnectionNode* GetConnectionNode(SimpleEdge edge,AccelInfoIterator top){
   InstanceInfo* out = top.GetUnit(edge.outIndex);
@@ -85,6 +88,8 @@ static ConnectionNode* GetConnectionNode(SimpleEdge edge,AccelInfoIterator top){
   return nullptr;
 }
 
+#endif
+
 // TODO: I should give the codebase a comb through and start normalizing this stuff. There is some confusion caused by repeated names for things that are not equal.
 // Naming conventions -
 // Latency - number of cycles it takes for node/edge to produce valid data.
@@ -93,6 +98,7 @@ static ConnectionNode* GetConnectionNode(SimpleEdge edge,AccelInfoIterator top){
 // Global vs local - Global values are values that apply to the entire graph and subgraphs, while local only applies to the current graph. It can also be used to represent the different between values that only make sense in a graph subset versues the entire graph.
 // 
 
+#if 0
 SimpleCalculateDelayResult CalculateDelay(AccelInfoIterator top,Arena* out){
   TEMP_REGION(temp,out);
   Assert(!Empty(top.accelName));
@@ -473,3 +479,335 @@ Array<DelayToAdd> GenerateFixDelays(Accelerator* accel,EdgeDelay* edgeDelays,Are
 
   return PushArray(out,list);
 }
+
+#endif
+
+
+DELAY_Result CalculateDelay(COM_Unit* top,COM_Edge* edges,Arena* out){
+  return {};
+
+#if 0  
+  TEMP_REGION(temp,out);
+  AccelInfo info = {};
+
+  EdgeDelay* edgeToDelay = PushHashmap<Edge,DelayInfo>(out,delays.edgesExtraDelay.size);
+  NodeDelay* nodeDelay = PushHashmap<FUInstance*,DelayInfo>(out,delays.nodeBaseLatencyByOrder.size);
+  PortDelay* portDelay = PushHashmap<PortInstance,DelayInfo>(out,delays.edgesExtraDelay.size);
+  //TrieMap<FUInstance*,int>* variableBuffer = PushTrieMap<FUInstance*,int>(out);
+
+  int amountOfNodes = 0;
+  for(AccelInfoIterator iter = top; iter.IsValid(); iter = iter.Next()){
+    amountOfNodes += 1;
+  }
+  
+  // Keyed by order
+  Array<DelayInfo> nodeBaseLatencyByOrder = PushArray<DelayInfo>(out,amountOfNodes);
+  Memset(nodeBaseLatencyByOrder,{});
+  
+  Array<int> orderToIndex = PushArray<int>(temp,amountOfNodes);
+  for(AccelInfoIterator iter = top; iter.IsValid(); iter = iter.Next()){
+    int index = iter.GetIndex();
+    InstanceInfo* info = iter.CurrentUnit();
+    orderToIndex[info->localOrder] = index;
+  }
+  
+  int totalEdges = 0;
+  for(AccelEdgeIterator iter = IterateEdges(top); IsValid(iter); Advance(iter)){
+    totalEdges += 1;
+  }
+
+  Array<int> edgeDelay = PushArray<int>(temp,totalEdges);
+
+  // Need to replace this with a DelayInfo array for the edges
+  int edgeIndex = 0;
+  for(AccelEdgeIterator iter = IterateEdges(top); IsValid(iter); Advance(iter),edgeIndex += 1){
+    SimpleEdge edge = Get(iter);
+    ConnectionNode* conn = GetConnectionNode(edge,top);
+    edgeDelay[edgeIndex] = conn->edgeDelay;
+  }
+  
+  Array<DelayInfo> edgesGlobalLatency = PushArray<DelayInfo>(out,totalEdges);
+
+  // Sets latency for each edge of the node 
+  auto SendLatencyUpwards = [&top,&edgesGlobalLatency,&nodeBaseLatencyByOrder,&orderToIndex,&edgeDelay](int orderIndex){
+    int trueIndex = orderToIndex[orderIndex];
+    InstanceInfo* info = top.GetUnit(trueIndex);
+    DelayInfo b = nodeBaseLatencyByOrder[orderIndex]; 
+    int edgeIndex = 0;
+    for(AccelEdgeIterator iter = IterateEdges(top); IsValid(iter); Advance(iter),edgeIndex += 1){
+      SimpleEdge edge = Get(iter);
+
+      if(edge.outIndex != trueIndex){
+        continue;
+      }
+
+      int otherIndex = edge.inIndex;
+      InstanceInfo* otherInfo = top.GetUnit(otherIndex);
+      
+      int a = info->outputLatencies[edge.outPort];
+
+      int d = 0;
+      if(info->specialType == SpecialUnitType_FIXED_BUFFER){
+        d = info->special;
+      }
+      
+      // Need to replace this with a DelayInfo array for the edges
+      //ConnectionNode* conn = GetConnectionNode(edge,top);
+
+      int e = edgeDelay[edgeIndex]; //conn->edgeDelay;
+      
+      int c = otherInfo->inputDelays[edge.inPort];
+      int delay = b.value + a + e - c + d;
+
+      edgesGlobalLatency[edgeIndex].value = delay;
+
+      // If the node is a buffer, delays are now variable.
+      // We want to preserve this information as much as possible. Even if not needed because the merge is simple, we might be able to unlock some optimizations down the line
+      if(info->specialType == SpecialUnitType_VARIABLE_BUFFER){
+        edgesGlobalLatency[edgeIndex].isAny = true;
+      }
+      
+      edgesGlobalLatency[edgeIndex].isAny |= b.isAny;
+    }
+  };
+
+  // Start at sources
+  for(int orderIndex = 0; orderIndex < orderToIndex.size; orderIndex++){
+    FUInstance* node = top.GetUnit(orderToIndex[orderIndex])->inst;
+
+    int maxInputEdgeLatency = 0;
+    int edgeIndex = 0;
+    bool allAny = true;
+    for(AccelEdgeIterator iter = IterateEdges(top); IsValid(iter); Advance(iter),edgeIndex += 1){
+      SimpleEdge edge = Get(iter);
+      int inIndex = edge.inIndex;
+
+      InstanceInfo* inInfo = top.GetUnit(inIndex);
+      FUInstance* inNode = inInfo->inst;
+      if(inNode != node){
+        continue;
+      }
+
+      int edgeLatency = edgesGlobalLatency[edgeIndex].value;
+      maxInputEdgeLatency = MAX(maxInputEdgeLatency,edgeLatency);
+      allAny &= edgesGlobalLatency[edgeIndex].isAny;
+    }
+    
+    nodeBaseLatencyByOrder[orderIndex].value = maxInputEdgeLatency;
+    nodeBaseLatencyByOrder[orderIndex].isAny = (maxInputEdgeLatency != 0 && allAny);
+
+    // Send latency upwards.
+    if(node->type != NodeType_SOURCE_AND_SINK){
+      SendLatencyUpwards(orderIndex);
+    }
+  }
+
+  Array<DelayInfo> edgesExtraDelay = CopyArray(edgesGlobalLatency,out);
+
+  // This is still the global latency per port.
+  Array<Array<DelayInfo>> inputPortBaseLatencyByOrder = PushArray<Array<DelayInfo>>(out,orderToIndex.size);
+  
+  for(int i = 0; i < orderToIndex.size; i++){
+    FUInstance* node = top.GetUnit(orderToIndex[i])->inst;
+
+    int maxPortIndex = -1;
+    int edgeIndex = 0;
+    for(AccelEdgeIterator iter = IterateEdges(top); IsValid(iter); Advance(iter),edgeIndex += 1){
+      SimpleEdge edge = Get(iter);
+      int inIndex = edge.inIndex;
+
+      InstanceInfo* inInfo = top.GetUnit(inIndex);
+      FUInstance* inNode = inInfo->inst;
+      if(inNode != node){
+        continue;
+      }
+
+      maxPortIndex = MAX(maxPortIndex,edge.inPort);
+    }
+
+    if(maxPortIndex == -1){
+      inputPortBaseLatencyByOrder[i] = {};
+      continue;
+    }
+    inputPortBaseLatencyByOrder[i] = PushArray<DelayInfo>(out,maxPortIndex + 1);
+
+    edgeIndex = 0;
+    for(AccelEdgeIterator iter = IterateEdges(top); IsValid(iter); Advance(iter),edgeIndex += 1){
+      SimpleEdge edge = Get(iter);
+      int inIndex = edge.inIndex;
+
+      InstanceInfo* inInfo = top.GetUnit(inIndex);
+      FUInstance* inNode = inInfo->inst;
+      if(inNode != node){
+        continue;
+      }
+      
+      inputPortBaseLatencyByOrder[i][edge.inPort] = edgesExtraDelay[edgeIndex];
+    }
+  }
+  
+  // Store latency on data consuming units
+  for(int i = 0; i < orderToIndex.size; i++){
+    FUInstance* node = top.GetUnit(orderToIndex[i])->inst;
+
+    if(!(node->type == NodeType_SINK || node->type == NodeType_SOURCE_AND_SINK)){
+      continue;
+    }
+
+    // For each edge in that contains that node as an output
+    int minEdgeDelay = 9999;
+    int edgeIndex = 0;
+    for(AccelEdgeIterator iter = IterateEdges(top); IsValid(iter); Advance(iter),edgeIndex += 1){
+      SimpleEdge edge = Get(iter);
+      int inIndex = edge.inIndex;
+
+      InstanceInfo* inInfo = top.GetUnit(inIndex);
+      FUInstance* inNode = inInfo->inst;
+      if(inNode != node){
+        continue;
+      }
+
+      int edgeDelay = edgesExtraDelay[edgeIndex].value;
+      minEdgeDelay = MIN(minEdgeDelay,edgeDelay);
+    }
+
+    // Is this even possible?
+    Assert(minEdgeDelay != 9999);
+
+    nodeBaseLatencyByOrder[i].value = minEdgeDelay;
+  }
+
+  // We have the global latency of each node and edge.
+  // We now need to calculate the "extra" latency added to each edge in order to align everything together.
+
+  // Converts global latency into edge delays
+  for(int i = 0; i < orderToIndex.size; i++){
+    FUInstance* node = top.GetUnit(orderToIndex[i])->inst;
+
+    int nodeDelay = nodeBaseLatencyByOrder[i].value;
+    
+    int minEdgeDelay = 9999;
+    int edgeIndex = 0;
+    for(AccelEdgeIterator iter = IterateEdges(top); IsValid(iter); Advance(iter),edgeIndex += 1){
+      SimpleEdge edge = Get(iter);
+      int inIndex = edge.inIndex;
+
+      InstanceInfo* inInfo = top.GetUnit(inIndex);
+      FUInstance* inNode = inInfo->inst;
+      if(inNode != node){
+        continue;
+      }
+
+      edgesExtraDelay[edgeIndex].value = nodeDelay - edgesExtraDelay[edgeIndex].value;
+      
+      int edgeDelay = edgesExtraDelay[edgeIndex].value;
+      minEdgeDelay = MIN(minEdgeDelay,edgeDelay);
+    }
+
+    if(minEdgeDelay == 9999){
+      continue;
+    }
+
+    edgeIndex = 0;
+    for(AccelEdgeIterator iter = IterateEdges(top); IsValid(iter); Advance(iter),edgeIndex += 1){
+      SimpleEdge edge = Get(iter);
+      int inIndex = edge.inIndex;
+
+      InstanceInfo* inInfo = top.GetUnit(inIndex);
+      FUInstance* inNode = inInfo->inst;
+      if(inNode != node){
+        continue;
+      }
+
+      edgesExtraDelay[edgeIndex].value -= minEdgeDelay;
+    }
+  }
+
+  // Store delays on data producing units
+  for(int i = 0; i < orderToIndex.size; i++){
+    FUInstance* node = top.GetUnit(orderToIndex[i])->inst;
+
+    if(node->type != NodeType_SOURCE){
+      continue;
+    }
+
+    // For each edge in that contains that node as an output
+    int minEdgeDelay = 9999;
+    int edgeIndex = 0;
+    for(AccelEdgeIterator iter = IterateEdges(top); IsValid(iter); Advance(iter),edgeIndex += 1){
+      SimpleEdge edge = Get(iter);
+      int outIndex = edge.outIndex;
+
+      InstanceInfo* outInfo = top.GetUnit(outIndex);
+      FUInstance* outNode = outInfo->inst;
+      if(outNode != node){
+        continue;
+      }
+
+      int edgeDelay = edgesExtraDelay[edgeIndex].value;
+      minEdgeDelay = MIN(minEdgeDelay,edgeDelay);
+    }
+
+    // Is this even possible?
+    Assert(minEdgeDelay != 9999);
+
+    nodeBaseLatencyByOrder[i].value = minEdgeDelay;
+    
+    edgeIndex = 0;
+    for(AccelEdgeIterator iter = IterateEdges(top); IsValid(iter); Advance(iter),edgeIndex += 1){
+      SimpleEdge edge = Get(iter);
+      int outIndex = edge.outIndex;
+
+      InstanceInfo* outInfo = top.GetUnit(outIndex);
+      FUInstance* outNode = outInfo->inst;
+      if(outNode != node){
+        continue;
+      }
+
+      edgesExtraDelay[edgeIndex].value -= minEdgeDelay;
+    }
+  }
+
+  // Pack delay calculations ====================================================
+  CalculateDelayResult res = {};
+  res.edgesDelay = edgeToDelay;
+  res.nodeDelay = nodeDelay;
+  res.portDelay = portDelay;
+  res.variableBuffer = variableBuffer;
+
+  DebugRegionOutputLatencyGraph(accel,nodeDelay,portDelay,edgeToDelay,"DelayGraph");
+
+  return res;
+#endif
+}
+
+#if 0
+Array<DELAY_BufferToAdd> GenerateFixDelays(COM_Unit* top,EdgeDelay* edgeDelays,Arena* out){
+  TEMP_REGION(temp,out);
+
+  auto list = PushList<DELAY_BufferToAdd>(temp);
+  
+  int buffersInserted = 0;
+  for(auto edgePair : edgeDelays){
+    Edge edge = edgePair.first;
+    DelayInfo delay = *edgePair.second;
+
+    if(delay.value == 0 || delay.isAny){
+      continue;
+    }
+
+    Assert(delay.value > 0); // Cannot deal with negative delays at this stage.
+
+    DelayToAdd var = {};
+    var.edge = edge;
+    var.bufferName = PushString(out,"buffer%d",buffersInserted++);
+    var.bufferAmount = delay.value - BasicDeclaration::fixedBuffer->info.infos[0].outputLatencies[0];
+    var.bufferParameters = PushString(out,"#(.AMOUNT(%d))",var.bufferAmount);
+
+    *list->PushElem() = var;
+  }
+
+  return PushArray(out,list);
+}
+#endif
+

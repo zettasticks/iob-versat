@@ -4,32 +4,17 @@
 #include "verilogParsing.hpp"
 #include "configurations.hpp"
 
-struct FUInstance;
-struct Edge;
+#include "addressGen.hpp"
 
-typedef Hashmap<FUInstance*,FUInstance*> InstanceMap;
-typedef Hashmap<Edge,Edge> EdgeMap;
+struct COM_Unit;
+struct COM_Edge;
 
-// NOTE: Delay type is not really needed anymore because we can figure out the delay of a unit by: wether it contains inputs and outputs, the position on the graph and if we eventually add (input and output delay) whether it contains those as well.
-//       After implementing input and output delay, retire DelayType
-enum DelayType {
-  DelayType_BASE               = 0x0,
-  DelayType_SINK_DELAY         = 0x1,
-  DelayType_SOURCE_DELAY       = 0x2,
-  DelayType_COMPUTE_DELAY      = 0x4
-};
-#define CHECK_DELAY(inst,T) ((inst->declaration->delayType & T) == T)
-
-inline DelayType operator|(DelayType a, DelayType b)
-{return static_cast<DelayType>(static_cast<int>(a) | static_cast<int>(b));}
-
-enum FUDeclarationType{
-  FUDeclarationType_NIL,
-  FUDeclarationType_SINGLE,
-  FUDeclarationType_COMPOSITE,
-  FUDeclarationType_SPECIAL,
-  FUDeclarationType_MERGED,
-  FUDeclarationType_ITERATIVE
+enum SpecialUnitType{
+  SpecialUnitType_NONE = 0,
+  SpecialUnitType_INPUT = 1,
+  SpecialUnitType_OUTPUT = 2,
+  SpecialUnitType_FIXED_BUFFER = 3,
+  SpecialUnitType_VARIABLE_BUFFER = 4
 };
 
 struct Parameter{
@@ -48,10 +33,19 @@ struct ParamNameAndValue2{
   SYM_Expr value;
 };
 
-// TODO: This is kinda stupid but really want something working right now.
-struct DECL_UnmangleResult{
-  String name;
-  Array<ParamNameAndValue> metaParams;
+
+enum DeclarationType{
+  DeclarationType_NIL,
+  DeclarationType_SINGLE,
+  DeclarationType_COMPOSITE,
+  DeclarationType_SPECIAL,
+  DeclarationType_MERGED,
+  DeclarationType_ITERATIVE
+};
+
+struct DECL_PortInfo{
+  SYM_Expr size;
+  int delay;
 };
 
 // TODO: A lot of duplicated data exists since the change to merge.
@@ -61,126 +55,39 @@ struct DECL_UnmangleResult{
 // NOTE: A FUDeclaration represents a concrete type, although the size of stuff might depend on parameters.
 //       The general structure is fixed (amount of inputs/outputs and so on) but the size is not.
 struct FUDeclaration{
-  String name;
+  String metaName;
 
-  // These always exist, regardless of merge info 
+  String name;
+  Array<Parameter> parameters;
+
   Array<Wire> configs;
   Array<Wire> states;
   
-  // TODO: Need to calculate these for hierarchical and merge units. For now only works for base units.
-  //       After solving this, check the TODO for the output of testbench
-  Array<SYM_Expr> inputSize;
-  Array<SYM_Expr> outputSize;
+  Array<DECL_PortInfo> inputs;
+  Array<DECL_PortInfo> outputs;
 
-  AccelInfo info;
-  
   int numberDelays;
-  Array<Parameter> parameters;
-
-  Array<ExternalMemorySymbolic> externalMemorySymbol;
-  
-  // Stores different accelerators depending on properties we want. Mostly in relation to merge, because we want to use baseCircuit when doing a merge operation.
-  // TODO: I think one problem that I keep encountering is the fact that we do not want to access the original graphs anymore after registering the declaration (unless for merge purposes).
-  // TODO: Basically, because of stuff like merge and such, we need to access the AccelInfo and only the AccelInfo.
-
-  Accelerator* baseCircuit; // For merge, baseCircuit contains muxes but not buffers.
-  Accelerator* fixedDelayCircuit;
-  Accelerator* flattenedBaseCircuit;
-  
+  Array<SYM_Expr> memoryMapped;
+  Array<ExternalMemorySymbolic> externalMemory;
   String operation;
+  SingleInterfaces singleInterfaces;
 
-  SubMap* flattenMapping;
+  // Graph related data for modular units =======================================
+  COM_Unit* units;
+  COM_Edge* edges;
 
   AddressGenInst supportedAddressGen;
-  
-  int lat; // TODO: For now this is only for iterative units. Would also useful to have a standardized way of computing this from the graph and then compute it when needed. 
-  
-  Hashmap<StaticId,StaticData>* staticUnits;
-  
-  // TODO: We mostly do not use this. Furthermore we could just store this info inside the FUInstances, where we store a arrayBaseName or something similar.
-  //Array<Pair<String,int>> definitionArrays;
-  
-  FUDeclarationType type;
-  DelayType delayType;
-
-  SingleInterfaces singleInterfaces;
-  
-  // Simple access functions
-  int NumberInputs(){
-    if(info.infos.size > 0){
-      return info.infos[0].inputDelays.size;
-    } else {
-      return 0;
-    }
-  };
-
-  int NumberOutputs(){
-    if(info.infos.size > 0){
-      return info.infos[0].outputLatencies.size;
-    } else {
-      return 0;
-    }
-  };
-
-  int NumberConfigs(){return configs.size;}
-  int NumberStates(){return states.size;}
-  int NumberDelays(){return numberDelays;};
-
-  int MergePartitionSize(){
-    return info.infos.size;
-  };
-
-  // TODO: Probably better to see all the outputs and all the infos, at the very least in Debug mode.
-  // NOTE: This only works because operations only have one output.
-  bool IsCombinatorialOperation(){
-    bool res = (!Empty(operation) && info.infos[0].outputLatencies[0] == 0);
-    return res;
-  }
-  bool IsSequentialOperation(){
-    bool res = (!Empty(operation) && info.infos[0].outputLatencies[0] != 0);
-    return res;
-  }
-
-  bool IsModularLike(){
-    bool res = (type == FUDeclarationType_COMPOSITE || type == FUDeclarationType_MERGED);
-    return res;
-  }
-  
-  Array<int> GetOutputLatencies(){
-    if(info.infos.size > 0){
-      return info.infos[0].outputLatencies;
-    } else {
-      return {};
-    }
-  }
-
-  Array<int> GetInputDelays(){
-    if(info.infos.size > 0){
-      return info.infos[0].inputDelays;
-    } else {
-      return {};
-    }
-  }
+  DeclarationType type;
 };
-
 extern FUDeclaration FUDeclaration_Nil;
 
-// Simple operations should also be stored here.
-namespace BasicDeclaration{
-  extern FUDeclaration* nil;
+struct FUDeclarationNode{
+  FUDeclarationNode* next;
+  FUDeclaration val;
+};
 
-  extern FUDeclaration* variableBuffer;
-  extern FUDeclaration* fixedBuffer;
-  extern FUDeclaration* input;
-  extern FUDeclaration* output;
-  extern FUDeclaration* multiplexer;
-  extern FUDeclaration* combMultiplexer;
-  extern FUDeclaration* timedMultiplexer;
-  extern FUDeclaration* stridedMerge;
-  extern FUDeclaration* pipelineRegister;
-}
 
-bool IsNil(FUDeclaration* decl);
+#if 0
 
 FUDeclaration* RegisterFU(FUDeclaration declaration);
 
@@ -191,7 +98,6 @@ FUDeclaration* GetTypeByName(String str,Array<ParamNameAndValue> metaParams);
 
 String DECL_MangleName(String typeName,Array<ParamNameAndValue> metaParams,Arena* out);
 
-void InitializeSimpleDeclarations();
 bool HasMultipleConfigs(FUDeclaration* decl);
 // Because of merge, we need units that can delay the datapath for different values depending on the datapath that is being configured.
 
@@ -199,5 +105,43 @@ bool HasMultipleConfigs(FUDeclaration* decl);
 // Declaration inspection
 
 Wire* GetConfigWireByName(FUDeclaration* decl,String name);
+
+#endif
+
+// Simple operations should also be stored here.
+namespace BasicDeclaration{
+  extern FUDeclaration* nil;
+
+  extern FUDeclaration* input;
+  extern FUDeclaration* output;
+
+#if 0
+  extern FUDeclaration* variableBuffer;
+  extern FUDeclaration* fixedBuffer;
+  extern FUDeclaration* multiplexer;
+  extern FUDeclaration* combMultiplexer;
+  extern FUDeclaration* timedMultiplexer;
+  extern FUDeclaration* stridedMerge;
+  extern FUDeclaration* pipelineRegister;
+#endif
+}
+
+// ======================================
+// Type
+
+bool IsNil(FUDeclaration* decl);
+
+// ======================================
+// Init
+
+void DECL_Init();
+
+// ======================================
+// Register (does not exist)
+
+FUDeclaration* DECL_RegisterFU(String name);
+
+// ======================================
+// Get or create if needed
 
 FUDeclaration* DECL_GetType(String name,Array<ParamNameAndValue> metaParams);

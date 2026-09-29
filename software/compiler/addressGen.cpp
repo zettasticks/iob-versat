@@ -1,5 +1,7 @@
 #include "addressGen.hpp"
 
+#if 0
+
 #include "globals.hpp"
 #include "memory.hpp"
 #include "symbolic.hpp"
@@ -972,27 +974,15 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#endif
 
 
 // nocheckin: Reorganize
 AddressAccess* CompileAddressGen2(Array<AddressGenForDef2> loops,SYM_Expr addr){
+  return {};
+  NOT_IMPLEMENTED();
+
+#if 0
   Arena* out = globalPermanent;
   TEMP_REGION(temp,out);
   
@@ -1067,5 +1057,5 @@ AddressAccess* CompileAddressGen2(Array<AddressGenForDef2> loops,SYM_Expr addr){
   result->loopVars = loopVars;
   
   return result;
+#endif
 };
-

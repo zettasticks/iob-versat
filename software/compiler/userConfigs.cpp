@@ -1,5 +1,7 @@
 #include "userConfigs.hpp"
 
+#if 0
+
 #include "accelerator.hpp"
 #include "globals.hpp"
 #include "memory.hpp"
@@ -1192,3 +1194,5 @@ ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDecl
   
   return func;  
 }
+
+#endif

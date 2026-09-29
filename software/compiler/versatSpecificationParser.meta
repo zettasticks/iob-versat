@@ -1,6 +1,7 @@
 // NOTE: Expr is a way of separating the expr like nodes (first,second) from the (next,children) type
 table NodeTable(name,isExprType,constantOpCount,varAccess){
   NIL                  0   0   0
+  TOP                  0   0   0
   NOT                  1   1   0
   ADD                  1   2   0
   SUB                  1   2   0

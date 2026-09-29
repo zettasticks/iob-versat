@@ -1,5 +1,7 @@
 #pragma once
 
+#if 0
+
 #include "addressGen.hpp"
 #include "hierName.hpp"
 
@@ -203,3 +205,5 @@ struct ConfigFunction{
 ConfigFunction* InstantiateConfigFunction(Env* env,ConfigFunctionDef* def,FUDeclaration* declaration,String content,Arena* out);
 
 extern ConfigFunction ConfigFunction_Nil;
+
+#endif

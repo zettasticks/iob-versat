@@ -1,5 +1,7 @@
 #pragma once
 
+#if 0
+
 #include "versat.hpp"
 
 struct MergeEdge;
@@ -13,3 +15,5 @@ String Repr(PortInstance* port,GraphDotFormat format,Arena* out);
 String Repr(MergeEdge* node,GraphDotFormat format,Arena* out);
 String Repr(Edge* node,GraphDotFormat format,Arena* out);
 String Repr(MappingNode* node,Arena* out);
+
+#endif

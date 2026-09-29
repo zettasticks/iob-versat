@@ -1,5 +1,7 @@
 #include "merge.hpp"
 
+#if 0
+
 #include "accelerator.hpp"
 #include "configurations.hpp"
 #include "debug.hpp"
@@ -1640,6 +1642,8 @@ FUDeclaration* Merge(Array<FUDeclaration*> types,
   TEMP_REGION(temp2,temp);
 
   return Merge2(types,name,specifics,modifier,strat);
+
+#if 0
   
   Assert(types.size >= 2);
 
@@ -2276,6 +2280,7 @@ FUDeclaration* Merge(Array<FUDeclaration*> types,
   FillAccelInfoFromCalculatedInstanceInfo(&decl->info,decl->fixedDelayCircuit);
   
   return decl;
+#endif
 }
 
 // TODO: Do not even remember what FromStruct even means. Need to figure out and replace with a better name. Code is confusing as it is.
@@ -2636,10 +2641,13 @@ void DebugOutputGraphs(MergeAndRecons* recons,String stageName){
   }
 }
 
-#if 1
 FUDeclaration* Merge2(Array<FUDeclaration*> types,
                      String name,Array<SpecificMergeNode> specifics,
                      MergeModifier modifier,MergingStrategy strat){
+
+  return {};
+
+#if 1
 
   DEBUG_PATH("Merge2");
   DEBUG_PATH(name);
@@ -2993,10 +3001,6 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
           info->mergePort = reconInst->allInputs->port;
         }
 
-        if(info->isMergeMultiplexer){
-          info->muxGroup = muxGroup++;
-        }
-
         if(info->specialType == SpecialUnitType_VARIABLE_BUFFER){
           int* delay = reconDelay[i].variableBuffer->Get(reconInst);
           if(delay){
@@ -3039,24 +3043,13 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
 
   DebugRegionOutputDotGraph(decl->flattenedBaseCircuit,"FlattenedMergedGraph");
 
-  // NOTE: Need to set the parent type name before collecting the static units.
-  {
-  AccelInfoIterator iter = StartIteration(&decl->info);
-  for(int i = 0; i < iter.MergeSize(); i++){
-    for(AccelInfoIterator it = iter; it.IsValid(); it = it.Next()){
-      it.SetMergeIndex(i);
-
-      InstanceInfo* current = it.CurrentUnit();
-      current->parentTypeName = PushString(globalPermanent,decl->name);
-    }
-  }
-  }
-
   decl->staticUnits = CollectStaticUnits(&decl->info,globalPermanent);
 
   FillAccelInfoFromCalculatedInstanceInfo(&decl->info,decl->fixedDelayCircuit);
   
   return decl;
+
+#endif
   
   /*
     Because there is no guarantee that we can perform delay calculation on the recon graphs that we currently have, in order to implement proper hierarchical merge we need to obtain the recon of the lowest level of graphs that we can go.
@@ -3100,5 +3093,7 @@ IMPORTANT:
 
   */
 }
+
+
 
 #endif

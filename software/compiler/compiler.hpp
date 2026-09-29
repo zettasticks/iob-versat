@@ -1,10 +1,27 @@
 #pragma once 
 
 #include "versatSpecificationParser.hpp"
-#include "configurations.hpp"
-#include "parser.hpp"
+#include "declaration.hpp"
+#include "symbolic.hpp"
+#include "addressGen.hpp"
 
-#if 1
+struct FUDeclaration;
+
+// NOTE: Delay type is not really needed anymore because we can figure out the delay of a unit by: wether it contains inputs and outputs, the position on the graph and if we eventually add (input and output delay) whether it contains those as well.
+
+enum DelayType {
+  DelayType_BASE               = 0x0,
+  DelayType_SINK_DELAY         = 0x1,
+  DelayType_SOURCE_DELAY       = 0x2,
+  DelayType_COMPUTE_DELAY      = 0x4
+};
+C_STYLE_ENUM(DelayType);
+#define CHECK_DELAY(inst,T) ((inst->declaration->delayType & T) == T)
+
+struct ParamAndValue{
+  String name;
+  SYM_Expr val;
+};
 
 // Remember, because of stuff like inserting buffers/delays/muxs, we need to be able to write to this.
 // Changing name is required. Or maybe not. If we have access to the partitions we could just compute the 
@@ -19,50 +36,67 @@
 struct COM_Unit{
   COM_Unit* next;
   COM_Unit* prev;
-  COM_Unit* partNext;
-  COM_Unit* partPrev;
+  COM_Unit* mergeNext;
+  COM_Unit* mergePrev;
 
+  // Data provided by parser ====================================================
   String name;
   FUDeclaration* decl;
+
+  Array<ParamAndValue> params;
+
+  bool isStatic;
+  bool isShared;
+  int sharedIndex;
+
+  int special;
+  bool debug;
+
+  // Computed data ==============================================================
   int id;
 
-  bool isShared;
-  bool isStatic;
-  bool debug;
-  int sharedIndex;
+  int configPos;
+  int statePos;
+  int delayPos;
+  int numberDelays;
+
+  int mergePort;
+
+  // TODO: 
+
+  Array<int> individualWiresConfigPos;
+  Array<bool> individualWiresShared;
+
+  bool doesNotBelong; // For merge units, if true then this unit does not actually exist for the given partition
+
+  // Delay stuff ================================================================
+
+  int calculatedDelay; // TODO: This is not what we actually want, since latency and delays should be calculated based on port info instead of unit. We still keep the same unit delay for now.
+  Array<int> extraDelay;
+  int baseNodeDelay;
+
+  Array<int> inputDelays;
+  Array<int> outputLatencies;
+  Array<int> portDelay;
+
+  // Computed modular data ======================================================
+  Array<char> memoryMappedInterfaces; // TODO: Type
+  Array<char> externalMemories; // TODO: Type
 };
 extern COM_Unit COM_Unit_Nil;
-
-struct FUDeclaration2{
-  String name;
-  Array<Wire> configs;
-  Array<Wire> states;
-  Array<int> inputs;
-  Array<int> outputs;
-
-  COM_Unit* units;
-
-  Array<Parameter> parameters;
-  Array<ExternalMemorySymbolic> externalMemorySymbol;
-  String operation;
-  AddressGenInst supportedAddressGen;
-  FUDeclarationType type;
-  DelayType delayType;
-
-  SingleInterfaces singleInterfaces;
-};
 
 // ======================================
 // Connections
 
-struct COM_Port{
+struct COM_Port
+{
   COM_Unit* unit;
   int port;
 };
 extern COM_Port COM_Port_Nil;
 
-struct COM_Connection{
-  COM_Connection* next;
+struct COM_Edge{
+  COM_Edge* next;
 
   COM_Unit* out;
   int outPort;
@@ -131,8 +165,8 @@ struct COM_Env{
   COM_Unit* unitHead;
   COM_Unit* unitTail;
 
-  COM_Connection* conHead;
-  COM_Connection* conTail;
+  COM_Edge* conHead;
+  COM_Edge* conTail;
   
   int scope;
   COM_EntNode*entFreeList;
@@ -224,7 +258,7 @@ struct COM_Function{
 struct COM_Module{
   String name;
   COM_Unit* units;
-  COM_Connection* edges;
+  COM_Edge* edges;
   COM_Function* funcs;
 };
 
@@ -257,7 +291,7 @@ COM_UnpackedExpr    COM_UnpackExpr(COM_Env* env,SP_Node* expr);
 // ======================================
 // Compilation
 
-COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> topLevelParams,Arena* out);
+COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamAndValue> topLevelParams,Arena* out);
 
 // ======================================
 // Env
@@ -289,6 +323,4 @@ void COM_ReportError(COM_Env* env,String msg,Token token);
 // Repr
 
 String COM_Repr(COM_Unit* top,Arena* out);
-void   COM_DebugPushDotGraph(String filename,COM_Unit* top,COM_Connection* edges);
-
-#endif
+void   COM_DebugPushDotGraph(String filename,COM_Unit* top,COM_Edge* edges);

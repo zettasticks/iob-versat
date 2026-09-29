@@ -1,3 +1,6 @@
+#if 0
+
+
 #include "debugVersat.hpp"
 #include "declaration.hpp"
 #include "globals.hpp"
@@ -12,27 +15,27 @@ static String graphPrintingColorTable[] = {
   "darkyellow"
 };
 
-Color DefaultNodeColor(FUInstance* inst){
+Color DefaultNodeColor(COM_Unit* inst){
   Color color = Color_BLUE;
 
-  if(inst->declaration == BasicDeclaration::input){
+  if(inst->decl == BasicDeclaration::input){
     color = Color_GREEN;
   }
-  if(inst->declaration == BasicDeclaration::output){
+  if(inst->decl == BasicDeclaration::output){
     color = Color_BLACK;
   }
   
   return color;
 }
 
-GraphInfo DefaultNodeContent(FUInstance* inst,Arena* out){
+GraphInfo DefaultNodeContent(COM_Unit* inst,Arena* out){
   String str = PushString(out,"%.*s_%d",UN(inst->name),inst->id);
   return {str,DefaultNodeColor(inst)};
 }
 
-GraphInfo DefaultEdgeContent(Edge* edge,Arena* out){
-  int inPort = edge->in.port;
-  int outPort = edge->out.port;
+GraphInfo DefaultEdgeContent(COM_Edge* edge,Arena* out){
+  int inPort = edge->inPort;
+  int outPort = edge->outPort;
 
   String content = PushString(out,"%d -> %d:%d",outPort,inPort,edge->delay);
 
@@ -272,3 +275,6 @@ void DebugRegionOutputLatencyGraph(Accelerator* accel,NodeDelay* nodeDelay,PortD
   String filePath = GetDebugRegionFilepath(fileName,temp);
   OutputContentToFile(filePath,result);
 }
+
+#endif
+

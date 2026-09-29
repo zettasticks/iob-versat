@@ -21,6 +21,9 @@
 
 static readonly SP_Node SP_Node_Nil = {};
 
+
+#if 0
+
 // static readOnly SpecExpression SPEC_LITERAL_0 = {.val = 0,.type = SpecType_LITERAL};
 static readonly MathExpression MATH_LITERAL_0 = {.val = 0,.type = MathType_LITERAL};
 
@@ -3425,7 +3428,7 @@ bool Nil(Entity ent){
 }
 
 
-
+#endif
 
 
 
@@ -3433,6 +3436,7 @@ bool Nil(Entity ent){
 
 
 // New parsing code in here ===================================================
+
 
 // ======================================
 // Type
@@ -4276,6 +4280,97 @@ SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
 
   SP_Node* res = SP_PushNode(out,SP_Type_MODULE_DECL,name,head);
   return res;
+}
+
+// ======================================
+// Parsing
+
+SP_Node* SP_ParseSpec(String content,Arena* out){
+  TEMP_REGION(temp,out);
+
+  auto TokenizeFunction = [](void* tokenizerState,const char* start,const char* end) -> Token{
+    DefaultTokenizerState* state = (DefaultTokenizerState*) tokenizerState;
+
+    Token res = {};
+    res |= ParseWhitespace(start,end);
+    res |= ParseComments(start,end);
+
+    res |= ParseMultiSymbol(start,end,">><",TokenType_ROTATE_RIGHT);
+    res |= ParseMultiSymbol(start,end,"><<",TokenType_ROTATE_LEFT);
+
+    res |= ParseMultiSymbol(start,end,"..",TokenType_DOUBLE_DOT);
+    res |= ParseMultiSymbol(start,end,"##",TokenType_DOUBLE_HASHTAG);
+    res |= ParseMultiSymbol(start,end,"->",TokenType_ARROW);
+    res |= ParseMultiSymbol(start,end,">>",TokenType_SHIFT_RIGHT);
+    res |= ParseMultiSymbol(start,end,"<<",TokenType_SHIFT_LEFT);
+    res |= ParseMultiSymbol(start,end,"^=",TokenType_XOR_EQUAL);
+    res |= ParseMultiSymbol(start,end,"{{",TokenType_DELAY_START);
+    res |= ParseMultiSymbol(start,end,"}}",TokenType_DELAY_END);
+
+    res |= ParseSymbols(start,end);
+    res |= ParseNumber(start,end);
+
+    res |= ParseIdentifier(start,end);
+
+    if(res.type == TokenType_IDENTIFIER){
+      String id = res.val;
+      
+      TokenType type = TokenType_INVALID;
+
+      if(id == "module")     type = TokenType_KEYWORD_MODULE;
+      if(id == "merge")      type = TokenType_KEYWORD_MERGE;
+      if(id == "share")      type = TokenType_KEYWORD_SHARE;
+      if(id == "static")     type = TokenType_KEYWORD_STATIC;
+      if(id == "debug")      type = TokenType_KEYWORD_DEBUG;
+      if(id == "sim")        type = TokenType_KEYWORD_SIM;
+      if(id == "config")     type = TokenType_KEYWORD_CONFIG;
+      if(id == "state")      type = TokenType_KEYWORD_STATE;
+      if(id == "mem")        type = TokenType_KEYWORD_MEM;
+      if(id == "gen")        type = TokenType_KEYWORD_GEN;
+      if(id == "for")        type = TokenType_KEYWORD_FOR;
+
+      if(type != TokenType_INVALID){
+        res.type = type;
+      }
+    }
+
+    return res;
+  };
+
+  FREE_ARENA(parseArena);
+  Parser* parser = StartParsing(TokenizeFunction,content,parseArena,{});
+  parser->debug = 0;
+
+  SP_Node* head = 0;
+  SP_Node* tail = 0;
+  while(!parser->Done()){
+    Token tok = parser->PeekToken();
+
+    SP_Node* node = 0;
+    if(tok.type == TokenType_KEYWORD_MODULE){
+      node = SP_ParseModuleDef(parser,out);
+    } else if(tok.type == TokenType_KEYWORD_MERGE){
+      // Nothing
+    } else {
+      parser->ReportUnexpectedToken(tok,{TokenType_KEYWORD_MODULE,TokenType_KEYWORD_MERGE});
+      parser->Synch({TokenType_KEYWORD_MODULE,TokenType_KEYWORD_MERGE});
+    }
+
+    LL_Append(head,tail,next,node);
+  }
+
+  if(!Empty(parser->errors)){
+    for(String str : parser->errors){
+      printf("%.*s\n",UN(str));
+    }
+    exit(-1);
+  }
+
+  SP_Node* top = PushStruct<SP_Node>(out);
+  top->type = SP_Type_TOP;
+  top->childs = head;
+
+  return top;
 }
 
 // ======================================

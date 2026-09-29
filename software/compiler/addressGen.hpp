@@ -112,6 +112,8 @@ struct InstantiateOptions{
   Direction dir;
 };
 
+#if 0
+
 // ======================================
 // Representation
 
@@ -123,8 +125,6 @@ void   Print(AddressAccess* access);
 // Compilation 
 
 AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenForDef> loops,SYM_Expr addr,String content);
-
-AddressAccess* CompileAddressGen2(Array<AddressGenForDef2> loops,SYM_Expr addrExpr);
 
 // ======================================
 // Manipulation
@@ -159,3 +159,7 @@ AddressAccess* ConvertAccessTo2External(AddressAccess* access,int biggestLoopInd
 
 CompiledAccess CompileAccess(LoopLinearSum* access,SYM_Expr dutyDiv,Arena* out);
 Array<Pair<String,SYM_Expr>> InstantiateIndividualAssignments(AddressAccess* access,int maxLoops,InstantiateOptions options,Arena* out);
+
+#endif
+
+AddressAccess* CompileAddressGen2(Array<AddressGenForDef2> loops,SYM_Expr addrExpr);

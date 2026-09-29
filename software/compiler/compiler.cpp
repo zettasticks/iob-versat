@@ -549,7 +549,7 @@ COM_UnpackedExpr COM_UnpackExpr(COM_Env* env,SP_Node* node){
 // ======================================
 // Compilation
 
-COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamNameAndValue> topLevelParams,Arena* out){
+COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamAndValue> topLevelParams,Arena* out){
   Assert(moduleDef->type = SP_Type_MODULE_DECL);
 
   String moduleName = moduleDef->token.val;
@@ -1086,8 +1086,8 @@ void COM_Connect(COM_Env* env,COM_Ent out,int outPort,COM_Ent in,int inPort,int 
   FUDeclaration* inDecl = in.unit->decl;
 
   if(!(IsNil(outDecl) || IsNil(inDecl))){
-    int outPortCount = outDecl->NumberOutputs();
-    int inPortCount = inDecl->NumberInputs();
+    int outPortCount = outDecl->outputs.size;
+    int inPortCount = inDecl->inputs.size;
           
     // TODO: We can also show the offending expression since we could get the node representation
     if(outPort >= outPortCount){
@@ -1098,7 +1098,7 @@ void COM_Connect(COM_Env* env,COM_Ent out,int outPort,COM_Ent in,int inPort,int 
       COM_ReportError(env,SF("Unit does not contain port index: %d",inPort),in.token);
     }
 
-    COM_Connection* con = PushStruct<COM_Connection>(env->outArena);
+    COM_Edge* con = PushStruct<COM_Edge>(env->outArena);
     con->out = out.unit;
     con->outPort = outPort;
     con->in = in.unit;
@@ -1142,7 +1142,9 @@ String COM_Repr(COM_Unit* top,Arena* out){
   return res;
 }
 
-void COM_DebugPushDotGraph(String filename,COM_Unit* top,COM_Connection* edges){
+void COM_DebugPushDotGraph(String filename,COM_Unit* top,COM_Edge* edges){
+  NOT_IMPLEMENTED();
+#if 0
   TEMP_REGION(temp,nullptr);
 
   auto l = PushList<GraphPrintingNodeInfo>(temp);
@@ -1154,7 +1156,7 @@ void COM_DebugPushDotGraph(String filename,COM_Unit* top,COM_Connection* edges){
   }
 
   auto e = PushList<GraphPrintingEdgeInfo>(temp);
-  for(COM_Connection* con = edges; con; con = con->next){
+  for(COM_Edge* con = edges; con; con = con->next){
     GraphPrintingEdgeInfo* info = e->PushElem();
 
     info->firstNode = PushString(temp,"%p",con->out);
@@ -1172,6 +1174,7 @@ void COM_DebugPushDotGraph(String filename,COM_Unit* top,COM_Connection* edges){
 
   String filePath = GetDebugRegionFilepath(filename,temp);
   OutputContentToFile(filePath,result);
+#endif
 }
 
 #endif

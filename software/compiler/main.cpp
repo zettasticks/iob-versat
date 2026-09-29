@@ -18,6 +18,7 @@
 #include "templateEngine.hpp"
 #include "codeGeneration.hpp"
 #include "compiler.hpp"
+#include "hierName.hpp"
 
 #include "filesystem_meta.hpp"
 
@@ -90,6 +91,7 @@ Array<int> CalculateDAG(Array<Pair<int,int>> edges,int start,Arena* out){
   return PushArray(out,list);
 }
 
+#if 0
 // This structure needs to represent the entire work that is required to perform 
 struct Work{
   ConstructDef definition;
@@ -161,6 +163,8 @@ int CopyFileGroup(Array<FileContent> fileGroup,String filepathBase,bool flattene
 
   return 0;
 };
+
+#endif
 
 struct OptionsGather{
   Arena* arena;
@@ -299,12 +303,7 @@ void ReportFileCreation(bool allFiles = false){
   }
 }
 
-struct TESTER{
-  const char* t1;
-  String t2;
-};
-
-
+#if 0
 struct DeclInfo{
   DeclInfo* next;
 
@@ -313,6 +312,8 @@ struct DeclInfo{
   Array<ParamNameAndValue> metaParams;
   int index;
 };
+
+#endif
 
 int main(int argc,char* argv[]){
 #ifdef VERSAT_DEBUG
@@ -344,13 +345,10 @@ int main(int argc,char* argv[]){
   HIER_Init();
   FILE_Init();
 
+  // TODO: Move this to meta 
   InitializeDefaultData(perm);
-  InitializeSimpleDeclarations();
 
-  if(0){
-    SYM_Test();
-    return 0;
-  }
+  DECL_Init();
 
   for(int i = 0; i < argc; i++){
     printf("ARGS: %s\n",argv[i]);
@@ -482,10 +480,13 @@ int main(int argc,char* argv[]){
     return -1;
   }
 
+#if 0
   for(Pair<String,ModuleInfo> p : allModules){
     RegisterModuleInfo(&p.second,perm);
   }
+#endif
   
+#if 0
   // We need to do this after parsing the modules because the majority of these special types come from verilog files
   // NOTE: This should never fail since the verilog files are embedded into the exe. A fail in here means that we failed to embed the necessary files at build time
   BasicDeclaration::variableBuffer = GetTypeByNameOrFail("Buffer");
@@ -497,7 +498,9 @@ int main(int argc,char* argv[]){
   BasicDeclaration::timedMultiplexer = GetTypeByNameOrFail("TimedMux");
   BasicDeclaration::input = GetTypeByNameOrFail("CircuitInput");
   BasicDeclaration::output = GetTypeByNameOrFail("CircuitOutput");
+#endif
 
+#if 0
   // TODO: The testbench logic is kinda addhoc right now. Need to join together the other logic and them create a proper switch between these two.
   if(globalOptions.opMode == VersatOperationMode_GENERATE_TESTBENCH){
     String topLevelUnit = globalOptions.topName;
@@ -523,31 +526,24 @@ int main(int argc,char* argv[]){
     ReportFileCreation(true);
     return 0;
   }
-  
+#endif  
+
+
   String specFilepath = globalOptions.specificationFilepath;
 
   // TODO: Simplify this part. 
-  FUDeclaration* simpleType = GetTypeByName(globalOptions.topName);
-
   String topLevelTypeStr = globalOptions.topName;
+  FUDeclaration* simpleType = DECL_GetType(topLevelTypeStr,globalParams);
 
   bool anyError = false;
+
+#if 0
   
   if(!simpleType && specFilepath.size && !CompareString(topLevelTypeStr,"VERSAT_RESERVED_ALL_UNITS")){
     String content = PushFile(temp,StaticFormat("%.*s",UN(specFilepath)));
     
     // Parse spec file
     Array<ConstructDef> types = ParseVersatSpecification(content,temp);
-    
-#if 0
-    // MARK
-    for(ConstructDef def : types){
-      COM_Module top = COM_InstantiateModule(def.node,{},temp);
-      String repr = COM_Repr(top.units,temp);
-      printf("%.*s\n",UN(repr));
-    }
-    //exit(-1);
-#endif
 
     TrieSet<String>* checkNames = PushTrieSet<String>(temp);
 
@@ -929,7 +925,10 @@ int main(int argc,char* argv[]){
     }
   }
 
-  FUDeclaration* type = GetTypeByName(globalOptions.topName);
+#endif
+
+#if 0
+  // MARK
 
   if(!type && !CompareString(topLevelTypeStr,"VERSAT_RESERVED_ALL_UNITS")){
     printf("Did not find the top level type: %.*s\n",UN(topLevelTypeStr));
@@ -998,6 +997,8 @@ int main(int argc,char* argv[]){
 #endif
   }
 
+
+ 
   AccelInfo info = CalculateAcceleratorInfo(accel,true,temp,true);
 
   InstantiateParameters(&info,temp);
@@ -1006,6 +1007,7 @@ int main(int argc,char* argv[]){
   VersatComputedValues val = ComputeVersatValues(accel,&info,temp);
   Array<ExternalMemorySymbolic> external = val.externalMemoryInterfaces;
 
+#if 0
   int maxMemoryBit = val.memoryConfigDecisionBit - 1;
   for(int i = 0; i < info.infos.size; i++){
     for(auto iter = StartIteration(&info,i); iter.IsValid(); iter = iter.Step()){
@@ -1048,6 +1050,7 @@ int main(int argc,char* argv[]){
       unit->globalMemDecisionMask = mask;
     }
   }
+#endif
   
   OutputTopLevelFiles(accel,type,
                       globalOptions.hardwareOutputFilepath,
@@ -1076,7 +1079,6 @@ int main(int argc,char* argv[]){
   printf("\n");
 #endif
 
-  printf("UNITS: %d\n",val.nUnits);
   printf("ADDR_W:%d\n",val.memoryConfigDecisionBit + 1);
   if(val.nUnitsIO){
     printf("HAS_AXI:True\n");
@@ -1147,115 +1149,26 @@ int main(int argc,char* argv[]){
 
   // This should be the last thing that we do, no further file creation can occur after this point
   ReportFileCreation();
+#endif
 
   return 0;
 }
 
 /*
 
-What is the best way of keeping the current code working while integrating the changes?
+TODO:
 
-
+1) What is the point of ModuleInfo? We can just go from Module -> FUDeclaration. We have more types and a bunch of logic that we do not actually need.
 
 
 */
 
-
-#if 0
-- LEFT HERE - Now that we have proper work division for a single loop, need to test if we can do a 2D computation.
--             A simple convolution like operation would be enough to check if we are in the right path.
--             Afterwards need to handle proper parameter passing and potentially use name mangling to handle struct generation all stuff like that.
-#endif
 
 /*
 We should move graph stuff to a separate file (or keep it in accelerator.hpp and make it the proper place for it).
 Remove the dynamic arena and just share memory between the nodes.
 
 Memory mapped transfers do not check for sizes and report errors if too big.
-*/
-
-#if 0
-Was in the process of cleaning up header stuff and the likes. Realize that this is kinda more demanding than simply going one by one removing a header, compilation seeing if we broke stuff and then putting it back if so.
-
-I think what I really need to do is to take a look at the way things are organized and do a proper cleanup.
-Why does versat.hpp exist? What is the difference between configurations.hpp, accelerator.hpp, declarations.hpp, versat.hpp? Why are they different files? 
-How does stuff depend on each other? 
-
-What I need to do is:
--- Cleanup the main trio of configurations/accelerator/declarations.hpp. If there is a proper reason to separate stuff than do it otherwise just join into two files or even one. 
--- Potentially create a defs file where a bunch of only structures and enums reside. Things like Direction, Wire and the likes are kinda "universal" and no point spending a lot of time on this. If used by everything might as well put into a everything def.
--- General cleanup, function moving, function grouping, some comments explaining stuff and so on.
--- We potentially want to reduce as much dependency on std as possible. Compile times are low so no need to go crazy but the thing that is buggying me is the fact that we have std stuff scathered around and kinda losing track on this.
-
--- Need to make the worflow to add a new member to instance info really simple. Members on instance info are either: given directly from data stored on FUInstance. Given directly from data that comes from Merge. Fetched from submodule. Calculated from other instance info data. We also have to handle the fact that some of the data is global while another data is local. Need to make these 4 ways of adding an InstanceInfo very simple to see so that we can make this simpler in the future.
-
--- Potentially remove the Pool from Accelerator. Make the accelerator a proper layer and everything is just stored on that side.
-
-After this "organizational" cleanup, finish cleaning up the code, mainly the parser part. I want to remove the old parser completely. The new parser is the way to go.
-#endif
-
-/*
-
-TODO:
-NOTE:
-
-Of course some data cannot come from AccelInfo since simple modules do not contain one. 
-
-TODO: Are we even using the IsSimple stuff anymore? Need to take another look at it.
-
-TODO: Potentially remove the growable array and replace it with a list.
-      If we end up not removing it, at least make it so that the EndFunction takes an arena and that we copied the final array into the provided arena. Otherwise the growable aspect of the array might cause some error in the future. It is the same interface as an ArenaList.
-
-TODO: Remove the tokenizerTemplate. Replace it with a function pointer that performs the tokenization.
-
-The main problem is the FUInstance.
-A FUInstance is just a node in a graph that contains all the data that we can associate to an unit. However, after we process the graph, we should never have to access a FUInstance again. A FUInstance entire purpose is to hold all the information that we have parsed. Afterwards we use it to generate the AccelInfo, which is something that we are free to manipulate as we see fit, allowing us to change data inplace in order to implement stuff like instantiation and the likes.
-
-So, what we need to do first is:
-
-Second, do we also want FUDeclaration inside AccelInfo? It is probably best that we also remove any references to as well. 
-
-Basically, this makes the AccelInfo structure completely isolated from the FUDeclaration/FUInstance stuff. It should also make it easier to change any data that we want as we please.
-
-We also want to remove the usage of hashmaps all over the code when we could just use indexes 
-
-Some notes:
-
-AccelInfo contains all the information that can be extracted from an accelerator.
-What does FUDeclaration need to contain that cannot be stored inside AccelInfo?
-- The name of the module. Accelerators techically have names but they do not need to.
-- Parameters. AccelInfo does not define parameters.
-- Data that is unique for simple modules:
--- The operation that they define. For '+','-' and those type of operations.
--- Supported address gen.
-
-All the info that is calculated from the accelerator should pass to AccelInfo.
-
-*/
-
-/*
-  Proper merge user configs:
-
-  Right now we assume that we can just use the same name for the user configs after performing merge but things change if we ever end up merging the same module. In this case, the things become more complicated.
--- We can always force the user in this cases to define some user configs on the merge level that "resolve" the naming conflict.
--- Basically it is as if we inherited all the functions from the merged instances whose only job is to call into the specified instance function.
-
-*/
-
-/* ============================================================================
-// Major todo:
-
-1. Need to change memories to keep a symbolic expression. Remove the
-uglyness that is present in the memories, the memory template and the
-different memory structs for int and range and whatnot. Just use
-symbolic expressions. We might still want to have the expression range
-in the parser, but we convert to a symbolic expression when
-registering the module.
-
-2. The merge stuff is causing troubles and we need to cleanup that part of the code. Also need to make the code robust and clean enough so that we can implement some optimizations, like not using a different multiplexer port for every merge type (reusing merge ports if possible) and maybe some other optimizations related to the insertion of buffers and the likes.
-
-2.1 - I remember that we never found a good proper way of doing the recon stuff. Since we have more tests and a fast way of testing stuff out, we might be able to change this stuff very fast.
-
 */
 
 /*
@@ -1333,16 +1246,6 @@ Second, we can make it so that changing an accelerator merge state clears the co
 What this means is that we can potently figure out which merged state the user is likely configuring the accelerator regardless of the actual state the accelerator is set to and we can warn the user if
 it is very likely that the user is missing some configuration or it appears to miss configure the current merged accelerator.
 
-Hardware
-
-- Memories are not being properly registered. Also tired of keeping the iob_ stuff around. We probably want to spend one day just cleaning up all this stuff and maybe find a way of checking for places where registering could improve performance. Maybe yosis could be used for this, need to check.
-
-Address Gen:
-
-Address gen logic is very strict. Any deviation leads to program error and stacktraces start popping up.
-- Empty address gens fail and give errors.
-- Address gen with only address fail and give errors.
-
 We spend a good deal of time writing address gens that access matrix like structures.
 - Maybe it would be a good idea to push some of this logic to the address gens.
 -- Imagine being able to declare that the data follows a certain matrix like structure and then being able to provide addresses by accessing it.
@@ -1356,17 +1259,6 @@ addressGen test(width,height){
   addr = format[y][x];
 }
 
-- Currently stride is kinda "faked". We basically just look at the expression and if it is a division, we pick the divisor and make the duty logic from there.
--- Before we could think about the addresses generated and figure out how the unit would work based on the address used, but with this approach to stride it is no different to having a separate input to the address gen construct where we could put the duty stuff.
-
--- In fact, if we continue down this road, we might as well make it something like:
-
-address Test(a,b){
-  for x 0..a
-  addr = a;
-  stride = stride;
-  }
-
 Usability:
 
 - Need to check parameters and sizes and report stuff at Versat compile time.
@@ -1375,23 +1267,16 @@ Usability:
 - Is there a reason to have versat_emul.c ?
 -- Couldn't we just put everything into versat_wrapper and be done with it? That way, the user would only need to add the lib to the compilation process and everything should work fine.
 
-Code Generation:
-
-- Header file generating code that should depend on Metadata.
-
 Optimizations:
 
 -- We could collapse certain loops, assuming that we have the info needed (or we can push it into runtime).
 -- Leftover loops can be used to reduce the preassure on the lower loops (less bits needed and stuff like that, we currently pay for the upper loops bits wether we use them or not)
-
-- If we eventually have to handle non zero start loops, need to figure out how we do it. We can shift loops around so they start at zero, but do not know if we should do this when converting an addressGenDef into an AddressAccess, or if we convert first and then have a function that does this shift, etc... Mostly depends on how easy this transformation is when using SymbolicExpressions vs using LinearLoopSum. 
 
 - There is an optimization that we can make in order to reduce memory usage. For loops where the innermost term is not a '1' we are fetching more memory than we care about and that is fine. The problem is that we are storing those unused values inside the internal memory when we do not have to. If the innermost term was a 4, we could make it so that the internal memory only stores every 4 values read. For double loop address gens, we make sure that in hardware we reset every time we have a loop (so that the address gen lines up correctly). That way, for a loop that contains a constant term N, we reduce the amount of internal memory used by a factor of N.
 
 -- The same concept applies to writes, but instead of storing memory, we must control the transfer process to not write over memory by completely disabling the strobe for the values that we do not want to write over.
 
 --- How would we handle bigger transfer sizes, like AXI_DATA_W = 256? For both reads and writes it become more difficult to save memory. 
-
 
 Testability:
 
@@ -1442,32 +1327,3 @@ Parser:
 - I should be able to use write: "share config Type unit[N];", instead of having to write: "share config Type{ unit[N]; }"
 
 */
-
-/*
-
-TODO?
-
-DelayType and NodeType need a revision.
-
-The hardware is full of sloppy code.
-   Start standardizing and pulling up modules that abstract common functionality.
-   Maybe look into generating a verilog testbench for individual units that performs a number of tests depending on the interfaces that the unit provides.
-      Should be easy, just one more template.
-
-There are a dozens of TODOs scathered all over the codebase. Start by fixing some of them.
-
-Generated code does not take into account parameters when it should.
-   Some wires are given fixed sizes when they depend on verilog parameters. 
-
-*/
-
-/*
-
-TODO: Need to check the isSource member of ModuleInfo and so on. 
-
-TODO: Because of the delay implementation, there is a possibility of allowing inter-hierarchy optimizations:
-      Think a reg file module that is instantiated inside another module. Each reg is forced to have the same delay because we only calculate the module as a single unit, set the module delay, and when instantiating it, we take the module delay as unchangeable.
-      This requires to keep track for each module which one allows this to happen and then take that into account in the delay calculation functions. Note: Input delay does not work. We are talking about delay info propagating downards accross the hiearchy while input delay propagates upwards. We can still resolve this during the register FUDeclaration by calcuting the delays of lower units inside the register of the upper unit.
-      For this part, we would basically have to implement greater info on module connectivity (how each output interacts with each input and stuff like that).
-
- */

@@ -646,7 +646,6 @@ static Module ParseModule(Parser* tok,Arena* out){
 
   module.name = tok->ExpectNext(TokenType_IDENTIFIER).val;
 
-  //NewToken peek = C(tok->PeekToken());
   if(tok->IfNextToken('#')){
     tok->ExpectNext('(');
     module.parameters = ParseParameters(tok,values,out);

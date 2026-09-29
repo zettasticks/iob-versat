@@ -1,5 +1,7 @@
 #include "configurations.hpp"
 
+#if 0
+
 #include "accelerator.hpp"
 #include "debug.hpp"
 #include "declaration.hpp"
@@ -146,34 +148,6 @@ AccelInfoIterator AccelInfoIterator::StepInsideOnly(){
   }
 
   return {};
-}
-
-AccelInfoIterator AccelInfoIterator::ReverseStep(){
-  if(!IsValid()){
-    return {};
-  }
-
-  if(this->index - 1 < 0){
-    return {};
-  }
-  
-  AccelInfoIterator toReturn = *this;
-  toReturn.index = this->index - 1;
-  return toReturn;
-}
-
-int AccelInfoIterator::CurrentLevelSize(){
-  Array<InstanceInfo>& array = GetCurrentMerge();
-  int currentLevel = array[index].level;
-
-  int size = 0;
-  for(int i = 0; i < array.size; i++){
-    if(array[i].level == currentLevel){
-      size += 1;
-    }
-  }
-
-  return size;
 }
 
 AccelInfoIterator StartIteration(AccelInfo* info,int mergeIndex){
@@ -372,19 +346,16 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
   // Only for basic units on the top level of accel
   // The subunits are basically copied from the sub declarations.
   // Or they are calculated inside the Fill... function
-  int index = 0;
-  auto SetBaseInfo = [&index](InstanceInfo* elem,FUInstance* inst,int level,Arena* out){
+  auto SetBaseInfo = [](InstanceInfo* elem,FUInstance* inst,int level,Arena* out){
     TEMP_REGION(temp,out);
 
     FUDeclaration* decl = inst->declaration;
     
     *elem = {};
     elem->inst = inst;
-    elem->localIndex = index++;
     elem->name = inst->name;
     elem->baseName = inst->name; // Remember this function only sets basic units, so the baseName is just the name.
     elem->decl = decl;
-    elem->typeName = decl->name;
     elem->level = level;
     elem->isComposite = IsTypeHierarchical(decl);
     elem->isMerge = decl->type == FUDeclarationType_MERGED;
@@ -395,7 +366,6 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     elem->sharedIndex = inst->sharedIndex;
     elem->isMergeMultiplexer = inst->isMergeMultiplexer;
     elem->special = inst->literal;
-    elem->muxGroup = inst->muxGroup;
     elem->id = inst->id;
     elem->inputDelays = decl->GetInputDelays();
     elem->outputLatencies = decl->GetOutputLatencies();
@@ -407,9 +377,8 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     elem->nIOs = decl->info.nIOs;
 
     // Can depend on parameters
-    elem->configs = CopyArray(decl->configs,out);
+    //elem->configs = CopyArray(decl->configs,out);
     elem->states = CopyArray(decl->states,out);
-    elem->externalMemory = CopyArray(decl->externalMemorySymbol,out);
 
     elem->memMapSym = decl->info.memMapBitsSym;
     elem->memSize = decl->info.amountOfMemMappedInterfaces;
@@ -426,9 +395,6 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     if(decl == BasicDeclaration::variableBuffer){
       elem->specialType = SpecialUnitType_VARIABLE_BUFFER;
     }
-    if(!Empty(decl->operation)){
-      elem->specialType = SpecialUnitType_OPERATION;
-    }
 
     auto paramsMap = GetParametersOfUnit(inst,out);
     Array<ParamAndValue> params = PushArray<ParamAndValue>(out,paramsMap->inserted);
@@ -442,7 +408,6 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
     // NOTE: Care when using arrays, these must be copied individually for each subunit (check below)
     // TODO: I do not remember if number configs is correct at this stage or not.
     //       Check and write some comment here if so
-    elem->individualWiresGlobalStaticPos = PushArray<int>(out,decl->NumberConfigs());
     elem->individualWiresGlobalConfigPos = PushArray<int>(out,decl->NumberConfigs());
     elem->individualWiresLocalConfigPos = PushArray<int>(out,decl->NumberConfigs());
   };
@@ -495,6 +460,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
   info.infos[0].info = res;
   AccelInfoIterator iter = StartIteration(&info);
 
+#if 0 // nocheckin - PARAMETER
   for(; iter.IsValid(); iter = iter.Step()){
     InstanceInfo* info = iter.CurrentUnit();
     InstanceInfo* parent = iter.GetParentUnit();
@@ -518,6 +484,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
       p.val = replaced;
     }
   }
+#endif
 
   // NOTE: Parameters are partially instantiated in here. Only units that contain parents 
   //       have their parameters instantiated. The reason is that for the last step, (the top units)
@@ -535,6 +502,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
 
   // We first start by replacing parameters values based on the parameters of the FUInstance.
   // If a FUInstance was instantiated with a terminal value than this step fixes that value in place.
+#if 0
   iter = StartIteration(&info);
   for(; iter.IsValid(); iter = iter.Step()){
     InstanceInfo* info = iter.CurrentUnit();
@@ -548,21 +516,20 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
       map->Insert(p.name,p.val);
     }
 
-    for(Wire& w : info->configs){
+    for(Wire& w : info->decl->configs){
       w.sizeExpr = SYM_Replace(w.sizeExpr,map);
     }
     for(Wire& w : info->states){
       w.sizeExpr = SYM_Replace(w.sizeExpr,map);
     }
     info->memMapSym = SYM_Replace(info->memMapSym,map);
-    for(int i = 0; i < info->externalMemory.size; i++){
-      info->externalMemory[i] = Replace(info->externalMemory[i],map);
-    }
   }
+#endif
 
   // We then replace the parameters with the values of the parents.
   // This causes all the parameters of a design to be "global" in the sense that units that contain the same parent
   // will have the same parameter values. They inherit their values from the parent values.
+#if 0 // nocheckin - PARAMETER
   iter = StartIteration(&info);
   for(; iter.IsValid(); iter = iter.Step()){
     InstanceInfo* info = iter.CurrentUnit();
@@ -592,6 +559,7 @@ Array<InstanceInfo> GenerateInitialInstanceInfo(Accelerator* accel,Arena* out,Ar
       info->externalMemory[i] = Replace(info->externalMemory[i],map);
     }
   }
+#endif
 
   // Fill in graph info
   for(Pair<FUInstance*,int> p : instanceToIndex){
@@ -675,13 +643,15 @@ struct Node{
 void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
   TEMP_REGION(temp,out);
   Assert(!Empty(initialIter.accelName)); // For now, we must have some name if only to output debug info graphs and such
+  
+  InstanceInfo* info = &initialIter.info->infos[0].info[0];
+
   // Calculate full name
   for(AccelInfoIterator iter = initialIter; iter.IsValid(); iter = iter.Step()){
     InstanceInfo* unit = iter.CurrentUnit();
     InstanceInfo* parent = iter.GetParentUnit();
 
     if(parent){
-      unit->parentTypeName = PushString(out,parent->typeName);
     } else {
       unit->fullName = unit->name;
       continue;
@@ -758,7 +728,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
   // Units that are instantiated already have their config position calculated previously.
   // Which is stored inside the declaration for the unit.
   // The only thing that changes the normal configuration process is the fact that some units might be static.
-  // This only changes the calculation of the configurations on the top level, because the bottom level already had the static configurations taken of consideration.
+  // This only changes the calculation of the configurations on the top level, because the bottom level already had the static configurations taken in consideration.
   // That means that we do have to care about statics until the top level.
 
   // Now, the normal recursive approach passes a start index for the beginning of every global config calculation.
@@ -1107,6 +1077,7 @@ void FillInstanceInfo(AccelInfoIterator initialIter,Arena* out){
 }
 
 void FillStaticInfo(AccelInfo* info,Arena* out){
+#if 0 // nocheckin: HACK
   TEMP_REGION(temp,out);
   AccelInfoIterator iter = StartIteration(info);
   for(int i = 0; i < iter.MergeSize(); i++){
@@ -1176,6 +1147,7 @@ void FillStaticInfo(AccelInfo* info,Arena* out){
   }
 
   info->allStaticWires = PushArray(out,uniqueWires);
+#endif
 }
 
 void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel){
@@ -1237,8 +1209,8 @@ void FillAccelInfoFromCalculatedInstanceInfo(AccelInfo* info,Accelerator* accel)
     info->delays += type->NumberDelays();
     info->nIOs += type->info.nIOs;
 
-    if(type->externalMemorySymbol.size){
-      info->externalMemoryInterfaces += type->externalMemorySymbol.size;
+    if(type->externalMemory.size){
+      info->externalMemoryInterfaces += type->externalMemory.size;
     }
 
     if(type->singleInterfaces & SingleInterfaces_SIGNAL_LOOP){
@@ -1464,7 +1436,7 @@ bool IsUnitCombinatorialOperation(InstanceInfo* info){
 Opt<Wire*> CONF_GetEnableWire(InstanceInfo* info){
   // TODO: We do not want to do this based on naming. Ideally we should allow the user to define certain attributes
   //       to the wires and then 
-  for(Wire& w : info->configs){
+  for(Wire& w : info->decl->configs){
     if(w.name == "enabled"){
       return &w;
     }
@@ -1473,20 +1445,15 @@ Opt<Wire*> CONF_GetEnableWire(InstanceInfo* info){
   return {};
 }
 
-String GetStaticFullName(InstanceInfo* info,Arena* out){
-  String fullName = PushString(out,"%.*s_%.*s",UN(info->parentTypeName),UN(info->name));
-  return fullName;
-}
-
 String GetStaticWireFullName(InstanceInfo* info,Wire wire,Arena* out){
-  String fullName = PushString(out,"%.*s_%.*s_%.*s",UN(info->parentTypeName),UN(info->name),UN(wire.name));
+  String fullName = PushString(out,"%.*s_%.*s",UN(info->name),UN(wire.name));
   return fullName;
 }
 
 void InstantiateParameters(AccelInfo* info,Arena* out){
   TEMP_REGION(temp,out);
 
-#if 1
+#if 0
   for(int i = 0; i < info->infos.size; i++){
     // Replace params with default values for the top units.
     for(auto iter = StartIteration(info,i); iter.IsValid(); iter = iter.Next()){
@@ -1547,89 +1514,6 @@ void InstantiateParameters(AccelInfo* info,Arena* out){
   }
 #endif
 
-#if 0
-  for(int i = 0; i < info->infos.size; i++){
-    // Replace params with default values for the top units.
-    for(auto iter = StartIteration(info,i); iter.IsValid(); iter = iter.Next()){
-      InstanceInfo* info = iter.CurrentUnit();
-      Array<Parameter> params = info->decl->parameters;
-
-      auto map = PushTrieMap<String,SYM_Expr>(temp);
-      for(Parameter p : params){
-        if(p.name == "AXI_DATA_W" || p.name == "DELAY_W"){
-          continue;
-        }
-
-        map->Insert(p.name,p.defaultVal);
-      }
-
-      for(ParamAndValue& p : info->params){
-        SYM_Expr replaced = SYM_Replace(p.val,map);
-
-        p.val = replaced;
-      }
-    }
-
-    // We start by instantiating the default values of the top units.
-    for(auto iter = StartIteration(info,i); iter.IsValid(); iter = iter.Next()){
-      InstanceInfo* info = iter.CurrentUnit();
-
-      auto map = PushTrieMap<String,SYM_Expr>(temp);
-      for(ParamAndValue p : info->params){
-        if(IsGlobalParameter(p.name)){
-          continue;
-        }
-
-        map->Insert(p.name,p.val);
-      }
-
-      for(Wire& w : info->configs){
-        w.sizeExpr = SYM_Replace(w.sizeExpr,map);
-      }
-      for(Wire& w : info->states){
-        w.sizeExpr = SYM_Replace(w.sizeExpr,map);
-      }
-      if(!SYM_IsZeroValue(info->memMapSym)){
-        info->memMapSym = SYM_Replace(info->memMapSym,map);
-      }
-      for(int i = 0; i < info->externalMemory.size; i++){
-        info->externalMemory[i] = Replace(info->externalMemory[i],map);
-      }
-    }
-
-    // We propagate the values across the rest of the units.
-    // After this step all the units have their global parameter values.
-    for(auto iter = StartIteration(info,i); iter.IsValid(); iter = iter.Step()){
-      InstanceInfo* info = iter.CurrentUnit();
-      InstanceInfo* parent = iter.GetParentUnit();
-
-      if(!parent){
-        continue;
-      }
-
-      auto map = PushTrieMap<String,SYM_Expr>(temp);
-      for(ParamAndValue p : parent->params){
-        if(IsGlobalParameter(p.name)){
-          continue;
-        }
-
-        map->Insert(p.name,p.val);
-      }
-
-#if 1
-      for(Wire& w : info->configs){
-        w.sizeExpr = SYM_Replace(w.sizeExpr,map);
-      }
-      for(Wire& w : info->states){
-        w.sizeExpr = SYM_Replace(w.sizeExpr,map);
-      }
-#endif
-
-      info->memMapSym = SYM_Replace(info->memMapSym,map);
-    }    
-  }
-
-#endif
 }
 
 InstanceInfo* Find(AccelInfoIterator iter,HIER_Name name){
@@ -1691,3 +1575,5 @@ void HACK_InitNode(AccelInfo* info){
     }
   }
 }
+
+#endif

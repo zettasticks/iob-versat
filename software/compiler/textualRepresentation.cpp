@@ -1,5 +1,7 @@
 #include "textualRepresentation.hpp"
 
+#if 0
+
 #include "merge.hpp"
 #include "declaration.hpp"
 
@@ -160,3 +162,5 @@ String Repr(MappingNode* node,Arena* out){
 
   return name;
 }
+
+#endif
