@@ -1,9 +1,9 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
-if [[ ! -e ./build ]]; then
+if [ ! -e ./build ]; then
    mkdir ./build
 fi
-if [[ ! -e ./tool_build ]]; then
+if [ ! -e ./tool_build ]; then
    mkdir ./tool_build
 fi
 
