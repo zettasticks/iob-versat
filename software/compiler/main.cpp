@@ -174,7 +174,7 @@ struct OptionsGather{
   ArenaList<String>* extraSources;
   ArenaList<String>* includePaths;
   
-  ArenaList<ParamNameAndValue>* paramDefinitions;
+  ArenaList<DECL_Param>* paramDefinitions;
 
   Options* options;
 
@@ -219,9 +219,9 @@ parse_opt (int key, char *arg,
       if(number.type == TokenType_NUMBER){
         i64 value = ParseInt(number.val);
         
-        ParamNameAndValue* val = opts->paramDefinitions->PushElem();
+        DECL_Param* val = opts->paramDefinitions->PushElem();
         val->name = PushString(out,paramName);
-        val->value = value;
+        val->v = SYM_Lit(value);
       } else {
         *opts->parsingErrors->PushElem() = PushString(out,"Error parsing -A'%s', we expected a number but instead got '%.*s', make sure that you use the form '-AX=Y' where X is paramName and Y is an integer",arg,UN(value));
       }
@@ -364,7 +364,7 @@ int main(int argc,char* argv[]){
   gather.extraSources = PushList<String>(temp);
   gather.includePaths = PushList<String>(temp);
   gather.unitFolderPaths = PushList<String>(temp);
-  gather.paramDefinitions = PushList<ParamNameAndValue>(temp);
+  gather.paramDefinitions = PushList<DECL_Param>(temp);
   gather.parsingErrors = PushList<String>(temp);
 
   globalOptions = DefaultOptions(perm);

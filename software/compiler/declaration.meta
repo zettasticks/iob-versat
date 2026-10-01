@@ -1,0 +1,17 @@
+table SingleInterfaces(name,val,format){
+  DONE     0   "done"
+  CLK      1   "clk"
+  RESET    2   "rst"
+  RUN      3   "run"
+  RUNNING  4   "running"
+  LOOP     5   "signal_loop"
+}
+
+enum DECL_SingleInterface{
+  $ DECL_SingleInterface_NIL = 0 $
+  @(for a SingleInterfaces) $ DECL_SingleInterface_@(a.name) = (1 << @(a.val)) $
+}
+
+map(shallow,ifChain) DECL_SingleInterafacesFromName(String,DECL_SingleInterface){ 
+  @(for a SingleInterfaces) $ @(a.format) -> DECL_SingleInterface_@(a.name) $ 
+}

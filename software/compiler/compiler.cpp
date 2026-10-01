@@ -596,8 +596,8 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamAndValue> topLeve
 
       String typeName = ptr->token.val;
 
-      ArenaList<ParamNameAndValue>* paramList = PushList<ParamNameAndValue>(temp);
-      Array<ParamNameAndValue> params = {};
+      ArenaList<DECL_Param>* paramList = PushList<DECL_Param>(temp);
+      Array<DECL_Param> params = {};
       FUDeclaration* decl = nullptr;
 
       for(SP_Node* child = ptr->childs; child; child = child->next){
@@ -628,9 +628,9 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamAndValue> topLeve
               COM_ReportError(env,"Error evaluation expression, needs to be constant but it is not",expr);
             }
 
-            ParamNameAndValue* val = paramList->PushElem();
+            DECL_Param* val = paramList->PushElem();
             val->name = paramName.val;
-            val->value = valuation.value;
+            val->v = SYM_Lit(valuation.value);
           } break;
           case SP_Type_VAR_DECL:{
             Token name = child->token;

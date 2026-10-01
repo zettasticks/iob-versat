@@ -84,7 +84,7 @@ Array<VerilogPortSpec> ObtainGroupByName(VerilogModuleInterface* interface,Strin
 // True if group was found and removed
 bool RemoveGroupInPlace(VerilogModuleInterface* interface,String name);
 
-Opt<VerilogPortSpec>   GetPortSpecByName(Array<VerilogPortSpec> array,String name);
+VerilogPortSpec*   GetPortSpecByName(Array<VerilogPortSpec> array,String name);
 
 // TODO: We might eventually change from using strings to using an enum for group type.
 bool ContainsGroup(VerilogModuleInterface* interface,String name);

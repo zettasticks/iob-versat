@@ -7,13 +7,13 @@ struct Frame{
   Frame* previousFrame;
 };
 
-static Opt<Value> GetValue(Frame* frame,String var){
+static Value* GetValue(Frame* frame,String var){
   Frame* ptr = frame;
 
   while(ptr){
     Value* possible = ptr->table->Get(var);
     if(possible){
-      return *possible;
+      return possible;
     } else {
       ptr = ptr->previousFrame;
     }
@@ -93,16 +93,16 @@ void TE_ProcessTemplate(StringBuilder* b,String tmpl){
       }
       String subName = String{&tmpl[start],i - start};
 
-      Opt<Value> optVal = GetValue(currentFrame,subName);
+      Value* optVal = GetValue(currentFrame,subName);
 
-      if(!optVal.has_value()){
+      if(!optVal){
         printf("[Error] Template did not find the member: '%.*s'\n",UN(subName));
         Assert(false);
       }
 
       valueUsed->Insert(subName,true);
 
-      Value val = optVal.value();
+      Value val = *optVal;
 
       if(val.type == ValueType_STRING){
         b->PushString(val.str);

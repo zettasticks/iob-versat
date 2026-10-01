@@ -307,82 +307,6 @@ inline u64 Hash(bool b){
   return (b ? 1 : 0);
 }
 
-// Nullopt similar to the one in std but we skip having to include a heavy templated file for this.
-struct nullopt_t {
-    constexpr explicit nullopt_t(int) {}
-};
-
-// Using std::optional is a pain when debugging 
-// This simple class basically does the same and much easier to debug
-template<typename T>
-struct Opt{
-  // Use the functions because the Opt for pointers does not contain hasVal
-private:
-  T val;
-  bool hasVal;
-  
-public:
-  Opt():val{},hasVal(false){};
-  Opt(T t):val(t),hasVal(true){};
-  
-  Opt<T>& operator=(T& t){
-    hasVal = true;
-    val = t;
-    return *this;
-  };
-
-  Opt<T>& operator=(nullopt_t){
-    hasVal = false;
-    return *this;
-  };
-
-  explicit operator bool(){return hasVal;}
-  bool operator!(){return !hasVal;};
-
-  // Match the std interface to make it easier to replace if needed
-  bool has_value(){return hasVal;};
-  T& value() & {assert(hasVal);return val;};
-  T&& value() && {assert(hasVal);return static_cast<T&&>(val);};
-  T value_or(T other){return hasVal ? val : other;};
-}; 
-
-// Optimized Opt for pointers, takes same space so if compiler is smart there should not be any cost to this.
-template<typename T>
-struct Opt<T*>{
-private:
-  T* val;
-
-public:
-  Opt():val(nullptr){};
-  Opt(nullopt_t):val(nullptr){};
-  Opt(T* t):val(t){};
-
-  Opt<T*>& operator=(T& t){
-    val = t;
-    return *this;
-  };
-
-  Opt<T*>& operator=(nullopt_t){
-    val = nullptr;
-    return *this;
-  };
-
-  explicit operator bool(){return (val != nullptr);}
-  bool operator!(){return !val;};
-
-  // Match the std interface to make it easier to replace if needed
-  bool has_value(){return (val != nullptr);};
-  T*& value() & {assert(val);return val;};
-  T*&& value() && {assert(val);return static_cast<T&&>(val);};
-  T* value_or(T* other){return this->has_value() ? val : other;};
-};
-
-template<typename T>
-inline bool ShouldPropagate_(Opt<T> val){return !val.has_value();}
-inline bool ShouldPropagate_(void* val){return val == nullptr;}
-
-#define PROPAGATE(OPTIONAL) if(ShouldPropagate_(OPTIONAL)){return {};}
-
 template<typename T>
 using BracketList = std::initializer_list<T>;
 
@@ -835,16 +759,6 @@ bool Contains(Array<T> array,T toCheck){
       }
    }
    return false;
-}
-
-template<typename T>
-Opt<T> Find(Array<T> array,T toCheck){
-   for(int i = 0; i < array.size; i++){
-      if(array.data[i] == toCheck){
-         return array.data[i];
-      }
-   }
-   return {};
 }
 
 template<>

@@ -26,7 +26,7 @@ String TrimWhitespaces(String in);
 String GetCommonPath(String path1,String path2,Arena* out);
 String OS_NormalizePath(String in,Arena* out);
 
-Opt<Array<String>> GetAllFilesInsideDirectory(String dirPath,Arena* out);
+//Opt<Array<String>> GetAllFilesInsideDirectory(String dirPath,Arena* out);
 
 String PushEscapedString(Arena* out,String toEscape,char spaceSubstitute);
 void   PrintEscapedString(String toEscape,char spaceSubstitute);
@@ -42,14 +42,6 @@ String PushBinaryRepr(Arena* out,int number);
 // TODO Reorganize
 String PushPointingString(Arena* out,int startPos,int size);
 Array<Value> ExtractValues(const char* format,String tok,Arena* arena);
-
-// A templated type for carrying the index in an array
-// A performant design would allocate a separate array because these functions copy data around.
-// Use these for prototyping, easing of debugging and stuff
-template<typename T>
-struct IndexedStruct : public T{
-   int index;
-};
 
 template<typename T>
 struct SingleLink{
@@ -85,6 +77,7 @@ template<typename T>
 struct ArenaList{
   SingleLink<T>* head;
   SingleLink<T>* tail;
+  int count;
   Arena* arena; // For now store arena inside structure. 
 
   T* PushElem();
@@ -124,47 +117,6 @@ struct GenericArenaDoubleListIterator{
   int alignmentOfType;
   int index;
 };
-
-// TODO: This function leaks memory, because it does not return the free nodes
-template<typename T,typename Func>
-T* ListRemoveAll(T* start,Func compareFunction){
-   #if 0
-   T* freeListHead = nullptr;
-   T* freeListPtr = nullptr;
-   #endif
-
-   T* head = nullptr;
-   T* listPtr = nullptr;
-   for(T* ptr = start; ptr;){
-      T* next = ptr->next;
-      ptr->next = nullptr;
-      bool comp = compareFunction(ptr);
-
-      if(comp){ // Add to free list
-         #if 0
-         if(freeListPtr){
-            freeListPtr->next = ptr;
-            freeListPtr = ptr;
-         } else {
-            freeListHead = ptr;
-            freeListPtr = ptr;
-         }
-         #endif
-      } else { // "Add" to return list
-         if(listPtr){
-            listPtr->next = ptr;
-            listPtr = ptr;
-         } else {
-            head = ptr;
-            listPtr = ptr;
-         }
-      }
-
-      ptr = next;
-   }
-
-   return head;
-}
 
 template<typename T>
 Array<T> Reverse(Array<T> arr,Arena* out){
@@ -324,6 +276,7 @@ T* ArenaList<T>::PushElem(){
     this->tail = s;
   }
 
+  this->count += 1;
   return &s->elem;
 }
 
@@ -423,23 +376,16 @@ bool Empty(Array<T> arr){
 
 template<typename T>
 bool Empty(ArenaList<T>* list){
-  if(list == nullptr){
+  if(list == nullptr || list->head == nullptr){
     return true;
   }
-  bool empty = (list->head == nullptr);
-  return empty;
+  return false;
 }
 
 template<typename T>
 bool Empty(ArenaDoubleList<T>* list){
   bool empty = (list->head == nullptr);
   return empty;
-}
-
-template<typename T>
-bool OnlyOneElement(ArenaList<T>* list){
-  bool onlyOne = (list->head != nullptr && list->head == list->tail);
-  return onlyOne;
 }
   
 template<typename T>

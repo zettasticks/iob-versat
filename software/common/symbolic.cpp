@@ -2294,7 +2294,7 @@ SYM_EvaluateResult SYM_DebugEvaluate(SYM_Expr top,TrieMap<String,SYM_Expr>* valu
   return res;
 }
 
-SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top){
+SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top,Array<SYM_Pair> varValues){
   TEMP_REGION(temp,nullptr);
 
   bool divByZero = false;
@@ -2306,7 +2306,7 @@ SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top){
     bool isInvalid;
   };
 
-  auto Recurse = [&nilValue,&divByZero,&nonConstantValue](auto Recurse,SYM_Expr expr) -> Value {
+  auto Recurse = [&nilValue,&divByZero,&nonConstantValue,&varValues](auto Recurse,SYM_Expr expr) -> Value {
     bool negate = IsNegative(expr.node);
     SYM_Node* node = GetPointer(expr.node);
 
@@ -2321,8 +2321,23 @@ SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr top){
       res = LiteralValue(node);
     } break;
     case SYM_Type_VARIABLE:{
-      nonConstantValue = true;
-      isInvalid = true;
+      String name = node->name;
+      bool found = 0;
+      for(SYM_Pair p : varValues){
+        if(p.name == name){
+          Value result = Recurse(Recurse,p.val);
+          
+          res = result.val;
+          isInvalid = result.isInvalid;
+          found = 1;
+          break;
+        }
+      }
+
+      if(!found){
+        nonConstantValue = true;
+        isInvalid = true;
+      }
     } break;
     case SYM_Type_SUM:{
       Value left = Recurse(Recurse,node->left);

@@ -1,25 +1,25 @@
-table NodeTable(name,isExprType){
-  NIL               0
-  TOP               0
-  MODULE            0
-  ATTRIBUTE         0
-  IDENTIFIER        1
-  LITERAL           1
-  PARAMETER         0
-  SYSTEM_FUNCTION   1
-  RANGE             0
-  INPUT             0
-  OUTPUT            0
-  INOUT             0
-  EXPR              0
-  ADD               1
-  SUB               1
-  MUL               1
-  DIV               1
-  AND               1
-  OR                1
-  XOR               1
-  TERNARY           1
+table NodeTable(name,isExprType,opCount){
+  NIL               0   0
+  TOP               0   0
+  MODULE            0   0
+  ATTRIBUTE         0   0
+  IDENTIFIER        1   0
+  LITERAL           1   0
+  PARAMETER         0   0
+  SYSTEM_FUNCTION   1   0
+  RANGE             0   0
+  INPUT             0   0
+  OUTPUT            0   0
+  INOUT             0   0
+  EXPR              0   0
+  ADD               1   2
+  SUB               1   2
+  MUL               1   2
+  DIV               1   2
+  AND               1   2
+  OR                1   2
+  XOR               1   2
+  TERNARY           1   0
 }
 
 enum V_NodeType{
@@ -28,6 +28,7 @@ enum V_NodeType{
 
 map V_NodeType_Name(V_NodeType,String){ @(for a NodeTable) $ V_NodeType_@(a.name) -> "@(a.name)" $ }
 map V_NodeType_IsExpr(V_NodeType,bool){ @(for a NodeTable) $ V_NodeType_@(a.name) -> @(a.isExprType) $ }
+map V_NodeType_OpCount(V_NodeType,int){ @(for a NodeTable) $ V_NodeType_@(a.name) -> @(a.opCount) $ }
 
 table ParamFlagsTable(name,value,verilogId){
  UNIQUE         0x1   unique

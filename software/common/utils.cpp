@@ -73,6 +73,7 @@ String OS_NormalizePath(String in,Arena* out){
   return res;
 }
 
+#if 0
 Opt<Array<String>> GetAllFilesInsideDirectory(String dirPath,Arena* out){
    DIR* dir = opendir(StaticFormat("%.*s",UN(dirPath))); // Make sure it's zero terminated
 
@@ -124,6 +125,7 @@ Opt<Array<String>> GetAllFilesInsideDirectory(String dirPath,Arena* out){
    
    return arr;
 }
+#endif
 
 String PushEscapedString(Arena* out,String toEscape,char spaceSubstitute){
   TEMP_REGION(temp,out);

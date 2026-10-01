@@ -12,6 +12,7 @@
 
 #include <string>
 
+#if 0
 typedef Value (*MathFunction)(Value f,Value g);
 
 #define VERSAT_LATENCY "versat_latency"
@@ -51,15 +52,6 @@ static MathFunctionDescription verilogMathFunctions[] = {
   {"acosh",1},
   {"atanh",1}
 };
-
-Opt<MathFunctionDescription> GetMathFunction(String name){
-  for(int i = 0; i < ARRAY_SIZE(verilogMathFunctions); i++){
-    if(CompareString(verilogMathFunctions[i].name,name)){
-      return verilogMathFunctions[i];
-    }
-  }
-  return {};
-}
 
 static void PrintExpression(StringBuilder* b,VExpr* exp,int level){
   b->PushSpaces(level);
@@ -754,6 +746,7 @@ static Module ParseModule(Parser* tok,Arena* out){
   return module;
 }
 
+#endif
 
 // START OF NEW CODE ==========================================================
 // START OF NEW CODE ==========================================================
@@ -763,6 +756,16 @@ static Module ParseModule(Parser* tok,Arena* out){
 // START OF NEW CODE ==========================================================
 // START OF NEW CODE ==========================================================
 
+
+// ======================================
+// Type
+
+bool V_IsPort(V_NodeType type){
+  bool res = (type == V_NodeType_INPUT ||
+              type == V_NodeType_OUTPUT ||
+              type == V_NodeType_INOUT);
+  return res;
+}
 
 // ======================================
 // Helpers
@@ -1241,19 +1244,20 @@ V_Node* V_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
   
   // Parse unary
   while(!parser->Done()){
-    V_Node* parsed = nullptr;
-    if(!parsed && parser->IfNextToken('-')){
-      parsed = V_MakeNode(out,V_NodeType_SUB);
+    if(parser->IfNextToken('+')){
+      continue; // Ignore unary plus.
     }
+    if(parser->IfNextToken('-')){
+      V_Node* unarySub = V_MakeNode(out,V_NodeType_SUB);
+      unarySub->first = &V_Node_0;
+      unarySub->second = topUnary;
 
-    if(parsed && !topUnary){
-      bottomUnary = parsed;
-      topUnary = parsed;
-      continue;
-    }
+      topUnary = unarySub;
 
-    if(parsed){
-      parsed->first = topUnary;
+      if(!bottomUnary){
+        bottomUnary = topUnary;
+      }
+
       continue;
     }
 
@@ -1307,8 +1311,10 @@ V_Node* V_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
     parser->ReportUnexpectedToken(peek,{});
   }
 
+  // Finish unary chain =========================================================
   if(topUnary){
-    bottomUnary->first = res;
+    Assert(bottomUnary);
+    bottomUnary->second = res;
     res = topUnary;
   }
 
@@ -1742,230 +1748,6 @@ V_ParseResult V_ParseVerilogFile(String unprocessed,Arena* out){
   
   return res;
 }
-
-#if 0
-ModuleInfo ExtractModuleInfo(Module& module,Arena* out){
-  TEMP_REGION(temp,out);
-
-  ModuleInfo info = {};
-
-  info.defaultParameters = module.parameters;
-
-  auto inputs = StartGrowableArray<PortInfo>(out);
-  auto outputs = StartGrowableArray<PortInfo>(out);
-  auto configs = StartGrowableArray<WireExpression>(out);
-  auto states = StartGrowableArray<WireExpression>(out);
-
-  info.name = PushString(out,module.name);
-  info.isSource = module.isSource;
-
-  auto* external = PushTrieMap<ExternalMemoryID,ExternalMemoryInfo>(temp);
-  
-  for(PortDeclaration decl : module.ports){
-    String name = decl.name;
-    
-    if(CompareString("signal_loop",decl.name)){
-      info.singleInterfaces |= SingleInterfaces_SIGNAL_LOOP;
-    } else if(CheckFormat("ext_dp_%s_%d_port_%d",decl.name)){
-      Array<Value> values = ExtractValues("ext_dp_%s_%d_port_%d",decl.name,temp);
-
-      ExternalMemoryID id = {};
-      id.interface = values[1].number;
-      id.type = ExternalMemoryType_DP;
-
-      String wire = values[0].str;
-      int port = values[2].number;
-
-      Assert(port < 2);
-
-      ExternalMemoryInfo* ext = external->GetOrInsert(id,{});
-      if(CompareString(wire,"addr")){
-        ext->dp[port].bitSize = decl.range; //SymbolicExpressionFromVerilog(decl.range,out); // decl.range;
-      } else if(CompareString(wire,"out")){
-        ext->dp[port].dataSizeOut = decl.range;
-      } else if(CompareString(wire,"in")){
-        ext->dp[port].dataSizeIn = decl.range;
-      } else if(CompareString(wire,"write")){
-        ext->dp[port].write = true;
-      } else if(CompareString(wire,"enable")){
-        ext->dp[port].enable = true;
-      }
-    } else if(CheckFormat("ext_2p_%s",decl.name)){
-      ExternalMemoryID id = {};
-      id.type = ExternalMemoryType_2P;
-
-      String wire = {};
-	  bool out = false;
-      if(CheckFormat("ext_2p_%s_%s_%d",decl.name)){
-        Array<Value> values = ExtractValues("ext_2p_%s_%s_%d",decl.name,temp);
-
-        wire = values[0].str;
-		String outOrIn = values[1].str;
-		if(CompareString(outOrIn,"out")){
-		  out = true;
-		} else if(CompareString(outOrIn,"in")){
-		  out = false;
-		} else {
-		  Assert(false && "Either out or in is mispelled or not present\n");
-		}
-        id.interface = values[2].number;
-      } else if(CheckFormat("ext_2p_%s_%d",decl.name)){
-        Array<Value> values = ExtractValues("ext_2p_%s_%d",decl.name,temp);
-
-        wire = values[0].str;
-        id.interface = values[1].number;
-      } else {
-        UNHANDLED_ERROR("TODO: Should be an handled error");
-      }
-
-      ExternalMemoryInfo* ext = external->GetOrInsert(id,{});
-
-      if(CompareString(wire,"addr")){
-		if(out){
-		  ext->tp.bitSizeOut = decl.range;
-		} else {
-          ext->tp.bitSizeIn = decl.range; // We are using the second port to store the address despite the fact that it's only one port. It just has two addresses.
-		}
-      } else if(CompareString(wire,"data")){
-		if(out){
-          ext->tp.dataSizeOut = decl.range;
-		} else {
-          ext->tp.dataSizeIn = decl.range;
-		}
-      } else if(CompareString(wire,"write")){
-        ext->tp.write = true;
-      } else if(CompareString(wire,"read")){
-        ext->tp.read = true;
-      } else {
-        UNHANDLED_ERROR("Should be an handled error");
-      }
-    } else if(CheckFormat("in%d",decl.name)){
-      name = Offset(name,2);
-      int index = ParseInt(name);
-      Value* delayValue = decl.attributes->Get(VERSAT_LATENCY);
-
-      int delay = 0;
-      if(delayValue) delay = delayValue->number;
-
-      inputs[index].delay = delay;
-      inputs[index].range = decl.range;
-    } else if(CheckFormat("out%d",decl.name)){
-      name = Offset(name,3);
-      int index = ParseInt(name);
-      Value* latencyValue = decl.attributes->Get(VERSAT_LATENCY);
-
-      int latency = 0;
-      if(latencyValue) latency = latencyValue->number;
-
-      outputs[index].delay = latency;
-      outputs[index].range = decl.range;
-    } else if(CheckFormat("delay%d",decl.name)){
-      name = Offset(name,5);
-      int delay = ParseInt(name);
-
-      info.nDelays = MAX(info.nDelays,delay + 1);
-    } else if(  CheckFormat("databus_ready_%d",decl.name)
-				|| CheckFormat("databus_valid_%d",decl.name)
-				|| CheckFormat("databus_addr_%d",decl.name)
-				|| CheckFormat("databus_rdata_%d",decl.name)
-				|| CheckFormat("databus_wdata_%d",decl.name)
-				|| CheckFormat("databus_wstrb_%d",decl.name)
-				|| CheckFormat("databus_len_%d",decl.name)
-				|| CheckFormat("databus_last_%d",decl.name)){
-      Array<Value> val = ExtractValues("databus_%s_%d",decl.name,temp);
-
-      if(CheckFormat("databus_addr_%d",decl.name)){
-        info.databusAddrSize = decl.range;
-      }
-
-      info.nIO = val[1].number;
-      info.doesIO = true;
-    } else if(CheckFormat("rvalid",decl.name)
-		   || CheckFormat("valid",decl.name)
-		   || CheckFormat("addr",decl.name)
-		   || CheckFormat("rdata",decl.name)
-		   || CheckFormat("wdata",decl.name)
-		   || CheckFormat("wstrb",decl.name)){
-      info.memoryMapped = true;
-
-      if(CheckFormat("addr",decl.name)){
-        info.memoryMappedBits = decl.range;
-      }
-    } else if(CheckFormat("clk",decl.name)){
-      info.singleInterfaces |= SingleInterfaces_CLK;
-    } else if(CheckFormat("rst",decl.name)){
-      info.singleInterfaces |= SingleInterfaces_RESET;
-    } else if(CheckFormat("run",decl.name)){
-      info.singleInterfaces |= SingleInterfaces_RUN;
-    } else if(CheckFormat("running",decl.name)){
-      info.singleInterfaces |= SingleInterfaces_RUNNING;
-    } else if(CheckFormat("done",decl.name)){
-      info.singleInterfaces |= SingleInterfaces_DONE;
-    } else if(decl.type == WireDir_INPUT){ // Config
-      WireExpression* wire = configs.PushElem();
-
-      Value* stageValue = decl.attributes->Get(VERSAT_STAGE);
-
-      VersatStage stage = VersatStage_COMPUTE;
-      
-      if(stageValue && stageValue->type == ValueType_STRING){
-        String val = stageValue->str;
-
-        if(CompareString(val,"Write")){
-          stage = VersatStage_WRITE;
-        } else if(CompareString(val,"Read")){
-          stage = VersatStage_READ;
-        } else {
-          Assert(false);
-        }
-      }
-      
-      wire->bitSize = decl.range;
-      wire->name = decl.name;
-      wire->isStatic = decl.attributes->Exists(VERSAT_STATIC);
-      wire->stage = stage;
-    } else if(decl.type == WireDir_OUTPUT){ // State
-      WireExpression* wire = states.PushElem();
-
-      wire->bitSize = decl.range;
-      wire->name = decl.name;
-    } else {
-      NOT_IMPLEMENTED("Implemented as needed, so far all if cases handles all cases so we should never reach here");
-    }
-  }
-
-  info.configs = configs.AsArray();
-  info.states = states.AsArray();
-  info.inputs = inputs.AsArray();
-  info.outputs = outputs.AsArray();
-
-  if(info.doesIO){
-    info.nIO += 1;
-  }
-
-  Array<ExternalMemoryInterfaceExpression> interfaces = PushArray<ExternalMemoryInterfaceExpression>(out,external->inserted);
-  int index = 0;
-  for(Pair<ExternalMemoryID,ExternalMemoryInfo> pair : external){
-    ExternalMemoryInterfaceExpression& inter = interfaces[index++];
-
-    inter.interface = pair.first.interface;
-    inter.type = pair.first.type;
-
-	switch(inter.type){
-	case ExternalMemoryType::ExternalMemoryType_2P:{
-	  inter.tp = pair.second.tp;
-	} break;
-	case ExternalMemoryType::ExternalMemoryType_DP:{
-	  inter.dp[0] = pair.second.dp[0];
-	  inter.dp[1] = pair.second.dp[1];
-	}break;
-	}
-  }
-  info.externalInterfaces = interfaces;
-
-  return info;
-}
-#endif
 
 String V_PreprocessVerilogFile(String content,Array<String> includeFilepaths,Arena* out){
   TEMP_REGION(temp,out);
@@ -2483,47 +2265,80 @@ String V_Repr(V_Node* top,Arena* out){
 }
 
 // ======================================
-// Symbolic conversion
+// Symbolic manipulation
 
-SYM_Expr V_SymbolicFromNode(V_Node* exprIn){
-  V_Node* exprTop = exprIn;
-  if(exprTop->type == V_NodeType_EXPR){
-    exprTop = exprTop->childs;
+V_SymConvResult V_ConvertToSym(V_Node* top,Array<SYM_Pair> varValues){
+  bool anyError = 0;
+  SYM_Expr res = SYM_Nil;
+
+  if(top->type == V_NodeType_EXPR){
+    top = top->childs;
   }
 
-  Assert(V_NodeType_IsExpr(exprTop));
-
-  switch(exprTop->type){
-    case V_NodeType_IDENTIFIER:{
-    } break;
-    case V_NodeType_NUMBER:{
-    } break;
-    case V_NodeType_SYSTEM_FUNCTION:{
-    } break;
-    case V_NodeType_ADD:{
-
-    } break;
-    case V_NodeType_ADD:{
-
-    } break;
-    case V_NodeType_ADD:{
-
-    } break;
-    case V_NodeType_ADD:{
-
-    } break;
-    case V_NodeType_ADD:{
-
-    } break;
-    case V_NodeType_ADD:{
-
-    } break;
-    case V_NodeType_ADD:{
-
-    } break;
-    case V_NodeType_TERNARY:{
-      NOT_IMPLEMENTED("Ternary not supported and probably ");
-    } break;
+  String str = top->token.val;
+  int opCount = V_NodeType_OpCount(top->type);
+  SYM_Expr first = SYM_0;
+  SYM_Expr second = SYM_0;
+  if(opCount >= 1){
+    V_SymConvResult conv = V_ConvertToSym(top->first,varValues);
+    first = conv.res;
+    anyError |= conv.anyError;
   }
+  if(opCount >= 2){
+    V_SymConvResult conv = V_ConvertToSym(top->second,varValues);
+    second = conv.res;
+    anyError |= conv.anyError;
+  }
+
+  switch(top->type){
+  case V_NodeType_LITERAL:{
+    V_ParsedNumber num = V_ParseNumber(str.data,str.data + str.size);
+    res = SYM_Lit(num.decimalNumber);
+  } break;
+  case V_NodeType_IDENTIFIER:{
+    SYM_Pair* exists = 0;
+    for(SYM_Pair& l : varValues){
+      if(l.name == str){
+        exists = &l;
+        break;
+      }
+    }
+      
+    if(!exists){
+      res = SYM_Var(top->token.val);
+    } else {
+      res = exists->val;
+    }
+  } break;
+  case V_NodeType_SYSTEM_FUNCTION:{
+    NOT_IMPLEMENTED();
+  } break;
+  case V_NodeType_ADD: res = first + second; break;
+  case V_NodeType_SUB: res = first - second; break;
+  case V_NodeType_MUL: res = first * second; break;
+  case V_NodeType_AND: NOT_IMPLEMENTED(); break; //res = first & second; break;
+  case V_NodeType_OR:  NOT_IMPLEMENTED(); break; //res = first | second; break;
+  case V_NodeType_XOR: NOT_IMPLEMENTED(); break; //res = first ^ second; break;
+
+  case V_NodeType_DIV:{
+    if(SYM_IsZeroValue(second)){
+      anyError = 1;
+      printf("Division by zero detected\n",UN(str));
+    } else {
+      res = first / second; 
+    }
+  } break;
+
+  default: Assert(!V_NodeType_IsExpr(top->type));
+  }
+
+  if(SYM_IsNil(res)){
+    anyError = 1;
+  }
+
+  V_SymConvResult result = {};
+  result.anyError = anyError;
+  result.res = res;
+
+  return result;
 }
-

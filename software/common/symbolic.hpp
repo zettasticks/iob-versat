@@ -98,6 +98,11 @@ struct SYM_Partition{
   bool exists;
 };
 
+struct SYM_Pair{
+  String name;
+  SYM_Expr val;
+};
+
 // ======================================
 // Couple of useful constants and variables
 
@@ -137,7 +142,7 @@ inline bool Equal(SYM_Expr lhs,SYM_Expr rhs){
 }
 
 // ======================================
-// Public API.
+// Manipulation
 
 SYM_Expr SYM_Var(String name);
 SYM_Expr SYM_Lit(int value);
@@ -197,7 +202,7 @@ String SYM_Repr(SYM_Expr expr,Arena* out);
 // ======================================
 // Evaluation
 
-SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr in);
+SYM_EvaluateResult SYM_ConstantEvaluate(SYM_Expr in,Array<SYM_Pair> varValues = {});
 
 // ======================================
 // Implementation helpers

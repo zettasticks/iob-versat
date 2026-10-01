@@ -210,10 +210,10 @@ bool RemoveGroupInPlace(VerilogModuleInterface* interface,String name){
   return false;
 }
 
-Opt<VerilogPortSpec> GetPortSpecByName(Array<VerilogPortSpec> array,String name){
-  for(VerilogPortSpec spec : array){
+VerilogPortSpec* GetPortSpecByName(Array<VerilogPortSpec> array,String name){
+  for(VerilogPortSpec& spec : array){
     if(CompareString(spec.name,name)){
-      return spec;
+      return &spec;
     }
   }
   return {};

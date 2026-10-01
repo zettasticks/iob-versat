@@ -218,6 +218,8 @@ struct ModuleInfo{
 #endif
 
 struct V_Node{
+  V_NodeType type;
+
   union{
     V_Node* first;
     V_Node* next;
@@ -228,19 +230,15 @@ struct V_Node{
   };
 
   V_Node* attributes;
-  V_NodeType type;
 
   Token token;
 };
 
-#if 0
-SYM_Expr SymbolicExpressionFromVerilog(VExpr* topExpr);
-SYM_Expr SymbolicExpressionFromVerilog(ExpressionRange range);
+// ======================================
+// Constants
 
-Array<Module> ParseVerilogFile(String fileContent,Array<String> includeFilepaths,Arena* out); // Only handles preprocessed files
-//ModuleInfo ExtractModuleInfo(Module& module,Arena* out);
-
-#endif
+static readonly V_Node V_Node_0 = {.type = V_NodeType_LITERAL,.token = {.type = TokenType_NUMBER,.val = "0"}};
+static readonly V_Node V_Node_Range0 = {.type = V_NodeType_RANGE,.first = &V_Node_0,.second = &V_Node_0};
 
 enum V_NumberType{
   V_NumberType_NIL,
@@ -272,6 +270,16 @@ struct V_ParseResult{
   V_Node* node;
   Array<String> errors;
 };
+
+struct V_SymConvResult{
+  SYM_Expr res;
+  bool anyError;
+};
+
+// ======================================
+// Type
+
+bool V_IsPort(V_NodeType type);
 
 // ======================================
 // Helpers
@@ -308,3 +316,8 @@ V_ParseResult V_ParseVerilogFile(String content,Arena* out);
 // Repr
 
 String V_Repr(V_Node* top,Arena* out);
+
+// ======================================
+// Symbolic manipulation
+
+V_SymConvResult V_ConvertToSym(V_Node* expr,Array<SYM_Pair> varValues);

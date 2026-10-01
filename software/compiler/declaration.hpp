@@ -6,6 +6,8 @@
 
 #include "addressGen.hpp"
 
+#include "declaration_meta.hpp"
+
 struct COM_Unit;
 struct COM_Edge;
 
@@ -20,20 +22,9 @@ enum SpecialUnitType{
   SpecialUnitType_VARIABLE_BUFFER = 4
 };
 
-struct Parameter{
+struct DECL_Param{
   String name;
-  SYM_Expr defaultVal;
-  ParamFlags flags;
-};
-
-struct ParamNameAndValue{
-  String name;
-  int value;
-};
-
-struct ParamNameAndValue2{
-  Token name;
-  SYM_Expr value;
+  SYM_Expr v;
 };
 
 enum DeclarationType{
@@ -58,16 +49,15 @@ struct DECL_PortInfo{
 //       The general structure is fixed (amount of inputs/outputs and so on) but the size is not.
 struct FUDeclaration{
   String metaName;
+  Array<DECL_Param> parameters; // All parameters even if equal to default values.
 
-  String name;
-  Array<Parameter> parameters; // Only the parameters that differ from basic declaration
+  String name; //
 
-  Array<Wire> configs;
-  Array<Wire> states;
-  
+  // Interfaces =================================================================
   Array<DECL_PortInfo> inputs;
   Array<DECL_PortInfo> outputs;
-
+  Array<Wire> configs;
+  Array<Wire> states;
   int numberDelays;
   Array<SYM_Expr> memoryMapped;
   Array<ExternalMemorySymbolic> externalMemory;
@@ -87,28 +77,6 @@ struct FUDeclarationNode{
   FUDeclarationNode* next;
   FUDeclaration val;
 };
-
-
-#if 0
-
-FUDeclaration* RegisterFU(FUDeclaration declaration);
-
-FUDeclaration* GetTypeByName(String str);
-FUDeclaration* GetTypeByNameOrFail(String name);
-
-FUDeclaration* GetTypeByName(String str,Array<ParamNameAndValue> metaParams);
-
-String DECL_MangleName(String typeName,Array<ParamNameAndValue> metaParams,Arena* out);
-
-bool HasMultipleConfigs(FUDeclaration* decl);
-// Because of merge, we need units that can delay the datapath for different values depending on the datapath that is being configured.
-
-// ======================================
-// Declaration inspection
-
-Wire* GetConfigWireByName(FUDeclaration* decl,String name);
-
-#endif
 
 // Simple operations should also be stored here.
 namespace BasicDeclaration{
@@ -134,13 +102,14 @@ enum DECL_MetaType{
   DECL_MetaType_COMPOSITE
 };
 
-// TODO: We might implement a validation step for DECL_Meta in the future to make sure
-//       that we do not have problems with duplicated parameters and stuff like that.
-//       Just preserving the nodes and doing instantiation when needed is a bit clubersome.
 struct DECL_Meta{
   DECL_Meta* next;
   DECL_MetaType type;
   String name;
+
+  Array<DECL_Param> params;
+
+  bool anyError;
 
   union{
     V_Node* simpleUnit;
@@ -159,11 +128,6 @@ bool IsNil(FUDeclaration* decl);
 void DECL_Init();
 
 // ======================================
-// Parameter handling
-
-Array<ParamNameAndValue> DECL_GetDefaultParams(DECL_Meta* meta,Arena* out);
-
-// ======================================
 // Register (does not exist)
 
 // Returns true if already exists
@@ -176,9 +140,9 @@ FUDeclaration* DECL_RegisterFU(String name);
 // ======================================
 // Get or create if needed
 
-FUDeclaration* DECL_GetType(String name,Array<ParamNameAndValue> params);
+FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params);
 
 // ======================================
 // Instantiation
 
-FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<ParamNameAndValue> normalizedParams);
+FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normalizedParams);
