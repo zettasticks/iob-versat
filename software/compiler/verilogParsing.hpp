@@ -273,7 +273,7 @@ struct V_ParseResult{
 
 struct V_SymConvResult{
   SYM_Expr res;
-  bool anyError;
+  bool error;
 };
 
 // ======================================

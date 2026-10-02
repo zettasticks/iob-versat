@@ -2026,7 +2026,7 @@ String V_PreprocessVerilogFile(String content,Array<String> includeFilepaths,Are
 
       case TokenType_VERILOG_PREPROCESS:{
         Token define = t;
-        String name = Offset(define.val,1);
+        String name = Cut(define.val,1,0);
 
         Array<TokenNode*> args = {};
         if(IfNextToken(TOK_TYPE('('))){
@@ -2282,12 +2282,12 @@ V_SymConvResult V_ConvertToSym(V_Node* top,Array<SYM_Pair> varValues){
   if(opCount >= 1){
     V_SymConvResult conv = V_ConvertToSym(top->first,varValues);
     first = conv.res;
-    anyError |= conv.anyError;
+    anyError |= conv.error;
   }
   if(opCount >= 2){
     V_SymConvResult conv = V_ConvertToSym(top->second,varValues);
     second = conv.res;
-    anyError |= conv.anyError;
+    anyError |= conv.error;
   }
 
   switch(top->type){
@@ -2337,7 +2337,7 @@ V_SymConvResult V_ConvertToSym(V_Node* top,Array<SYM_Pair> varValues){
   }
 
   V_SymConvResult result = {};
-  result.anyError = anyError;
+  result.error = anyError;
   result.res = res;
 
   return result;

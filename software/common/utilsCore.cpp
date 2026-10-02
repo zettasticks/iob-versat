@@ -28,21 +28,22 @@ int dprintf(const char *format, ...){
   return result;
 }
 
-String Offset(String base,int amount){
-  if(amount > base.size){
+String Cut(String base,int fromStart,int fromEnd){
+  String in = base;
+  
+  in.size -= fromStart + fromEnd;
+  in.data += fromStart;
+
+  if(in.size <= 0){
     return {};
   }
-  String res = base;
-  res.data += amount;
-  res.size -= amount;
-
-  return res;
+  return in;
 }
 
-String Cut(String base,int amount){
-  String res = base;
-  res.size = MAX(res.size - amount,0);
-  return res;
+String SubString(String base,int size){
+  String in = base;
+  in.size = size;
+  return in;
 }
 
 char* StaticFormat(const char* format,...){

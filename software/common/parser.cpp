@@ -357,7 +357,7 @@ String PARSE_GetStringContent(Token stringType){
   String res = stringType.val;
   Assert(stringType.type == TokenType_C_STRING);
 
-  res = Offset(Cut(res,1),1);
+  res = Cut(res,1,1);
   return res;
 }
 
@@ -367,13 +367,13 @@ String PARSE_GetCommentContent(Token commentType){
 
   switch(commentType.type){
     case TokenType_COMMENT:{
-      res = Offset(res,2);
+      res = Cut(res,2,0);
     } break;
     case TokenType_MULTILINE_COMMENT:{
-      res = Cut(Offset(res,2),2);
+      res = Cut(res,2,2);
     } break;
     case TokenType_UNTERMINATED_MULTILINE_COMMENT:{
-      res = Offset(res,2);
+      res = Cut(res,2,0);
     } break;
   }
 

@@ -419,8 +419,8 @@ struct String{
 #define UN(STR) (STR).size,(STR).data
 #define UN_REVERSE(STR) (STR).data,(STR).size
 
-String Offset(String base,int amount);
-String Cut(String base,int amount);
+String Cut(String base,int fromStart,int fromEnd);
+String SubString(String base,int size);
 
 inline u64 Hash(String str){
   u64 res = 0;

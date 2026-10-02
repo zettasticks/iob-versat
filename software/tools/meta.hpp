@@ -343,6 +343,10 @@ inline String TrimRightWhitespaces(String in){String res = in; while(res.size > 
 inline String TrimWhitespaces(String in){String res = in; res = TrimLeftWhitespaces(res); res = TrimRightWhitespaces(res); return res;}
 
 String PushString(Arena* arena,String ss){
+  if(ss.size == 0){
+    return {};
+  }
+
   int size = ss.size;
   
   Byte* mem = PushBytes(arena,size + 1);

@@ -19,6 +19,7 @@
 #include "codeGeneration.hpp"
 #include "compiler.hpp"
 #include "hierName.hpp"
+#include "hardwareInterfaces.hpp"
 
 #include "filesystem_meta.hpp"
 
@@ -303,18 +304,6 @@ void ReportFileCreation(bool allFiles = false){
   }
 }
 
-#if 0
-struct DeclInfo{
-  DeclInfo* next;
-
-  String mangledName;
-  String unmangledName;
-  Array<ParamNameAndValue> metaParams;
-  int index;
-};
-
-#endif
-
 int main(int argc,char* argv[]){
 #ifdef VERSAT_DEBUG
   printf("Running in debug mode\n");
@@ -347,6 +336,7 @@ int main(int argc,char* argv[]){
 
   // TODO: Move this to meta 
   InitializeDefaultData(perm);
+  HW_Init(perm);
 
   DECL_Init();
 
