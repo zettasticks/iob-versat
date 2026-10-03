@@ -1457,8 +1457,9 @@ V_Node* V_ParseOptionalRange(Parser* parser,Arena* out){
 
     parser->ExpectNext(']');
  
-    first->next = second;
-    res = V_MakeNode(out,V_NodeType_RANGE,{},first);
+    res = V_MakeNode(out,V_NodeType_RANGE,{});
+    res->first = first;
+    res->second = second;
   }
 
   return res;

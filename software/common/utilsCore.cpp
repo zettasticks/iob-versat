@@ -818,6 +818,16 @@ int ParseInt(String ss){
   }
 }
 
+bool IsNumber(String str){
+  bool res = true;
+  for(char ch : str){
+    if(!(ch >= '0' && ch <= '9')){
+      res = false;
+    }
+  }
+  return res;
+}
+
 String PushPointingString(Arena* out,int startPos,int size){
   TEMP_REGION(temp,out);
   StringBuilder* builder = StartString(temp);

@@ -26,7 +26,7 @@ String TrimWhitespaces(String in);
 String GetCommonPath(String path1,String path2,Arena* out);
 String OS_NormalizePath(String in,Arena* out);
 
-//Opt<Array<String>> GetAllFilesInsideDirectory(String dirPath,Arena* out);
+Array<String> OS_GetFilenamesInsideDir(String dirPath,Arena* out);
 
 String PushEscapedString(Arena* out,String toEscape,char spaceSubstitute);
 void   PrintEscapedString(String toEscape,char spaceSubstitute);

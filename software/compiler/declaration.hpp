@@ -6,6 +6,8 @@
 
 #include "addressGen.hpp"
 
+#include "hardwareInterfaces.hpp"
+
 #include "declaration_meta.hpp"
 
 struct COM_Unit;
@@ -51,7 +53,7 @@ struct FUDeclaration{
   String metaName;
   Array<DECL_Param> parameters; // All parameters even if equal to default values.
 
-  String name; //
+  String name; // NOTE: Serialized if parameters affect verilog or C code.
 
   // Interfaces =================================================================
   Array<DECL_PortInfo> inputs;
@@ -59,10 +61,12 @@ struct FUDeclaration{
   Array<Wire> configs;
   Array<Wire> states;
   int numberDelays;
-  Array<SYM_Expr> memoryMapped;
-  Array<ExternalMemorySymbolic> externalMemory;
+  Array<SYM_Expr> memoryMapped; // We only care about address size, right? Everything else must be standard. For now.
+  Array<HW_Instance> externalMemory;
+  
+  // For external memory we care about wire size. 
   String operation;
-  SingleInterfaces singleInterfaces;
+  DECL_SingleInterface singleInterfaces;
 
   // Graph related data for modular units =======================================
   COM_Unit* units;
@@ -70,6 +74,8 @@ struct FUDeclaration{
 
   AddressGenInst supportedAddressGen;
   DeclarationType type;
+
+  bool error;
 };
 extern FUDeclaration FUDeclaration_Nil;
 
@@ -145,4 +151,4 @@ FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params);
 // ======================================
 // Instantiation
 
-FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normalizedParams);
+FUDeclarationNode* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normalizedParams);

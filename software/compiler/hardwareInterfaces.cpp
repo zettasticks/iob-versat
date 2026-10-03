@@ -11,28 +11,32 @@ Array<HW_Interface*> HW_AllInterfaces;
 void HW_Init(Arena* perm){
   using namespace HW_Default;
 
-#define HW_INIT(NAME,FORMAT,COUNT) \
+#define HW_INIT(NAME,REPR,FORMAT,COUNT,PORTS) \
   { \
   auto build = HW_SchemaFromString(FORMAT,'_',perm); \
   Assert(!build.error); \
+  NAME.name = REPR; \
   NAME.schema = build.res; \
-  NAME.wires = PushArray<HW_Wire>(perm,COUNT); \
+  NAME.wires = PushArray<HW_WireDef>(perm,COUNT); \
+  NAME.maxPorts = PORTS; \
   }
 
-  HW_INIT(HW_DP,"dp_@{wire}_@{interface}_port_@{port}",5);
+  HW_INIT(HW_DP,"DP","ext_dp_@{wire}_@{interface}_port_@{port}",5,2);
   HW_DP.wires[0].name = "addr";
   HW_DP.wires[1].name = "out";
   HW_DP.wires[2].name = "in";
   HW_DP.wires[3].name = "write";
   HW_DP.wires[4].name = "enable";
+  
+  HW_INIT(HW_2P,"2P","ext_2p_@{wire}_@{interface}",6,1);
+  HW_2P.wires[0].name = "addr_out";
+  HW_2P.wires[1].name = "addr_in";
+  HW_2P.wires[2].name = "data_out";
+  HW_2P.wires[3].name = "data_in";
+  HW_2P.wires[4].name = "write";
+  HW_2P.wires[5].name = "read";
 
-  HW_INIT(HW_2P,"2p_@{wire}_@{direction}_@{interface}",4);
-  HW_2P.wires[0].name = "addr";
-  HW_2P.wires[1].name = "data";
-  HW_2P.wires[2].name = "write";
-  HW_2P.wires[3].name = "read";
-
-  HW_INIT(HW_DATABUS,"databus_@{wire}_@{interface}",8);
+  HW_INIT(HW_DATABUS,"DATABUS","databus_@{wire}_@{interface}",8,1);
   HW_DATABUS.wires[0].name = "ready";
   HW_DATABUS.wires[1].name = "rvalid";
   HW_DATABUS.wires[2].name = "addr";
@@ -42,7 +46,7 @@ void HW_Init(Arena* perm){
   HW_DATABUS.wires[6].name = "len";
   HW_DATABUS.wires[7].name = "last";
 
-  HW_INIT(HW_MM,"@{wire}",6);
+  HW_INIT(HW_MM,"MM","@{wire}",6,1);
   HW_MM.wires[0].name = "rvalid";
   HW_MM.wires[1].name = "valid";
   HW_MM.wires[2].name = "addr";
@@ -50,6 +54,8 @@ void HW_Init(Arena* perm){
   HW_MM.wires[4].name = "wdata";
   HW_MM.wires[5].name = "wstrb";
 
+  HW_MM.wires[2].prop |= HW_WireProperty_ADDR;
+  
 #undef HW_INIT
 
   HW_AllInterfaces = PushArray<HW_Interface*>(perm,4);
@@ -65,8 +71,8 @@ HW_SchemaBuild HW_SchemaFromString(String format,char sep,Arena* out){
 
 #define HW_SCAN(CH) while(ptr < end && *ptr != CH) ptr += 1;
 
-  HW_Schema* head = 0;
-  HW_Schema* tail = 0;
+  HW_SchemaNode* head = 0;
+  HW_SchemaNode* tail = 0;
 
   bool error = 0;
   while(!error && ptr < end){
@@ -101,8 +107,6 @@ HW_SchemaBuild HW_SchemaFromString(String format,char sep,Arena* out){
         type = HW_SchemaType_INTERFACE;
       } else if(typeStr == "port"){
         type = HW_SchemaType_PORT;
-      } else if(typeStr == "direction"){
-        type = HW_SchemaType_DIRECTION;
       } else {
         Assert(false);
         error = 1;
@@ -120,7 +124,7 @@ HW_SchemaBuild HW_SchemaFromString(String format,char sep,Arena* out){
     }
 
     Assert(!error);
-    HW_Schema* newSchema = PushStruct<HW_Schema>(out);
+    HW_SchemaNode* newSchema = PushStruct<HW_SchemaNode>(out);
     newSchema->content = PushString(out,content);
     newSchema->type = type;
     LL_Append(head,tail,next,newSchema);
@@ -128,13 +132,18 @@ HW_SchemaBuild HW_SchemaFromString(String format,char sep,Arena* out){
 
 #undef HW_SCAN
 
+  HW_Schema* schema = PushStruct<HW_Schema>(out);
+  schema->sep = sep;
+  schema->head = head;
+
   HW_SchemaBuild res = {};
-  res.res = head;
+  res.res = schema;
   res.error = error;
   return res;
 }
 
-HW_ValueResult HW_ExtractValues(HW_Interface* expectedInterface,String content,char sep,Arena* out){
+HW_ValueResult HW_ExtractValues(HW_Interface* expectedInterface,String content,Arena* out){
+  const char sep = expectedInterface->schema->sep;
   const char* ptr = content.data;
   const char* end = ptr + content.size;
 
@@ -150,8 +159,8 @@ HW_ValueResult HW_ExtractValues(HW_Interface* expectedInterface,String content,c
 
   bool error = 0;
   bool lastWasSep = 0;
-  HW_Schema* current = expectedInterface->schema;
-  while(!error & ptr < end){
+  HW_SchemaNode* current = expectedInterface->schema->head;
+  while(!error && current && ptr < end){
     char ch = *ptr;
     lastWasSep = 0;
     if(ch == sep){
@@ -160,109 +169,93 @@ HW_ValueResult HW_ExtractValues(HW_Interface* expectedInterface,String content,c
       continue;
     }
 
-    // Get content and figure out type ============================================
-    const char* loopStart = ptr;
-    HW_SCAN(sep);
-
-    String content = String(loopStart,ptr - loopStart);
-    if(content.size == 0 && current){
-      error = 1;
-      break;
-    }
-    if(content.size != 0 && !current){
-      error = 1;
-      break;
-    }
-
-    // Match with schema ==========================================================
-    bool isNumber = 1;
-    for(int i = 0; i < content.size; i++){
-      if(!(content[i] >= '0' && content[i] <= '9')){
-        isNumber = 0;
-      }
-    }
-
-    int number = 0;
-    if(isNumber){
-      number = ParseInt(content);
-    }
-
     bool advance = 0;
     HW_ValueType type = HW_ValueType_NIL;
     String asStr = {};
     int asInt = 0;
 
-    if(current->type == HW_SchemaType_TEXT ||
-       current->type == HW_SchemaType_WIRE){
-      if(isNumber){
-        error = 1;
-        break;
-      }
+    // Check if matches text based schema first ===================================
+    bool found = 0;
+    
+    if(!found && current->type == HW_SchemaType_TEXT){
+      String toCheck = current->content;
+      const char* checkEnd = ptr + toCheck.size;
 
-      bool found = 0;
-      if(!found && current->type == HW_SchemaType_TEXT){
-        if(current->content == content){
-          advance = 1;
-          asStr = content;
+      if(checkEnd <= end){
+        String check = String(ptr,checkEnd - ptr);
+
+        if(toCheck == check){
+          ptr += check.size;
           found = 1;
-          type = HW_ValueType_NIL;
+          advance = 1;
         }
       }
+    }
+    if(!found && current->type == HW_SchemaType_WIRE){
+      for(int i = 0; i <  expectedInterface->wires.size; i++){
+        HW_WireDef sig = expectedInterface->wires[i];
+        String toCheck = sig.name;
+        const char* checkEnd = ptr + toCheck.size;
 
-      if(!found && current->type == HW_SchemaType_DIRECTION){
-        if(current->content == "out"){
-          advance = 1;
-          dir = Direction_OUTPUT;
-          found = 1;
-          type = HW_ValueType_DIRECTION;
-        }
-        if(current->content == "in"){
-          advance = 1;
-          dir = Direction_INPUT;
-          found = 1;
-          type = HW_ValueType_DIRECTION;
-        }
-      }
+        if(checkEnd <= end){
+          String check = String(ptr,checkEnd - ptr);
 
-      if(!found && current->type == HW_SchemaType_WIRE){
-        String wireName = content;
-
-        for(int i = 0; i <  expectedInterface->wires.size; i++){
-          HW_Wire sig = expectedInterface->wires[i];
-          if(sig.name == wireName){
+          if(toCheck == check){
+            ptr += check.size;
+            found = 1;
+            advance = 1;
+            type = HW_ValueType_WIRE;
             asInt = i;
             wireIndex = i;
-            advance = 1;
-            found = 1;
-            type = HW_ValueType_WIRE;
             break;
           }
         }
       }
-
-      if(!found){
-        asStr = content;
-        type = HW_ValueType_TEXT;
-      }
     }
-    if(current->type == HW_SchemaType_PORT || 
-       current->type == HW_SchemaType_INTERFACE){
-      if(!isNumber){
+
+    if(!found){
+      // Separate based on sep and check remaining cases ============================
+      const char* loopStart = ptr;
+      HW_SCAN(sep);
+      String content = String(loopStart,ptr - loopStart);
+      if((content.size == 0 && current) || (content.size != 0 && !current)){
         error = 1;
         break;
       }
 
-      if(current->type == HW_SchemaType_PORT){ 
-        type = HW_ValueType_PORT;
-        port = number;
-      };
-      if(current->type == HW_SchemaType_INTERFACE){ 
-        type = HW_ValueType_INTERFACE;
-        interface = number;
-      };
+      // Check if number and parse it ===============================================
+      bool isNumber = IsNumber(content);
+      int number = 0;
+      if(isNumber){
+        number = ParseInt(content);
+      }
 
-      asInt = number;
-      advance = 1;
+      if(!isNumber){
+        asStr = content;
+        type = HW_ValueType_TEXT;
+        found = 1;
+      }
+
+      if(current->type == HW_SchemaType_PORT || 
+         current->type == HW_SchemaType_INTERFACE){
+        if(!isNumber){
+          error = 1;
+          break;
+        }
+
+        if(current->type == HW_SchemaType_PORT){ 
+          type = HW_ValueType_PORT;
+          port = number;
+        };
+        if(current->type == HW_SchemaType_INTERFACE){ 
+          type = HW_ValueType_INTERFACE;
+          interface = number;
+        };
+
+        asInt = number;
+        advance = 1;
+        found = 1;
+      }
     }
 
     if(advance){
@@ -295,5 +288,37 @@ HW_ValueResult HW_ExtractValues(HW_Interface* expectedInterface,String content,c
   res.dir = dir;
   res.val = head;
   res.error = error;
+  return res;
+}
+
+// ======================================
+// Repr
+
+String HW_GetWireRepresentation(HW_Interface* inter,int wireIndex,int port,int interface,Arena* out){
+  TEMP_REGION(temp,out);
+
+  HW_SchemaNode* head = inter->schema->head;
+  char sep = inter->schema->sep;
+
+  auto b = StartString(temp);
+  for(HW_SchemaNode* ptr = head; ptr; ptr = ptr->next){
+    bool first = (ptr == head);
+    if(!first){
+      b->PushChar(sep);
+    }
+
+    switch(ptr->type){
+    case HW_SchemaType_TEXT:{
+      b->PushString(ptr->content);
+    } break;
+    case HW_SchemaType_WIRE:{
+      b->PushString(inter->wires[wireIndex].name);
+    } break;
+    case HW_SchemaType_PORT: b->PushString("%d",port); break;
+    case HW_SchemaType_INTERFACE: b->PushString("%d",interface); break;
+    }
+  }
+
+  String res = EndString(out,b);
   return res;
 }

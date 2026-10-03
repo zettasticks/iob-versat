@@ -417,35 +417,40 @@ int main(int argc,char* argv[]){
       DECL_RegisterMeta(name,ptr);
     }
   }
+
+  for(String folderPath : globalOptions.unitFolderPaths){
+    Array<String> filePaths = OS_GetFilenamesInsideDir(folderPath,temp);
+
+    for(String filename : filePaths){
+      String path = PushString(temp,"%.*s/%.*s",UN(folderPath),UN(filename));
+      String content = PushFile(temp,path);
+      V_ParseResult parsed = V_ParseVerilogFile(content,perm);
+
+      if(parsed.errors.size > 0){
+        for(String str : parsed.errors){
+          printf("%.*s\n",UN(str));
+        }
+      
+        anyError = 1;
+        continue;
+      }
+
+      for(V_Node* ptr = parsed.node->childs; ptr; ptr = ptr->next){
+        Assert(ptr->type == V_NodeType_MODULE);
+
+        String name = ptr->token.val;
+        DECL_RegisterMeta(name,ptr);
+      }
+    }
+  }
   
   if(anyError){
     return -1;
   }
 
-  DECL_GetType("Mem",{});
-
-  return 0;
+  - LEFT HERE - Simple declarations should be working fine now. Need to work on modules next
 
 #if 0
-  Array<ParamNameAndValue> globalParams = PushArray(perm,gather.paramDefinitions);
-
-  for(ParamNameAndValue p : globalParams){
-    printf("%.*s %d\n",UN(p.name),p.value);
-  }
-
-  TrieMap<String,ModuleInfo>* allModules = PushTrieMap<String,ModuleInfo>(temp);
-
-  for(FileContent file : defaultVerilogUnits){
-    String content = file.content;
-    Array<Module> modules = ParseVerilogFile(content,globalOptions.includePaths,temp);
-
-    for(Module& mod : modules){
-      ModuleInfo info = ExtractModuleInfo(mod,perm);
-      info.moduleSource = ModuleSource_DEFAULT_UNIT;
-
-      allModules->Insert(info.name,info);
-    }
-  }
 
   bool error = false;
   Array<String> allVerilogFiles = {};

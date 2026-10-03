@@ -640,6 +640,7 @@ struct Value{
 // TODO: Reorganize
 bool Contains(String str,String toCheck);
 int ParseInt(String str);
+bool IsNumber(String str);
 
 bool IsNum(char ch);
 bool CheckFormat(const char* format,String text);

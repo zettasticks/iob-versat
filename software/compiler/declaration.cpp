@@ -20,7 +20,7 @@ struct DECL_StateTag{
 static DECL_StateTag DECL_State = {};
 
 // ======================================
-// 
+// Register special units
 
 static FUDeclaration* RegisterCircuitInput(){
   FUDeclaration* decl = DECL_RegisterFU("CircuitInput");
@@ -78,7 +78,6 @@ static void RegisterOperators(){
     decl->operation = binary[i].operation;
   }
 }
-
 
 namespace BasicDeclaration{
   FUDeclaration* nil = &FUDeclaration_Nil;
@@ -263,8 +262,15 @@ FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params){
 
   if(res == &FUDeclaration_Nil && metaExists){
     if(metaExists->type == DECL_MetaType_SIMPLE){
-      res = DECL_InstantiateSimple(metaExists,normalizedParams);
+      FUDeclarationNode* node = DECL_InstantiateSimple(metaExists,normalizedParams);
+      LL_Append(DECL_State.head,DECL_State.tail,next,node);
+      
+      res = &node->val;
     }
+  }
+
+  if(res->error){
+    res = &FUDeclaration_Nil;
   }
 
   return res;
@@ -273,20 +279,16 @@ FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params){
 // ======================================
 // Instantiation
 
-FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normalizedParams){
+FUDeclarationNode* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normalizedParams){
   TEMP_REGION(temp,DECL_State.arena);
 
   V_Node* top = meta->simpleUnit;
-  
-  String repr = V_Repr(top,temp);
-  printf("%.*s\n",UN(repr));
-
   Assert(top->type = V_NodeType_MODULE);
 
-  String name = top->token.val;
+  String moduleName = top->token.val;
   
   for(V_Node* ptr = top->attributes; ptr; ptr = ptr->next){
-    // TODO: attributes
+    // TODO: module attributes
   }
 
   // Convert param into sym pair ================================================
@@ -296,6 +298,20 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
     params[i].val = normalizedParams[i].v;
   }
 
+  // Check repeated wires =======================================================
+  TrieSet<String>* repeated = PushTrieSet<String>(temp);
+  for(V_Node* ptr = top->attributes; ptr; ptr = ptr->next){
+    if(!V_IsPort(ptr->type)){
+      continue;
+    }
+    String name = ptr->token.val;
+    bool exists = repeated->ExistsOrInsert(name);
+    if(exists){
+      // TODO: Report error
+    }
+  }
+
+  // Extract wire info ==========================================================
   struct DECL_InterfaceInfo{
     DECL_InterfaceInfo* next;
     HW_Interface* inter;
@@ -316,55 +332,45 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
     DECL_SimpleType type;
     int index;
     int latency;
-    VersatStage stage; // Only makes sense for delay
   };
-
-  DECL_SimpleWireInfo* simpleHead = 0;
-  DECL_SimpleWireInfo* simpleTail = 0;
-
-  DECL_InterfaceInfo* complexHead = 0;
-  DECL_InterfaceInfo* complexTail = 0;
 
   struct DECL_ConfigOrState{
     DECL_ConfigOrState* next;
     String name;
     int size;
+    VersatStage stage;
     bool isState;
   };
 
+  bool error = 0;
+
+  DECL_SimpleWireInfo* simpleHead = 0;
+  DECL_SimpleWireInfo* simpleTail = 0;
+  DECL_InterfaceInfo* complexHead = 0;
+  DECL_InterfaceInfo* complexTail = 0;
   DECL_ConfigOrState* configStateHead = 0;
   DECL_ConfigOrState* configStateTail = 0;
 
-  // Check repeated wires =======================================================
-  TrieSet<String>* repeated = PushTrieSet<String>(temp);
-  for(V_Node* ptr = top->attributes; ptr; ptr = ptr->next){
-    if(!V_IsPort(ptr->type)){
-      continue;
-    }
-    String name = ptr->token.val;
-    bool exists = repeated->ExistsOrInsert(name);
-    if(exists){
-      // TODO: Report error
-    }
-  }
-
-  bool error = 0;
   DECL_SingleInterface simple = {};
   int inputCount = 0;
   int outputCount = 0;
   int delayCount = 0;
   int configCount = 0;
   int stateCount = 0;
-  for(V_Node* ptr = top->attributes; ptr; ptr = ptr->next){
+  int memoryMappedCount = 0;
+  int externalMemoryCount = 0;
+  SYM_Expr memoryMappedAddrSize = SYM_0;
+
+  for(V_Node* ptr = top->childs; ptr; ptr = ptr->next){
     if(!V_IsPort(ptr->type)){
       continue;
     }
 
-    String name = ptr->token.val;
+    String wireName = ptr->token.val;
     bool output = (ptr->type == V_NodeType_OUTPUT);
     bool input  = (ptr->type == V_NodeType_INPUT);
     bool inout  = (ptr->type == V_NodeType_INOUT);
-    
+
     // Unpack port size range =====================================================
     V_Node* range = ptr->childs;
     if(!range){
@@ -385,7 +391,6 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
     // Unpack attributes ==========================================================
     int versatLatency = 0;
     VersatStage stage = {};
-    V_Node* attr = ptr->attributes;
     for(V_Node* attr = ptr->attributes; attr; attr = attr->next){
       Assert(attr->type == V_NodeType_ATTRIBUTE);
 
@@ -430,7 +435,7 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
     // Process simple known and single bit wires ==================================
     bool found = 0;
     if(!found){
-      DECL_SingleInterface s = DECL_SingleInterafacesFromName(name);
+      DECL_SingleInterface s = DECL_SingleInterafacesFromName(wireName);
       found = (s != DECL_SingleInterface_NIL);
       simple |= s;
     }
@@ -440,21 +445,21 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
       int index = 0;
 
       DECL_SimpleType type = {};
-      if(!found && SubString(name,2) == "in"){
+      if(!found && SubString(wireName,2) == "in" && IsNumber(Cut(wireName,2,0))){
         found = 1;
-        index = ParseInt(Cut(name,2,0));
+        index = ParseInt(Cut(wireName,2,0));
         inputCount = MAX(inputCount,index + 1);
         type = DECL_SimpleType_INPUT;
       }
-      if(!found && SubString(name,3) == "out"){
+      if(!found && SubString(wireName,3) == "out" && IsNumber(Cut(wireName,3,0))){
         found = 1;
-        index = ParseInt(Cut(name,3,0));
+        index = ParseInt(Cut(wireName,3,0));
         outputCount = MAX(outputCount,index + 1);
         type = DECL_SimpleType_OUTPUT;
       }
-      if(!found && SubString(name,5) == "delay"){
+      if(!found && SubString(wireName,5) == "delay" && IsNumber(Cut(wireName,5,0))){
         found = 1;
-        index = ParseInt(Cut(name,5,0));
+        index = ParseInt(Cut(wireName,5,0));
         delayCount = MAX(delayCount,index + 1);
         type = DECL_SimpleType_DELAY;
       }
@@ -464,39 +469,54 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
         info->type = type;
         info->index = index;
         info->latency = versatLatency;
-        info->stage = stage;
 
         LL_Append(simpleHead,simpleTail,next,info);
       }
     }
 
     // Process complex interfaces =================================================
-    for(HW_Interface* inter : HW_AllInterfaces){
-      HW_ValueResult res = HW_ExtractValues(inter,name,'_',temp);
+    if(!found){
+      for(HW_Interface* inter : HW_AllInterfaces){
+        HW_ValueResult res = HW_ExtractValues(inter,wireName,temp);
 
-      if(res.error){
-        continue;
-      }
+        if(res.error){
+          continue;
+        }
 
-      found = 1;
+        found = 1;
+        int size = inter->wires.size;
 
-      int size = inter->wires.size;
+        DECL_InterfaceInfo* info = 0;
+        LL_Find(complexHead,next,info,it->inter == inter && it->interfaceIndex == res.interface);
 
-      DECL_InterfaceInfo* info = 0;
-      LL_Find(complexHead,next,info,it->inter == inter && it->interfaceIndex == res.interface);
+        bool isExternalMemory = (inter == &HW_Default::HW_DP || inter == &HW_Default::HW_2P);
+        bool isMemoryMapped = (inter == &HW_Default::HW_MM);
 
-      if(!info){
-        info = PushStruct<DECL_InterfaceInfo>(temp);
-        info->wiresSize = PushArray<int>(temp,size);
-        info->wiresSeen = PushArray<bool>(temp,size);
-        info->interfaceIndex = res.interface;
-        info->inter = inter;
+        if(!info){
+          info = PushStruct<DECL_InterfaceInfo>(temp);
+          info->wiresSize = PushArray<int>(temp,size * inter->maxPorts);
+          info->wiresSeen = PushArray<bool>(temp,size * inter->maxPorts);
+          info->interfaceIndex = res.interface;
+          info->inter = inter;
 
-        LL_Append(complexHead,complexTail,next,info);
-      }
+          if(isExternalMemory){
+            externalMemoryCount += 1;
+          } else if(isMemoryMapped){
+            memoryMappedCount += 1;
+          } else {
+            Assert(false && "Need to add logic to dependent on the type of interface being used");
+          }
+
+          LL_Append(complexHead,complexTail,next,info);
+        }
       
-      info->wiresSeen[res.wireIndex] = 1;
-      info->wiresSize[res.wireIndex] = portSize;
+        info->wiresSeen[res.port * size + res.wireIndex] = 1;
+        info->wiresSize[res.port * size + res.wireIndex] = portSize;
+
+        if(isMemoryMapped && (inter->wires[res.wireIndex].prop & HW_WireProperty_ADDR)){
+          memoryMappedAddrSize = SYM_Lit(portSize);
+        }
+      }
     }
     
     // Process config or state wires ==============================================
@@ -515,8 +535,9 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
 
       DECL_ConfigOrState* info = PushStruct<DECL_ConfigOrState>(temp);
       info->isState = isState;
-      info->name = name;
+      info->name = wireName;
       info->size = portSize;
+      info->stage = stage;
 
       LL_Append(configStateHead,configStateTail,next,info);
     }
@@ -527,219 +548,139 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
       if(inout){
         printf("Versat does not support inout ports");
       } else {
-        printf("Error, something very strange happened processing port: %.*s\n",UN(name));
+        printf("Error, something very strange happened processing port: %.*s\n",UN(moduleName));
       }
     }
   }
 
-  // Pack and final checks ======================================================
+  // Final checks ===============================================================
+  {
+    Array<bool> seenInput = PushArray<bool>(temp,inputCount);
+    Array<bool> seenOutput = PushArray<bool>(temp,outputCount);
+    Array<bool> seenDelay = PushArray<bool>(temp,delayCount);
   
-
-  FUDeclarationNode* res = PushStruct<FUDeclarationNode>(DECL_State.arena);
-  
-  res->val.name = PushString(DECL_State.arena,name);
-
-  LL_Append(DECL_State.head,DECL_State.tail,next,res);
-  return &res->val;
-}
-
-
-
-
-
-#if 0
-ModuleInfo ExtractModuleInfo(Module& module,Arena* out){
-  
-  for(PortDeclaration decl : module.ports){
-    String name = decl.name;
-    
-    if(CheckFormat("ext_dp_%s_%d_port_%d",decl.name)){
-      Array<Value> values = ExtractValues("ext_dp_%s_%d_port_%d",decl.name,temp);
-
-      ExternalMemoryID id = {};
-      id.interface = values[1].number;
-      id.type = ExternalMemoryType_DP;
-
-      String wire = values[0].str;
-      int port = values[2].number;
-
-      Assert(port < 2);
-
-      ExternalMemoryInfo* ext = external->GetOrInsert(id,{});
-      if(CompareString(wire,"addr")){
-        ext->dp[port].bitSize = decl.range; //SymbolicExpressionFromVerilog(decl.range,out); // decl.range;
-      } else if(CompareString(wire,"out")){
-        ext->dp[port].dataSizeOut = decl.range;
-      } else if(CompareString(wire,"in")){
-        ext->dp[port].dataSizeIn = decl.range;
-      } else if(CompareString(wire,"write")){
-        ext->dp[port].write = true;
-      } else if(CompareString(wire,"enable")){
-        ext->dp[port].enable = true;
+    for(DECL_SimpleWireInfo* ptr = simpleHead; ptr; ptr = ptr->next){
+      if(ptr->type == DECL_SimpleType_INPUT){
+        seenInput[ptr->index] = 1;
       }
-    } else if(CheckFormat("ext_2p_%s",decl.name)){
-      ExternalMemoryID id = {};
-      id.type = ExternalMemoryType_2P;
-
-      String wire = {};
-	  bool out = false;
-      if(CheckFormat("ext_2p_%s_%s_%d",decl.name)){
-        Array<Value> values = ExtractValues("ext_2p_%s_%s_%d",decl.name,temp);
-
-        wire = values[0].str;
-		String outOrIn = values[1].str;
-		if(CompareString(outOrIn,"out")){
-		  out = true;
-		} else if(CompareString(outOrIn,"in")){
-		  out = false;
-		} else {
-		  Assert(false && "Either out or in is mispelled or not present\n");
-		}
-        id.interface = values[2].number;
-      } else if(CheckFormat("ext_2p_%s_%d",decl.name)){
-        Array<Value> values = ExtractValues("ext_2p_%s_%d",decl.name,temp);
-
-        wire = values[0].str;
-        id.interface = values[1].number;
-      } else {
-        UNHANDLED_ERROR("TODO: Should be an handled error");
+      if(ptr->type == DECL_SimpleType_OUTPUT){
+        seenOutput[ptr->index] = 1;
       }
-
-      ExternalMemoryInfo* ext = external->GetOrInsert(id,{});
-
-      if(CompareString(wire,"addr")){
-		if(out){
-		  ext->tp.bitSizeOut = decl.range;
-		} else {
-          ext->tp.bitSizeIn = decl.range; // We are using the second port to store the address despite the fact that it's only one port. It just has two addresses.
-		}
-      } else if(CompareString(wire,"data")){
-		if(out){
-          ext->tp.dataSizeOut = decl.range;
-		} else {
-          ext->tp.dataSizeIn = decl.range;
-		}
-      } else if(CompareString(wire,"write")){
-        ext->tp.write = true;
-      } else if(CompareString(wire,"read")){
-        ext->tp.read = true;
-      } else {
-        UNHANDLED_ERROR("Should be an handled error");
+      if(ptr->type == DECL_SimpleType_DELAY){
+        seenDelay[ptr->index] = 1;
       }
-    } else if(CheckFormat("in%d",decl.name)){
-      name = Offset(name,2);
-      int index = ParseInt(name);
-      Value* delayValue = decl.attributes->Get(VERSAT_LATENCY);
-
-      int delay = 0;
-      if(delayValue) delay = delayValue->number;
-
-      inputs[index].delay = delay;
-      inputs[index].range = decl.range;
-    } else if(CheckFormat("out%d",decl.name)){
-      name = Offset(name,3);
-      int index = ParseInt(name);
-      Value* latencyValue = decl.attributes->Get(VERSAT_LATENCY);
-
-      int latency = 0;
-      if(latencyValue) latency = latencyValue->number;
-
-      outputs[index].delay = latency;
-      outputs[index].range = decl.range;
-    } else if(CheckFormat("delay%d",decl.name)){
-      name = Offset(name,5);
-      int delay = ParseInt(name);
-
-      info.nDelays = MAX(info.nDelays,delay + 1);
-    } else if(  CheckFormat("databus_ready_%d",decl.name)
-				|| CheckFormat("databus_valid_%d",decl.name)
-				|| CheckFormat("databus_addr_%d",decl.name)
-				|| CheckFormat("databus_rdata_%d",decl.name)
-				|| CheckFormat("databus_wdata_%d",decl.name)
-				|| CheckFormat("databus_wstrb_%d",decl.name)
-				|| CheckFormat("databus_len_%d",decl.name)
-				|| CheckFormat("databus_last_%d",decl.name)){
-      Array<Value> val = ExtractValues("databus_%s_%d",decl.name,temp);
-
-      if(CheckFormat("databus_addr_%d",decl.name)){
-        info.databusAddrSize = decl.range;
+    }
+    for(int i = 0; i < seenInput.size; i++){
+      if(!seenInput[i]){
+        error = 1;
+        printf("Cannot have gaps in delay indexes, in%d does not exist for unit: '%.*s'\n",i,UN(moduleName));
       }
-
-      info.nIO = val[1].number;
-      info.doesIO = true;
-    } else if(CheckFormat("rvalid",decl.name)
-		   || CheckFormat("valid",decl.name)
-		   || CheckFormat("addr",decl.name)
-		   || CheckFormat("rdata",decl.name)
-		   || CheckFormat("wdata",decl.name)
-		   || CheckFormat("wstrb",decl.name)){
-      info.memoryMapped = true;
-
-      if(CheckFormat("addr",decl.name)){
-        info.memoryMappedBits = decl.range;
+    }
+    for(int i = 0; i < seenOutput.size; i++){
+      if(!seenOutput[i]){
+        error = 1;
+        printf("Cannot have gaps in delay indexes, out%d does not exist for unit: '%.*s'\n",i,UN(moduleName));
       }
-    } else if(decl.type == WireDir_INPUT){ // Config
-      WireExpression* wire = configs.PushElem();
+    }
+    for(int i = 0; i < seenDelay.size; i++){
+      if(!seenDelay[i]){
+        error = 1;
+        printf("Cannot have gaps in delay indexes, delay%d does not exist for unit: '%.*s'\n",i,UN(moduleName));
+      }
+    }
 
-      Value* stageValue = decl.attributes->Get(VERSAT_STAGE);
+    TrieMap<HW_Interface*,int>* interCount = PushTrieMap<HW_Interface*,int>(temp);
+    for(DECL_InterfaceInfo* ptr = complexHead; ptr; ptr = ptr->next){
+      int count = interCount->GetOrElse(ptr->inter,0);
+      count = MAX(count,ptr->interfaceIndex + 1);
+      interCount->Insert(ptr->inter,count);
 
-      VersatStage stage = VersatStage_COMPUTE;
-      
-      if(stageValue && stageValue->type == ValueType_STRING){
-        String val = stageValue->str;
+      for(int i = 0; i < ptr->wiresSeen.size; i++){
+        if(!ptr->wiresSeen[i]){
+          error = 1;
 
-        if(CompareString(val,"Write")){
-          stage = VersatStage_WRITE;
-        } else if(CompareString(val,"Read")){
-          stage = VersatStage_READ;
-        } else {
-          Assert(false);
+          int index = i % ptr->inter->wires.size;
+          int port  = i / ptr->inter->wires.size;
+
+          String repr = HW_GetWireRepresentation(ptr->inter,index,port,ptr->interfaceIndex,temp);
+          printf("Cannot have missing wires in interface, '%.*s' does not exist for unit: '%.*s'\n",UN(repr),UN(moduleName));
         }
       }
-      
-      wire->bitSize = decl.range;
-      wire->name = decl.name;
-      wire->isStatic = decl.attributes->Exists(VERSAT_STATIC);
-      wire->stage = stage;
-    } else if(decl.type == WireDir_OUTPUT){ // State
-      WireExpression* wire = states.PushElem();
-
-      wire->bitSize = decl.range;
-      wire->name = decl.name;
-    } else {
-      NOT_IMPLEMENTED("Implemented as needed, so far all if cases handles all cases so we should never reach here");
     }
   }
 
-  info.configs = configs.AsArray();
-  info.states = states.AsArray();
-  info.inputs = inputs.AsArray();
-  info.outputs = outputs.AsArray();
+  // Pack =======================================================================
+  Arena* out = DECL_State.arena;
 
-  if(info.doesIO){
-    info.nIO += 1;
+  FUDeclarationNode* node = PushStruct<FUDeclarationNode>(out);
+
+  FUDeclaration* res = &node->val;
+  res->metaName = meta->name;
+  res->parameters = PushArray<DECL_Param>(out,normalizedParams.size);
+  res->name = PushString(DECL_State.arena,moduleName); // TODO: Serialize if needed.
+  res->inputs = PushArray<DECL_PortInfo>(out,inputCount);
+  res->outputs = PushArray<DECL_PortInfo>(out,outputCount);
+  res->configs = PushArray<Wire>(out,configCount);
+  res->states = PushArray<Wire>(out,stateCount);
+  res->numberDelays = delayCount;
+  res->memoryMapped = PushArray<SYM_Expr>(out,memoryMappedCount);
+  res->externalMemory = PushArray<HW_Instance>(out,externalMemoryCount);
+  res->singleInterfaces = simple;
+  res->error = error;
+
+  for(int i = 0; i < normalizedParams.size; i++){
+    res->parameters[i].name = PushString(out,normalizedParams[i].name);
+    res->parameters[i].v = normalizedParams[i].v;
   }
 
-  Array<ExternalMemoryInterfaceExpression> interfaces = PushArray<ExternalMemoryInterfaceExpression>(out,external->inserted);
-  int index = 0;
-  for(Pair<ExternalMemoryID,ExternalMemoryInfo> pair : external){
-    ExternalMemoryInterfaceExpression& inter = interfaces[index++];
-
-    inter.interface = pair.first.interface;
-    inter.type = pair.first.type;
-
-	switch(inter.type){
-	case ExternalMemoryType::ExternalMemoryType_2P:{
-	  inter.tp = pair.second.tp;
-	} break;
-	case ExternalMemoryType::ExternalMemoryType_DP:{
-	  inter.dp[0] = pair.second.dp[0];
-	  inter.dp[1] = pair.second.dp[1];
-	}break;
-	}
+  for(DECL_SimpleWireInfo* ptr = simpleHead; ptr; ptr = ptr->next){
+    int index = ptr->index;
+    switch(ptr->type){
+     case DECL_SimpleType_INPUT:{
+       res->inputs[index].delay = ptr->latency;
+     } break;
+     case DECL_SimpleType_OUTPUT:{
+       res->outputs[index].delay = ptr->latency;
+     } break;
+     case DECL_SimpleType_DELAY:{
+       // Nothing
+     } break;
+    }
   }
-  info.externalInterfaces = interfaces;
 
-  return info;
+  int configIndex = 0;
+  int stateIndex = 0;
+  for(DECL_ConfigOrState* ptr = configStateHead; ptr; ptr = ptr->next){
+    if(ptr->isState){
+      res->states[stateIndex].name = PushString(out,ptr->name);
+      res->states[stateIndex].sizeExpr = SYM_Lit(ptr->size);
+      res->states[stateIndex].stage = ptr->stage;
+      stateIndex += 1;
+    } else {
+      res->configs[configIndex].name = PushString(out,ptr->name);
+      res->configs[configIndex].sizeExpr = SYM_Lit(ptr->size);
+      res->configs[configIndex].stage = ptr->stage;
+      configIndex += 1;
+    }
+  }
+  
+  if(res->memoryMapped.size){
+    res->memoryMapped[0] = memoryMappedAddrSize;
+  }
+  
+  int externalIndex = 0;
+  for(DECL_InterfaceInfo* ptr = complexHead; ptr; ptr = ptr->next){
+    int totalWireSize = ptr->inter->wires.size * ptr->inter->maxPorts;
+    
+    res->externalMemory[externalIndex].inter = ptr->inter;
+    res->externalMemory[externalIndex].index = externalIndex;
+    res->externalMemory[externalIndex].wires = PushArray<HW_Wire>(out,totalWireSize);
+    for(int i = 0; i < totalWireSize; i++){
+      res->externalMemory[externalIndex].wires[i].size = SYM_Lit(ptr->wiresSize[i]);
+    }
+
+    externalIndex += 1;
+  }
+
+  return node;
 }
-#endif

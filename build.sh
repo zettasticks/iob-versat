@@ -8,4 +8,8 @@ if [ ! -e ./tool_build ]; then
 fi
 
 make meta-data
+if [ $? != 0 ]; then
+   exit
+fi
+
 make -j 8 versat
