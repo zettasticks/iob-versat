@@ -53,11 +53,16 @@ String PushDebugPath(Arena* out,String folderName,String fileName);
 // ============================================================================
 // Debug path - Global way of defining a path tree for debug info
 
-struct DebugPathMarker{
-  DebugPathMarker(String name);
-  ~DebugPathMarker();
+struct DEBUG_Marker{
+  int count;
+  DEBUG_Marker(String name,String entity);
+  ~DEBUG_Marker();
 };
 
-#define DEBUG_PATH(NAME) DebugPathMarker _marker(__LINE__)(NAME)
+String DEBUG_GetDebugRegionFilepath(String filename,Arena* out);
 
-String GetDebugRegionFilepath(String filename,Arena* out);
+#define __debugmarker(LINE) debugmarker_ ## LINE
+#define _debugmarker(LINE) __debugmarker( LINE )
+
+#define DEBUG_TOP(ENTITY) DEBUG_Marker _debugmarker(__LINE__){__FUNCTION__,ENTITY}
+#define DEBUG_COMPUTE()   DEBUG_Marker _debugmarker(__LINE__){__FUNCTION__,{}}

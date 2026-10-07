@@ -78,51 +78,89 @@ String PushDebugPath(Arena* out,String folderName,String fileName){
 // ============================================================================
 // Debug path regions
 
-static Array<String> debugRegionStack;
-static int debugRegionIndex;
-static Arena debugRegionArenaInst;
-static Arena* debugRegionArena;
-static bool debugRegionInit;
+enum DEBUG_Type{
+  DEBUG_Type_NIL,
+  DEBUG_Type_FUNCTION_NAME,
+  DEBUG_Type_ENTITY
+};
 
-DebugPathMarker::DebugPathMarker(String name){
-  if(!debugRegionInit){
-    debugRegionArenaInst = InitArena(Megabyte(16));
-    debugRegionArena = &debugRegionArenaInst;
-    debugRegionStack = PushArray<String>(debugRegionArena,10);
+struct DEBUG_Node{
+  DEBUG_Node* next;
+  DEBUG_Node* prev;
+
+  String name;
+  DEBUG_Type type;
+};
+
+static DEBUG_Node* debugHead = 0;
+static DEBUG_Node* debugTail = 0;
+static DEBUG_Node* debugFreeList = 0;
+
+DEBUG_Marker::DEBUG_Marker(String functionName,String entity){
+  String work[] = {functionName,entity};
+
+  int processed = 0;
+  for(int i = 0; i < 2; i++){
+    DEBUG_Type type = (i == 0) ? DEBUG_Type_FUNCTION_NAME : DEBUG_Type_ENTITY;
+    String name = work[i];
+
+    if(Empty(name)){
+      continue;
+    }
+
+    processed += 1;
     
-    debugRegionInit = true;
+    DEBUG_Node* node = 0;
+    if(debugFreeList){
+      node = LL_PopFrontNoTail(debugFreeList,next);
+      *node = {};
+    } else {
+      node = PushStruct<DEBUG_Node>(debugArena);
+    }
+
+    node->name = PushString(debugArena,name);
+    node->type = type;
+    DLL_Append(debugHead,debugTail,next,prev,node);
   }
-  
-  // TODO: This will eventually exhaust the arena since we do not free anything.
-  //       Easy to fix by just storing the arena mark.
-  debugRegionStack[debugRegionIndex] = PushString(debugRegionArena,name);
-
-  debugRegionIndex += 1;
+  this->count = processed;
 }
 
-DebugPathMarker::~DebugPathMarker(){
-  debugRegionIndex -= 1;
+DEBUG_Marker::~DEBUG_Marker(){
+  for(int i = 0; i < count; i++){
+    DEBUG_Node* node = debugTail;
+    DLL_Remove(debugHead,debugTail,next,prev,debugTail);
+    LL_PushNoTail(debugFreeList,next,node);
+  }
 }
 
-String GetDebugRegionFilepath(String filename,Arena* out){
+String DEBUG_GetDebugRegionFilepath(String filename,Arena* out){
   TEMP_REGION(temp,out);
-  
-  auto* builder = StartString(temp);
-  
-  builder->PushString(globalOptions.debugPath);
 
-  if(debugRegionIndex == 0){
-    builder->PushString("/TOP");
-  } else {
-    for(int i = 0; i < debugRegionIndex; i++){
-      String component = debugRegionStack[i];
-      builder->PushString("/");
-      builder->PushString(component);
+  DEBUG_Node* lastEntity = nullptr;
+  for(DEBUG_Node* ptr = debugHead; ptr; ptr = ptr->next){
+    if(ptr->type == DEBUG_Type_ENTITY){
+      lastEntity = ptr;
     }
   }
-    
-  builder->PushString("/");
-  builder->PushString(filename);
 
-  return EndString(out,builder);
+  String res = {};
+  if(!lastEntity){
+    res = PushString(out,"%.*s/%s/%.*s",UN(globalOptions.debugPath),"TOP",UN(filename));
+  } else {
+    auto* builder = StartString(temp);
+  
+    builder->PushString(globalOptions.debugPath);
+
+    for(DEBUG_Node* ptr = lastEntity; ptr; ptr = ptr->next){
+      builder->PushString("/");
+      builder->PushString(ptr->name);
+    }
+
+    builder->PushString("/");
+    builder->PushString(filename);
+
+    res = EndString(out,builder);
+  }
+
+  return res;
 }

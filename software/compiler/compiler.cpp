@@ -584,6 +584,8 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
 
   String moduleName = moduleDef->token.val;
 
+  DEBUG_TOP(moduleName);
+
   FREE_ARENA(envArena);
   FREE_ARENA(envErrorArena);
   COM_Env envInst = {};
@@ -1372,7 +1374,7 @@ COM_UnitList COM_CalculateDAGOrder(COM_Unit* units,COM_Edge* edges,Arena* outAre
 
     String result = GenerateDotGraph(content,temp);
 
-    String filePath = GetDebugRegionFilepath("DAG.dot",temp);
+    String filePath = DEBUG_GetDebugRegionFilepath("DAG.dot",temp);
     OutputContentToFile(filePath,result);
   }
   
@@ -1391,7 +1393,7 @@ COM_UnitList COM_CalculateDAGOrder(COM_Unit* units,COM_Edge* edges,Arena* outAre
 }
 
 COM_DelayResult COM_CalculateDelay(COM_Unit* units,COM_Edge* edges,COM_UnitList order,Arena* outArena){
-  TEMP_REGION(temp,outArena);
+ TEMP_REGION(temp,outArena);
 
   struct DELAY_Data{
     Array<int> globalInputLatency;
@@ -1509,7 +1511,7 @@ COM_DelayResult COM_CalculateDelay(COM_Unit* units,COM_Edge* edges,COM_UnitList 
 
     String result = GenerateDotGraph(content,temp);
 
-    String filePath = GetDebugRegionFilepath("TestDelay.dot",temp);
+    String filePath = DEBUG_GetDebugRegionFilepath("TestDelay.dot",temp);
     OutputContentToFile(filePath,result);
   };
 

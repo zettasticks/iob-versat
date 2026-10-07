@@ -810,7 +810,7 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
 }
 
 FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normalizedParams){
-  DEBUG_PATH("Instantiate");
+  DEBUG_TOP(meta->name);
 
   TEMP_REGION(temp,DECL_State.arena);
 

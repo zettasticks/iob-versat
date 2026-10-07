@@ -5907,6 +5907,8 @@ String GEN_OutputCircuitSource(FUDeclaration* module,Arena* out){
     m->InputIndexed("databus_last_%d",i);
   }
 
+  
+
 #if 0
   // External Memory interface
   for(int i = 0; i <  module->externalMemory.size; i++){
