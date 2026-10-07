@@ -8,6 +8,7 @@
 
 #include "hardwareInterfaces.hpp"
 
+#include "compiler.hpp"
 #include "declaration_meta.hpp"
 
 struct COM_Unit;
@@ -26,7 +27,7 @@ enum SpecialUnitType{
 
 struct DECL_Param{
   String name;
-  SYM_Expr v;
+  SYM_Expr val;
 };
 
 enum DeclarationType{
@@ -41,66 +42,8 @@ enum DeclarationType{
 struct DECL_PortInfo{
   SYM_Expr size;
   int delay;
+  Array<int> inputDependencies; // {} means depends on all inputs.
 };
-
-// TODO: A lot of duplicated data exists since the change to merge.
-
-// TODO: There is a lot of crux between parsing and creating the FUDeclaration for composite accelerators 
-//       the FUDeclaration should be composed of something that is in common to all of them.
-// NOTE: A FUDeclaration represents a concrete type, although the size of stuff might depend on parameters.
-//       The general structure is fixed (amount of inputs/outputs and so on) but the size is not.
-struct FUDeclaration{
-  String metaName;
-  Array<DECL_Param> parameters; // All parameters even if equal to default values.
-
-  String name; // NOTE: Serialized if parameters affect verilog or C code.
-
-  // Interfaces =================================================================
-  Array<DECL_PortInfo> inputs;
-  Array<DECL_PortInfo> outputs;
-  Array<Wire> configs;
-  Array<Wire> states;
-  int numberDelays;
-  Array<SYM_Expr> memoryMapped; // We only care about address size, right? Everything else must be standard. For now.
-  Array<HW_Instance> externalMemory;
-  
-  // For external memory we care about wire size. 
-  String operation;
-  DECL_SingleInterface singleInterfaces;
-
-  // Graph related data for modular units =======================================
-  COM_Unit* units;
-  COM_Edge* edges;
-
-  AddressGenInst supportedAddressGen;
-  DeclarationType type;
-
-  bool error;
-};
-extern FUDeclaration FUDeclaration_Nil;
-
-struct FUDeclarationNode{
-  FUDeclarationNode* next;
-  FUDeclaration val;
-};
-
-// Simple operations should also be stored here.
-namespace BasicDeclaration{
-  extern FUDeclaration* nil;
-
-  extern FUDeclaration* input;
-  extern FUDeclaration* output;
-
-#if 0
-  extern FUDeclaration* variableBuffer;
-  extern FUDeclaration* fixedBuffer;
-  extern FUDeclaration* multiplexer;
-  extern FUDeclaration* combMultiplexer;
-  extern FUDeclaration* timedMultiplexer;
-  extern FUDeclaration* stridedMerge;
-  extern FUDeclaration* pipelineRegister;
-#endif
-}
 
 enum DECL_MetaType{
   DECL_MetaType_NIL,
@@ -123,10 +66,78 @@ struct DECL_Meta{
   };
 };
 
+// TODO: A lot of duplicated data exists since the change to merge.
+
+// TODO: There is a lot of crux between parsing and creating the FUDeclaration for composite accelerators 
+//       the FUDeclaration should be composed of something that is in common to all of them.
+// NOTE: A FUDeclaration represents a concrete type, although the size of stuff might depend on parameters.
+//       The general structure is fixed (amount of inputs/outputs and so on) but the size is not.
+struct FUDeclaration{
+  DECL_Meta* meta;
+  Array<DECL_Param> parameters; // All parameters even if equal to default values.
+
+  String name; // NOTE: Serialized if parameters affect verilog or C code.
+
+  // Interfaces =================================================================
+  Array<DECL_PortInfo> inputs;
+  Array<DECL_PortInfo> outputs;
+  Array<Wire> configs;
+  Array<Wire> states;
+  Array<SYM_Expr> memoryMapped; // We only care about address size, right? Everything else must be standard. For now.
+  Array<HW_Instance> externalMemory;  // For external memory we care about wire size. 
+
+  String operation;
+  int numberDelays;
+  int numberDatabus;
+  int numberDones;
+  DECL_SingleInterface singleInterfaces;
+  AddressGenInst supportedAddressGen;
+  DeclarationType type;
+
+  // Graph related data for modular units =======================================
+  COM_Unit* units;
+  COM_Edge* edges;
+  COM_Function* funcs;
+
+  bool error;
+};
+extern FUDeclaration FUDeclaration_Nil;
+
+struct FUDeclarationNode{
+  FUDeclarationNode* next;
+  FUDeclaration* val;
+};
+
+// Simple operations should also be stored here.
+namespace BasicDeclaration{
+  extern FUDeclaration* nil;
+
+  extern FUDeclaration* input;
+  extern FUDeclaration* output;
+
+#if 0
+  extern FUDeclaration* variableBuffer;
+  extern FUDeclaration* fixedBuffer;
+  extern FUDeclaration* multiplexer;
+  extern FUDeclaration* combMultiplexer;
+  extern FUDeclaration* timedMultiplexer;
+  extern FUDeclaration* stridedMerge;
+  extern FUDeclaration* pipelineRegister;
+#endif
+}
+
 // ======================================
 // Type
 
 bool IsNil(FUDeclaration* decl);
+
+bool DECL_IsSource(FUDeclaration* decl);
+bool DECL_IsSink(FUDeclaration* decl);
+bool DECL_IsVersatGenerated(FUDeclaration* decl);
+bool DECL_IsVersatOperation(FUDeclaration* decl);
+
+// NOTE: Units that can have any number of inputs. Not predefined.
+bool DECL_HasVariableInputs(FUDeclaration* decl);
 
 // ======================================
 // Init
@@ -134,14 +145,16 @@ bool IsNil(FUDeclaration* decl);
 void DECL_Init();
 
 // ======================================
-// Register (does not exist)
+// Helpers
+
+Array<DECL_Param> DECL_Copy(Array<DECL_Param> in,Arena* out);
 
 // Returns true if already exists
 // TODO: Could we just reuse the node struct and have everything use the same struct?
 bool DECL_RegisterMeta(String name,V_Node* module);
 bool DECL_RegisterMeta(String name,SP_Node* module);
 
-FUDeclaration* DECL_RegisterFU(String name);
+FUDeclaration* DECL_RegisterFU(String name,DeclarationType type);
 
 // ======================================
 // Get or create if needed
@@ -151,4 +164,7 @@ FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params);
 // ======================================
 // Instantiation
 
-FUDeclarationNode* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normalizedParams);
+FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normalizedParams);
+FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normalizedParams);
+
+

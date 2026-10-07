@@ -222,7 +222,7 @@ parse_opt (int key, char *arg,
         
         DECL_Param* val = opts->paramDefinitions->PushElem();
         val->name = PushString(out,paramName);
-        val->v = SYM_Lit(value);
+        val->val = SYM_Lit(value);
       } else {
         *opts->parsingErrors->PushElem() = PushString(out,"Error parsing -A'%s', we expected a number but instead got '%.*s', make sure that you use the form '-AX=Y' where X is paramName and Y is an integer",arg,UN(value));
       }
@@ -396,6 +396,7 @@ int main(int argc,char* argv[]){
     exit(-1);
   }
 
+  // TODO: Merge flow and check if we are overriding any units or not.
   bool anyError = 0;
   for(FileContent file : defaultVerilogUnits){
     String content = file.content;
@@ -448,84 +449,69 @@ int main(int argc,char* argv[]){
     return -1;
   }
 
-  - LEFT HERE - Simple declarations should be working fine now. Need to work on modules next
+  // Parse spec file
+  String specFilepath = globalOptions.specificationFilepath;
+  if(specFilepath.size){
+    String content = PushFile(temp,StaticFormat("%.*s",UN(specFilepath)));
+    // TODO: Handle file error
+    SP_Node* top = SP_ParseSpec(content,perm);
+    Assert(top->type == SP_Type_TOP);
 
-#if 0
-
-  bool error = false;
-  Array<String> allVerilogFiles = {};
-  region(temp){
-    TrieSet<String>* allVerilogFilesSet = PushTrieSet<String>(temp);
-
-    for(String str : globalOptions.verilogFiles){
-      allVerilogFilesSet->Insert(str);
+    for(SP_Node* ptr = top->childs; ptr; ptr = ptr->next){
+      String name = ptr->token.val;
+      DECL_RegisterMeta(name,ptr);
     }
-    
-    for(String& path : globalOptions.unitFolderPaths){
-      Opt<Array<String>> res = GetAllFilesInsideDirectory(path,temp);
-      if(!res){
-        error = true;
-        printf("\n\nCannot open dir: %.*s\n\n",UN(path));
-      } else {
-        for(String& str : res.value()){
-          String fullPath = PushString(perm,"%.*s/%.*s",UN(path),UN(str));
-          allVerilogFilesSet->Insert(fullPath);
+  }
+
+  String topLevelTypeStr = globalOptions.topName;
+  FUDeclaration* topType = DECL_GetType(topLevelTypeStr,{});
+  
+  // Calculate composite units that are actually used by top level ==============
+  FUDeclarationNode* compositeHead = 0;
+  FUDeclarationNode* compositeTail = 0;
+  {
+    FUDeclarationNode start = {};
+    start.val = topType;
+    LL_Append(compositeHead,compositeTail,next,&start);
+
+    for(FUDeclarationNode* ptr = compositeHead; ptr; ptr = ptr->next){
+      for(COM_Unit* unit = ptr->val->units; unit; unit = unit->next){
+        FUDeclaration* decl = unit->decl;
+
+        if(!DECL_IsVersatGenerated(decl)){
+          continue;
+        }
+        
+        FUDeclarationNode* exists = 0;
+        LL_Find(compositeHead,next,exists,it->val->name == decl->name);
+
+        if(!exists){
+          FUDeclarationNode* node = PushStruct<FUDeclarationNode>(temp);
+          node->val = decl;
+          LL_Append(compositeHead,compositeTail,next,node);
         }
       }
     }
 
-    allVerilogFiles = PushArray(perm,allVerilogFilesSet);
+    LL_PopFront(compositeHead,compositeTail,next);
   }
-  globalOptions.verilogFiles = allVerilogFiles;
 
-  for(String filepath : allVerilogFiles){
-    String content = PushFile(temp,filepath);
-    
-    if(Empty(content)){
-      printf("Failed to open file %.*s\n. Exiting\n",UN(filepath));
-      exit(-1);
-    }
+  for(FUDeclarationNode* node = compositeHead; node; node = node->next){
+    FUDeclaration* decl = node->val;
 
-    Array<Module> modules = ParseVerilogFile(content,globalOptions.includePaths,perm);
+    String path = PushString(temp,"%.*s/%.*s.v",UN(globalOptions.hardwareOutputFilepath),UN(decl->name));
+    FILE* sourceCode = OpenFileAndCreateDirectories(path,"w",FilePurpose_VERILOG_CODE);
+    DEFER_CLOSE_FILE(sourceCode);
 
-    for(Module& mod : modules){
-      ModuleInfo info = ExtractModuleInfo(mod,perm);
-      info.moduleSource = ModuleSource_USER_UNIT;
+    String content = GEN_OutputCircuitSource(decl,temp);
+    fprintf(sourceCode,"%.*s",UN(content));
 
-      auto res = allModules->GetOrAllocate(info.name);
-
-      if(!error && res.alreadyExisted){
-        printf("[WARNING] Unit %.*s is a default unit from Versat. Assuming that user wants to override it\n",UN(info.name));
-        printf("Otherwise rename the unit in file: %.*s\n",UN(filepath));
-      }
-
-      *res.data = info;
-    }
+    printf("A: %.*s\n",UN(decl->name));
   }
-  if(error){
-    return -1;
-  }
-#endif
 
-#if 0
-  for(Pair<String,ModuleInfo> p : allModules){
-    RegisterModuleInfo(&p.second,perm);
-  }
-#endif
-  
-#if 0
-  // We need to do this after parsing the modules because the majority of these special types come from verilog files
-  // NOTE: This should never fail since the verilog files are embedded into the exe. A fail in here means that we failed to embed the necessary files at build time
-  BasicDeclaration::variableBuffer = GetTypeByNameOrFail("Buffer");
-  BasicDeclaration::fixedBuffer = GetTypeByNameOrFail("FixedBuffer");
-  BasicDeclaration::pipelineRegister = GetTypeByNameOrFail("PipelineRegister");
-  BasicDeclaration::multiplexer = GetTypeByNameOrFail("Mux2");
-  BasicDeclaration::combMultiplexer = GetTypeByNameOrFail("CombMux2");
-  BasicDeclaration::stridedMerge = GetTypeByNameOrFail("StridedMerge");
-  BasicDeclaration::timedMultiplexer = GetTypeByNameOrFail("TimedMux");
-  BasicDeclaration::input = GetTypeByNameOrFail("CircuitInput");
-  BasicDeclaration::output = GetTypeByNameOrFail("CircuitOutput");
-#endif
+  DEBUG_BREAK();
+
+/*
 
 #if 0
   // TODO: The testbench logic is kinda addhoc right now. Need to join together the other logic and them create a proper switch between these two.
@@ -555,18 +541,22 @@ int main(int argc,char* argv[]){
   }
 #endif  
 
+
 #if 0
-  String specFilepath = globalOptions.specificationFilepath;
-
-  // TODO: Simplify this part. 
-  String topLevelTypeStr = globalOptions.topName;
-  FUDeclaration* simpleType = DECL_GetType(topLevelTypeStr,globalParams);
-
-  bool anyError = false;
+  // We need to do this after parsing the modules because the majority of these special types come from verilog files
+  // NOTE: This should never fail since the verilog files are embedded into the exe. A fail in here means that we failed to embed the necessary files at build time
+  BasicDeclaration::variableBuffer = GetTypeByNameOrFail("Buffer");
+  BasicDeclaration::fixedBuffer = GetTypeByNameOrFail("FixedBuffer");
+  BasicDeclaration::pipelineRegister = GetTypeByNameOrFail("PipelineRegister");
+  BasicDeclaration::multiplexer = GetTypeByNameOrFail("Mux2");
+  BasicDeclaration::combMultiplexer = GetTypeByNameOrFail("CombMux2");
+  BasicDeclaration::stridedMerge = GetTypeByNameOrFail("StridedMerge");
+  BasicDeclaration::timedMultiplexer = GetTypeByNameOrFail("TimedMux");
+  BasicDeclaration::input = GetTypeByNameOrFail("CircuitInput");
+  BasicDeclaration::output = GetTypeByNameOrFail("CircuitOutput");
 #endif
 
 #if 0
-  
   if(!simpleType && specFilepath.size && !CompareString(topLevelTypeStr,"VERSAT_RESERVED_ALL_UNITS")){
     String content = PushFile(temp,StaticFormat("%.*s",UN(specFilepath)));
     
@@ -1025,8 +1015,6 @@ int main(int argc,char* argv[]){
 #endif
   }
 
-
- 
   AccelInfo info = CalculateAcceleratorInfo(accel,true,temp,true);
 
   InstantiateParameters(&info,temp);
@@ -1178,26 +1166,10 @@ int main(int argc,char* argv[]){
   // This should be the last thing that we do, no further file creation can occur after this point
   ReportFileCreation();
 #endif
+*/
 
   return 0;
 }
-
-/*
-
-TODO:
-
-1) What is the point of ModuleInfo? We can just go from Module -> FUDeclaration. We have more types and a bunch of logic that we do not actually need.
-
-
-*/
-
-
-/*
-We should move graph stuff to a separate file (or keep it in accelerator.hpp and make it the proper place for it).
-Remove the dynamic arena and just share memory between the nodes.
-
-Memory mapped transfers do not check for sizes and report errors if too big.
-*/
 
 /*
 
@@ -1292,9 +1264,6 @@ Usability:
 - Need to check parameters and sizes and report stuff at Versat compile time.
 -- An example is the xunitF which requires input to be 32 bits, meaning that we cannot just change DATA_W and expect this to work.
 
-- Is there a reason to have versat_emul.c ?
--- Couldn't we just put everything into versat_wrapper and be done with it? That way, the user would only need to add the lib to the compilation process and everything should work fine.
-
 Optimizations:
 
 -- We could collapse certain loops, assuming that we have the info needed (or we can push it into runtime).
@@ -1330,18 +1299,6 @@ Generated code does not take into account parameters when it should.
 Debugability:
 
 - We kinda lost the .dot files generated in order to help debug graph algorithms. Its not a big deal now but eventually would like to have them back, as the .dot files are the only proper way we currently have of debugging graph operations (which I do not think we will be doing much soon, but eventually need to address this).
-
-Blindness:
-
-- We currently do not keep track of memory usage. Which functions use the most memory, which file uses the most memory, etc. This can easily be accomplished by adding code to the ARENA macros used.
-
-Features:
-
-- We could implement a shared delay as well as config. To make it even more powerful, we could make it so we could share the delay of some units and the config of others and have it overlap somewhat. How I would represent that in syntax I do not know.
-
-- When using address gen and when having to deal with sharing, what we actually want is to share the address gen variables.
-  - If I have an address gen of X(a,b) what I actually want is to tell the tool to share a or share b or both or none.
-    - Otherwise we are forcing the user to always keep in mind how the actual config wires our how the address gen code maps to the unit itself.
 
 Wrapper:
 

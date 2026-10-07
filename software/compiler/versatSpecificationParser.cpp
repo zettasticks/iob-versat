@@ -122,40 +122,6 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAnd
   Arena* perm = globalPermanent;
   // MARK
 
-#if 0
-  COM_Module mod  = COM_InstantiateModule(def.node,{},perm);
-  String repr = COM_Repr(mod.units,perm);
-  printf("%.*s\n",UN(repr));
-  
-  COM_DebugPushDotGraph("Test",mod.units,mod.edges);
-
-  FUDeclaration* decl = PushStruct<FUDeclaration>(perm);
-
-  decl->info.infos = PushArray<MergePartition>(perm,1);
-  MergePartition* part = &decl->info.infos[0];
-  
-  int unitCount = 0;
-  LL_Count(mod.units,next,unitCount);
-
-  part->info = PushArray<InstanceInfo>(perm,unitCount);
-
-  COM_Unit* ptr = mod.units;
-  for(int i = 0; i < unitCount; i += 1,ptr = ptr->next){
-    InstanceInfo* info = &part->info[i];
-
-    info->decl = ptr->decl;
-    info->id = ptr->id;
-    info->name = ptr->name;
-    info->isShared = ptr->isShared;
-    info->isStatic = ptr->isStatic;
-    info->debug = ptr->debug;
-    info->sharedIndex = ptr->sharedIndex;
-  }
-
-  DEBUG_BREAK();
-  exit(-1);
-#endif
-
   TEMP_REGION(temp,perm);
 
   String mangledName = DECL_MangleName(def.name.val,topLevelParams,temp);
@@ -3646,8 +3612,11 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
   if(parser->IfNextToken(TokenType_DELAY_START)){
     SP_Node* delay = SP_ParseRange(parser,out);
     
-    atom->next = delay;
-    atom = SP_PushNode(out,SP_Type_DELAY_ACCESS,{},atom);
+    SP_Node* access = SP_PushNode(out,SP_Type_DELAY_ACCESS,{},0);
+    access->first = atom;
+    access->second = delay;
+
+    atom = access;
 
     parser->ExpectNext(TokenType_DELAY_END);
   }
@@ -4361,7 +4330,8 @@ SP_Node* SP_ParseSpec(String content,Arena* out){
     for(String str : parser->errors){
       printf("%.*s\n",UN(str));
     }
-    exit(-1);
+
+    return nullptr;
   }
 
   SP_Node* top = PushStruct<SP_Node>(out);

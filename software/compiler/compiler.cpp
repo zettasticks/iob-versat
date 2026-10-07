@@ -1,6 +1,7 @@
 #include "compiler.hpp"
 
-#if 1
+#include "declaration.hpp"
+#include "debugVersat.hpp"
 
 // ======================================
 // Constants
@@ -67,6 +68,10 @@ SYM_Expr COM_SymbolicFromExpression(COM_Env* env,SP_Node* node){
     
     int opCount = SP_Type_OpCount(top->type);
     
+    if(top->type == SP_Type_RANGE){
+      opCount = 2;
+    }
+
     SYM_Expr left = {};
     SYM_Expr right = {};
 
@@ -135,6 +140,16 @@ SYM_Expr COM_SymbolicFromExpression(COM_Env* env,SP_Node* node){
       }
 #endif
 
+    } break;
+
+    case SP_Type_RANGE:{
+      // NOTE: Handling range in here is kinda sketchy since we shouldnt produce a range
+      //       in the first place. Simplifies parser but
+      if(!SYM_Equal(left,right)){
+        Assert(false && "Range cannot appear in expressions except if first equals second");
+      } else {
+        res = left;
+      }
     } break;
 
     case SP_Type_LITERAL:{
@@ -406,8 +421,9 @@ COM_EntPort COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out){
   bool isExpr = SP_Type_IsExpr(top->type);
 
   // MARK
-  COM_Unit* unit = &COM_Unit_Nil;
+  COM_Ent ent = COM_Ent_Nil;
   int port = 0;
+  int delay = 0;
 
   bool handled = 1;
   if(isExpr){
@@ -429,15 +445,16 @@ COM_EntPort COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out){
       COM_ReportError(env,SF("Did not find declaration '%.*s'",UN(typeName)));
     }
     
-    unit = COM_PushUnit(env);
+    COM_Unit* unit = COM_PushUnit(env);
     unit->decl = decl;
     unit->name = PushString(out,"%.*s_%d",UN(typeName),env->tempIndex++);
 
-    COM_Ent* ent = COM_PushEnt(env,unit->name,COM_EntType_GENERATED_UNIT);
-    ent->unit = unit;
+    COM_Ent* entPtr = COM_PushEnt(env,unit->name,COM_EntType_GENERATED_UNIT);
+    entPtr->unit = unit;
+    ent = *entPtr;
 
-    COM_Connect(env,lhs.ent,lhs.port,*ent,0,0);
-    COM_Connect(env,rhs.ent,rhs.port,*ent,1,0);
+    COM_Connect(env,lhs.ent,lhs.port,ent,0,lhs.delay);
+    COM_Connect(env,rhs.ent,rhs.port,ent,1,rhs.delay);
   } else {
     switch(top->type){
     case SP_Type_FUNCTION_CALL:{
@@ -447,8 +464,21 @@ COM_EntPort COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out){
       NOT_IMPLEMENTED("TODO");
     } break;
     case SP_Type_VAR:{
-      COM_Ent ent = COM_GetEnt(env,top->token,false);
-      unit = ent.unit;
+      ent = COM_GetEnt(env,top->token,false);
+    } break;
+    case SP_Type_DELAY_ACCESS:{
+      COM_EntPort entPort = COM_InstantiateExpression(env,top->first,out);
+      SP_Node* expr = top->second;
+
+      COM_ConstantResult delayConst = COM_ComputeConstantValue(env,expr);
+
+      if(delayConst.anyError){
+        COM_ReportError(env,"Error evaluating delay value, needs to be constant",expr);
+      } else {
+        ent = entPort.ent;
+        port = entPort.port;
+        delay = delayConst.value;
+      }
     } break;
     case SP_Type_PORT_ACCESS:{
       SP_Node* var = top->childs;
@@ -462,8 +492,7 @@ COM_EntPort COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out){
         COM_ReportError(env,"Cannot have range expressions inside expressions",expr);
       }
       
-      COM_Ent ent = COM_GetEnt(env,var->token,false);
-      unit = ent.unit;
+      ent = COM_GetEnt(env,var->token,false);
       port = range.low;
     } break;
 
@@ -474,8 +503,9 @@ COM_EntPort COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out){
   Assert(handled);
 
   COM_EntPort res = {};
-  res.ent.unit = unit;
+  res.ent = ent;
   res.port = port;
+  res.delay = delay;
 
   return res;
 };
@@ -549,7 +579,7 @@ COM_UnpackedExpr COM_UnpackExpr(COM_Env* env,SP_Node* node){
 // ======================================
 // Compilation
 
-COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamAndValue> topLevelParams,Arena* out){
+COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelParams,Arena* out){
   Assert(moduleDef->type = SP_Type_MODULE_DECL);
 
   String moduleName = moduleDef->token.val;
@@ -566,14 +596,21 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamAndValue> topLeve
   COM_Function* funcTail = 0;
 
   COM_Unit* outputUnit = 0;
-  
+
+  int inputIndex = 0;
   for(SP_Node* ptr = moduleDef->childs; ptr; ptr = ptr->next){
     bool handled = 1;
     switch(ptr->type){
     case SP_Type_INPUT_DECL:{
       Token name = ptr->token;
 
-      COM_PushEnt(env,name,COM_EntType_MODULE_INPUT);
+      COM_Unit* in = COM_PushUnit(env);
+      in->name = PushString(out,name.val);
+      in->decl = BasicDeclaration::input;
+      in->special = inputIndex++;
+
+      COM_Ent* ent = COM_PushEnt(env,name,COM_EntType_MODULE_INPUT);
+      ent->unit = in;
     } break;
     case SP_Type_PARAM_DECL:{
       Token paramName = ptr->token;
@@ -630,7 +667,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamAndValue> topLeve
 
             DECL_Param* val = paramList->PushElem();
             val->name = paramName.val;
-            val->v = SYM_Lit(valuation.value);
+            val->val = SYM_Lit(valuation.value);
           } break;
           case SP_Type_VAR_DECL:{
             Token name = child->token;
@@ -808,7 +845,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamAndValue> topLeve
       Work* equalTail = 0;
 
       while(head){
-        Work* work = LL_PopFront(head,next);
+        Work* work = LL_PopFront(head,tail,next);
         SP_Node* node = work->node;
 
         if(node->type == SP_Type_EQUALITY ||
@@ -972,6 +1009,16 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamAndValue> topLeve
     ptr->id = id++;
   }
 
+  // Update number inputs
+  for(COM_Edge* edge = env->conHead; edge; edge = edge->next){
+    COM_Unit* in = edge->in;
+    if(DECL_HasVariableInputs(edge->in->decl)){
+      in->numberInputs = MAX(in->numberInputs,edge->inPort + 1);
+    } else {
+      in->numberInputs = in->decl->inputs.size;
+    }
+  }
+
   // Pack =======================================================================
   COM_Module mod = {}; 
   mod.name = PushString(out,moduleName);
@@ -994,7 +1041,7 @@ COM_Ent* COM_PushEnt(COM_Env* env,String name,COM_EntType type){
 
   COM_EntNode* res = 0;
   if(env->entFreeList){
-    res = LL_PopFront(env->entFreeList,next);
+    res = LL_PopFrontNoTail(env->entFreeList,next);
   } else {
     res = PushStruct<COM_EntNode>(env->arena);
   }
@@ -1071,7 +1118,7 @@ void COM_PopScope(COM_Env* env){
 
     if(ptr->v.scope > env->scope){
       LL_Remove(env->entHead,env->entTail,next,prev,ptr);
-      LL_Push(env->entFreeList,next,ptr);
+      LL_PushNoTail(env->entFreeList,next,ptr);
     } else {
       prev = ptr;
     }
@@ -1090,11 +1137,11 @@ void COM_Connect(COM_Env* env,COM_Ent out,int outPort,COM_Ent in,int inPort,int 
     int inPortCount = inDecl->inputs.size;
           
     // TODO: We can also show the offending expression since we could get the node representation
-    if(outPort >= outPortCount){
+    if(outPort >= outPortCount && outDecl != BasicDeclaration::input){
       COM_ReportError(env,SF("Unit does not contain port index: %d",outPort),out.token);
     }
     // TODO: We can also show the offending expression since we could get the node representation
-    if(inPort >= inPortCount){
+    if(inPort >= inPortCount && inDecl != BasicDeclaration::output){
       COM_ReportError(env,SF("Unit does not contain port index: %d",inPort),in.token);
     }
 
@@ -1177,4 +1224,343 @@ void COM_DebugPushDotGraph(String filename,COM_Unit* top,COM_Edge* edges){
 #endif
 }
 
-#endif
+// ======================================
+// Graph algorithms
+
+COM_UnitList COM_CalculateDAGOrder(COM_Unit* units,COM_Edge* edges,Arena* outArena){
+  TEMP_REGION(temp,outArena);
+
+  int MARK_NIL    = 0;
+  int MARK_TEMP   = 1;
+  int MARK_PERM   = 2;
+  int MARK_RETURN = 3;
+  
+  struct DAG_Data{
+    int mark;
+    int order;
+  };
+
+  for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
+    DAG_Data* data = PushStruct<DAG_Data>(temp);
+    data->order = -1;
+    ptr->general = (void*) data;
+  }
+
+  struct Work{
+    Work* next;
+    Work* prev;
+    Work* parent;
+    COM_Unit* unit;
+    bool isReturn;
+  };
+
+  // Depth first approach (starting from sources until reaching sinks) ==========
+  COM_UnitNode* nodeHead = 0;
+  COM_UnitNode* nodeTail = 0;
+  int count = 0;
+
+  bool error = 0;
+  for(COM_Unit* unit = units; unit; unit = unit->next){
+    DAG_Data* unitData = (DAG_Data*) unit->general;
+    
+    if(unitData->mark == MARK_PERM){
+      continue;
+    }
+
+    Work* head = 0;
+    Work* tail = 0;
+
+    Work top = {};
+    top.unit = unit;
+    DLL_Append(head,tail,next,prev,&top);
+    
+    while(tail){
+      Work* w = tail;
+      DLL_Remove(head,tail,next,prev,w);
+
+      COM_Unit* u = w->unit;
+      DAG_Data* d = (DAG_Data*) u->general;
+      
+      if(w->isReturn){
+        d->mark = MARK_PERM;
+        
+        COM_UnitNode* node = PushStruct<COM_UnitNode>(outArena);
+        node->v = u;
+        LL_Push(nodeHead,nodeTail,next,node);
+        count += 1;
+      } else {
+        if(d->mark == MARK_PERM){
+          continue;
+        }
+        if(d->mark == MARK_TEMP){
+          if(DECL_IsSink(unit->decl)){
+            d->mark = MARK_PERM;
+
+            COM_UnitNode* node = PushStruct<COM_UnitNode>(outArena);
+            node->v = u;
+            LL_Append(nodeHead,nodeTail,next,node);
+            count += 1;
+
+            continue;
+          } else {
+            error = 1;
+            printf("Graph is not a DAG\n");
+            // TODO: We can report loop by following the Work parent pointers.
+            continue;
+          }
+        }
+
+        d->mark = MARK_TEMP;
+        bool seenOne = 0;
+        for(COM_Edge* edge = edges; edge; edge = edge->next){
+          if(edge->out == u){
+            if(!seenOne){
+              Work* ret = PushStruct<Work>(temp);
+              ret->unit = u;
+              ret->isReturn = 1;
+              ret->parent = w->parent;
+
+              DLL_Append(head,tail,next,prev,ret);
+              
+              seenOne = 1;
+            }
+
+            Work* node = PushStruct<Work>(temp);
+            node->parent = w;
+            node->unit = edge->in;
+            DLL_Append(head,tail,next,prev,node);
+          }
+        }
+      }
+    }
+  }
+
+  // Generate debug info ========================================================
+  {
+    {
+      int count = 0;
+      for(COM_UnitNode* node = nodeHead; node; count++,node = node->next){
+        COM_Unit* ptr = node->v;
+        DAG_Data* data = (DAG_Data*) ptr->general;
+      
+        data->order = count;
+      }
+    }    
+    auto l = PushList<GraphPrintingNodeInfo>(temp);
+    for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
+      GraphPrintingNodeInfo* info = l->PushElem();
+      DAG_Data* data = (DAG_Data*) ptr->general;
+      info->name = PushString(temp,"%p",ptr);
+      info->content = PushString(temp,"%.*s (%d)",UN(ptr->name),data->order);
+      info->color = Color_BLUE;
+    }
+
+    auto e = PushList<GraphPrintingEdgeInfo>(temp);
+    for(COM_Edge* con = edges; con; con = con->next){
+      GraphPrintingEdgeInfo* info = e->PushElem();
+
+      info->firstNode = PushString(temp,"%p",con->out);
+      info->secondNode = PushString(temp,"%p",con->in);
+      info->content = PushString(temp,"%d -> %d",con->outPort,con->inPort);
+      info->color = Color_BLACK;
+    }
+
+    GraphPrintingContent content = {};
+    content.graphLabel = "Test";
+    content.nodes = PushArray(temp,l);
+    content.edges = PushArray(temp,e);
+
+    String result = GenerateDotGraph(content,temp);
+
+    String filePath = GetDebugRegionFilepath("DAG.dot",temp);
+    OutputContentToFile(filePath,result);
+  }
+  
+  for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
+    DAG_Data* data = (DAG_Data*) ptr->general;
+    Assert(data->mark != MARK_NIL);
+    ptr->general = 0;
+  }
+
+  COM_UnitList res = {};
+  res.head = nodeHead;
+  res.tail = nodeTail;
+  res.count = count;
+
+  return res;
+}
+
+COM_DelayResult COM_CalculateDelay(COM_Unit* units,COM_Edge* edges,COM_UnitList order,Arena* outArena){
+  TEMP_REGION(temp,outArena);
+
+  struct DELAY_Data{
+    Array<int> globalInputLatency;
+    Array<int> globalOutputLatency;
+    Array<int> inputExtraDelay;
+    Array<int> outputExtraDelay;
+  };
+
+  int count = 0;
+  int inputCount = 0;
+  int outputCount = 0;
+  for(COM_UnitNode* ptr = order.head; ptr; ptr = ptr->next){
+    COM_Unit* unit = ptr->v;
+    DELAY_Data* data = PushStruct<DELAY_Data>(temp);
+    unit->general = data;
+
+    if(unit->decl == BasicDeclaration::input){
+      inputCount += 1;
+    }
+    if(unit->decl == BasicDeclaration::output){
+      outputCount = unit->numberInputs;
+    }
+  }
+
+  // Initialize =================================================================
+  for(COM_UnitNode* ptr = order.head; ptr; ptr = ptr->next){
+    COM_Unit* unit = ptr->v;
+    FUDeclaration* decl = unit->decl;
+    DELAY_Data* data = (DELAY_Data*) unit->general;
+
+    data->globalInputLatency = PushArray<int>(temp,unit->numberInputs);
+    data->globalOutputLatency = PushArray<int>(temp,decl->outputs.size);
+    data->inputExtraDelay = PushArray<int>(temp,unit->numberInputs);
+    data->outputExtraDelay = PushArray<int>(temp,decl->outputs.size);
+  }
+  
+  // Calculate global latency ===================================================
+  for(COM_UnitNode* ptr = order.head; ptr; ptr = ptr->next){
+    COM_Unit* unit = ptr->v;
+    FUDeclaration* decl = unit->decl;
+    DELAY_Data* data = (DELAY_Data*) unit->general;
+
+    // Calculate output global latency from input latency =========================
+    for(int outPort = 0; outPort < data->globalOutputLatency.size; outPort++){
+      DECL_PortInfo outInfo = decl->outputs[outPort];
+
+      Array<int> dependPorts = {};
+      if(outInfo.inputDependencies.size > 0){
+        dependPorts = outInfo.inputDependencies;
+      } else {
+        dependPorts = PushArrayRange(0,data->globalInputLatency.size,temp);
+      }
+      
+      int max = INT_MIN;
+      for(int index : dependPorts){
+        max = MAX(max,data->globalInputLatency[index]);
+      }
+
+      if(max == INT_MIN){
+        max = 0;
+      }
+
+      // Output latency is the maximum of input latency of dependent nodes plus the units own output delay
+      data->globalOutputLatency[outPort] = max + decl->outputs[outPort].delay;
+
+      // Align inputs so that they arrive at the unit at the same time ==============
+      for(int index : dependPorts){
+        int val = max - data->globalInputLatency[index];
+        Assert(val >= 0 && "If this fails then we need to add delays to outputs because of the fact that now ports can have individual delays");
+        data->inputExtraDelay[index] = val;
+      }
+    }
+
+    // Propagate global latency ===================================================
+    for(COM_Edge* edge = edges; edge; edge = edge->next){
+      if(edge->out == unit){
+        COM_Unit* other = edge->in;
+        DELAY_Data* otherData = (DELAY_Data*) other->general;
+
+        otherData->globalInputLatency[edge->inPort] = data->globalOutputLatency[edge->outPort] + edge->delay;
+      }
+    }
+  }
+  
+  // TODO: Handle any delay edges in order to support 
+
+  auto OutputDotGraph = [&](){
+    BLOCK_REGION(temp);
+    // Generate debug graph
+    auto l = PushList<GraphPrintingNodeInfo>(temp);
+    for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
+      GraphPrintingNodeInfo* info = l->PushElem();
+      info->name = PushString(temp,"%p",ptr);
+      info->content = PushString(temp,ptr->name);
+      info->color = Color_BLUE;
+    }
+
+    auto e = PushList<GraphPrintingEdgeInfo>(temp);
+    for(COM_Edge* con = edges; con; con = con->next){
+      GraphPrintingEdgeInfo* info = e->PushElem();
+
+      DELAY_Data* outData = (DELAY_Data*) con->out->general;
+      DELAY_Data* inData = (DELAY_Data*) con->in->general;
+
+      info->firstNode = PushString(temp,"%p",con->out);
+      info->secondNode = PushString(temp,"%p",con->in);
+      info->content = PushString(temp,"%d (%d) -> %d (%d)",con->outPort,outData->globalOutputLatency[con->outPort],con->inPort,inData->globalInputLatency[con->inPort]);
+      info->color = Color_BLACK;
+    }
+
+    GraphPrintingContent content = {};
+    content.graphLabel = "Test";
+    content.nodes = PushArray(temp,l);
+    content.edges = PushArray(temp,e);
+
+    String result = GenerateDotGraph(content,temp);
+
+    String filePath = GetDebugRegionFilepath("TestDelay.dot",temp);
+    OutputContentToFile(filePath,result);
+  };
+
+  OutputDotGraph();
+  
+  // Pack result ================================================================
+  Array<int> inputDelays = PushArray<int>(outArena,inputCount);
+  Array<int> outputLatencies = {};
+  
+  for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
+    FUDeclaration* decl = ptr->decl;
+    DELAY_Data* data = (DELAY_Data*) ptr->general;
+    
+    if(decl == BasicDeclaration::input){
+      inputDelays[ptr->special] = data->outputExtraDelay[0];
+    }
+    if(decl == BasicDeclaration::output){
+      outputLatencies = CopyArray(data->globalInputLatency,outArena);
+    }
+  }
+
+  COM_EdgeDelay* head = 0;
+  COM_EdgeDelay* tail = 0;
+  for(COM_Edge* edge = edges; edge; edge = edge->next){
+    DELAY_Data* outData = (DELAY_Data*) edge->out->general;
+    DELAY_Data* inData = (DELAY_Data*) edge->in->general;
+    
+    int edgeExtraDelay = outData->outputExtraDelay[edge->outPort] + inData->inputExtraDelay[edge->inPort];
+    if(edge->out->decl == BasicDeclaration::input ||
+       edge->in->decl  == BasicDeclaration::output){
+      edgeExtraDelay = 0;
+    }
+
+    if(edgeExtraDelay){
+      COM_EdgeDelay* node = PushStruct<COM_EdgeDelay>(outArena);
+      node->delay = edgeExtraDelay;
+      node->edge = edge;
+      
+      LL_Append(head,tail,next,node);
+    }
+  }
+  
+
+  for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
+    ptr->general = 0;
+  }
+
+  COM_DelayResult res = {};
+  res.edgeDelays = head;
+  res.inputDelays = inputDelays;
+  res.outputLatencies = outputLatencies;
+
+  return res;
+}

@@ -11,7 +11,6 @@
 #include <errno.h>
 
 #include "assert.h"
-//#include "debug.hpp"
 
 #define ALWAYS_INLINE __attribute__((always_inline)) inline
 
@@ -781,16 +780,26 @@ inline bool Contains(Array<String> array,String toCheck){
   } else if(NODE) { \
     TAIL->NEXT = NODE; \
   } \
-  while(TAIL->NEXT) TAIL = TAIL->NEXT; \
+  while(TAIL->NEXT){ TAIL = TAIL->NEXT;} \
   }
 
-#define LL_PopFront(HEAD,NEXT) \
+#define LL_PopFrontNoTail(HEAD,NEXT) \
   HEAD; \
   if(HEAD) HEAD = HEAD->NEXT
 
-#define LL_Push(HEAD,NEXT,NODE) \
+#define LL_PopFront(HEAD,TAIL,NEXT) \
+  HEAD; \
+  if(HEAD) HEAD = HEAD->NEXT; \
+  if(!HEAD){ TAIL = 0;}
+
+#define LL_PushNoTail(HEAD,NEXT,NODE) \
   NODE->NEXT = HEAD; \
-  HEAD = NODE
+  HEAD = NODE;
+
+#define LL_Push(HEAD,TAIL,NEXT,NODE) \
+  NODE->NEXT = HEAD; \
+  HEAD = NODE; \
+  if(!TAIL) {TAIL = HEAD;}
 
 // NOTE: Care when using this, cannot depend on node and prev for loop conditions since this changes them.
 //       Best way of using this is to store the values needed for loop conditions before calling this macro.
@@ -835,15 +844,31 @@ inline bool Contains(Array<String> array,String toCheck){
 
 #define DLL_Append(HEAD,TAIL,NEXT,PREV,NODE) \
   if(NODE) { \
-  Assert(!NODE->PREV); \
+  Assert(!(NODE)->PREV); \
   Assert(!TAIL || !TAIL->NEXT); \
   if(HEAD == nullptr){ \
     HEAD = NODE; \
     TAIL = NODE; \
   } else if(NODE) { \
     TAIL->NEXT = NODE; \
-    NODE->PREV = TAIL; \
+    (NODE)->PREV = TAIL; \
   } \
   while(TAIL->NEXT) TAIL = TAIL->NEXT; \
   }
 
+#define DLL_Remove(HEAD,TAIL,NEXT,PREV,NODE) \
+  if(NODE){ \
+    Assert(HEAD && TAIL); \
+    auto prev = (NODE)->PREV; \
+    auto next = (NODE)->NEXT; \
+    if(prev){ \
+      prev->NEXT = next; \
+    } else { \
+      HEAD = next; \
+    } \
+    if(next){ \
+      next->PREV = prev; \
+    } else { \
+      TAIL = prev; \
+    } \
+  } 

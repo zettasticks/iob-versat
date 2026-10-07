@@ -158,7 +158,6 @@ inline bool operator==(StructInfo& l,StructInfo& r){
 // wires "concatenated" to generate the final identifier and so on).
 //  TODO: Put more stuff in here.
 
-
 #if 0
 
 String GEN_GetStructMemberName(InstanceInfo* info,Wire wire,Arena* out);
@@ -181,6 +180,24 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topLevelDecl,String h
 
 void OutputTestbench(FUDeclaration* decl,FILE* file);
 #endif
+
+struct GEN_OutputData{
+  String wireName;
+  bool isReg;
+  bool declare;
+  bool isConnected;
+};
+
+struct GEN_Data{
+  int index;
+  Array<GEN_OutputData> inputInfo;
+  Array<GEN_OutputData> outputInfo;
+};
+
+// ======================================
+// Code generation
+
+String GEN_OutputCircuitSource(FUDeclaration* decl,Arena* out);
 
 // ======================================
 // New struct generation code

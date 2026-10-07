@@ -1,7 +1,7 @@
 #pragma once 
 
 #include "versatSpecificationParser.hpp"
-#include "declaration.hpp"
+//#include "declaration.hpp"
 #include "symbolic.hpp"
 #include "addressGen.hpp"
 
@@ -18,7 +18,7 @@ enum DelayType {
 C_STYLE_ENUM(DelayType);
 #define CHECK_DELAY(inst,T) ((inst->declaration->delayType & T) == T)
 
-struct ParamAndValue{
+struct COM_Param{
   String name;
   SYM_Expr val;
 };
@@ -39,11 +39,16 @@ struct COM_Unit{
   COM_Unit* mergeNext;
   COM_Unit* mergePrev;
 
+ // NOTE: General purpose pointer to help map from units to temporary
+  // data (avoids having to create maps all the time). Good practice
+  // to zero out after every usage
+  void* general;
+
   // Data provided by parser ====================================================
   String name;
   FUDeclaration* decl;
 
-  Array<ParamAndValue> params;
+  Array<COM_Param> params;
 
   bool isStatic;
   bool isShared;
@@ -55,6 +60,9 @@ struct COM_Unit{
   // Computed data ==============================================================
   int id;
 
+  int numberInputs; // Some units that support variable inputs have this value different than 
+
+#if 0
   int configPos;
   int statePos;
   int delayPos;
@@ -63,14 +71,17 @@ struct COM_Unit{
   int mergePort;
 
   // TODO: 
-
   Array<int> individualWiresConfigPos;
   Array<bool> individualWiresShared;
+#endif
 
   bool doesNotBelong; // For merge units, if true then this unit does not actually exist for the given partition
 
   // Delay stuff ================================================================
+  // TODO: The only thing that we actually need is to store extra delay, right?
+  //       It is the only piece of data that code generation actually needs in order to function.
 
+#if 0
   int calculatedDelay; // TODO: This is not what we actually want, since latency and delays should be calculated based on port info instead of unit. We still keep the same unit delay for now.
   Array<int> extraDelay;
   int baseNodeDelay;
@@ -78,12 +89,24 @@ struct COM_Unit{
   Array<int> inputDelays;
   Array<int> outputLatencies;
   Array<int> portDelay;
+#endif
 
   // Computed modular data ======================================================
   Array<char> memoryMappedInterfaces; // TODO: Type
   Array<char> externalMemories; // TODO: Type
 };
 extern COM_Unit COM_Unit_Nil;
+
+struct COM_UnitNode{
+  COM_UnitNode* next;
+  COM_Unit* v;
+};
+
+struct COM_UnitList{
+  COM_UnitNode* head;
+  COM_UnitNode* tail;
+  int count;
+};
 
 // ======================================
 // Connections
@@ -94,6 +117,11 @@ struct COM_Port
   int port;
 };
 extern COM_Port COM_Port_Nil;
+
+struct COM_PortNode{
+  COM_PortNode* next;
+  COM_Port v;
+};
 
 struct COM_Edge{
   COM_Edge* next;
@@ -151,6 +179,7 @@ struct COM_EntNode{
 struct COM_EntPort{
   COM_Ent ent;
   int port;
+  int delay;
 };
 extern COM_EntPort COM_EntPort_Nil;
 
@@ -291,7 +320,7 @@ COM_UnpackedExpr    COM_UnpackExpr(COM_Env* env,SP_Node* expr);
 // ======================================
 // Compilation
 
-COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<ParamAndValue> topLevelParams,Arena* out);
+COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelParams,Arena* out);
 
 // ======================================
 // Env
@@ -324,3 +353,21 @@ void COM_ReportError(COM_Env* env,String msg,Token token);
 
 String COM_Repr(COM_Unit* top,Arena* out);
 void   COM_DebugPushDotGraph(String filename,COM_Unit* top,COM_Edge* edges);
+
+// ======================================
+// Graph algorithms
+
+struct COM_EdgeDelay{
+  COM_EdgeDelay* next;
+  COM_Edge* edge;
+  int delay;
+};
+
+struct COM_DelayResult{
+  COM_EdgeDelay* edgeDelays;
+  Array<int> inputDelays;
+  Array<int> outputLatencies;
+};
+
+COM_UnitList    COM_CalculateDAGOrder(COM_Unit* units,COM_Edge* edges,Arena* out);
+COM_DelayResult COM_CalculateDelay(COM_Unit* units,COM_Edge* edges,COM_UnitList order,Arena* out);

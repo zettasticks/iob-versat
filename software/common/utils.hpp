@@ -41,7 +41,11 @@ String PushBinaryRepr(Arena* out,int number);
 
 // TODO Reorganize
 String PushPointingString(Arena* out,int startPos,int size);
+
+// TODO: Probably remove, not used.
 Array<Value> ExtractValues(const char* format,String tok,Arena* arena);
+
+Array<int> PushArrayRange(int start,int end,Arena* out);
 
 template<typename T>
 struct SingleLink{

@@ -2324,7 +2324,7 @@ V_SymConvResult V_ConvertToSym(V_Node* top,Array<SYM_Pair> varValues){
   case V_NodeType_DIV:{
     if(SYM_IsZeroValue(second)){
       anyError = 1;
-      printf("Division by zero detected\n",UN(str));
+      printf("Division by zero detected\n");
     } else {
       res = first / second; 
     }

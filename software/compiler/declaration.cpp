@@ -1,6 +1,7 @@
 #include "declaration.hpp"
 
 #include "hardwareInterfaces.hpp"
+#include "debugVersat.hpp"
 
 // ======================================
 // Globals
@@ -23,20 +24,22 @@ static DECL_StateTag DECL_State = {};
 // Register special units
 
 static FUDeclaration* RegisterCircuitInput(){
-  FUDeclaration* decl = DECL_RegisterFU("CircuitInput");
-  decl->type = DeclarationType_SPECIAL;
+  static DECL_PortInfo info = {};
+  info.size = SYM_DataW;
+
+  FUDeclaration* decl = DECL_RegisterFU("CircuitInput",DeclarationType_SPECIAL);
+  decl->outputs.data = &info;
+  decl->outputs.size = 1;
   return decl;
 }
 
 static FUDeclaration* RegisterCircuitOutput(){
-  FUDeclaration* decl = DECL_RegisterFU("CircuitOutput");
-  decl->type = DeclarationType_SPECIAL;
+  FUDeclaration* decl = DECL_RegisterFU("CircuitOutput",DeclarationType_SPECIAL);
   return decl;
 }
 
 static FUDeclaration* RegisterLiteral(){
-  FUDeclaration* decl = DECL_RegisterFU("Literal");
-  decl->type = DeclarationType_SINGLE;
+  FUDeclaration* decl = DECL_RegisterFU("Literal",DeclarationType_SINGLE);
   decl->outputs = PushArray<DECL_PortInfo>(DECL_State.arena,1);
   decl->outputs[0].delay = 0;
   
@@ -62,7 +65,7 @@ static void RegisterOperators(){
                          {"SHL","{0} << {1}"}};
 
   for(unsigned int i = 0; i < ARRAY_SIZE(unary); i++){
-    FUDeclaration* decl = DECL_RegisterFU(unary[i].name);
+    FUDeclaration* decl = DECL_RegisterFU(unary[i].name,DeclarationType_SINGLE);
 
     decl->type = DeclarationType_SINGLE;
     decl->inputs = PushArray<DECL_PortInfo>(DECL_State.arena,1);
@@ -71,7 +74,7 @@ static void RegisterOperators(){
   }
 
   for(unsigned int i = 0; i < ARRAY_SIZE(binary); i++){
-    FUDeclaration* decl = DECL_RegisterFU(binary[i].name);
+    FUDeclaration* decl = DECL_RegisterFU(binary[i].name,DeclarationType_SINGLE);
 
     decl->inputs = PushArray<DECL_PortInfo>(DECL_State.arena,2);
     decl->outputs = PushArray<DECL_PortInfo>(DECL_State.arena,1);
@@ -104,6 +107,36 @@ bool IsNil(FUDeclaration* decl){
   return res;
 }
 
+bool DECL_IsSource(FUDeclaration* decl){
+  bool res = (decl->inputs.size == 0 && decl->outputs.size > 0);
+  return res;
+}
+
+bool DECL_IsSink(FUDeclaration* decl){
+  bool res = ((decl == BasicDeclaration::output) ||
+              (decl->inputs.size > 0 && decl->outputs.size == 0) || 
+             
+              // NOTE: If a unit has delays then we assume it is a sink even if it contains outputs.
+              (decl->inputs.size > 0 && decl->outputs.size > 0 && decl->numberDelays > 0));
+  return res;
+}
+
+bool DECL_IsVersatGenerated(FUDeclaration* decl){
+  bool res = (decl->type == DeclarationType_COMPOSITE ||
+              decl->type == DeclarationType_MERGED);
+  return res;
+}
+
+bool DECL_IsVersatOperation(FUDeclaration* decl){
+  bool res = (decl->operation.size > 0);
+  return res;
+}
+
+bool DECL_HasVariableInputs(FUDeclaration* decl){
+  bool res = (decl == BasicDeclaration::output);
+  return res;
+}
+
 // ======================================
 // Init
 
@@ -112,9 +145,21 @@ void DECL_Init(){
   DECL_State.arena = &arenaInst;
   
   RegisterOperators();
-  RegisterCircuitInput();
-  RegisterCircuitOutput();
+  BasicDeclaration::input = RegisterCircuitInput();
+  BasicDeclaration::output = RegisterCircuitOutput();
   RegisterLiteral();
+}
+
+// ======================================
+// Helpers
+
+Array<DECL_Param> DECL_Copy(Array<DECL_Param> in,Arena* out){
+  Array<DECL_Param> res = PushArray<DECL_Param>(out,in.size);
+  for(int i = 0; i < in.size; i++){
+    res[i].name = PushString(out,in[i].name);
+    res[i].val = in[i].val;
+  }
+  return res;
 }
 
 // ======================================
@@ -139,7 +184,7 @@ bool DECL_RegisterMeta(String name,V_Node* module){
       anyError |= converted.error;
       DECL_Param* p = l->PushElem();
       p->name = PushString(DECL_State.arena,name);
-      p->v = converted.res;
+      p->val = converted.res;
     }
   }
 
@@ -168,13 +213,15 @@ bool DECL_RegisterMeta(String name,SP_Node* module){
   return node;
 }
 
-FUDeclaration* DECL_RegisterFU(String name){
+FUDeclaration* DECL_RegisterFU(String name,DeclarationType type){
   FUDeclarationNode* res = PushStruct<FUDeclarationNode>(DECL_State.arena);
-  
-  res->val.name = PushString(DECL_State.arena,name);
+  res->val = PushStruct<FUDeclaration>(DECL_State.arena);
+
+  res->val->name = PushString(DECL_State.arena,name);
+  res->val->type = type;
 
   LL_Append(DECL_State.head,DECL_State.tail,next,res);
-  return &res->val;
+  return res->val;
 }
 
 // ======================================
@@ -237,24 +284,23 @@ FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params){
   // Check if a declaration with same params already exists =====================
   int paramSize = defaultParams.size;
   for(FUDeclarationNode* ptr = DECL_State.head; ptr; ptr = ptr->next){
-    if(ptr->val.name == name){
-
-      Assert(ptr->val.parameters.size == defaultParams.size);
+    if(ptr->val->name == name){
+      Assert(ptr->val->parameters.size == defaultParams.size);
 
       bool allEqual = 1;
       for(int i = 0; i < paramSize; i++){
         DECL_Param our = normalizedParams[i];
-        DECL_Param them = ptr->val.parameters[i];
+        DECL_Param them = ptr->val->parameters[i];
 
         Assert(our.name == them.name);
 
-        if(!SYM_Equal(our.v,them.v)){
+        if(!SYM_Equal(our.val,them.val)){
           allEqual = 0;
         }
       }
 
       if(allEqual){
-        res = &ptr->val;
+        res = ptr->val;
         break;
       }
     }
@@ -262,10 +308,10 @@ FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params){
 
   if(res == &FUDeclaration_Nil && metaExists){
     if(metaExists->type == DECL_MetaType_SIMPLE){
-      FUDeclarationNode* node = DECL_InstantiateSimple(metaExists,normalizedParams);
-      LL_Append(DECL_State.head,DECL_State.tail,next,node);
-      
-      res = &node->val;
+      res = DECL_InstantiateSimple(metaExists,normalizedParams);
+    }
+    if(metaExists->type == DECL_MetaType_COMPOSITE){
+      res = DECL_InstantiateComplex(metaExists,normalizedParams);
     }
   }
 
@@ -279,7 +325,7 @@ FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params){
 // ======================================
 // Instantiation
 
-FUDeclarationNode* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normalizedParams){
+FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normalizedParams){
   TEMP_REGION(temp,DECL_State.arena);
 
   V_Node* top = meta->simpleUnit;
@@ -295,7 +341,7 @@ FUDeclarationNode* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> norm
   Array<SYM_Pair> params = PushArray<SYM_Pair>(temp,normalizedParams.size);
   for(int i = 0; i < normalizedParams.size; i++){
     params[i].name = normalizedParams[i].name;
-    params[i].val = normalizedParams[i].v;
+    params[i].val = normalizedParams[i].val;
   }
 
   // Check repeated wires =======================================================
@@ -597,41 +643,125 @@ FUDeclarationNode* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> norm
 
       for(int i = 0; i < ptr->wiresSeen.size; i++){
         if(!ptr->wiresSeen[i]){
-          error = 1;
 
           int index = i % ptr->inter->wires.size;
           int port  = i / ptr->inter->wires.size;
 
           String repr = HW_GetWireRepresentation(ptr->inter,index,port,ptr->interfaceIndex,temp);
           printf("Cannot have missing wires in interface, '%.*s' does not exist for unit: '%.*s'\n",UN(repr),UN(moduleName));
+          error = 1;
         }
       }
     }
   }
 
-  // Pack =======================================================================
+  // Pack config wires ==========================================================
   Arena* out = DECL_State.arena;
 
-  FUDeclarationNode* node = PushStruct<FUDeclarationNode>(out);
+  Array<Wire> configs = PushArray<Wire>(out,configCount);
+  Array<Wire> states  = PushArray<Wire>(out,stateCount);
 
-  FUDeclaration* res = &node->val;
-  res->metaName = meta->name;
-  res->parameters = PushArray<DECL_Param>(out,normalizedParams.size);
-  res->name = PushString(DECL_State.arena,moduleName); // TODO: Serialize if needed.
+  int configIndex = 0;
+  int stateIndex = 0;
+  for(DECL_ConfigOrState* ptr = configStateHead; ptr; ptr = ptr->next){
+    if(ptr->isState){
+      states[stateIndex].name = PushString(out,ptr->name);
+      states[stateIndex].sizeExpr = SYM_Lit(ptr->size);
+      states[stateIndex].stage = ptr->stage;
+      stateIndex += 1;
+    } else {
+      configs[configIndex].name = PushString(out,ptr->name);
+      configs[configIndex].sizeExpr = SYM_Lit(ptr->size);
+      configs[configIndex].stage = ptr->stage;
+      configIndex += 1;
+    }
+  }
+  
+  // Calculate address gen supported by unit ====================================
+  auto FollowsInterface = [](Array<Wire> configs,Array<String> interfaceWireNames) -> bool{
+    // No point in even checking
+    if(configs.size < interfaceWireNames.size){
+      return false;
+    }
+    
+    for(String str : interfaceWireNames){
+      bool found = false;
+      for(Wire w : configs){
+        if(CompareString(w.name,str)){
+          found = true;
+          break;
+        }
+      }
+
+      if(!found){
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  Array<String> configNames = Extract(configs,temp,&Wire::name);
+  auto CountLoops = [configNames](Array<String> extraLoopsFormats){
+    TEMP_REGION(temp,nullptr);
+    
+    int loops = 2;
+
+    while(true){
+      bool containsAllNames = true;
+      for(String format : extraLoopsFormats){
+        String inst = PushString(temp,format.data,loops);
+
+        if(!Contains(configNames,inst)){
+          containsAllNames = false;
+          break;
+        }
+      }
+
+      if(containsAllNames){
+        loops += 1;
+      } else {
+        break;
+      }
+    }
+
+    return loops - 1;
+  };
+
+  bool isGenLike = FollowsInterface(configs,AddressGenBaseParameters);
+  bool isExternLike = FollowsInterface(configs,AddressVParameters);
+  bool isMemLike = FollowsInterface(configs,AddressMemParameters);
+  
+  AddressGenInst supportedAddressGen = {};
+  if(isExternLike){
+    supportedAddressGen.type = AddressGenType_READ;
+    supportedAddressGen.loopsSupported = CountLoops(AddressGenExtraFormat);
+  } else if(isGenLike){
+    supportedAddressGen.type = AddressGenType_GEN;
+    supportedAddressGen.loopsSupported = CountLoops(AddressGenExtraFormat);
+  } else if(isMemLike){
+    supportedAddressGen.type = AddressGenType_MEM;
+    supportedAddressGen.loopsSupported = 1;
+  }
+
+  // Pack =======================================================================
+
+  String name = moduleName; // TODO: Serialize if needed.
+  FUDeclaration* res = DECL_RegisterFU(name,DeclarationType_SINGLE);
+
+  res->meta = meta;
+  res->parameters = DECL_Copy(normalizedParams,out);
   res->inputs = PushArray<DECL_PortInfo>(out,inputCount);
   res->outputs = PushArray<DECL_PortInfo>(out,outputCount);
-  res->configs = PushArray<Wire>(out,configCount);
-  res->states = PushArray<Wire>(out,stateCount);
-  res->numberDelays = delayCount;
+  res->configs = configs;
+  res->states = states;
   res->memoryMapped = PushArray<SYM_Expr>(out,memoryMappedCount);
   res->externalMemory = PushArray<HW_Instance>(out,externalMemoryCount);
+  res->numberDelays = delayCount;
+  res->numberDones = (simple & SingleInterfaces_DONE) ? 1 : 0;
   res->singleInterfaces = simple;
+  res->supportedAddressGen = supportedAddressGen;
   res->error = error;
-
-  for(int i = 0; i < normalizedParams.size; i++){
-    res->parameters[i].name = PushString(out,normalizedParams[i].name);
-    res->parameters[i].v = normalizedParams[i].v;
-  }
 
   for(DECL_SimpleWireInfo* ptr = simpleHead; ptr; ptr = ptr->next){
     int index = ptr->index;
@@ -647,29 +777,22 @@ FUDeclarationNode* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> norm
      } break;
     }
   }
-
-  int configIndex = 0;
-  int stateIndex = 0;
-  for(DECL_ConfigOrState* ptr = configStateHead; ptr; ptr = ptr->next){
-    if(ptr->isState){
-      res->states[stateIndex].name = PushString(out,ptr->name);
-      res->states[stateIndex].sizeExpr = SYM_Lit(ptr->size);
-      res->states[stateIndex].stage = ptr->stage;
-      stateIndex += 1;
-    } else {
-      res->configs[configIndex].name = PushString(out,ptr->name);
-      res->configs[configIndex].sizeExpr = SYM_Lit(ptr->size);
-      res->configs[configIndex].stage = ptr->stage;
-      configIndex += 1;
-    }
-  }
   
   if(res->memoryMapped.size){
     res->memoryMapped[0] = memoryMappedAddrSize;
   }
-  
+
+  int databusCount = 0;
   int externalIndex = 0;
   for(DECL_InterfaceInfo* ptr = complexHead; ptr; ptr = ptr->next){
+    if(!HW_IsExternalMemory(ptr->inter)){
+      continue;
+    }
+    if(ptr->inter == &HW_Default::HW_DATABUS){
+      databusCount = MAX(databusCount,ptr->interfaceIndex + 1);
+      continue;
+    }
+
     int totalWireSize = ptr->inter->wires.size * ptr->inter->maxPorts;
     
     res->externalMemory[externalIndex].inter = ptr->inter;
@@ -681,6 +804,94 @@ FUDeclarationNode* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> norm
 
     externalIndex += 1;
   }
+  res->numberDatabus = databusCount;
 
-  return node;
+  return res;
+}
+
+FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normalizedParams){
+  DEBUG_PATH("Instantiate");
+
+  TEMP_REGION(temp,DECL_State.arena);
+
+  // Pack params and compile ====================================================
+  Array<COM_Param> comParams = PushArray<COM_Param>(temp,normalizedParams.size);
+  for(int i = 0; i < normalizedParams.size; i++){
+    comParams[i].name = normalizedParams[i].name;
+    comParams[i].val = normalizedParams[i].val;
+  }
+  COM_Module module = COM_InstantiateModule(meta->compositeUnit,comParams,DECL_State.arena);
+
+  // MARK
+  
+  COM_UnitList order = COM_CalculateDAGOrder(module.units,module.edges,temp);
+  COM_DelayResult delays = COM_CalculateDelay(module.units,module.edges,order,temp);
+
+  // TODO: Share and static
+  int configCount = 0;
+  int stateCount = 0;
+  int delayCount = 0;
+  int donesCount = 0;
+  int memMappedCount = 0;
+  int externalCount = 0;
+  DECL_SingleInterface single = {};
+  for(COM_Unit* ptr = module.units; ptr; ptr = ptr->next){
+    FUDeclaration* decl = ptr->decl;
+
+    configCount += decl->configs.size;
+    stateCount += decl->states.size;
+    delayCount += decl->numberDelays;
+    donesCount += decl->numberDones;
+    memMappedCount += decl->memoryMapped.size;
+    externalCount += decl->externalMemory.size;
+    single |= decl->singleInterfaces;
+  }
+
+  // Pack =======================================================================
+  Arena* out = DECL_State.arena;
+
+  String name = meta->name; // TODO: Serialize if needed.
+  FUDeclaration* res = DECL_RegisterFU(name,DeclarationType_COMPOSITE);
+
+  res->meta = meta;
+  res->parameters = DECL_Copy(normalizedParams,out);
+
+  res->inputs = PushArray<DECL_PortInfo>(out,delays.inputDelays.size);
+  res->outputs = PushArray<DECL_PortInfo>(out,delays.outputLatencies.size);
+  res->configs = PushArray<Wire>(out,configCount);
+  res->states = PushArray<Wire>(out,stateCount);
+  res->memoryMapped = PushArray<SYM_Expr>(out,memMappedCount);
+  res->externalMemory = PushArray<HW_Instance>(out,externalCount);
+
+  res->singleInterfaces = single;
+  res->numberDelays = delayCount;
+  res->numberDones = donesCount;
+
+  res->units = module.units;
+  res->edges = module.edges;
+  res->funcs = module.funcs;
+
+  // TODO: We could change to store hierarchical names instead. That way we would have better information about the source of the config/state wire instead of collapsing the information immediatly.
+  {
+    int configIndex = 0;
+    for(COM_Unit* ptr = module.units; ptr; ptr = ptr->next){
+      for(Wire w : ptr->decl->configs){
+        res->configs[configIndex] = w;
+        res->configs[configIndex].name = PushString(out,"%.*s_%.*s",UN(ptr->name),UN(res->configs[configIndex].name));
+        configIndex += 1;
+      }
+    }
+  }
+  {
+    int stateIndex = 0;
+    for(COM_Unit* ptr = module.units; ptr; ptr = ptr->next){
+      for(Wire w : ptr->decl->states){
+        res->states[stateIndex] = w;
+        res->states[stateIndex].name = PushString(out,"%.*s_%.*s",UN(ptr->name),UN(res->states[stateIndex].name));
+        stateIndex += 1;
+      }
+    }
+  }
+
+  return res;
 }

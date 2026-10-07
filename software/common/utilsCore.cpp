@@ -923,6 +923,15 @@ Array<Value> ExtractValues(const char* format,String tok,Arena* out){
   return values;
 }
 
+Array<int> PushArrayRange(int start,int end,Arena* out){
+  Array<int> res = PushArray<int>(out,end - start);
+  int index = 0;
+  for(int i = start; i < end; i++){
+    res[index++] = i;
+  }
+
+  return res;
+}
 
 bool IsNum(char ch){
   bool res = (ch >= '0' && ch <= '9');

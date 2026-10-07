@@ -65,6 +65,17 @@ void HW_Init(Arena* perm){
   HW_AllInterfaces[3] = &HW_MM;
 }
 
+// ======================================
+// Type
+
+bool HW_IsExternalMemory(HW_Interface* in){
+  bool res = (in == &HW_Default::HW_DP || in == &HW_Default::HW_2P);
+  return res;
+}
+
+// ======================================
+// Schema building
+
 HW_SchemaBuild HW_SchemaFromString(String format,char sep,Arena* out){
   const char* ptr = format.data;
   const char* end = ptr + format.size;
@@ -141,6 +152,9 @@ HW_SchemaBuild HW_SchemaFromString(String format,char sep,Arena* out){
   res.error = error;
   return res;
 }
+
+// ======================================
+// Extract values 
 
 HW_ValueResult HW_ExtractValues(HW_Interface* expectedInterface,String content,Arena* out){
   const char sep = expectedInterface->schema->sep;

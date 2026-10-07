@@ -7,16 +7,7 @@ struct DELAY_Info{
   bool isAny;
 };
 
-//typedef Hashmap<COM_Edge*,DELAY_Info> EdgeDelay;
-//typedef Hashmap<COM_Unit*,DELAY_Info> NodeDelay;
-//typedef Hashmap<COM_Port,DELAY_Info> PortDelay;
-
 struct DELAY_Result{
-  //EdgeDelay* edgesDelay;
-  //PortDelay* portDelay;
-  //NodeDelay* nodeDelay;
-
-  //TrieMap<FUInstance*,int>* variableBuffer;
 };
 
 struct DELAY_BufferToAdd{
@@ -26,5 +17,4 @@ struct DELAY_BufferToAdd{
   int bufferAmount;
 };
 
-DELAY_Result             CalculateDelay(COM_Unit* top,COM_Edge* edges,Arena* out);
-//Array<DELAY_BufferToAdd> GenerateFixDelays(COM_Unit* top,EdgeDelay* edgeDelays,Arena* out);
+DELAY_Result CalculateDelay(COM_Unit* top,COM_Edge* edges,Arena* out);

@@ -1,19 +1,7 @@
 #pragma once
 
-#include <cstdio>
-
-#if 0
-
 #include "debug.hpp"
 #include "utils.hpp"
-
-#include "delayCalculation.hpp"
-
-struct Accelerator;
-struct Arena;
-
-// Useful to have a bit of memory for debugging
-extern Arena* debugArena;
 
 // ============================================================================
 // Graph printing
@@ -52,17 +40,6 @@ struct GraphInfo{
   Color color;
 };
 
-typedef GraphInfo (*NodeContent)(COM_Unit*,Arena* out);
-typedef GraphInfo (*EdgeContent)(COM_Edge*,Arena* out);
-
-extern NodeContent defaultNodeContent;
-extern EdgeContent defaultEdgeContent;
-
-GraphPrintingContent GeneratePrintingContent(Accelerator* accel,NodeContent nodeFunction,EdgeContent edgeFunction,Arena* out);
-
-Color DefaultNodeColor(COM_Unit* node);
-GraphPrintingContent GenerateDefaultPrintingContent(Accelerator* accel,Arena* out);
-
 String GenerateDotGraph(GraphPrintingContent content,Arena* out);
 
 void OutputContentToFile(String filepath,String content);
@@ -84,8 +61,3 @@ struct DebugPathMarker{
 #define DEBUG_PATH(NAME) DebugPathMarker _marker(__LINE__)(NAME)
 
 String GetDebugRegionFilepath(String filename,Arena* out);
-
-void DebugRegionOutputDotGraph(Accelerator* accel,String fileName);
-void DebugRegionOutputLatencyGraph(Accelerator* accel,NodeDelay* nodeDelay,PortDelay* portDelay,EdgeDelay* edgeToDelay,String fileName);
-
-#endif

@@ -97,12 +97,17 @@ extern Array<HW_Interface*> HW_AllInterfaces;
 void HW_Init(Arena* perm);
 
 // ======================================
+// Type
+
+bool HW_IsExternalMemory(HW_Interface* in);
+
+// ======================================
 // Schema building
 
 HW_SchemaBuild HW_SchemaFromString(String format,char sep,Arena* out);
 
 // ======================================
-// Extract values from string 
+// Extract values 
 
 HW_ValueResult HW_ExtractValues(HW_Interface* expectedInterface,String content,Arena* out);
 

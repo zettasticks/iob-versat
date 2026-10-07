@@ -13,11 +13,11 @@ all: versat
 VERSAT_COMMON_FLAGS := -Wall -Wunused-variable -Wno-char-subscripts -Wno-switch-enum -Wno-switch -Wno-unused-function 
 VERSAT_COMMON_FLAGS += -Werror=enum-compare -Werror=return-type 
 
-# Useful to run addressSanitizer every so often 
+# Enable address sanitizer, useful for catching incorrect arena usage.
 # NOTE: disable ASLR or we are gonna keep having random segfaults.
-#       You can disbable it temporarely (until reboot) by running the command:
+#       You can disable it temporarily (until reboot) by running the command:
 #       " echo 0 | sudo tee /proc/sys/kernel/randomize_va_space "
-VERSAT_COMMON_FLAGS += -fsanitize=address -static-libasan
+# VERSAT_COMMON_FLAGS += -fsanitize=address -static-libasan
 
 #VERSAT_COMMON_FLAGS += -ggdb3 # Outputs more debug info but only when debuggin with gdb
 
