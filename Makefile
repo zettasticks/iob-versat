@@ -10,7 +10,9 @@ SHELL:=/bin/sh
 # Default rule
 all: versat
 
-VERSAT_COMMON_FLAGS := -Wall -Wunused-variable -Wno-char-subscripts -Wno-switch-enum -Wno-switch -Wno-unused-function 
+VERSAT_COMMON_FLAGS := -Wall #-Wmissing-field-initializers
+VERSAT_COMMON_FLAGS += -Wno-unused-variable -Wno-unused-but-set-variable
+VERSAT_COMMON_FLAGS += -Wno-char-subscripts -Wno-switch-enum -Wno-switch -Wno-unused-function
 VERSAT_COMMON_FLAGS += -Werror=enum-compare -Werror=return-type 
 
 # Enable address sanitizer, useful for catching incorrect arena usage.

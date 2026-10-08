@@ -3,6 +3,8 @@
 #include "utils.hpp"
 #include "symbolic.hpp"
 
+struct VEmitter;
+
 // ======================================
 // Schema
 
@@ -32,7 +34,8 @@ struct HW_SchemaBuild{
 
 enum HW_WireProperty{
   HW_WireProperty_NIL = 0,
-  HW_WireProperty_ADDR = (1 << 1),
+  HW_WireProperty_CONTROLLER_INPUT = (1 << 1), // Otherwise assumed output
+  HW_WireProperty_ADDR = (1 << 4),
 };
 C_STYLE_ENUM(HW_WireProperty);
 
@@ -49,7 +52,9 @@ struct HW_Interface{
 };
 
 struct HW_Wire{
+  HW_WireDef* def;
   SYM_Expr size;
+  int port;
 };
 
 struct HW_Instance{
@@ -99,7 +104,13 @@ void HW_Init(Arena* perm);
 // ======================================
 // Type
 
-bool HW_IsExternalMemory(HW_Interface* in);
+bool        HW_IsExternalMemory(HW_Interface* in);
+HW_Instance HW_Copy(HW_Instance in,Arena* out);
+
+// ======================================
+// Helpers
+
+HW_Wire HW_MakeWire(HW_WireDef* def,SYM_Expr size,int port);
 
 // ======================================
 // Schema building
@@ -116,3 +127,7 @@ HW_ValueResult HW_ExtractValues(HW_Interface* expectedInterface,String content,A
 
 String HW_GetWireRepresentation(HW_Interface* inter,int wireIndex,int port,int interface,Arena* out);
 
+// ======================================
+// Emission
+
+void HW_EmitPortDeclaration(VEmitter* v,HW_Instance* inst,bool isController);

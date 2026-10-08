@@ -55,7 +55,7 @@ String PushDebugPath(Arena* out,String folderName,String fileName);
 
 struct DEBUG_Marker{
   int count;
-  DEBUG_Marker(String name,String entity);
+  DEBUG_Marker(String name,String entity,String stage);
   ~DEBUG_Marker();
 };
 
@@ -64,5 +64,9 @@ String DEBUG_GetDebugRegionFilepath(String filename,Arena* out);
 #define __debugmarker(LINE) debugmarker_ ## LINE
 #define _debugmarker(LINE) __debugmarker( LINE )
 
-#define DEBUG_TOP(ENTITY) DEBUG_Marker _debugmarker(__LINE__){__FUNCTION__,ENTITY}
-#define DEBUG_COMPUTE()   DEBUG_Marker _debugmarker(__LINE__){__FUNCTION__,{}}
+// Debug folders are ordered in the form TOP/STAGE/FUNCTION
+// Calling TOP again starts a new chain, meaning that it is not a problem if functions recurse.
+
+#define DEBUG_TOP(ENTITY)  DEBUG_Marker _debugmarker(__LINE__){{},ENTITY,{}}
+#define DEBUG_STAGE(STAGE) DEBUG_Marker _debugmarker(__LINE__){{},{},STAGE}
+#define DEBUG_FUNCTION()    DEBUG_Marker _debugmarker(__LINE__){__FUNCTION__,{},{}}

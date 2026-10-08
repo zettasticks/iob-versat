@@ -1658,7 +1658,7 @@ void SYM_Print(SYM_MultPartition part){
 SYM_MultPartition GetMultPartition(SYM_Expr expr,Arena* out){
   TEMP_REGION(temp,out);
 
-  SYM_MultPartition res = {.literal = SYM_1};
+  SYM_MultPartition res = {.literal = SYM_1,.mults = {}};
 
   bool negateLiteral = false;
 

@@ -1982,7 +1982,7 @@ int main(int argc,const char* argv[]){
             if(i != 0){
               c->PushString(",\n");
             }
-            c->PushString("  {\"%.*s\",\"%.*s\",{},%.*s_TEMP_%d}",UN(file.filename),UN(file.originalRelativePath),UN(name),i);
+            c->PushString("  {\"%.*s\",\"%.*s\",{},%.*s_TEMP_%d,{},{}}",UN(file.filename),UN(file.originalRelativePath),UN(name),i);
           }
 
           c->PushString("\n};\n");

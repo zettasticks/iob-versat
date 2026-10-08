@@ -1402,18 +1402,19 @@ V_Node* V_ParseOptionalAttributeList(Parser* parser,Arena* out){
       }
 
       Token name = parser->ExpectNext(TokenType_IDENTIFIER);
-      Token val = {};
-      
+      V_Node* expr = {};
       if(parser->IfNextToken('=')){
-        val = parser->NextToken();
+        Token peek = parser->PeekToken();
+
+        if(peek.type == TokenType_C_STRING){
+          parser->Advance(peek);
+          expr = V_MakeNode(out,V_NodeType_LITERAL,peek);
+        } else {
+          expr = V_ParseExpression(parser,out);
+        }
       }
 
-      V_Node* id = V_MakeNode(out,V_NodeType_IDENTIFIER,name);
-      V_Node* value = V_MakeNode(out,V_NodeType_LITERAL,val);
-
-      id->next = value;
-
-      V_Node* attr = V_MakeNode(out,V_NodeType_ATTRIBUTE,{},id);
+      V_Node* attr = V_MakeNode(out,V_NodeType_ATTRIBUTE,name,expr);
       LL_Append(head,tail,next,attr);
     }
 
@@ -1475,8 +1476,9 @@ V_Node* V_ParseParameterList(Parser* parser,Arena* out){
     V_ParseOptionalType(parser,out);
     /*V_Node* range = */ V_ParseOptionalRange(parser,out);
 
-    Token possibleComment = parser->PeekToken(0,ParsingOptions_ALLOW_COMMENTS);
-    
+    // TODO: Parse comment for special parameters
+    /* Token possibleComment = */ parser->PeekToken(0,ParsingOptions_ALLOW_COMMENTS);
+
     V_ParseOptionalType(parser,out);
     /*V_Node* range = */ V_ParseOptionalRange(parser,out);
     

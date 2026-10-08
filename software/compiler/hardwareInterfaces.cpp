@@ -1,5 +1,7 @@
 #include "hardwareInterfaces.hpp"
 
+#include "VerilogEmitter.hpp"
+
 namespace HW_Default{
   HW_Interface HW_DP;
   HW_Interface HW_2P;
@@ -22,37 +24,37 @@ void HW_Init(Arena* perm){
   }
 
   HW_INIT(HW_DP,"DP","ext_dp_@{wire}_@{interface}_port_@{port}",5,2);
-  HW_DP.wires[0].name = "addr";
-  HW_DP.wires[1].name = "out";
-  HW_DP.wires[2].name = "in";
-  HW_DP.wires[3].name = "write";
-  HW_DP.wires[4].name = "enable";
+  HW_DP.wires[0] = {"addr"};
+  HW_DP.wires[1] = {"out"};
+  HW_DP.wires[2] = {"in",HW_WireProperty_CONTROLLER_INPUT};
+  HW_DP.wires[3] = {"write"};
+  HW_DP.wires[4] = {"enable"};
   
   HW_INIT(HW_2P,"2P","ext_2p_@{wire}_@{interface}",6,1);
-  HW_2P.wires[0].name = "addr_out";
-  HW_2P.wires[1].name = "addr_in";
-  HW_2P.wires[2].name = "data_out";
-  HW_2P.wires[3].name = "data_in";
-  HW_2P.wires[4].name = "write";
-  HW_2P.wires[5].name = "read";
+  HW_2P.wires[0] = {"addr_out"};
+  HW_2P.wires[1] = {"addr_in"};
+  HW_2P.wires[2] = {"data_out"};
+  HW_2P.wires[3] = {"data_in",HW_WireProperty_CONTROLLER_INPUT};
+  HW_2P.wires[4] = {"write"};
+  HW_2P.wires[5] = {"read"};
 
   HW_INIT(HW_DATABUS,"DATABUS","databus_@{wire}_@{interface}",8,1);
-  HW_DATABUS.wires[0].name = "ready";
-  HW_DATABUS.wires[1].name = "rvalid";
-  HW_DATABUS.wires[2].name = "addr";
-  HW_DATABUS.wires[3].name = "rdata";
-  HW_DATABUS.wires[4].name = "wdata";
-  HW_DATABUS.wires[5].name = "wstrb";
-  HW_DATABUS.wires[6].name = "len";
-  HW_DATABUS.wires[7].name = "last";
+  HW_DATABUS.wires[0] = {"ready",HW_WireProperty_CONTROLLER_INPUT};
+  HW_DATABUS.wires[1] = {"rvalid"};
+  HW_DATABUS.wires[2] = {"addr"};
+  HW_DATABUS.wires[3] = {"rdata",HW_WireProperty_CONTROLLER_INPUT};
+  HW_DATABUS.wires[4] = {"wdata"};
+  HW_DATABUS.wires[5] = {"wstrb"};
+  HW_DATABUS.wires[6] = {"len"};
+  HW_DATABUS.wires[7] = {"last",HW_WireProperty_CONTROLLER_INPUT};
 
   HW_INIT(HW_MM,"MM","@{wire}",6,1);
-  HW_MM.wires[0].name = "rvalid";
-  HW_MM.wires[1].name = "valid";
-  HW_MM.wires[2].name = "addr";
-  HW_MM.wires[3].name = "rdata";
-  HW_MM.wires[4].name = "wdata";
-  HW_MM.wires[5].name = "wstrb";
+  HW_MM.wires[0] = {"rvalid"};
+  HW_MM.wires[1] = {"valid",HW_WireProperty_CONTROLLER_INPUT};
+  HW_MM.wires[2] = {"addr",HW_WireProperty_CONTROLLER_INPUT};
+  HW_MM.wires[3] = {"rdata"};
+  HW_MM.wires[4] = {"wdata",HW_WireProperty_CONTROLLER_INPUT};
+  HW_MM.wires[5] = {"wstrb",HW_WireProperty_CONTROLLER_INPUT};
 
   HW_MM.wires[2].prop |= HW_WireProperty_ADDR;
   
@@ -73,6 +75,25 @@ bool HW_IsExternalMemory(HW_Interface* in){
   return res;
 }
 
+HW_Instance HW_Copy(HW_Instance in,Arena* out){
+  HW_Instance res = {};
+  res.index = in.index;
+  res.inter = in.inter;
+  res.wires = CopyArray(in.wires,out);
+  return res;
+}
+
+// ======================================
+// Helpers
+
+HW_Wire HW_MakeWire(HW_WireDef* def,SYM_Expr size,int port){
+  HW_Wire res = {};
+  res.def = def;
+  res.size = size;
+  res.port = port;
+  return res;
+}
+
 // ======================================
 // Schema building
 
@@ -87,7 +108,7 @@ HW_SchemaBuild HW_SchemaFromString(String format,char sep,Arena* out){
 
   bool error = 0;
   while(!error && ptr < end){
-    const char* loopStart = ptr;
+    UNUSED const char* loopStart = ptr;
     char ch = *ptr;
 
     if(ch == sep){
@@ -335,4 +356,54 @@ String HW_GetWireRepresentation(HW_Interface* inter,int wireIndex,int port,int i
 
   String res = EndString(out,b);
   return res;
+}
+
+// ======================================
+// Emission
+
+void HW_EmitPortDeclaration(VEmitter* v,HW_Instance* inst,bool isController){
+  TEMP_REGION(temp,v->arena);
+
+  HW_Interface* inter = inst->inter;
+  HW_Schema* schema = inter->schema;
+  int interfaceIndex = inst->index;
+
+  for(HW_Wire w : inst->wires){
+    bool isControllerInput = (w.def->prop & HW_WireProperty_CONTROLLER_INPUT);
+    bool isInput = (isControllerInput && isController);
+    SYM_Expr size = w.size;
+    int port = w.port;
+
+    // Build port name ============================================================
+    auto b = StartString(temp);
+    for(HW_SchemaNode* ptr = schema->head; ptr; ptr = ptr->next){
+      bool first = (ptr == schema->head);
+
+      if(!first){
+        b->PushChar(schema->sep);
+      }
+
+      switch(ptr->type){
+      case HW_SchemaType_PORT:{
+        b->PushString("%d",port);
+      } break;
+      case HW_SchemaType_TEXT:{
+        b->PushString(ptr->content);
+      } break;
+      case HW_SchemaType_WIRE:{
+        b->PushString(w.def->name);
+      } break;
+      case HW_SchemaType_INTERFACE:{
+        b->PushString("%d",interfaceIndex);
+      } break;
+      }
+    }
+    String portName = EndString(temp,b);
+
+    if(isInput){
+      v->Input(portName,w.size);
+    } else {
+      v->Output(portName,w.size);
+    }
+  }
 }

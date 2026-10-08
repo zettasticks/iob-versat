@@ -772,25 +772,23 @@ inline bool Contains(Array<String> array,String toCheck){
 }
 
 #define LL_Append(HEAD,TAIL,NEXT,NODE) \
-  if(NODE) { \
+  if((NODE) != nullptr) { \
   Assert(!TAIL || !TAIL->NEXT); \
-  if(HEAD == nullptr){ \
+  if((HEAD) == nullptr){ \
     HEAD = NODE; \
     TAIL = NODE; \
-  } else if(NODE) { \
+  } else if((NODE)) { \
     TAIL->NEXT = NODE; \
   } \
   while(TAIL->NEXT){ TAIL = TAIL->NEXT;} \
   }
 
 #define LL_PopFrontNoTail(HEAD,NEXT) \
-  HEAD; \
   if(HEAD) HEAD = HEAD->NEXT
 
 #define LL_PopFront(HEAD,TAIL,NEXT) \
-  HEAD; \
-  if(HEAD) HEAD = HEAD->NEXT; \
-  if(!HEAD){ TAIL = 0;}
+  if((HEAD) != nullptr) HEAD = HEAD->NEXT; \
+  if((HEAD) == nullptr){ TAIL = 0;}
 
 #define LL_PushNoTail(HEAD,NEXT,NODE) \
   NODE->NEXT = HEAD; \
@@ -808,7 +806,7 @@ inline bool Contains(Array<String> array,String toCheck){
 //       Next is set immediatly every iteration with the next of the node
 //       Prev is only set if the node is not removed.
 #define LL_Remove(HEAD,TAIL,NEXT,NODE,PREV) \
-  if(NODE) { \
+  if((NODE) != nullptr) { \
     if(!PREV) { \
       Assert(NODE == HEAD); \
       HEAD = NODE->NEXT; \
@@ -843,13 +841,13 @@ inline bool Contains(Array<String> array,String toCheck){
   }
 
 #define DLL_Append(HEAD,TAIL,NEXT,PREV,NODE) \
-  if(NODE) { \
+  if((NODE) != nullptr) { \
   Assert(!(NODE)->PREV); \
   Assert(!TAIL || !TAIL->NEXT); \
   if(HEAD == nullptr){ \
     HEAD = NODE; \
     TAIL = NODE; \
-  } else if(NODE) { \
+  } else if((NODE) != nullptr) { \
     TAIL->NEXT = NODE; \
     (NODE)->PREV = TAIL; \
   } \
@@ -857,7 +855,7 @@ inline bool Contains(Array<String> array,String toCheck){
   }
 
 #define DLL_Remove(HEAD,TAIL,NEXT,PREV,NODE) \
-  if(NODE){ \
+  if((NODE) != nullptr){ \
     Assert(HEAD && TAIL); \
     auto prev = (NODE)->PREV; \
     auto next = (NODE)->NEXT; \

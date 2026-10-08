@@ -237,8 +237,8 @@ struct V_Node{
 // ======================================
 // Constants
 
-static readonly V_Node V_Node_0 = {.type = V_NodeType_LITERAL,.token = {.type = TokenType_NUMBER,.val = "0"}};
-static readonly V_Node V_Node_Range0 = {.type = V_NodeType_RANGE,.first = &V_Node_0,.second = &V_Node_0};
+static readonly V_Node V_Node_0 = {.type = V_NodeType_LITERAL,.first = 0,.second = 0,.attributes = 0,.token = {.type = TokenType_NUMBER,.val = "0"}};
+static readonly V_Node V_Node_Range0 = {.type = V_NodeType_RANGE,.first = &V_Node_0,.second = &V_Node_0,.attributes = 0,.token = {}};
 
 enum V_NumberType{
   V_NumberType_NIL,

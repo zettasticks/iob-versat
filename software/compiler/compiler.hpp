@@ -97,12 +97,18 @@ struct COM_Unit{
 };
 extern COM_Unit COM_Unit_Nil;
 
+struct COM_UnitList{
+  COM_Unit* head;
+  COM_Unit* tail;
+  int count;
+};
+
 struct COM_UnitNode{
   COM_UnitNode* next;
   COM_Unit* v;
 };
 
-struct COM_UnitList{
+struct COM_UnitNodeList{
   COM_UnitNode* head;
   COM_UnitNode* tail;
   int count;
@@ -131,6 +137,23 @@ struct COM_Edge{
   COM_Unit* in;
   int inPort;
   int delay;
+};
+
+struct COM_EdgeList{
+  COM_Edge* head;
+  COM_Edge* tail;
+  int count;
+};
+
+// ======================================
+// Graph
+
+struct COM_Graph{
+  COM_UnitList units;
+  COM_EdgeList edges;
+
+  COM_Unit* freeUnits;
+  COM_Edge* freeEdges;
 };
 
 // ======================================
@@ -191,11 +214,17 @@ struct COM_Env{
   int shareIndex;
   int tempIndex;
 
+  COM_Graph graph;
+  
+#if 0
+  int unitCount;
   COM_Unit* unitHead;
   COM_Unit* unitTail;
 
-  COM_Edge* conHead;
-  COM_Edge* conTail;
+  int edgeCount;
+  COM_Edge* edgeHead;
+  COM_Edge* edgeTail;
+#endif
   
   int scope;
   COM_EntNode*entFreeList;
@@ -277,8 +306,13 @@ struct COM_Stmt{
 };
 
 struct COM_Function{
-  COM_Function* next;
+  String name;
   COM_Stmt* stmts;
+};
+
+struct COM_FunctionNode{
+  COM_FunctionNode* next;
+  COM_Function* v;
 };
 
 // ======================================
@@ -286,9 +320,8 @@ struct COM_Function{
 
 struct COM_Module{
   String name;
-  COM_Unit* units;
-  COM_Edge* edges;
-  COM_Function* funcs;
+  COM_Graph graph;
+  COM_FunctionNode* funcs;
 };
 
 // ======================================
@@ -330,7 +363,7 @@ COM_Ent* COM_PushEnt(COM_Env* env,Token name,COM_EntType type);
 COM_Ent  COM_GetEnt(COM_Env* env,Token name,bool canFail);
 COM_Ent  COM_ArrayAccess(COM_Env* env,COM_Ent array,int index);
 
-COM_Unit* COM_PushUnit(COM_Env* env);
+//COM_Unit* COM_PushUnit(COM_Env* env);
 
 void COM_PushScope(COM_Env* env);
 void COM_PopScope(COM_Env* env);
@@ -355,6 +388,14 @@ String COM_Repr(COM_Unit* top,Arena* out);
 void   COM_DebugPushDotGraph(String filename,COM_Unit* top,COM_Edge* edges);
 
 // ======================================
+// Graph helpers
+
+COM_Unit* COM_PushUnit(COM_Graph* graph,String name,FUDeclaration* decl,Arena* out);
+void      COM_InsertMiddle(COM_Graph* graph,COM_Edge* edge,COM_Unit* toInsert,int inPort,int outPort,Arena* out);
+
+//COM_Graph COM_Copy(COM_Graph* in,Arena* out);
+
+// ======================================
 // Graph algorithms
 
 struct COM_EdgeDelay{
@@ -369,5 +410,5 @@ struct COM_DelayResult{
   Array<int> outputLatencies;
 };
 
-COM_UnitList    COM_CalculateDAGOrder(COM_Unit* units,COM_Edge* edges,Arena* out);
-COM_DelayResult COM_CalculateDelay(COM_Unit* units,COM_Edge* edges,COM_UnitList order,Arena* out);
+COM_UnitNodeList COM_CalculateDAGOrder(COM_Graph graph,Arena* out);
+COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena* out);

@@ -81,6 +81,7 @@ String PushDebugPath(Arena* out,String folderName,String fileName){
 enum DEBUG_Type{
   DEBUG_Type_NIL,
   DEBUG_Type_FUNCTION_NAME,
+  DEBUG_Type_STAGE,
   DEBUG_Type_ENTITY
 };
 
@@ -96,12 +97,12 @@ static DEBUG_Node* debugHead = 0;
 static DEBUG_Node* debugTail = 0;
 static DEBUG_Node* debugFreeList = 0;
 
-DEBUG_Marker::DEBUG_Marker(String functionName,String entity){
-  String work[] = {functionName,entity};
+DEBUG_Marker::DEBUG_Marker(String functionName,String entity,String stage){
+  String work[] = {functionName,stage,entity};
 
   int processed = 0;
-  for(int i = 0; i < 2; i++){
-    DEBUG_Type type = (i == 0) ? DEBUG_Type_FUNCTION_NAME : DEBUG_Type_ENTITY;
+  for(int i = 0; i < 3; i++){
+    DEBUG_Type type = (DEBUG_Type) (i + ((int) DEBUG_Type_FUNCTION_NAME));
     String name = work[i];
 
     if(Empty(name)){
@@ -112,7 +113,8 @@ DEBUG_Marker::DEBUG_Marker(String functionName,String entity){
     
     DEBUG_Node* node = 0;
     if(debugFreeList){
-      node = LL_PopFrontNoTail(debugFreeList,next);
+      node = debugFreeList;
+      LL_PopFrontNoTail(debugFreeList,next);
       *node = {};
     } else {
       node = PushStruct<DEBUG_Node>(debugArena);
@@ -143,6 +145,13 @@ String DEBUG_GetDebugRegionFilepath(String filename,Arena* out){
     }
   }
 
+  DEBUG_Node* lastStage = nullptr;
+  for(DEBUG_Node* ptr = lastEntity; ptr; ptr = ptr->next){
+    if(ptr->type == DEBUG_Type_STAGE){
+      lastStage = ptr;
+    }
+  }
+
   String res = {};
   if(!lastEntity){
     res = PushString(out,"%.*s/%s/%.*s",UN(globalOptions.debugPath),"TOP",UN(filename));
@@ -151,7 +160,17 @@ String DEBUG_GetDebugRegionFilepath(String filename,Arena* out){
   
     builder->PushString(globalOptions.debugPath);
 
-    for(DEBUG_Node* ptr = lastEntity; ptr; ptr = ptr->next){
+    if(lastEntity){
+      builder->PushString("/");
+      builder->PushString(lastEntity->name);
+    }
+
+    DEBUG_Node* ptr = lastStage;
+    if(!ptr){
+      ptr = lastEntity->next;
+    }
+
+    for(; ptr; ptr = ptr->next){
       builder->PushString("/");
       builder->PushString(ptr->name);
     }

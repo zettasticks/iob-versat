@@ -1,5 +1,7 @@
 `timescale 1ns / 1ps
 
+// CAREFUL changing this. Versat depends on this interface
+
 module FixedBuffer #(
    parameter DATA_W = 32,
    parameter AMOUNT = 0
@@ -13,11 +15,15 @@ module FixedBuffer #(
    //input / output data
    input [DATA_W-1:0] in0,
 
-   (* versat_latency = 1 *) output reg [DATA_W-1:0] out0
+   (* versat_latency = AMOUNT *) output reg [DATA_W-1:0] out0
 );
 
    generate
       if (AMOUNT == 0) begin
+         always @* begin
+            out0 = in0;
+         end
+      end else if (AMOUNT == 1) begin // TODO: Check if this case is already properly handled below.
          always @(posedge clk, posedge rst) begin
             if (rst) begin
                out0 <= {DATA_W{1'b0}};
@@ -55,14 +61,8 @@ module FixedBuffer #(
             end
          end
 
-         always @(posedge clk, posedge rst) begin
-            if (rst) begin
-               out0 <= {DATA_W{1'b0}};
-            end else if (running) begin
-               out0 <= bufferData[0];
-            end else begin
-               out0 <= {DATA_W{1'b0}};
-            end
+         always @* begin
+            out0 = bufferData[0];
          end
       end
    endgenerate

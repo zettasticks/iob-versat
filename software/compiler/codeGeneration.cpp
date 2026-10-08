@@ -5594,12 +5594,8 @@ void GEN_EmitInstanciateUnits(VEmitter* m,COM_Unit* units,COM_Edge* edges){
   TEMP_REGION(temp,m->arena);
 
   int delaySeen = 0;
-  int statesSeen = 0;
   int doneSeen = 0;
   int ioSeen = 0;
-  int memoryMappedSeen = 0;
-  int externalSeen = 0;
-  int memoryRDataSeen = 0;
   
   for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
     GEN_Data* data = (GEN_Data*) ptr->general;
@@ -5788,11 +5784,11 @@ String GEN_OutputCircuitSource(FUDeclaration* module,Arena* out){
   FREE_ARENA(codeArena);
 
   // Initialize data ============================================================
-  COM_Unit* units = module->units;
-  COM_Edge* edges = module->edges;
+  COM_Unit* units = module->base.units.head;
+  COM_Edge* edges = module->base.edges.head;
   {
     int index = 0;
-    for(COM_Unit* ptr = module->units; ptr; index++,ptr = ptr->next){
+    for(COM_Unit* ptr = units; ptr; index++,ptr = ptr->next){
       GEN_Data* data = PushStruct<GEN_Data>(temp);
       data->inputInfo = PushArray<GEN_OutputData>(temp,ptr->numberInputs);
       data->outputInfo = PushArray<GEN_OutputData>(temp,ptr->decl->outputs.size);
@@ -5838,8 +5834,6 @@ String GEN_OutputCircuitSource(FUDeclaration* module,Arena* out){
     }
   }
 
-  Array<Wire> configs = module->configs;
-  
   VEmitter* m = StartVCode(codeArena);
 
   m->Timescale("1ns","1ps");
@@ -5907,7 +5901,9 @@ String GEN_OutputCircuitSource(FUDeclaration* module,Arena* out){
     m->InputIndexed("databus_last_%d",i);
   }
 
-  
+  for(HW_Instance& inst : module->externalMemory){
+    HW_EmitPortDeclaration(m,&inst,true);
+  }
 
 #if 0
   // External Memory interface
@@ -5987,7 +5983,7 @@ String GEN_OutputCircuitSource(FUDeclaration* module,Arena* out){
     m->Assign("done","&unitDone");
   }
 
-  for(COM_Unit* unit = module->units; unit; unit = unit->next){
+  for(COM_Unit* unit = units; unit; unit = unit->next){
     GEN_Data* data = (GEN_Data*) unit->general;
 
     for(int i = 0; i < data->outputInfo.size; i++){

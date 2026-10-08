@@ -445,9 +445,7 @@ COM_EntPort COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out){
       COM_ReportError(env,SF("Did not find declaration '%.*s'",UN(typeName)));
     }
     
-    COM_Unit* unit = COM_PushUnit(env);
-    unit->decl = decl;
-    unit->name = PushString(out,"%.*s_%d",UN(typeName),env->tempIndex++);
+    COM_Unit* unit = COM_PushUnit(&env->graph,SF("%.*s_%d",UN(typeName),env->tempIndex++),decl,env->outArena);
 
     COM_Ent* entPtr = COM_PushEnt(env,unit->name,COM_EntType_GENERATED_UNIT);
     entPtr->unit = unit;
@@ -594,8 +592,8 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
   env->arena = envArena;
   env->errorArena = envErrorArena;
 
-  COM_Function* funcHead = 0;
-  COM_Function* funcTail = 0;
+  COM_FunctionNode* funcHead = 0;
+  COM_FunctionNode* funcTail = 0;
 
   COM_Unit* outputUnit = 0;
 
@@ -606,9 +604,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
     case SP_Type_INPUT_DECL:{
       Token name = ptr->token;
 
-      COM_Unit* in = COM_PushUnit(env);
-      in->name = PushString(out,name.val);
-      in->decl = BasicDeclaration::input;
+      COM_Unit* in = COM_PushUnit(&env->graph,name.val,BasicDeclaration::input,env->outArena);
       in->special = inputIndex++;
 
       COM_Ent* ent = COM_PushEnt(env,name,COM_EntType_MODULE_INPUT);
@@ -682,10 +678,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
               decl = DECL_GetType(typeName,params);
             }
 
-            COM_Unit* unit = COM_PushUnit(env);
-
-            unit->name = PushString(out,name.val);
-            unit->decl = decl;
+            COM_Unit* unit = COM_PushUnit(&env->graph,name.val,decl,env->outArena);
             unit->debug = modDebug;
             unit->isShared = modShare;
             unit->isStatic = modStatic;
@@ -717,10 +710,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
           if(node->type == SP_Type_VAR && node->token.val == "out"){
             String name = "out";
 
-            COM_Unit* unit = COM_PushUnit(env);
-            unit->name = name;
-            unit->decl = BasicDeclaration::output;
-            
+            COM_Unit* unit = COM_PushUnit(&env->graph,name,BasicDeclaration::output,env->outArena);
             COM_Ent* var = COM_PushEnt(env,node->token,COM_EntType_MODULE_UNIT);
             var->unit = unit;
             
@@ -847,7 +837,8 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
       Work* equalTail = 0;
 
       while(head){
-        Work* work = LL_PopFront(head,tail,next);
+        Work* work = head;
+        LL_PopFront(head,tail,next);
         SP_Node* node = work->node;
 
         if(node->type == SP_Type_EQUALITY ||
@@ -991,7 +982,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
       }
 
       // Pack into function =========================================================
-      COM_Function* func = PushStruct<COM_Function>(out);
+      COM_FunctionNode* func = PushStruct<COM_FunctionNode>(out);
 
       LL_Append(funcHead,funcTail,next,func);
     } break;
@@ -1007,12 +998,12 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
 
   // Update id ==================================================================
   int id = 0;
-  for(COM_Unit* ptr = env->unitHead; ptr; ptr = ptr->next){
+  for(COM_Unit* ptr = env->graph.units.head; ptr; ptr = ptr->next){
     ptr->id = id++;
   }
 
   // Update number inputs
-  for(COM_Edge* edge = env->conHead; edge; edge = edge->next){
+  for(COM_Edge* edge = env->graph.edges.head; edge; edge = edge->next){
     COM_Unit* in = edge->in;
     if(DECL_HasVariableInputs(edge->in->decl)){
       in->numberInputs = MAX(in->numberInputs,edge->inPort + 1);
@@ -1024,8 +1015,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
   // Pack =======================================================================
   COM_Module mod = {}; 
   mod.name = PushString(out,moduleName);
-  mod.units = env->unitHead;
-  mod.edges = env->conHead;
+  mod.graph = env->graph;
   mod.funcs = funcHead;
   
   return mod;
@@ -1043,7 +1033,8 @@ COM_Ent* COM_PushEnt(COM_Env* env,String name,COM_EntType type){
 
   COM_EntNode* res = 0;
   if(env->entFreeList){
-    res = LL_PopFrontNoTail(env->entFreeList,next);
+    res = env->entFreeList;
+    LL_PopFrontNoTail(env->entFreeList,next);
   } else {
     res = PushStruct<COM_EntNode>(env->arena);
   }
@@ -1091,13 +1082,6 @@ COM_Ent COM_ArrayAccess(COM_Env* env,COM_Ent array,int index){
 
   NOT_IMPLEMENTED("TODO");
   return COM_Ent_Nil;
-}
-
-
-COM_Unit* COM_PushUnit(COM_Env* env){
-  COM_Unit* unit = PushStruct<COM_Unit>(env->outArena);
-  DLL_Append(env->unitHead,env->unitTail,next,prev,unit);
-  return unit;
 }
 
 void COM_PushScope(COM_Env* env){
@@ -1154,7 +1138,8 @@ void COM_Connect(COM_Env* env,COM_Ent out,int outPort,COM_Ent in,int inPort,int 
     con->inPort = inPort;
     con->delay = delay;
 
-    LL_Append(env->conHead,env->conTail,next,con);
+    env->graph.edges.count += 1;
+    LL_Append(env->graph.edges.head,env->graph.edges.tail,next,con);
   }
 }
 
@@ -1227,10 +1212,52 @@ void COM_DebugPushDotGraph(String filename,COM_Unit* top,COM_Edge* edges){
 }
 
 // ======================================
+// Graph helpers
+
+COM_Unit* COM_PushUnit(COM_Graph* graph,String name,FUDeclaration* decl,Arena* out){
+  COM_Unit* unit = PushStruct<COM_Unit>(out);
+  unit->name = PushString(out,name);
+  unit->decl = decl;
+  unit->numberInputs = decl->inputs.size;
+
+  graph->units.count += 1;
+  DLL_Append(graph->units.head,graph->units.tail,next,prev,unit);
+  return unit;
+}
+
+void COM_InsertMiddle(COM_Graph* graph,COM_Edge* edge,COM_Unit* toInsert,int inPort,int outPort,Arena* out){
+  COM_Unit* savedIn = edge->in;
+  int savedInPort = edge->inPort;
+
+  edge->in = toInsert;
+  edge->inPort = inPort;
+
+  COM_Edge* newEdge = {};
+  if(graph->freeEdges){
+    newEdge = graph->freeEdges;
+    LL_PopFrontNoTail(graph->freeEdges,next);
+    *newEdge = {};
+  } else {
+    newEdge = PushStruct<COM_Edge>(out);
+  }
+
+  newEdge->out = toInsert;
+  newEdge->outPort = outPort;
+  newEdge->in = savedIn;
+  newEdge->inPort = savedInPort;
+
+  graph->edges.count += 1;
+  LL_Append(graph->edges.head,graph->edges.tail,next,newEdge);
+}
+
+// ======================================
 // Graph algorithms
 
-COM_UnitList COM_CalculateDAGOrder(COM_Unit* units,COM_Edge* edges,Arena* outArena){
+COM_UnitNodeList COM_CalculateDAGOrder(COM_Graph graph,Arena* outArena){
   TEMP_REGION(temp,outArena);
+
+  COM_Unit* units = graph.units.head;
+  COM_Edge* edges = graph.edges.head;
 
   int MARK_NIL    = 0;
   int MARK_TEMP   = 1;
@@ -1282,7 +1309,7 @@ COM_UnitList COM_CalculateDAGOrder(COM_Unit* units,COM_Edge* edges,Arena* outAre
 
       COM_Unit* u = w->unit;
       DAG_Data* d = (DAG_Data*) u->general;
-      
+
       if(w->isReturn){
         d->mark = MARK_PERM;
         
@@ -1306,27 +1333,26 @@ COM_UnitList COM_CalculateDAGOrder(COM_Unit* units,COM_Edge* edges,Arena* outAre
             continue;
           } else {
             error = 1;
-            printf("Graph is not a DAG\n");
-            // TODO: We can report loop by following the Work parent pointers.
-            continue;
+
+            printf("Graph is not a DAG, the loop is:\n");
+            for(Work* p = w; p; p = p->parent){
+              printf("%.*s\n",UN(p->unit->name));
+            }
+            ENTER_DEBUG();
           }
         }
 
         d->mark = MARK_TEMP;
-        bool seenOne = 0;
+
+        Work* ret = PushStruct<Work>(temp);
+        ret->unit = u;
+        ret->isReturn = 1;
+        ret->parent = w->parent;
+
+        DLL_Append(head,tail,next,prev,ret);
+
         for(COM_Edge* edge = edges; edge; edge = edge->next){
           if(edge->out == u){
-            if(!seenOne){
-              Work* ret = PushStruct<Work>(temp);
-              ret->unit = u;
-              ret->isReturn = 1;
-              ret->parent = w->parent;
-
-              DLL_Append(head,tail,next,prev,ret);
-              
-              seenOne = 1;
-            }
-
             Work* node = PushStruct<Work>(temp);
             node->parent = w;
             node->unit = edge->in;
@@ -1384,7 +1410,7 @@ COM_UnitList COM_CalculateDAGOrder(COM_Unit* units,COM_Edge* edges,Arena* outAre
     ptr->general = 0;
   }
 
-  COM_UnitList res = {};
+  COM_UnitNodeList res = {};
   res.head = nodeHead;
   res.tail = nodeTail;
   res.count = count;
@@ -1392,8 +1418,11 @@ COM_UnitList COM_CalculateDAGOrder(COM_Unit* units,COM_Edge* edges,Arena* outAre
   return res;
 }
 
-COM_DelayResult COM_CalculateDelay(COM_Unit* units,COM_Edge* edges,COM_UnitList order,Arena* outArena){
- TEMP_REGION(temp,outArena);
+COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena* outArena){
+  TEMP_REGION(temp,outArena);
+
+  COM_Unit* units = graph.units.head;
+  COM_Edge* edges = graph.edges.head;
 
   struct DELAY_Data{
     Array<int> globalInputLatency;
@@ -1461,9 +1490,12 @@ COM_DelayResult COM_CalculateDelay(COM_Unit* units,COM_Edge* edges,COM_UnitList 
 
       // Align inputs so that they arrive at the unit at the same time ==============
       for(int index : dependPorts){
-        int val = max - data->globalInputLatency[index];
-        Assert(val >= 0 && "If this fails then we need to add delays to outputs because of the fact that now ports can have individual delays");
-        data->inputExtraDelay[index] = val;
+        data->globalInputLatency[index] = max;
+        
+        
+        //int val = max - data->globalInputLatency[index];
+        //Assert(val >= 0 && "If this fails then we need to add delays to outputs because of the fact that now ports can have individual delays");
+        //data->inputExtraDelay[index] = val;
       }
     }
 
@@ -1479,39 +1511,50 @@ COM_DelayResult COM_CalculateDelay(COM_Unit* units,COM_Edge* edges,COM_UnitList 
   }
   
   // TODO: Handle any delay edges in order to support 
-
   auto OutputDotGraph = [&](){
     BLOCK_REGION(temp);
     // Generate debug graph
     auto l = PushList<GraphPrintingNodeInfo>(temp);
     for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
+      DELAY_Data* data = (DELAY_Data*) ptr->general;
+      int nodeDelay = INT_MAX;
+      for(int delay : data->globalInputLatency){
+        nodeDelay = MIN(nodeDelay,delay);
+      }
+      if(nodeDelay == INT_MAX){
+        nodeDelay = 0;
+      }
+
       GraphPrintingNodeInfo* info = l->PushElem();
       info->name = PushString(temp,"%p",ptr);
-      info->content = PushString(temp,ptr->name);
+      info->content = PushString(temp,"%.*s (%d)",UN(ptr->name),nodeDelay);
       info->color = Color_BLUE;
     }
 
     auto e = PushList<GraphPrintingEdgeInfo>(temp);
-    for(COM_Edge* con = edges; con; con = con->next){
+    for(COM_Edge* edge = edges; edge; edge = edge->next){
       GraphPrintingEdgeInfo* info = e->PushElem();
 
-      DELAY_Data* outData = (DELAY_Data*) con->out->general;
-      DELAY_Data* inData = (DELAY_Data*) con->in->general;
+      DELAY_Data* outData = (DELAY_Data*) edge->out->general;
+      DELAY_Data* inData = (DELAY_Data*) edge->in->general;
 
-      info->firstNode = PushString(temp,"%p",con->out);
-      info->secondNode = PushString(temp,"%p",con->in);
-      info->content = PushString(temp,"%d (%d) -> %d (%d)",con->outPort,outData->globalOutputLatency[con->outPort],con->inPort,inData->globalInputLatency[con->inPort]);
+      int extraOut = outData->outputExtraDelay[edge->outPort];
+      int extraIn = inData->inputExtraDelay[edge->inPort];
+
+      info->firstNode = PushString(temp,"%p",edge->out);
+      info->secondNode = PushString(temp,"%p",edge->in);
+      info->content = PushString(temp,"%d - %d | %d - %d | (%d -> %d)",outData->globalOutputLatency[edge->outPort],inData->globalInputLatency[edge->inPort],extraOut,extraIn,edge->outPort,edge->inPort);
       info->color = Color_BLACK;
     }
 
     GraphPrintingContent content = {};
-    content.graphLabel = "Test";
+    content.graphLabel = "Global latency, Node: Contains the minimum latency of every input edge. Edges: format is latency from OutPort to InPort, numbers inside parenthesis are the ports. [In a proper delay fixed graph the OutPort and InPort numbers match for all edges";
     content.nodes = PushArray(temp,l);
     content.edges = PushArray(temp,e);
 
     String result = GenerateDotGraph(content,temp);
 
-    String filePath = DEBUG_GetDebugRegionFilepath("TestDelay.dot",temp);
+    String filePath = DEBUG_GetDebugRegionFilepath("GlobalLatency.dot",temp);
     OutputContentToFile(filePath,result);
   };
 
@@ -1538,12 +1581,25 @@ COM_DelayResult COM_CalculateDelay(COM_Unit* units,COM_Edge* edges,COM_UnitList 
   for(COM_Edge* edge = edges; edge; edge = edge->next){
     DELAY_Data* outData = (DELAY_Data*) edge->out->general;
     DELAY_Data* inData = (DELAY_Data*) edge->in->general;
-    
-    int edgeExtraDelay = outData->outputExtraDelay[edge->outPort] + inData->inputExtraDelay[edge->inPort];
+
+    int outputLatency = outData->globalOutputLatency[edge->outPort] + outData->outputExtraDelay[edge->outPort];
+    int inputLatency = inData->globalInputLatency[edge->outPort] + inData->inputExtraDelay[edge->inPort];
+
+    int edgeExtraDelay = inputLatency - outputLatency;
+    Assert(edgeExtraDelay >= 0);
+
+    // TODO: We need to implement pushing delays to source and sink units.
+    //       I think that I also would like to formalize the fact that units can associate a delay port
+    //       to an input or output port. The delay wire is always bound to either a set of ports or to a single port.
+    //       If we do this right then we should also be able to have units like Reg having two delays, one for the
+    //       input and another for the output which allow us to better control delay calculations.
+    //       Also the example of memories connected to eachother probably requires something like this.
+#if 0
     if(edge->out->decl == BasicDeclaration::input ||
        edge->in->decl  == BasicDeclaration::output){
       edgeExtraDelay = 0;
     }
+#endif
 
     if(edgeExtraDelay){
       COM_EdgeDelay* node = PushStruct<COM_EdgeDelay>(outArena);

@@ -322,6 +322,18 @@ FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params){
   return res;
 }
 
+FUDeclaration* DECL_GetBufferType(int delay){
+  DECL_Param buffer = {};
+  buffer.name = "AMOUNT";
+  buffer.val = SYM_Lit(delay);
+  Array<DECL_Param> params = {};
+  params.data = &buffer;
+  params.size = 1;
+ 
+  FUDeclaration* res = DECL_GetType("FixedBuffer",params);
+  return res;
+}
+
 // ======================================
 // Instantiation
 
@@ -440,16 +452,18 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
     for(V_Node* attr = ptr->attributes; attr; attr = attr->next){
       Assert(attr->type == V_NodeType_ATTRIBUTE);
 
-      V_Node* id = attr->childs;
-      V_Node* val = attr->childs->next;
-      
-      String name = id->token.val;
-      
+      String name = attr->token.val;
+      V_Node* val = attr->childs;
+    
       bool found = 0;
       if(!found && name == "versat_latency"){
         found = 1;
-        error |= (val->token.type != TokenType_NUMBER);
-        versatLatency = ParseInt(val->token.val);
+
+        V_SymConvResult asSym = V_ConvertToSym(val,params);
+        SYM_EvaluateResult value = SYM_ConstantEvaluate(asSym.res);
+        
+        error |= (asSym.error | value.Error());
+        versatLatency = value.result;
       }
       if(!found && name == "versat_stage"){
         error |= (val->token.type != TokenType_C_STRING);
@@ -767,9 +781,11 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
     int index = ptr->index;
     switch(ptr->type){
      case DECL_SimpleType_INPUT:{
+       res->inputs[index].size = SYM_DataW;
        res->inputs[index].delay = ptr->latency;
      } break;
      case DECL_SimpleType_OUTPUT:{
+       res->outputs[index].size = SYM_DataW;
        res->outputs[index].delay = ptr->latency;
      } break;
      case DECL_SimpleType_DELAY:{
@@ -799,12 +815,19 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
     res->externalMemory[externalIndex].index = externalIndex;
     res->externalMemory[externalIndex].wires = PushArray<HW_Wire>(out,totalWireSize);
     for(int i = 0; i < totalWireSize; i++){
-      res->externalMemory[externalIndex].wires[i].size = SYM_Lit(ptr->wiresSize[i]);
+      int interIndex = i % ptr->inter->wires.size;
+      int port = i / ptr->inter->wires.size;
+      
+      res->externalMemory[externalIndex].wires[i] = HW_MakeWire(&ptr->inter->wires[interIndex],SYM_Lit(ptr->wiresSize[i]),port);
     }
 
     externalIndex += 1;
   }
   res->numberDatabus = databusCount;
+
+  if(res->error){
+    printf("[ERROR] Problem instantiating: %.*s\n",UN(moduleName));
+  }
 
   return res;
 }
@@ -812,7 +835,10 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
 FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normalizedParams){
   DEBUG_TOP(meta->name);
 
-  TEMP_REGION(temp,DECL_State.arena);
+  DEBUG_STAGE("Start");
+
+  Arena* out = DECL_State.arena;
+  TEMP_REGION(temp,out);
 
   // Pack params and compile ====================================================
   Array<COM_Param> comParams = PushArray<COM_Param>(temp,normalizedParams.size);
@@ -820,12 +846,32 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
     comParams[i].name = normalizedParams[i].name;
     comParams[i].val = normalizedParams[i].val;
   }
-  COM_Module module = COM_InstantiateModule(meta->compositeUnit,comParams,DECL_State.arena);
+  COM_Module module = COM_InstantiateModule(meta->compositeUnit,comParams,out);
 
-  // MARK
+  COM_Graph graph = module.graph;
   
-  COM_UnitList order = COM_CalculateDAGOrder(module.units,module.edges,temp);
-  COM_DelayResult delays = COM_CalculateDelay(module.units,module.edges,order,temp);
+  COM_UnitNodeList order = COM_CalculateDAGOrder(graph,temp);
+  COM_DelayResult delays = COM_CalculateDelay(graph,order,temp);
+
+  // Fix delays by inserting buffers where needed ===============================
+  {
+    int insertedBuffers = 0;
+    for(COM_EdgeDelay* ptr = delays.edgeDelays; ptr; insertedBuffers++,ptr = ptr->next){
+      FUDeclaration* decl = DECL_GetBufferType(ptr->delay);
+      COM_Unit* buffer = COM_PushUnit(&graph,SF("_versat_buffer%d",insertedBuffers),decl,out);
+      
+      COM_Edge* edge = ptr->edge;
+      edge->delay = 0;
+      COM_InsertMiddle(&graph,edge,buffer,0,0,out);
+    }
+  }
+
+  DEBUG_STAGE("AfterDelayFix");
+
+  order = COM_CalculateDAGOrder(graph,temp);
+  delays = COM_CalculateDelay(graph,order,temp);
+
+  Assert(delays.edgeDelays == nullptr);
 
   // TODO: Share and static
   int configCount = 0;
@@ -835,7 +881,7 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
   int memMappedCount = 0;
   int externalCount = 0;
   DECL_SingleInterface single = {};
-  for(COM_Unit* ptr = module.units; ptr; ptr = ptr->next){
+  for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
     FUDeclaration* decl = ptr->decl;
 
     configCount += decl->configs.size;
@@ -848,18 +894,16 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
   }
 
   // Pack =======================================================================
-  Arena* out = DECL_State.arena;
-
   String name = meta->name; // TODO: Serialize if needed.
   FUDeclaration* res = DECL_RegisterFU(name,DeclarationType_COMPOSITE);
 
   res->meta = meta;
   res->parameters = DECL_Copy(normalizedParams,out);
 
-  res->inputs = PushArray<DECL_PortInfo>(out,delays.inputDelays.size);
-  res->outputs = PushArray<DECL_PortInfo>(out,delays.outputLatencies.size);
   res->configs = PushArray<Wire>(out,configCount);
   res->states = PushArray<Wire>(out,stateCount);
+  res->inputs = PushArray<DECL_PortInfo>(out,delays.inputDelays.size);
+  res->outputs = PushArray<DECL_PortInfo>(out,delays.outputLatencies.size);
   res->memoryMapped = PushArray<SYM_Expr>(out,memMappedCount);
   res->externalMemory = PushArray<HW_Instance>(out,externalCount);
 
@@ -867,28 +911,45 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
   res->numberDelays = delayCount;
   res->numberDones = donesCount;
 
-  res->units = module.units;
-  res->edges = module.edges;
-  res->funcs = module.funcs;
+  res->base = module.graph;
+
+  for(int i = 0; i < delays.inputDelays.size; i++){
+    res->inputs[i].delay = delays.inputDelays[i];
+    res->inputs[i].inputDependencies = {};
+    res->inputs[i].size = SYM_DataW;
+  }
+  for(int i = 0; i < delays.outputLatencies.size; i++){
+    res->outputs[i].delay = delays.outputLatencies[i];
+    res->inputs[i].inputDependencies = {};
+    res->inputs[i].size = SYM_DataW;
+  }
 
   // TODO: We could change to store hierarchical names instead. That way we would have better information about the source of the config/state wire instead of collapsing the information immediatly.
   {
+    int stateIndex = 0;
     int configIndex = 0;
-    for(COM_Unit* ptr = module.units; ptr; ptr = ptr->next){
+    int memMappedIndex = 0;
+    int externalIndex = 0;
+    for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
       for(Wire w : ptr->decl->configs){
         res->configs[configIndex] = w;
         res->configs[configIndex].name = PushString(out,"%.*s_%.*s",UN(ptr->name),UN(res->configs[configIndex].name));
         configIndex += 1;
       }
-    }
-  }
-  {
-    int stateIndex = 0;
-    for(COM_Unit* ptr = module.units; ptr; ptr = ptr->next){
       for(Wire w : ptr->decl->states){
         res->states[stateIndex] = w;
         res->states[stateIndex].name = PushString(out,"%.*s_%.*s",UN(ptr->name),UN(res->states[stateIndex].name));
         stateIndex += 1;
+      }
+      for(SYM_Expr e : ptr->decl->memoryMapped){
+        res->memoryMapped[memMappedIndex++] = e;
+      }
+
+      for(HW_Instance& inst : ptr->decl->externalMemory){
+        res->externalMemory[externalIndex] = HW_Copy(inst,out);
+        res->externalMemory[externalIndex].index = externalIndex;
+        
+        externalIndex += 1;
       }
     }
   }

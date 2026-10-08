@@ -42,7 +42,7 @@ enum DeclarationType{
 struct DECL_PortInfo{
   SYM_Expr size;
   int delay;
-  Array<int> inputDependencies; // {} means depends on all inputs.
+  Array<int> inputDependencies; // empty means depends on all inputs.
 };
 
 enum DECL_MetaType{
@@ -95,9 +95,9 @@ struct FUDeclaration{
   DeclarationType type;
 
   // Graph related data for modular units =======================================
-  COM_Unit* units;
-  COM_Edge* edges;
-  COM_Function* funcs;
+  COM_Graph base;
+
+  COM_FunctionNode* funcs;
 
   bool error;
 };
@@ -160,6 +160,7 @@ FUDeclaration* DECL_RegisterFU(String name,DeclarationType type);
 // Get or create if needed
 
 FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params);
+FUDeclaration* DECL_GetBufferType(int delay);
 
 // ======================================
 // Instantiation
