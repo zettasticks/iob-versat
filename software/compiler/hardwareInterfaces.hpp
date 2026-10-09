@@ -35,13 +35,19 @@ struct HW_SchemaBuild{
 enum HW_WireProperty{
   HW_WireProperty_NIL = 0,
   HW_WireProperty_CONTROLLER_INPUT = (1 << 1), // Otherwise assumed output
+  HW_WireProperty_IS_SHARED = (1 << 2), // For unpacking purposes, this wire can just be shared.
   HW_WireProperty_ADDR = (1 << 4),
 };
 C_STYLE_ENUM(HW_WireProperty);
 
 struct HW_WireDef{
   String name;
+  SYM_Expr defaultSize;
   HW_WireProperty prop;
+};
+
+struct HW_InterfaceSizeSelect{
+  SYM_Expr addrSize;
 };
 
 struct HW_Interface{
@@ -123,11 +129,21 @@ HW_SchemaBuild HW_SchemaFromString(String format,char sep,Arena* out);
 HW_ValueResult HW_ExtractValues(HW_Interface* expectedInterface,String content,Arena* out);
 
 // ======================================
+// Instantiation
+
+HW_Instance HW_Instantiate(HW_Interface* inter,HW_InterfaceSizeSelect select,Arena* out);
+
+// ======================================
 // Repr
 
 String HW_GetWireRepresentation(HW_Interface* inter,int wireIndex,int port,int interface,Arena* out);
+void   HW_GetWireRepresentation(StringBuilder* b,HW_Interface* inter,int wireIndex,int port,int interface);
+
+String HW_GetWireRepresentation(HW_Instance* inst,int wireIndex,Arena* out);
+void   HW_GetWireRepresentation(StringBuilder* b,HW_Instance* inst,int wireIndex);
 
 // ======================================
 // Emission
 
 void HW_EmitPortDeclaration(VEmitter* v,HW_Instance* inst,bool isController);
+void HW_EmitUnpacking(VEmitter* v,HW_Instance* inst,String packedPrefix,String unpackedPrefix,bool isController);

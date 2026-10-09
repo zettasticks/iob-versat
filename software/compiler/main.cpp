@@ -466,13 +466,13 @@ int main(int argc,char* argv[]){
   String topLevelTypeStr = globalOptions.topName;
   FUDeclaration* topType = DECL_GetType(topLevelTypeStr,{});
   
-  // Calculate composite units that are actually used by top level ==============
+  // Only output if units are actually used by top level ========================
   FUDeclarationNode* compositeHead = 0;
   FUDeclarationNode* compositeTail = 0;
   {
-    FUDeclarationNode start = {};
-    start.val = topType;
-    LL_Append(compositeHead,compositeTail,next,&start);
+    static FUDeclarationNode top = {};
+    top.val = topType;
+    LL_Append(compositeHead,compositeTail,next,&top);
 
     for(FUDeclarationNode* ptr = compositeHead; ptr; ptr = ptr->next){
       for(COM_Unit* unit = ptr->val->base.units.head; unit; unit = unit->next){
@@ -492,8 +492,6 @@ int main(int argc,char* argv[]){
         }
       }
     }
-
-    LL_PopFront(compositeHead,compositeTail,next);
   }
 
   for(FUDeclarationNode* node = compositeHead; node; node = node->next){
@@ -506,9 +504,20 @@ int main(int argc,char* argv[]){
     String content = GEN_OutputCircuitSource(decl,temp);
     fprintf(sourceCode,"%.*s",UN(content));
 
-    printf("A: %.*s\n",UN(decl->name));
+    printf("Outputted: %.*s\n",UN(decl->name));
   }
 
+  {
+    GEN_TopInfo info = GEN_CalculateTopInfo(topType,temp);
+    String topContent = GEN_OutputHardwareInstance(&info,temp);
+
+    String path = PushString(temp,"%.*s/%s.v",UN(globalOptions.hardwareOutputFilepath),"versat_instance");
+    FILE* sourceCode = OpenFileAndCreateDirectories(path,"w",FilePurpose_VERILOG_CODE);
+    DEFER_CLOSE_FILE(sourceCode);
+
+    fprintf(sourceCode,"%.*s",UN(topContent));
+  }
+  
   DEBUG_BREAK();
 
 /*

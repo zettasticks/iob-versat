@@ -1,5 +1,9 @@
 #include "codeGeneration.hpp"
 
+#include "templateEngine.hpp"
+#include "globals.hpp"
+#include "codeGeneration_meta.hpp"
+
 #if 0
 
 #include "CEmitter.hpp"
@@ -1869,9 +1873,8 @@ StructInfo* GenerateStateStruct(AccelInfoIterator iter,Arena* out){
   return res;
 }
 
-// MARK
 StructInfo* GenerateConfigStructRecurse(AccelInfoIterator iter,TrieMap<StructInfo,StructInfo*>* generatedStructs,Arena* out){
-  StructInfo res = {};//PushStruct<StructInfo>(out);
+  StructInfo res = {}; //PushStruct<StructInfo>(out);
 
   InstanceInfo* parent = iter.GetParentUnit();
  
@@ -2371,6 +2374,7 @@ static void Output_Makefile(VersatComputedValues val,String softwarePath){
   }
 }
 
+// MARK
 void Output_VersatInstance(AccelInfo info,FUDeclaration* topLevelDecl,Array<TypeStructInfoElement> structuredConfigs,String hardwarePath,VersatComputedValues val){
   TEMP_REGION(temp,nullptr);
   // Top accelerator
@@ -2390,6 +2394,7 @@ void Output_VersatInstance(AccelInfo info,FUDeclaration* topLevelDecl,Array<Type
     return;
   }
 
+  // Emits the array packing and unpacking of the databus interfaces
   {
     VEmitter* m = StartVCode(temp);
     EmitIOUnpacking(m,val.nUnitsIO,INT_IOb,"m");
@@ -2400,7 +2405,7 @@ void Output_VersatInstance(AccelInfo info,FUDeclaration* topLevelDecl,Array<Type
     String content = EndString(temp,b);
     TE_SetString("emitIO",content);
   }
-    
+  
   {
     VEmitter* m = StartVCode(temp);
     EmitConnectOutputsToOut(info,m);
@@ -2410,7 +2415,6 @@ void Output_VersatInstance(AccelInfo info,FUDeclaration* topLevelDecl,Array<Type
       
     TE_SetString("assignOuts",content);
   }
-
   {
     VEmitter* m = StartVCode(temp);
     EmitTopLevelInstanciateUnits(m,val);
@@ -2462,7 +2466,7 @@ void Output_VersatInstance(AccelInfo info,FUDeclaration* topLevelDecl,Array<Type
     auto b = StartString(temp);
     Repr(EndVCode(m),b);
     String content = EndString(temp,b);
-      
+
     TE_SetString("wireDecls",content);
   }
   
@@ -3545,8 +3549,6 @@ void Output_Header(Array<TypeStructInfoElement> structuredConfigs,AccelInfo info
             InstanceInfo* unitInfo = Find(iter.StepInsideOnly(),transf.name);
 
             Assert(unitInfo);
-
-            TEST_MARK();
 
             String entityMemName = GetEntityMemName(unitInfo,temp);
 #else
@@ -5779,6 +5781,55 @@ void GEN_EmitConnectOutputsToOut(VEmitter* v,COM_Unit* units,COM_Edge* edges){
   }
 }
 
+void GEN_InitializeAuxGraphData(COM_Unit* units,COM_Edge* edges,Arena* outArena){
+  int index = 0;
+  for(COM_Unit* ptr = units; ptr; index++,ptr = ptr->next){
+    GEN_Data* data = PushStruct<GEN_Data>(outArena);
+    data->inputInfo = PushArray<GEN_OutputData>(outArena,ptr->numberInputs);
+    data->outputInfo = PushArray<GEN_OutputData>(outArena,ptr->decl->outputs.size);
+    data->index = index;
+
+    ptr->general = data;
+  }
+
+  for(COM_Edge* edge = edges; edge; edge = edge->next){
+    GEN_Data* dataOut = (GEN_Data*) edge->out->general;
+    GEN_Data* dataIn = (GEN_Data*) edge->in->general;
+      
+    COM_Unit* out = edge->out;
+
+    dataOut->outputInfo[edge->outPort].isConnected = 1;
+      
+    String wireName = dataOut->outputInfo[edge->outPort].wireName;
+    if(Empty(dataOut->outputInfo[edge->outPort].wireName)){
+      bool isReg = 0;
+      bool declare = 1;
+      if(DECL_IsVersatOperation(out->decl)){
+        wireName = PushString(outArena,"comb_%.*s_%d",UN(out->decl->name),dataOut->index);
+        isReg = 1;
+      } else if(out->decl == BasicDeclaration::input){
+        wireName = PushString(outArena,"in%d",out->special);
+        declare = 0;
+      } else {
+        wireName = PushString(outArena,"output_%d_%d",dataOut->index,edge->outPort);
+      }
+
+      dataOut->outputInfo[edge->outPort].wireName = wireName;
+      dataOut->outputInfo[edge->outPort].isReg = isReg;
+      dataOut->outputInfo[edge->outPort].declare = declare;
+    }
+
+    dataIn->inputInfo[edge->inPort].isConnected = 1;
+
+    // NOTE: Store the name of the output inside the input unit since it is already know at this point.
+    //       Since inputs can only connect once this assert can only trigger due to some problem with the data.
+    //       Which should not happen at this point
+    Assert(Empty(dataIn->inputInfo[edge->inPort].wireName));
+    dataIn->inputInfo[edge->inPort].wireName = wireName;
+  }
+}
+
+
 String GEN_OutputCircuitSource(FUDeclaration* module,Arena* out){
   TEMP_REGION(temp,out);
   FREE_ARENA(codeArena);
@@ -5786,6 +5837,9 @@ String GEN_OutputCircuitSource(FUDeclaration* module,Arena* out){
   // Initialize data ============================================================
   COM_Unit* units = module->base.units.head;
   COM_Edge* edges = module->base.edges.head;
+
+  GEN_InitializeAuxGraphData(units,edges,temp);
+#if 0
   {
     int index = 0;
     for(COM_Unit* ptr = units; ptr; index++,ptr = ptr->next){
@@ -5833,6 +5887,7 @@ String GEN_OutputCircuitSource(FUDeclaration* module,Arena* out){
       dataIn->inputInfo[edge->inPort].wireName = wireName;
     }
   }
+#endif
 
   VEmitter* m = StartVCode(codeArena);
 
@@ -6008,8 +6063,686 @@ String GEN_OutputCircuitSource(FUDeclaration* module,Arena* out){
   Repr(ast,b);
   String content = EndString(out,b);
 
+  COM_ClearGeneralPtr(units);
+
   return content;
 }
+
+// MARK
+String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out){
+  TEMP_REGION(temp,out);
+
+  FUDeclaration* decl = info->decl;
+  COM_Unit* units = decl->base.units.head;
+  COM_Edge* edges = decl->base.edges.head;
+
+  int configCount = info->configCount;
+  int stateCount = info->stateCount;
+  int databusCount = info->numberDatabus;
+  int donesCount = decl->numberDones;
+  int memoryMappedCount = decl->memoryMapped.size;
+  int memoryConfigDecisionBit = info->memoryConfigDecisionBit;
+
+  SYM_Expr configBitCount = info->configBitCount;
+  SYM_Expr stateBitCount = info->stateBitCount;
+
+  auto AddrIf = [info](VEmitter* m,VersatRegister r){
+    int index = GEN_GetRegisterIndex(info,r);
+    m->If(SF("csr_addr >= %d && csr_addr < %d",index,index+4));
+  };
+
+  // Initialize data ============================================================
+  GEN_InitializeAuxGraphData(units,edges,temp);
+
+#if 0
+  {
+    VEmitter* m = StartVCode(temp);
+    //HW_EmitUnpacking(m,Array<HW_Instance> instances,String packedPrefix,String unpackedPrefix,bool isController){
+
+    EmitIOUnpacking(m,val.nUnitsIO,INT_IOb,"m");
+    VAST* ast = EndVCode(m);
+
+    auto b = StartString(temp);
+    Repr(ast,b);
+    String content = EndString(temp,b);
+    TE_SetString("emitIO",content);
+  }
+#endif
+  
+  {
+    VEmitter* m = StartVCode(temp);
+    GEN_EmitInstanciateUnits(m,units,edges);
+    auto b = StartString(temp);
+    Repr(EndVCode(m),b);
+    String content = EndString(temp,b);
+    TE_SetString("instanciateUnits",content);
+  }
+  
+  {
+    VEmitter* m = StartVCode(temp);
+    GEN_EmitConnectOutputsToOut(m,units,edges);
+    auto b = StartString(temp);
+    Repr(EndVCode(m),b);
+    String content = EndString(temp,b);
+      
+    TE_SetString("assignOuts",content);
+  }
+
+#if 0
+  {
+    String content = EmitExternalMemoryPort(external,temp);
+    TE_SetString("externalMemPorts",content);
+  }
+#endif
+
+  TE_SetString("inAndOuts",{});
+
+  {
+    VEmitter* m = StartVCode(temp);
+
+    if(donesCount){
+      m->Wire("unitDone",donesCount);
+    } else {
+      m->WireAndAssignJoinBlock("unitDone","",1);
+      m->Expression("1'b1");
+      m->EndBlock();
+    }
+
+    if(databusCount){
+      m->Wire("unitRdataFinal","DATA_W");
+    }
+    auto b = StartString(temp);
+    Repr(EndVCode(m),b);
+    String content = EndString(temp,b);
+
+    TE_SetString("wireDecls",content);
+  }
+  
+  if(globalOptions.insertProfilingRegisters){
+    VEmitter* m = StartVCode(temp);
+    
+    SYM_Expr doubleDataW = SYM_DataW * SYM_2;
+
+    m->Reg("profile_runCount",doubleDataW);
+    m->Reg("profile_cycles",doubleDataW);
+    m->Reg("profile_runningCycles",doubleDataW);
+    m->Reg("profile_databusValid",doubleDataW);
+    m->Reg("profile_databusValidAndReady",doubleDataW);
+    m->Reg("profile_configurationsSet",doubleDataW);
+    m->Reg("profile_configurationsSetWhileRunning",doubleDataW);
+
+    if(!SYM_IsZeroValue(configBitCount)){
+      m->Wire("configSet");
+      m->Assign("configSet",SF("csr_valid && we && !memoryMappedAddr && data_address >= %d",(configCount * 4)));
+    }
+
+    m->AlwaysBlock("clk","rst_int");
+    m->If("rst_int");
+    m->Set("profile_runCount","0");
+    m->Set("profile_cycles","0");
+    m->Set("profile_runningCycles","0");
+    m->Set("profile_databusValid","0");
+    m->Set("profile_databusValidAndReady","0");
+    m->Set("profile_configurationsSet","0");
+    m->Set("profile_configurationsSetWhileRunning","0");
+
+    m->Else();
+
+    m->Increment("profile_cycles");
+
+    m->If("run");
+    m->Increment("profile_runCount");
+    m->EndIf();
+
+    m->If("running");
+    m->Increment("profile_runningCycles");
+    m->EndIf();
+    
+    if(databusCount){
+      m->If("|m_databus_valid");
+      m->Increment("profile_databusValid");
+      m->EndIf();
+
+      m->If("(|m_databus_valid) && (|m_databus_ready)");
+      m->Increment("profile_databusValidAndReady");
+      m->EndIf();
+    }
+
+    if(!SYM_IsZeroValue(configBitCount)){
+      m->If("configSet");
+      m->Increment("profile_configurationsSet");
+      m->EndIf();
+
+      m->If("configSet && running");
+      m->Increment("profile_configurationsSetWhileRunning");
+      m->EndIf();
+    }
+
+    m->If(SF("csr_valid && we && csr_addr >= %d && csr_addr < %d && csr_wstrb[0] == 1'b1 && csr_wdata[0] == 1'b1",GEN_GetRegisterIndex(info,VersatRegister_ProfileControl),GEN_GetRegisterIndex(info,VersatRegister_ProfileControl)+4));
+      m->Set("profile_runCount","0");
+      m->Set("profile_cycles","0");
+      m->Set("profile_runningCycles","0");
+      m->Set("profile_databusValid","0");
+      m->Set("profile_databusValidAndReady","0");
+      m->Set("profile_configurationsSet","0");
+      m->Set("profile_configurationsSetWhileRunning","0");
+    m->EndIf();
+
+    m->EndIf();
+    m->EndBlock();
+
+    String content = EndVCodeAndPrint(m,temp);
+    TE_SetString("profilingStuff",content);
+  } else {
+    TE_SetString("profilingStuff",{});
+  }
+
+  #if 1
+  if(globalOptions.insertCaptureDatabusRegisters){
+    VEmitter* m = StartVCode(temp);
+
+    m->Reg("captureDatabus_IndexAndReadWrite",SYM_DataW);
+    m->Reg("captureDatabus_Count",SYM_DataW);
+    m->Reg("captureDatabus_SavedAddr",SYM_DataW);
+    m->Reg("captureDatabus_SavedValue",SYM_DataW);
+    m->Reg("captureDatabus_didCapture",SYM_1);
+
+    m->Reg("captureDatabus_Seen",SYM_DataW);
+
+    m->Wire("captureDatabus_ReadNotWrite",SYM_1);
+    m->Wire("captureDatabus_Index",SYM_DataW);
+    m->Assign("captureDatabus_ReadNotWrite","captureDatabus_IndexAndReadWrite[0]");
+    m->Assign("captureDatabus_Index","{1'b0,captureDatabus_IndexAndReadWrite[1+:31]}");
+
+    String format = R"FOO(
+always @(posedge clk,posedge rst) begin
+  if(capturedDatabus_valid && capturedDatabus_ready) begin
+    capturedDatabus_Seen <= capturedDatabus_Seen + 1;
+ 
+    if(capturedDatabus_Seen == capturedDatabus_Count) begin
+      capturedDatabus_SavedAddr <= capturedDatabus_addr;
+      captureDatabus_didCapture <= 1'b1;
+      if(capturedDatabus_ReadNotWrite) begin
+        capturedDatabus_SavedValue <= capturedDatabus_rdata;
+      end else begin
+        capturedDatabus_SavedValue <= capturedDatabus_wdata;
+      end
+    end
+  end
+end
+)FOO";
+    
+    String content = EndVCodeAndPrint(m,temp);
+    TE_SetString("captureDatabus",content);
+    TE_SetString("captureDatabusLogic",format);
+  } else {
+    TE_SetString("captureDatabus",{});
+    TE_SetString("captureDatabusLogic",{});
+  }
+  #endif
+
+  // Control write portion
+  {
+    VEmitter* m = StartVCode(temp);
+    m->AlwaysBlock("clk","rst_int");
+    m->If("rst_int");
+    m->Set("startRunPulse","0");
+    m->Set("soft_reset","0");
+    m->Set("signal_loop","0");
+    if(globalOptions.useDMA){
+      m->Set("dma_length","0");
+      m->Set("dma_internal_address_start","0");
+      m->Set("dma_external_addr_start","0");
+    }
+    if(globalOptions.insertCaptureDatabusRegisters){
+      m->Set("captureDatabus_IndexAndReadWrite","0");
+      m->Set("captureDatabus_Count","0");
+    }
+    m->Else();
+    
+    m->Set("startRunPulse","0");
+    
+    m->Set("soft_reset","0");
+    m->Set("signal_loop","0");
+    m->If("csr_valid && we");
+
+    AddrIf(m,VersatRegister_Control);
+      m->If("csr_wstrb[0] == 1'b1");
+        m->Set("startRunPulse","1");
+      m->EndIf();
+
+      m->If("csr_wstrb[3] == 1'b1");
+        m->Set("soft_reset","csr_wdata[31]");
+        m->Set("signal_loop","csr_wdata[30]");
+      m->EndIf();
+    m->EndIf();
+
+    auto EmitStrobe = [](VEmitter* m,String strobeWire,const char* leftReg,const char* rightReg,int regSize){
+      for(int i = 0; i < regSize; i += 8){
+        int left = 8;
+        if(i + left > regSize){
+          left = regSize % 8;
+        }
+        
+        m->If(SF("%.*s[%d]",UN(strobeWire),i/8));
+        m->Set(leftReg,SF("%s[%d+:%d]",rightReg,i,left));
+        m->EndIf();
+      }
+    };
+
+    if(globalOptions.useDMA){
+      AddrIf(m,VersatRegister_DmaInternalAddress);
+      EmitStrobe(m,"csr_wstrb","dma_internal_address_start","csr_wdata",32);
+      m->EndIf();
+      AddrIf(m,VersatRegister_DmaExternalAddress);
+      EmitStrobe(m,"csr_wstrb","dma_external_addr_start","csr_wdata",32);
+      m->EndIf();
+      AddrIf(m,VersatRegister_DmaTransferLength);
+      EmitStrobe(m,"csr_wstrb","dma_length","csr_wdata",24);
+      m->EndIf();
+    }
+
+    m->EndIf();
+
+    m->EndIf();
+    m->EndBlock();
+
+    if(globalOptions.useDMA){
+      m->Assign("dma_start",SF("csr_valid && we && csr_addr >= %d && csr_addr < %d && csr_wstrb[0] && csr_wdata[0] == 1'b1",GEN_GetRegisterIndex(info,VersatRegister_DmaControl),GEN_GetRegisterIndex(info,VersatRegister_DmaControl)+4));
+    }
+
+    if(globalOptions.insertCaptureDatabusRegisters){
+      AddrIf(m,VersatRegister_CaptureDatabusIndexAndReadWrite);
+      EmitStrobe(m,"csr_wstrb","captureDatabus_IndexAndReadWrite","csr_wdata",32);
+      m->EndIf();
+      AddrIf(m,VersatRegister_CaptureDatabusCount);
+      EmitStrobe(m,"csr_wstrb","captureDatabus_Count","csr_wdata",32);
+      m->EndIf();
+    }
+
+    String content3 = EndVCodeAndPrint(m,temp);
+    TE_SetString("controlWriteInterface",content3);
+  }
+      
+  // Control read portion
+  {      
+    VEmitter* m = StartVCode(temp);
+    m->AlwaysBlock("clk","rst");
+      m->If("rst");
+        m->Set("versat_rdata","0");
+        m->Set("versat_rvalid","0");
+      m->Else();
+        m->Set("versat_rvalid","0");
+        m->If("csr_valid");
+          m->If("!memoryMappedAddr");
+            m->Set("versat_rdata","stateRead");
+            m->If("csr_wstrb == 0");
+              m->Set("versat_rvalid","1");
+            m->EndIf();
+          m->EndIf();
+        AddrIf(m,VersatRegister_Control);
+          m->Set("versat_rdata","{31'h0,done}");
+        m->EndIf();
+
+        if(globalOptions.useDMA){
+          AddrIf(m,VersatRegister_DmaControl);
+            m->Set("versat_rdata","{31'h0,!dma_running}");
+          m->EndIf();
+        }
+        if(globalOptions.insertDebugRegisters){
+
+          AddrIf(m,VersatRegister_Debug);
+          if(databusCount){
+            m->Set("versat_rdata","{31'h0,|m_databus_valid}");
+          } else {
+            m->Set("versat_rdata","32'h0");
+          }
+          m->EndIf();
+        }
+        if(globalOptions.insertProfilingRegisters){
+          AddrIf(m,VersatRegister_ProfileRunCount);
+          m->Set("versat_rdata","profile_runCount[0+:DATA_W]");
+          m->EndIf();
+          AddrIf(m,VersatRegister_ProfileRunCount2);
+          m->Set("versat_rdata","profile_runCount[DATA_W+:DATA_W]");
+          m->EndIf();
+
+          AddrIf(m,VersatRegister_ProfileCyclesSinceLastReset);
+          m->Set("versat_rdata","profile_cycles[0+:DATA_W]");
+          m->EndIf();
+          AddrIf(m,VersatRegister_ProfileCyclesSinceLastReset2);
+          m->Set("versat_rdata","profile_cycles[DATA_W+:DATA_W]");
+          m->EndIf();
+
+          AddrIf(m,VersatRegister_ProfileRunningCycles);
+          m->Set("versat_rdata","profile_runningCycles[0+:DATA_W]");
+          m->EndIf();
+          AddrIf(m,VersatRegister_ProfileRunningCycles2);
+          m->Set("versat_rdata","profile_runningCycles[DATA_W+:DATA_W]");
+          m->EndIf();
+
+          AddrIf(m,VersatRegister_ProfileDatabusValid);
+          m->Set("versat_rdata","profile_databusValid[0+:DATA_W]");
+          m->EndIf();
+          AddrIf(m,VersatRegister_ProfileDatabusValid2);
+          m->Set("versat_rdata","profile_databusValid[DATA_W+:DATA_W]");
+          m->EndIf();
+
+          AddrIf(m,VersatRegister_ProfileDatabusValidAndReady);
+          m->Set("versat_rdata","profile_databusValidAndReady[0+:DATA_W]");
+          m->EndIf();
+          AddrIf(m,VersatRegister_ProfileDatabusValidAndReady2);
+          m->Set("versat_rdata","profile_databusValidAndReady[DATA_W+:DATA_W]");
+          m->EndIf();
+
+          AddrIf(m,VersatRegister_ProfileConfigurationsSet);
+          m->Set("versat_rdata","profile_configurationsSet[0+:DATA_W]");
+          m->EndIf();
+          AddrIf(m,VersatRegister_ProfileConfigurationsSet2);
+          m->Set("versat_rdata","profile_configurationsSet[DATA_W+:DATA_W]");
+          m->EndIf();
+
+          AddrIf(m,VersatRegister_ProfileConfigurationsSetWhileRunning);
+          m->Set("versat_rdata","profile_configurationsSetWhileRunning[0+:DATA_W]");
+          m->EndIf();
+          AddrIf(m,VersatRegister_ProfileConfigurationsSetWhileRunning2);
+          m->Set("versat_rdata","profile_configurationsSetWhileRunning[DATA_W+:DATA_W]");
+          m->EndIf();
+        }
+
+        if(globalOptions.insertCaptureDatabusRegisters){
+          AddrIf(m,VersatRegister_CaptureDatabusGetAddr);
+          m->Set("versat_rdata","captureDatabus_SavedAddr");
+          m->EndIf();
+          AddrIf(m,VersatRegister_CaptureDatabusGetValue);
+          m->Set("versat_rdata","captureDatabus_SavedValue");
+          m->EndIf();
+          AddrIf(m,VersatRegister_CaptureDatabusGetDidCapture);
+          m->Set("versat_rdata","{31'h0,CaptureDatabusGetDidCapture}");
+          m->EndIf();
+        }
+
+        m->EndIf();
+
+      m->EndIf();
+
+    m->EndBlock();
+    
+    String content = EndVCodeAndPrint(m,temp);
+    TE_SetString("controlReadInterface",content);
+  }
+  
+  {
+    if(globalOptions.useDMA){
+      String content = R"FOO(
+reg [LEN_W-1:0] dma_length;
+reg [ADDR_W-1:0] dma_internal_address_start;
+reg [AXI_ADDR_W-1:0] dma_external_addr_start;
+
+wire dma_ready;
+wire [ADDR_W-1:0] dma_addr_in;
+wire [AXI_DATA_W-1:0] dma_rdata;
+
+wire dma_start;
+
+SimpleDMA #(.ADDR_W(ADDR_W),.DATA_W(DATA_W),.AXI_ADDR_W(AXI_ADDR_W)) dma (
+  .m_databus_ready(databus_ready[`nIO - 1]),
+  .m_databus_valid(databus_valid[`nIO - 1]),
+  .m_databus_addr(databus_addr[`nIO - 1]),
+  .m_databus_rdata(databus_rdata[`nIO - 1]),
+  .m_databus_wdata(databus_wdata[`nIO - 1]),
+  .m_databus_wstrb(databus_wstrb[`nIO - 1]),
+  .m_databus_len(databus_len[`nIO - 1]),
+  .m_databus_last(databus_last[`nIO - 1]),
+
+  .addr_internal(dma_internal_address_start),
+  .addr_read(dma_external_addr_start),
+  .length(dma_length),
+
+  .run(dma_start),
+  .running(dma_running),
+
+  .valid(dma_ready),
+  .address(dma_addr_in),
+  .data(dma_rdata),
+
+  .clk(clk),
+  .rst(rst_int)
+);
+
+JoinTwoSimple #(.DATA_W(DATA_W),.ADDR_W(ADDR_W)) joiner (
+  .m0_valid(dma_ready),
+  .m0_data(dma_rdata),
+  .m0_addr(dma_addr_in),
+  .m0_wstrb(~0),
+
+  .m1_valid(csr_valid),
+  .m1_data(csr_wdata),
+  .m1_addr(csr_addr),
+  .m1_wstrb(csr_wstrb),
+
+  .s_valid(data_valid),
+  .s_data(data_data),
+  .s_addr(data_address),
+  .s_wstrb(data_wstrb)
+);
+                           )FOO";
+      
+      TE_SetString("dmaInstantiation",content);
+    } else {
+      String content = R"FOO(
+assign data_valid = csr_valid;
+assign data_address = csr_addr;
+assign data_data = csr_wdata;
+assign data_wstrb = csr_wstrb;
+                           )FOO";
+        
+      TE_SetString("dmaInstantiation",content);
+    }
+  }
+
+  {
+    if(memoryMappedCount == 0){
+      TE_SetString("memoryConfigDecisionExpr","1'b0");
+    } else {
+      String content = PushString(temp,"data_address[%d]",memoryConfigDecisionBit);
+      TE_SetString("memoryConfigDecisionExpr",content);
+    }
+  }
+
+  if(memoryMappedCount > 0){
+    VEmitter* m = StartVCode(temp);
+
+    m->Reg("unit_valids",memoryMappedCount);
+
+    m->CombBlock();
+    
+    m->Set("unit_valids","0");
+
+    if(memoryMappedCount == 1){
+      m->If("data_valid & memoryMappedAddr");
+      m->Set("unit_valids[0]","1'b1");
+      m->EndIf();
+    } else {
+#if 0
+      for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
+        InstanceInfo* unit = iter.CurrentUnit();
+
+        if(unit->isComposite || Empty(unit->globalMemDecisionMask)){
+          continue;
+        }
+
+        int maxMemoryBit = val.memoryConfigDecisionBit - 1;
+
+        String mask = unit->globalMemDecisionMask;
+        m->If(SF("data_valid & memoryMappedAddr & (csr_addr[(%d-1) -: %d] == %d'b%.*s)",maxMemoryBit,mask.size,mask.size,UN(mask)));
+        m->Set(SF("unit_valids[%d]",unit->memGlobalIndex),"1'b1");
+        m->EndIf();
+      }
+#endif
+    }
+    m->EndBlock();
+
+    auto b = StartString(temp);
+    Repr(EndVCode(m),b);
+    String content = EndString(temp,b);
+    TE_SetString("unitsMappedDecl",content);
+  } else {
+    TE_SetString("unitsMappedDecl",{});
+  }
+
+  {
+    VEmitter* m = StartVCode(temp);
+    if(memoryMappedCount >= 1){
+      m->Wire("unitRValid",memoryMappedCount);
+      m->Assign("csr_rvalid","versat_rvalid | (|unitRValid)");
+
+      m->WireArray("unitRData",memoryMappedCount,"DATA_W");
+      m->WireAndAssignJoinBlock("unitRDataFinal","|","DATA_W");
+      for(int i = 0; i < memoryMappedCount; i++){
+        m->Expression(SF("unitRData[%d]",i));
+      }
+      m->EndBlock();
+      m->Assign("csr_rdata","versat_rvalid ? versat_rdata : unitRDataFinal");
+    } else {
+      m->Assign("csr_rdata","versat_rdata");
+      m->Assign("csr_rvalid","versat_rvalid");
+    }
+
+    auto b = StartString(temp);
+    Repr(EndVCode(m),b);
+    String content = EndString(temp,b);
+      
+    TE_SetString("unitsRData",content);
+  }
+
+#if 0
+  {
+    VEmitter* m = StartVCode(temp);
+
+    if(info.numberConnections){
+      for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Next()){
+        InstanceInfo* info = iter.CurrentUnit();
+
+        for(int k = 0; k < info->outputIsConnected.size; k++){
+          bool out = info->outputIsConnected[k];
+          if(out){
+            m->Wire(SF("output_%d_%d",info->id,k),"DATA_W");
+          }
+        }
+      }
+    }
+
+    auto b = StartString(temp);
+    Repr(EndVCode(m),b);
+    String content = EndString(temp,b);
+      
+    TE_SetString("connections",content);
+  }
+#endif
+
+#if 0
+  {
+    VEmitter* m = StartVCode(temp);
+      
+    if(!SYM_IsZeroValue(val.configurationBits)){
+      m->Wire("configdata",val.configurationBits);
+
+      for(auto info : wireInfo){
+        if(info.isStatic){
+          m->Wire(info.wire.name,info.wire.sizeExpr);
+        }
+      }
+
+      m->StartInstance("versat_configurations","configs");
+
+      // TODO: This should be all the global params that Versat cares about. We need to standardize this and properly define all the global parameters
+      m->InstanceParam("ADDR_W","ADDR_W");
+      m->InstanceParam("DATA_W","DATA_W");
+      m->InstanceParam("AXI_DATA_W","AXI_DATA_W");
+      m->InstanceParam("AXI_ADDR_W","AXI_ADDR_W");
+      m->InstanceParam("DELAY_W","DELAY_W");
+      m->InstanceParam("LEN_W","LEN_W");
+
+      m->PortConnect("config_data_o","configdata");
+      m->PortConnect("memoryMappedAddr","memoryMappedAddr");
+      m->PortConnect("data_write","csr_valid && we");
+
+      m->PortConnect("address","data_address");
+      m->PortConnect("data_wstrb","data_wstrb");
+      m->PortConnect("data_data","data_data");
+
+      m->PortConnect("change_config_pulse","pre_run_pulse");
+
+      for(auto info : wireInfo){
+        if(info.isStatic){
+          m->PortConnect(info.wire.name,info.wire.name);
+        }
+      }
+
+      m->PortConnect("clk_i","clk");
+      m->PortConnect("rst_i","rst_int");
+        
+      m->EndInstance();
+    }
+
+    auto b = StartString(temp);
+    Repr(EndVCode(m),b);
+    String content = EndString(temp,b);
+      
+    TE_SetString("configurationDecl",content);
+  }
+#endif
+
+#if 0
+  {
+    VEmitter* m = StartVCode(temp);
+
+    if(!SYM_IsZeroValue(val.stateBits)){
+      m->Wire("statedata",val.stateBits);
+    }
+      
+    m->CombBlock();
+
+    m->Set("stateRead","32'h0");
+    m->If("csr_valid & !we & !memoryMappedAddr");
+
+    SYM_Expr stateBitsSeen = SYM_0;
+    int addr = val.versatStates;
+    for(int i = 0; i < topLevelDecl->states.size; i++){
+      Wire wire  = topLevelDecl->states[i];
+      m->If(SF("csr_addr[%d:2] == %d",val.stateAddressBits + 1,addr));
+
+      String repr = SYM_Repr(stateBitsSeen,temp);
+      String size = SYM_Repr(wire.sizeExpr,temp);
+
+      m->Set("stateRead",SF("statedata[(%.*s)+:%.*s]",UN(repr),UN(size)));
+      stateBitsSeen += wire.sizeExpr;
+      addr += 1;
+      m->EndIf();
+    }
+      
+    m->EndIf();
+      
+    m->EndBlock();
+      
+    auto b = StartString(temp);
+    Repr(EndVCode(m),b);
+    String content = EndString(temp,b);
+      
+    TE_SetString("stateDecl",content);
+  }
+#endif
+
+  TE_SetNumber("databusDataSize",globalOptions.databusDataSize);
+    
+  String res = TE_ProcessTemplate(out,META_TopInstanceTemplate,true);
+
+  COM_ClearGeneralPtr(units);
+
+  return res;
+}
+
 
 #if 0
 // ======================================
@@ -6200,3 +6933,70 @@ String GEN_Repr(GEN_StructInfo* info,Arena* out){
 }
 
 #endif
+
+#include "globals.hpp"
+
+GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
+  TEMP_REGION(temp,out);
+
+  int databusCount = 0;
+  int configCount = 0;
+  int stateCount = 0;
+
+  // Calculate and Insert Versat specific registers =============================
+  auto registerList = PushList<VersatRegister>(temp);
+
+  auto AddRegister = [&](VersatRegister reg){
+    configCount += 1;
+    stateCount += 1;
+    *registerList->PushElem() = reg;
+  };
+
+  AddRegister(VersatRegister_Control);
+  
+  if(globalOptions.useDMA){
+    AddRegister(VersatRegister_DmaInternalAddress);
+    AddRegister(VersatRegister_DmaExternalAddress);
+    AddRegister(VersatRegister_DmaTransferLength);
+    AddRegister(VersatRegister_DmaControl);
+    
+    databusCount += 1; // For the DMA
+  }
+
+  if(globalOptions.insertDebugRegisters){
+    AddRegister(VersatRegister_Debug);
+  }
+
+  if(globalOptions.insertProfilingRegisters){
+    for(VersatRegister reg : ProfilingVersatRegisters){
+      AddRegister(reg);
+    }
+  }
+  
+  if(globalOptions.insertCaptureDatabusRegisters){
+    AddRegister(VersatRegister_CaptureDatabusIndexAndReadWrite);
+    AddRegister(VersatRegister_CaptureDatabusCount);
+    AddRegister(VersatRegister_CaptureDatabusGetAddr);
+    AddRegister(VersatRegister_CaptureDatabusGetValue);
+    AddRegister(VersatRegister_CaptureDatabusGetDidCapture);
+  }
+
+  // Pack =======================================================================
+  GEN_TopInfo res = {};
+  res.decl = topLevel;
+  res.registers = PushArray(out,registerList);
+  res.numberDatabus = databusCount;
+  
+  return res;
+}
+
+int GEN_GetRegisterIndex(GEN_TopInfo* info,VersatRegister reg){
+  for(int i = 0; i < info->registers.size; i++){
+    if(info->registers[i] == reg){
+      return i;
+    }
+  }
+
+  Assert(false && "Should never fail, check control flow that calls this.");
+  return 0;
+}

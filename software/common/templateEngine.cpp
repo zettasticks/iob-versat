@@ -65,7 +65,7 @@ void TE_Init(){
   currentFrame = globalFrame;
 }
 
-void TE_ProcessTemplate(StringBuilder* b,String tmpl){
+void TE_ProcessTemplate(StringBuilder* b,String tmpl,bool ignoreMissing){
   TEMP_REGION(temp,nullptr);
 
   bool checkUnusedValues = false;
@@ -94,15 +94,20 @@ void TE_ProcessTemplate(StringBuilder* b,String tmpl){
       String subName = String{&tmpl[start],i - start};
 
       Value* optVal = GetValue(currentFrame,subName);
+      Value val = {};
 
       if(!optVal){
-        printf("[Error] Template did not find the member: '%.*s'\n",UN(subName));
-        Assert(false);
+        if(ignoreMissing){
+          val = {.type = ValueType_STRING,.str = ""};
+        } else {
+          printf("[Error] Template did not find the member: '%.*s'\n",UN(subName));
+          Assert(false);
+        }
+      } else {
+        val = *optVal;
       }
 
       valueUsed->Insert(subName,true);
-
-      Value val = *optVal;
 
       if(val.type == ValueType_STRING){
         b->PushString(val.str);
@@ -134,20 +139,20 @@ void TE_ProcessTemplate(StringBuilder* b,String tmpl){
   TE_Clear();
 }
 
-String TE_ProcessTemplate(Arena* out,String tmpl){
+String TE_ProcessTemplate(Arena* out,String tmpl,bool ignoreMissing){
   TEMP_REGION(temp,out);
   auto b = StartString(temp);
-  TE_ProcessTemplate(b,tmpl);
+  TE_ProcessTemplate(b,tmpl,ignoreMissing);
 
   String content = EndString(out,b);
   
   return content;
 }
 
-void TE_ProcessTemplate(FILE* outputFile,String tmpl){
+void TE_ProcessTemplate(FILE* outputFile,String tmpl,bool ignoreMissing){
   TEMP_REGION(temp,nullptr);
   
-  String content = TE_ProcessTemplate(temp,tmpl);
+  String content = TE_ProcessTemplate(temp,tmpl,ignoreMissing);
   
   fprintf(outputFile,"%.*s",UN(content));
   fflush(outputFile);

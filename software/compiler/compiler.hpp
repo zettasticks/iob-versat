@@ -393,6 +393,8 @@ void   COM_DebugPushDotGraph(String filename,COM_Unit* top,COM_Edge* edges);
 COM_Unit* COM_PushUnit(COM_Graph* graph,String name,FUDeclaration* decl,Arena* out);
 void      COM_InsertMiddle(COM_Graph* graph,COM_Edge* edge,COM_Unit* toInsert,int inPort,int outPort,Arena* out);
 
+void      COM_ClearGeneralPtr(COM_Unit* units);
+
 //COM_Graph COM_Copy(COM_Graph* in,Arena* out);
 
 // ======================================

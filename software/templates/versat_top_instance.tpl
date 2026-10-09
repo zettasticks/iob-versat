@@ -118,11 +118,7 @@ end
 
 @{stateDecl}
 
-@{combOperations}
-
 @{instanciateUnits}
-
-@{assignOuts}
 
 endmodule
 

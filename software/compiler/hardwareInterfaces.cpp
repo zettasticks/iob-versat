@@ -24,39 +24,37 @@ void HW_Init(Arena* perm){
   }
 
   HW_INIT(HW_DP,"DP","ext_dp_@{wire}_@{interface}_port_@{port}",5,2);
-  HW_DP.wires[0] = {"addr"};
-  HW_DP.wires[1] = {"out"};
-  HW_DP.wires[2] = {"in",HW_WireProperty_CONTROLLER_INPUT};
-  HW_DP.wires[3] = {"write"};
-  HW_DP.wires[4] = {"enable"};
+  HW_DP.wires[0] = {"addr",SYM_AddrW,HW_WireProperty_ADDR};
+  HW_DP.wires[1] = {"out",SYM_DataW};
+  HW_DP.wires[2] = {"in",SYM_DataW,HW_WireProperty_CONTROLLER_INPUT};
+  HW_DP.wires[3] = {"write",SYM_1};
+  HW_DP.wires[4] = {"enable",SYM_1};
   
   HW_INIT(HW_2P,"2P","ext_2p_@{wire}_@{interface}",6,1);
-  HW_2P.wires[0] = {"addr_out"};
-  HW_2P.wires[1] = {"addr_in"};
-  HW_2P.wires[2] = {"data_out"};
-  HW_2P.wires[3] = {"data_in",HW_WireProperty_CONTROLLER_INPUT};
-  HW_2P.wires[4] = {"write"};
-  HW_2P.wires[5] = {"read"};
+  HW_2P.wires[0] = {"addr_out",SYM_AddrW,HW_WireProperty_ADDR};
+  HW_2P.wires[1] = {"addr_in",SYM_AddrW,HW_WireProperty_ADDR};
+  HW_2P.wires[2] = {"data_out",SYM_DataW};
+  HW_2P.wires[3] = {"data_in",SYM_DataW,HW_WireProperty_CONTROLLER_INPUT};
+  HW_2P.wires[4] = {"write",SYM_1};
+  HW_2P.wires[5] = {"read",SYM_1};
 
   HW_INIT(HW_DATABUS,"DATABUS","databus_@{wire}_@{interface}",8,1);
-  HW_DATABUS.wires[0] = {"ready",HW_WireProperty_CONTROLLER_INPUT};
-  HW_DATABUS.wires[1] = {"rvalid"};
-  HW_DATABUS.wires[2] = {"addr"};
-  HW_DATABUS.wires[3] = {"rdata",HW_WireProperty_CONTROLLER_INPUT};
-  HW_DATABUS.wires[4] = {"wdata"};
-  HW_DATABUS.wires[5] = {"wstrb"};
-  HW_DATABUS.wires[6] = {"len"};
-  HW_DATABUS.wires[7] = {"last",HW_WireProperty_CONTROLLER_INPUT};
+  HW_DATABUS.wires[0] = {"ready",SYM_1,HW_WireProperty_CONTROLLER_INPUT};
+  HW_DATABUS.wires[1] = {"rvalid",SYM_1};
+  HW_DATABUS.wires[2] = {"addr",SYM_AddrW,HW_WireProperty_ADDR};
+  HW_DATABUS.wires[3] = {"rdata",SYM_DataW,HW_WireProperty_CONTROLLER_INPUT | HW_WireProperty_IS_SHARED};
+  HW_DATABUS.wires[4] = {"wdata",SYM_DataW};
+  HW_DATABUS.wires[5] = {"wstrb",SYM_DataStrobeW};
+  HW_DATABUS.wires[6] = {"len",SYM_LenW};
+  HW_DATABUS.wires[7] = {"last",SYM_1,HW_WireProperty_CONTROLLER_INPUT};
 
   HW_INIT(HW_MM,"MM","@{wire}",6,1);
-  HW_MM.wires[0] = {"rvalid"};
-  HW_MM.wires[1] = {"valid",HW_WireProperty_CONTROLLER_INPUT};
-  HW_MM.wires[2] = {"addr",HW_WireProperty_CONTROLLER_INPUT};
-  HW_MM.wires[3] = {"rdata"};
-  HW_MM.wires[4] = {"wdata",HW_WireProperty_CONTROLLER_INPUT};
-  HW_MM.wires[5] = {"wstrb",HW_WireProperty_CONTROLLER_INPUT};
-
-  HW_MM.wires[2].prop |= HW_WireProperty_ADDR;
+  HW_MM.wires[0] = {"rvalid",SYM_1};
+  HW_MM.wires[1] = {"valid",SYM_1,HW_WireProperty_CONTROLLER_INPUT};
+  HW_MM.wires[2] = {"addr",SYM_AddrW,HW_WireProperty_CONTROLLER_INPUT | HW_WireProperty_ADDR};
+  HW_MM.wires[3] = {"rdata",SYM_DataW};
+  HW_MM.wires[4] = {"wdata",SYM_DataW,HW_WireProperty_CONTROLLER_INPUT};
+  HW_MM.wires[5] = {"wstrb",SYM_DataStrobeW,HW_WireProperty_CONTROLLER_INPUT};
   
 #undef HW_INIT
 
@@ -327,15 +325,49 @@ HW_ValueResult HW_ExtractValues(HW_Interface* expectedInterface,String content,A
 }
 
 // ======================================
+// Instantiation
+
+HW_Instance HW_Instantiate(HW_Interface* inter,HW_InterfaceSizeSelect select,Arena* out){
+  HW_Instance res = {};
+  res.inter = inter;
+  res.wires = PushArray<HW_Wire>(out,inter->wires.size * inter->maxPorts);
+
+  for(int port = 0; port < inter->maxPorts; port++){
+    for(int i = 0; i <  res.inter->wires.size; i++){
+      int index = port * res.inter->wires.size + i;
+      
+      HW_WireDef& def = res.inter->wires[i];
+      SYM_Expr size = def.defaultSize;
+
+      if(def.prop & HW_WireProperty_ADDR){
+        size = select.addrSize;
+      }
+
+      res.wires[index].size = def.defaultSize;
+      res.wires[index].def = &def;
+      res.wires[index].port = port;
+    }
+  }
+
+  return res;
+}
+
+// ======================================
 // Repr
 
 String HW_GetWireRepresentation(HW_Interface* inter,int wireIndex,int port,int interface,Arena* out){
   TEMP_REGION(temp,out);
 
+  auto b = StartString(temp);
+  HW_GetWireRepresentation(b,inter,wireIndex,port,interface);
+  String res = EndString(out,b);
+  return res;
+}
+
+void HW_GetWireRepresentation(StringBuilder* b,HW_Interface* inter,int wireIndex,int port,int interface){
   HW_SchemaNode* head = inter->schema->head;
   char sep = inter->schema->sep;
 
-  auto b = StartString(temp);
   for(HW_SchemaNode* ptr = head; ptr; ptr = ptr->next){
     bool first = (ptr == head);
     if(!first){
@@ -353,9 +385,42 @@ String HW_GetWireRepresentation(HW_Interface* inter,int wireIndex,int port,int i
     case HW_SchemaType_INTERFACE: b->PushString("%d",interface); break;
     }
   }
+}
 
+String HW_GetWireRepresentation(HW_Instance* inst,int wireIndex,Arena* out){
+  TEMP_REGION(temp,out);
+
+  auto b = StartString(temp);
+  HW_GetWireRepresentation(b,inst,wireIndex);
   String res = EndString(out,b);
   return res;
+}
+
+void HW_GetWireRepresentation(StringBuilder* b,HW_Instance* inst,int wireIndex){
+  HW_Interface* inter = inst->inter;
+  HW_SchemaNode* head = inter->schema->head;
+  char sep = inter->schema->sep;
+  HW_Wire w = inst->wires[wireIndex];
+  int port = w.port;
+  int interface = inst->index;
+  
+  for(HW_SchemaNode* ptr = head; ptr; ptr = ptr->next){
+    bool first = (ptr == head);
+    if(!first){
+      b->PushChar(sep);
+    }
+
+    switch(ptr->type){
+    case HW_SchemaType_TEXT:{
+      b->PushString(ptr->content);
+    } break;
+    case HW_SchemaType_WIRE:{
+      b->PushString(w.def->name);
+    } break;
+    case HW_SchemaType_PORT: b->PushString("%d",port); break;
+    case HW_SchemaType_INTERFACE: b->PushString("%d",interface); break;
+    }
+  }
 }
 
 // ======================================
@@ -368,42 +433,57 @@ void HW_EmitPortDeclaration(VEmitter* v,HW_Instance* inst,bool isController){
   HW_Schema* schema = inter->schema;
   int interfaceIndex = inst->index;
 
-  for(HW_Wire w : inst->wires){
+  for(int i = 0; i <  inst->wires.size; i++){
+    HW_Wire w = inst->wires[i];
     bool isControllerInput = (w.def->prop & HW_WireProperty_CONTROLLER_INPUT);
     bool isInput = (isControllerInput && isController);
     SYM_Expr size = w.size;
-    int port = w.port;
 
-    // Build port name ============================================================
-    auto b = StartString(temp);
-    for(HW_SchemaNode* ptr = schema->head; ptr; ptr = ptr->next){
-      bool first = (ptr == schema->head);
-
-      if(!first){
-        b->PushChar(schema->sep);
-      }
-
-      switch(ptr->type){
-      case HW_SchemaType_PORT:{
-        b->PushString("%d",port);
-      } break;
-      case HW_SchemaType_TEXT:{
-        b->PushString(ptr->content);
-      } break;
-      case HW_SchemaType_WIRE:{
-        b->PushString(w.def->name);
-      } break;
-      case HW_SchemaType_INTERFACE:{
-        b->PushString("%d",interfaceIndex);
-      } break;
-      }
-    }
-    String portName = EndString(temp,b);
+    String portName = HW_GetWireRepresentation(inst,i,temp);
 
     if(isInput){
       v->Input(portName,w.size);
     } else {
       v->Output(portName,w.size);
     }
+  }
+}
+
+void HW_EmitUnpacking(VEmitter* v,Array<HW_Instance> instances,String packedPrefix,String unpackedPrefix,bool isController){
+  TEMP_REGION(temp,v->arena);
+
+  if(instances.size == 0){
+    return;
+  }
+
+  {
+    HW_Instance check = instances[0];
+    for(HW_Instance inst : instances){
+      Assert(inst.inter == check.inter && "We can only unpack if every hardware instance belongs to the same interface");
+    }
+  }
+
+  int wireSize = instances[0].wires.size;
+  Array<SYM_Expr> totalSizes = PushArray<SYM_Expr>(temp,wireSize);
+
+  // Calculate wire sizes =======================================================
+  for(HW_Instance inst : instances){
+    Assert(wireSize == inst.wires.size && "All input instances must have the same wire sizes");
+    for(int i = 0; i < wireSize; i++){
+      totalSizes[i] = totalSizes[i] + inst.wires[i].size;
+    }
+  }
+
+  for(int i = 0; i < wireSize; i++){
+    printf("B:");
+    SYM_Print(totalSizes[i]);
+    printf("\n");
+  }
+
+  - LEFT HERE - Finish this
+
+  HW_Interface* inter = instances[0].inter;
+  for(HW_Instance inst : instances){
+    
   }
 }

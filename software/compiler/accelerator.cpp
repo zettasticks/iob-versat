@@ -552,7 +552,6 @@ VersatComputedValues ComputeVersatValues(Accelerator* graph,AccelInfo* info,Aren
   TEMP_REGION(temp,out);
   VersatComputedValues res = {};
 
-  int numberUnits = 0;
   int numberDones = 0;
 
   int maxMemMapBits = 0;

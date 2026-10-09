@@ -181,26 +181,8 @@ void OutputTopLevelFiles(Accelerator* accel,FUDeclaration* topLevelDecl,String h
 void OutputTestbench(FUDeclaration* decl,FILE* file);
 #endif
 
-struct GEN_OutputData{
-  String wireName;
-  bool isReg;
-  bool declare;
-  bool isConnected;
-};
-
-struct GEN_Data{
-  int index;
-  Array<GEN_OutputData> inputInfo;
-  Array<GEN_OutputData> outputInfo;
-};
-
 // ======================================
-// Code generation
-
-String GEN_OutputCircuitSource(FUDeclaration* decl,Arena* out);
-
-// ======================================
-// New struct generation code
+// C Struct generation code
 
 struct GEN_StructInfo;
 
@@ -235,3 +217,69 @@ bool GEN_IsUnion(GEN_StructElem* top);
 String GEN_TypeName(GEN_StructElem* elem);
 
 String GEN_Repr(GEN_StructInfo* info,Arena* out);
+
+
+// ======================================
+// TopLevelInfo
+
+#include "accelerator_meta.hpp"
+
+struct GEN_TopInfo{
+  FUDeclaration* decl;
+
+  Array<VersatRegister> registers;
+
+  int configCount;
+  SYM_Expr configBitCount;
+
+  int stateCount;
+  SYM_Expr stateBitCount;
+
+  int memoryAddressBits;
+  int memoryConfigDecisionBit;
+
+  int numberDatabus; // Can differ from declaration because of DMA
+};
+
+GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out);
+int         GEN_GetRegisterIndex(GEN_TopInfo* info,VersatRegister reg);
+
+
+struct GEN_OutputData{
+  String wireName;
+  bool isReg;
+  bool declare;
+  bool isConnected;
+};
+
+struct GEN_Data{
+  int index;
+  Array<GEN_OutputData> inputInfo;
+  Array<GEN_OutputData> outputInfo;
+};
+
+struct GEN_TopContent{
+  String verilogDefines;
+  String externalMemInst;
+  String externalMemWires;
+  String externalMemPorts;
+  String externalMemPortmap;
+  String hardwareInstance;
+  String headerFile;
+  String verilatorWrapper;
+  String makefile;
+  String softwareFirmware;
+};
+
+// ======================================
+// Helpers
+
+void GEN_InitializeAuxGraphData(COM_Unit* units,COM_Edge* edge,Arena* out);
+
+// ======================================
+// Code generation
+
+String         GEN_OutputCircuitSource(FUDeclaration* decl,Arena* out);
+GEN_TopContent GEN_OutputTopLevel(FUDeclaration* decl,Arena* out);
+
+String         GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out);

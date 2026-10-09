@@ -657,7 +657,6 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
 
       for(int i = 0; i < ptr->wiresSeen.size; i++){
         if(!ptr->wiresSeen[i]){
-
           int index = i % ptr->inter->wires.size;
           int port  = i / ptr->inter->wires.size;
 

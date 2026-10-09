@@ -1250,6 +1250,12 @@ void COM_InsertMiddle(COM_Graph* graph,COM_Edge* edge,COM_Unit* toInsert,int inP
   LL_Append(graph->edges.head,graph->edges.tail,next,newEdge);
 }
 
+void COM_ClearGeneralPtr(COM_Unit* units){
+  for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
+    units->general = 0;
+  }
+}
+
 // ======================================
 // Graph algorithms
 
@@ -1610,10 +1616,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
     }
   }
   
-
-  for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
-    ptr->general = 0;
-  }
+  COM_ClearGeneralPtr(units);
 
   COM_DelayResult res = {};
   res.edgeDelays = head;
