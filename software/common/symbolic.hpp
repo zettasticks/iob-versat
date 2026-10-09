@@ -183,7 +183,7 @@ SYM_Expr SYM_Reduce(SYM_Expr in);
 // ======================================
 // Manipulation and info retrieval
 
-bool SYM_IsNil(SYM_Expr expr);
+bool IsNil(SYM_Expr expr);
 bool SYM_IsZeroValue(SYM_Expr expr);
 bool SYM_IsOneValue(SYM_Expr expr);
 

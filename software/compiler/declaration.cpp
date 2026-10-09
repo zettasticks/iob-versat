@@ -417,6 +417,7 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
   int stateCount = 0;
   int memoryMappedCount = 0;
   int externalMemoryCount = 0;
+  int databusCount = 0;
   SYM_Expr memoryMappedAddrSize = SYM_0;
 
   for(V_Node* ptr = top->childs; ptr; ptr = ptr->next){
@@ -549,8 +550,9 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
         DECL_InterfaceInfo* info = 0;
         LL_Find(complexHead,next,info,it->inter == inter && it->interfaceIndex == res.interface);
 
-        bool isExternalMemory = (inter == &HW_Default::HW_DP || inter == &HW_Default::HW_2P);
-        bool isMemoryMapped = (inter == &HW_Default::HW_MM);
+        bool isExternalMemory = (HW_IsMemoryInterface(inter));
+        bool isMemoryMapped = (HW_IsMemoryMapped(inter));
+        bool isDatabus = (HW_IsDatabus(inter));
 
         if(!info){
           info = PushStruct<DECL_InterfaceInfo>(temp);
@@ -563,6 +565,8 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
             externalMemoryCount += 1;
           } else if(isMemoryMapped){
             memoryMappedCount += 1;
+          } else if(isDatabus){
+            databusCount += 1;
           } else {
             Assert(false && "Need to add logic to dependent on the type of interface being used");
           }
@@ -758,7 +762,6 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
   }
 
   // Pack =======================================================================
-
   String name = moduleName; // TODO: Serialize if needed.
   FUDeclaration* res = DECL_RegisterFU(name,DeclarationType_SINGLE);
 
@@ -768,9 +771,10 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
   res->outputs = PushArray<DECL_PortInfo>(out,outputCount);
   res->configs = configs;
   res->states = states;
-  res->memoryMapped = PushArray<SYM_Expr>(out,memoryMappedCount);
+  res->memoryMapped = PushArray<HW_Instance>(out,memoryMappedCount);
   res->externalMemory = PushArray<HW_Instance>(out,externalMemoryCount);
   res->numberDelays = delayCount;
+  res->numberDatabus = databusCount;
   res->numberDones = (simple & SingleInterfaces_DONE) ? 1 : 0;
   res->singleInterfaces = simple;
   res->supportedAddressGen = supportedAddressGen;
@@ -794,17 +798,12 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
   }
   
   if(res->memoryMapped.size){
-    res->memoryMapped[0] = memoryMappedAddrSize;
+    res->memoryMapped[0] = HW_Instantiate(&HW_Default::HW_MM,{.addrSize = memoryMappedAddrSize},out);
   }
 
-  int databusCount = 0;
   int externalIndex = 0;
   for(DECL_InterfaceInfo* ptr = complexHead; ptr; ptr = ptr->next){
-    if(!HW_IsExternalMemory(ptr->inter)){
-      continue;
-    }
-    if(ptr->inter == &HW_Default::HW_DATABUS){
-      databusCount = MAX(databusCount,ptr->interfaceIndex + 1);
+    if(!HW_IsMemoryInterface(ptr->inter)){
       continue;
     }
 
@@ -822,7 +821,6 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
 
     externalIndex += 1;
   }
-  res->numberDatabus = databusCount;
 
   if(res->error){
     printf("[ERROR] Problem instantiating: %.*s\n",UN(moduleName));
@@ -879,6 +877,7 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
   int donesCount = 0;
   int memMappedCount = 0;
   int externalCount = 0;
+  int databusCount = 0;
   DECL_SingleInterface single = {};
   for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
     FUDeclaration* decl = ptr->decl;
@@ -889,6 +888,7 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
     donesCount += decl->numberDones;
     memMappedCount += decl->memoryMapped.size;
     externalCount += decl->externalMemory.size;
+    databusCount += decl->numberDatabus;
     single |= decl->singleInterfaces;
   }
 
@@ -903,11 +903,12 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
   res->states = PushArray<Wire>(out,stateCount);
   res->inputs = PushArray<DECL_PortInfo>(out,delays.inputDelays.size);
   res->outputs = PushArray<DECL_PortInfo>(out,delays.outputLatencies.size);
-  res->memoryMapped = PushArray<SYM_Expr>(out,memMappedCount);
+  res->memoryMapped = PushArray<HW_Instance>(out,memMappedCount);
   res->externalMemory = PushArray<HW_Instance>(out,externalCount);
 
   res->singleInterfaces = single;
   res->numberDelays = delayCount;
+  res->numberDatabus = databusCount;
   res->numberDones = donesCount;
 
   res->base = module.graph;
@@ -940,8 +941,8 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
         res->states[stateIndex].name = PushString(out,"%.*s_%.*s",UN(ptr->name),UN(res->states[stateIndex].name));
         stateIndex += 1;
       }
-      for(SYM_Expr e : ptr->decl->memoryMapped){
-        res->memoryMapped[memMappedIndex++] = e;
+      for(HW_Instance e : ptr->decl->memoryMapped){
+        res->memoryMapped[memMappedIndex++] = HW_Copy(e,out);
       }
 
       for(HW_Instance& inst : ptr->decl->externalMemory){

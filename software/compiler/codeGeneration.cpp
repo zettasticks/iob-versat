@@ -6092,14 +6092,19 @@ String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out){
   };
 
   // Initialize data ============================================================
+  // TODO: We probably do not need this since we are not gonna have connections at the top level.
   GEN_InitializeAuxGraphData(units,edges,temp);
 
-#if 0
   {
     VEmitter* m = StartVCode(temp);
-    //HW_EmitUnpacking(m,Array<HW_Instance> instances,String packedPrefix,String unpackedPrefix,bool isController){
 
-    EmitIOUnpacking(m,val.nUnitsIO,INT_IOb,"m");
+    Array<HW_Instance> databus = PushArray<HW_Instance>(temp,decl->numberDatabus);
+    for(int i = 0; i < databus.size; i++){
+      databus[i] = HW_Instantiate(&HW_Default::HW_DATABUS,{},temp);
+      databus[i].index = i;
+    }
+
+    HW_EmitUnpacking(m,databus,"m","",'_',true);
     VAST* ast = EndVCode(m);
 
     auto b = StartString(temp);
@@ -6107,11 +6112,15 @@ String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out){
     String content = EndString(temp,b);
     TE_SetString("emitIO",content);
   }
-#endif
   
   {
+    - LEFT HERE - NOTE: Do not instanciate multiple units. Only instantiate a single unit, the top level declaration.
+    -             No point having instance + connection + all that stuff when we can just emit the CircuitSource
+    -             and then just worry about connecting stuff in here.
+    
+    //GEN_EmitInstanciateUnits(m,units,edges);
+
     VEmitter* m = StartVCode(temp);
-    GEN_EmitInstanciateUnits(m,units,edges);
     auto b = StartString(temp);
     Repr(EndVCode(m),b);
     String content = EndString(temp,b);

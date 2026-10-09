@@ -1092,7 +1092,7 @@ SYM_Expr SYM_PosMax(SYM_Expr leftIn,SYM_Expr rightIn){
   SYM_Expr left = SYM_Normalize(leftIn);
   SYM_Expr right = SYM_Normalize(rightIn);
 
-  if(SYM_IsNil(left) || SYM_IsNil(right)){
+  if(IsNil(left) || IsNil(right)){
     return SYM_Nil;
   }
 
@@ -2167,7 +2167,7 @@ SYM_Expr SYM_Factor(SYM_Expr expr,SYM_Expr commonFactor){
   return res;
 }
 
-bool SYM_IsNil(SYM_Expr expr){
+bool IsNil(SYM_Expr expr){
   bool res = (expr.node == nullptr);
   return res;
 }

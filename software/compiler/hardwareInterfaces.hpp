@@ -110,8 +110,11 @@ void HW_Init(Arena* perm);
 // ======================================
 // Type
 
-bool        HW_IsExternalMemory(HW_Interface* in);
 HW_Instance HW_Copy(HW_Instance in,Arena* out);
+
+bool        HW_IsMemoryInterface(HW_Interface* in);
+bool        HW_IsMemoryMapped(HW_Interface* in);
+bool        HW_IsDatabus(HW_Interface* in);
 
 // ======================================
 // Helpers
@@ -146,4 +149,4 @@ void   HW_GetWireRepresentation(StringBuilder* b,HW_Instance* inst,int wireIndex
 // Emission
 
 void HW_EmitPortDeclaration(VEmitter* v,HW_Instance* inst,bool isController);
-void HW_EmitUnpacking(VEmitter* v,HW_Instance* inst,String packedPrefix,String unpackedPrefix,bool isController);
+void HW_EmitUnpacking(VEmitter* v,Array<HW_Instance> instances,String packedPrefix,String unpackedPrefix,char sep,bool isController);

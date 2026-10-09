@@ -40,11 +40,11 @@ void HW_Init(Arena* perm){
 
   HW_INIT(HW_DATABUS,"DATABUS","databus_@{wire}_@{interface}",8,1);
   HW_DATABUS.wires[0] = {"ready",SYM_1,HW_WireProperty_CONTROLLER_INPUT};
-  HW_DATABUS.wires[1] = {"rvalid",SYM_1};
-  HW_DATABUS.wires[2] = {"addr",SYM_AddrW,HW_WireProperty_ADDR};
-  HW_DATABUS.wires[3] = {"rdata",SYM_DataW,HW_WireProperty_CONTROLLER_INPUT | HW_WireProperty_IS_SHARED};
-  HW_DATABUS.wires[4] = {"wdata",SYM_DataW};
-  HW_DATABUS.wires[5] = {"wstrb",SYM_DataStrobeW};
+  HW_DATABUS.wires[1] = {"valid",SYM_1};
+  HW_DATABUS.wires[2] = {"addr",SYM_AxiAddrW,HW_WireProperty_ADDR};
+  HW_DATABUS.wires[3] = {"rdata",SYM_AxiDataW,HW_WireProperty_CONTROLLER_INPUT | HW_WireProperty_IS_SHARED};
+  HW_DATABUS.wires[4] = {"wdata",SYM_AxiDataW};
+  HW_DATABUS.wires[5] = {"wstrb",SYM_AxiStrobeW};
   HW_DATABUS.wires[6] = {"len",SYM_LenW};
   HW_DATABUS.wires[7] = {"last",SYM_1,HW_WireProperty_CONTROLLER_INPUT};
 
@@ -68,16 +68,26 @@ void HW_Init(Arena* perm){
 // ======================================
 // Type
 
-bool HW_IsExternalMemory(HW_Interface* in){
-  bool res = (in == &HW_Default::HW_DP || in == &HW_Default::HW_2P);
-  return res;
-}
-
 HW_Instance HW_Copy(HW_Instance in,Arena* out){
   HW_Instance res = {};
   res.index = in.index;
   res.inter = in.inter;
   res.wires = CopyArray(in.wires,out);
+  return res;
+}
+
+bool HW_IsMemoryInterface(HW_Interface* in){
+  bool res = (in == &HW_Default::HW_DP || in == &HW_Default::HW_2P);
+  return res;
+}
+
+bool HW_IsMemoryMapped(HW_Interface* in){
+  bool res = (in == &HW_Default::HW_MM);
+  return res;
+}
+
+bool HW_IsDatabus(HW_Interface* in){
+  bool res = (in == &HW_Default::HW_DATABUS);
   return res;
 }
 
@@ -263,12 +273,6 @@ HW_ValueResult HW_ExtractValues(HW_Interface* expectedInterface,String content,A
         number = ParseInt(content);
       }
 
-      if(!isNumber){
-        asStr = content;
-        type = HW_ValueType_TEXT;
-        found = 1;
-      }
-
       if(current->type == HW_SchemaType_PORT || 
          current->type == HW_SchemaType_INTERFACE){
         if(!isNumber){
@@ -291,6 +295,11 @@ HW_ValueResult HW_ExtractValues(HW_Interface* expectedInterface,String content,A
       }
     }
 
+    if(!found){
+      error = 1;
+      break;
+    }
+
     if(advance){
       current = current->next;
     }
@@ -307,7 +316,7 @@ HW_ValueResult HW_ExtractValues(HW_Interface* expectedInterface,String content,A
   if(lastWasSep){ // A terminating sep with nothing following it is an error.
     error = 1;
   }
-  if(current){
+  if(current || (!current && ptr < end)){
     error = 1;
   }
 
@@ -339,7 +348,7 @@ HW_Instance HW_Instantiate(HW_Interface* inter,HW_InterfaceSizeSelect select,Are
       HW_WireDef& def = res.inter->wires[i];
       SYM_Expr size = def.defaultSize;
 
-      if(def.prop & HW_WireProperty_ADDR){
+      if((def.prop & HW_WireProperty_ADDR) && !IsNil(select.addrSize)){
         size = select.addrSize;
       }
 
@@ -436,7 +445,7 @@ void HW_EmitPortDeclaration(VEmitter* v,HW_Instance* inst,bool isController){
   for(int i = 0; i <  inst->wires.size; i++){
     HW_Wire w = inst->wires[i];
     bool isControllerInput = (w.def->prop & HW_WireProperty_CONTROLLER_INPUT);
-    bool isInput = (isControllerInput && isController);
+    bool isInput = (isControllerInput == isController);
     SYM_Expr size = w.size;
 
     String portName = HW_GetWireRepresentation(inst,i,temp);
@@ -449,7 +458,7 @@ void HW_EmitPortDeclaration(VEmitter* v,HW_Instance* inst,bool isController){
   }
 }
 
-void HW_EmitUnpacking(VEmitter* v,Array<HW_Instance> instances,String packedPrefix,String unpackedPrefix,bool isController){
+void HW_EmitUnpacking(VEmitter* v,Array<HW_Instance> instances,String packedPrefix,String unpackedPrefix,char sep,bool isController){
   TEMP_REGION(temp,v->arena);
 
   if(instances.size == 0){
@@ -463,8 +472,12 @@ void HW_EmitUnpacking(VEmitter* v,Array<HW_Instance> instances,String packedPref
     }
   }
 
+  HW_Interface* inter = instances[0].inter;
   int wireSize = instances[0].wires.size;
   Array<SYM_Expr> totalSizes = PushArray<SYM_Expr>(temp,wireSize);
+  for(int i = 0; i < wireSize; i++){
+    totalSizes[i] = SYM_0;
+  }
 
   // Calculate wire sizes =======================================================
   for(HW_Instance inst : instances){
@@ -475,15 +488,54 @@ void HW_EmitUnpacking(VEmitter* v,Array<HW_Instance> instances,String packedPref
   }
 
   for(int i = 0; i < wireSize; i++){
-    printf("B:");
-    SYM_Print(totalSizes[i]);
-    printf("\n");
-  }
+    String wireName = HW_GetWireRepresentation(&instances[0],i,temp);
 
-  - LEFT HERE - Finish this
+    String trueName = wireName;
+    if(!Empty(unpackedPrefix)){
+      trueName = PushString(temp,"%.*s%c%.*s",UN(unpackedPrefix),sep,UN(wireName));
+    }
 
-  HW_Interface* inter = instances[0].inter;
+    v->WireArray(trueName,instances.size,instances[0].wires[i].size);
+  }  
+
   for(HW_Instance inst : instances){
-    
+    int index = inst.index;
+
+    for(int i = 0; i < inst.wires.size; i++){
+      HW_WireDef* def = inst.wires[i].def;
+      String sizeRepr = SYM_Repr(inst.wires[i].size,temp);
+      String repr = HW_GetWireRepresentation(&inst,i,temp);
+
+      String unpackedName = repr;
+      if(!Empty(unpackedPrefix)){
+        unpackedName = PushString(temp,"%.*s%c%.*s",UN(unpackedPrefix),sep,UN(repr));
+      }
+
+      String packedName = repr;
+      if(!Empty(packedPrefix)){
+        packedName = PushString(temp,"%.*s%c%.*s",UN(packedPrefix),sep,UN(repr));
+      }
+
+      bool isInput = (!!(def->prop & HW_WireProperty_CONTROLLER_INPUT) == isController);
+
+      if(def->prop & HW_WireProperty_IS_SHARED){
+        String fullUnpacked = PushString(temp,"%.*s[%d]",UN(unpackedName),index);
+        if(isInput){
+          v->Assign(fullUnpacked,packedName);
+        } else {
+          v->Assign(packedName,fullUnpacked);
+        }
+      } else {
+        if(isInput){
+          String fullPacked = PushString(temp,"%.*s[(%d * %.*s) +: %.*s]",UN(packedName),index,UN(sizeRepr),UN(sizeRepr));
+          String fullUnpacked = PushString(temp,"%.*s[%d]",UN(unpackedName),index);
+          v->Assign(fullUnpacked,fullPacked);
+        } else {
+          String fullPacked = PushString(temp,"%.*s[(%d * %.*s) +: %.*s]",UN(packedName),index,UN(sizeRepr),UN(sizeRepr));
+          String fullUnpacked = PushString(temp,"%.*s[%d]",UN(unpackedName),index);
+          v->Assign(fullPacked,fullUnpacked);
+        }
+      }
+    }
   }
 }

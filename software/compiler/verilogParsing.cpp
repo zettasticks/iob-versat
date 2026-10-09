@@ -2335,7 +2335,7 @@ V_SymConvResult V_ConvertToSym(V_Node* top,Array<SYM_Pair> varValues){
   default: Assert(!V_NodeType_IsExpr(top->type));
   }
 
-  if(SYM_IsNil(res)){
+  if(IsNil(res)){
     anyError = 1;
   }
 

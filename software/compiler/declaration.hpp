@@ -83,7 +83,7 @@ struct FUDeclaration{
   Array<DECL_PortInfo> outputs;
   Array<Wire> configs;
   Array<Wire> states;
-  Array<SYM_Expr> memoryMapped; // We only care about address size, right? Everything else must be standard. For now.
+  Array<HW_Instance> memoryMapped; // Only address can change, everything else must be standard
   Array<HW_Instance> externalMemory;  // For external memory we care about wire size. 
 
   String operation;
