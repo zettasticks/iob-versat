@@ -238,12 +238,13 @@ struct GEN_TopInfo{
   int memoryAddressBits;
   int memoryConfigDecisionBit;
 
+  SYM_Expr delayBitStart;
+
   int numberDatabus; // Can differ from declaration because of DMA
 };
 
 GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out);
 int         GEN_GetRegisterIndex(GEN_TopInfo* info,VersatRegister reg);
-
 
 struct GEN_OutputData{
   String wireName;
@@ -267,19 +268,37 @@ struct GEN_TopContent{
   String hardwareInstance;
   String headerFile;
   String verilatorWrapper;
+  String verilatorTop;
   String makefile;
   String softwareFirmware;
 };
 
 // ======================================
+// Naming schemes
+
+String GEN_StaticName(DECL_StaticWire w,Arena* out);
+
+// ======================================
 // Helpers
 
+void GEN_EmitCombOperations(VEmitter* m,COM_Unit* units,COM_Edge* edges);
+void GEN_EmitInstanciateUnits(VEmitter* m,COM_Unit* units,COM_Edge* edges);
+void GEN_EmitConnectOutputsToOut(VEmitter* v,COM_Unit* units,COM_Edge* edges);
 void GEN_InitializeAuxGraphData(COM_Unit* units,COM_Edge* edge,Arena* out);
 
 // ======================================
-// Code generation
+// Top Code generation
 
 String         GEN_OutputCircuitSource(FUDeclaration* decl,Arena* out);
 GEN_TopContent GEN_OutputTopLevel(FUDeclaration* decl,Arena* out);
+String         GEN_OutputTestbench(FUDeclaration* decl,Arena* out);
 
-String         GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out);
+// ======================================
+// Individual code generation helpers
+
+String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out);
+String GEN_OutputMakefile(GEN_TopInfo* info,Arena* out);
+String GEN_OutputHeader(GEN_TopInfo* info,Arena* out);
+String GEN_OutputVerilatorTop(GEN_TopInfo* info,Arena* out);
+String GEN_OutputVerilatorWrapper(GEN_TopInfo* top,Arena* out);
+String GEN_OutputFirmware(GEN_TopInfo* info,Arena* out);

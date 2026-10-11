@@ -106,6 +106,14 @@ bool IsNil(FUDeclaration* decl){
   bool res = (decl && decl->type == DeclarationType_NIL);
   return res;
 }
+u64 Hash(DECL_StaticWire in){
+  u64 res = Hash(in.meta) + Hash(in.unitName) + Hash(in.wire);
+  return res;
+}
+bool Equal(DECL_StaticWire lhs,DECL_StaticWire rhs){
+  bool res = (lhs.meta == rhs.meta && lhs.unitName == rhs.unitName && lhs.wire == rhs.wire);
+  return res;
+}
 
 bool DECL_IsSource(FUDeclaration* decl){
   bool res = (decl->inputs.size == 0 && decl->outputs.size > 0);
@@ -870,7 +878,10 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
 
   Assert(delays.edgeDelays == nullptr);
 
+  TrieSet<DECL_StaticWire>* statics = PushTrieSet<DECL_StaticWire>(temp);
+
   // TODO: Share and static
+
   int configCount = 0;
   int stateCount = 0;
   int delayCount = 0;
@@ -882,7 +893,22 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
   for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
     FUDeclaration* decl = ptr->decl;
 
-    configCount += decl->configs.size;
+    if(!ptr->isStatic){
+      configCount += decl->configs.size;
+    } else {
+      for(Wire w : decl->configs){
+        DECL_StaticWire s = {};
+        s.wire = w;
+        s.meta = meta;
+        s.unitName = ptr->name;
+        statics->Insert(s);
+      }
+    }
+
+    for(DECL_StaticWire s : decl->statics){
+      statics->Insert(s);
+    }
+
     stateCount += decl->states.size;
     delayCount += decl->numberDelays;
     donesCount += decl->numberDones;
@@ -905,6 +931,8 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
   res->outputs = PushArray<DECL_PortInfo>(out,delays.outputLatencies.size);
   res->memoryMapped = PushArray<HW_Instance>(out,memMappedCount);
   res->externalMemory = PushArray<HW_Instance>(out,externalCount);
+
+  res->statics = PushArray(out,statics);
 
   res->singleInterfaces = single;
   res->numberDelays = delayCount;

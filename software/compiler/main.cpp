@@ -31,6 +31,7 @@ namespace fs = std::filesystem;
 #define DO_STRINGIFY(ARG) #ARG
 #define STRINGIFY(ARG) DO_STRINGIFY(ARG)
 
+#if 0
 // Only for graphs that we know for sure are DAG
 Array<int> CalculateDAG(Array<Pair<int,int>> edges,int start,Arena* out){
   TEMP_REGION(temp,out);
@@ -91,6 +92,7 @@ Array<int> CalculateDAG(Array<Pair<int,int>> edges,int start,Arena* out){
   }
   return PushArray(out,list);
 }
+#endif
 
 #if 0
 // This structure needs to represent the entire work that is required to perform 
@@ -182,9 +184,7 @@ struct OptionsGather{
   ArenaList<String>* parsingErrors;
 };
 
-static int
-parse_opt (int key, char *arg,
-           argp_state *state){
+static int parse_opt (int key, char *arg,argp_state *state){
   OptionsGather* opts = (OptionsGather*) state->input;
   Arena* out = opts->arena;
 
@@ -517,6 +517,8 @@ int main(int argc,char* argv[]){
 
     fprintf(sourceCode,"%.*s",UN(topContent));
   }
+
+  //GEN_TopContent top = GEN_OutputTopLevel(topType,temp);
   
   DEBUG_BREAK();
 

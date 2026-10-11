@@ -48,8 +48,6 @@ struct COM_Unit{
   String name;
   FUDeclaration* decl;
 
-  Array<COM_Param> params;
-
   bool isStatic;
   bool isShared;
   int sharedIndex;

@@ -112,13 +112,12 @@ end
 @{unitsMappedDecl}
 @{unitsRData}
 
-@{connections}
-
+// Configurations
 @{configurationDecl}
-
 @{stateDecl}
 
-@{instanciateUnits}
+// Top Unit
+@{topUnit}
 
 endmodule
 

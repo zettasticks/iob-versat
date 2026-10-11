@@ -66,12 +66,12 @@ struct DECL_Meta{
   };
 };
 
-// TODO: A lot of duplicated data exists since the change to merge.
+struct DECL_StaticWire{
+  DECL_Meta* meta;
+  String unitName;
+  Wire wire;
+};
 
-// TODO: There is a lot of crux between parsing and creating the FUDeclaration for composite accelerators 
-//       the FUDeclaration should be composed of something that is in common to all of them.
-// NOTE: A FUDeclaration represents a concrete type, although the size of stuff might depend on parameters.
-//       The general structure is fixed (amount of inputs/outputs and so on) but the size is not.
 struct FUDeclaration{
   DECL_Meta* meta;
   Array<DECL_Param> parameters; // All parameters even if equal to default values.
@@ -85,6 +85,8 @@ struct FUDeclaration{
   Array<Wire> states;
   Array<HW_Instance> memoryMapped; // Only address can change, everything else must be standard
   Array<HW_Instance> externalMemory;  // For external memory we care about wire size. 
+
+  Array<DECL_StaticWire> statics;
 
   String operation;
   int numberDelays;
@@ -128,6 +130,9 @@ namespace BasicDeclaration{
 
 // ======================================
 // Type
+
+u64  Hash(DECL_StaticWire in);
+bool Equal(DECL_StaticWire lhs,DECL_StaticWire rhs);
 
 bool IsNil(FUDeclaration* decl);
 

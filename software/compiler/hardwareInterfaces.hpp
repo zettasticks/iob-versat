@@ -149,4 +149,5 @@ void   HW_GetWireRepresentation(StringBuilder* b,HW_Instance* inst,int wireIndex
 // Emission
 
 void HW_EmitPortDeclaration(VEmitter* v,HW_Instance* inst,bool isController);
+void HW_EmitPortConnection(VEmitter* v,HW_Instance* inst,bool isController);
 void HW_EmitUnpacking(VEmitter* v,Array<HW_Instance> instances,String packedPrefix,String unpackedPrefix,char sep,bool isController);
