@@ -36,7 +36,8 @@ enum HW_WireProperty{
   HW_WireProperty_NIL = 0,
   HW_WireProperty_CONTROLLER_INPUT = (1 << 1), // Otherwise assumed output
   HW_WireProperty_IS_SHARED = (1 << 2), // For unpacking purposes, this wire can just be shared.
-  HW_WireProperty_ADDR = (1 << 4),
+  HW_WireProperty_DATA = (1 << 4),
+  HW_WireProperty_ADDR = (1 << 5),
 };
 C_STYLE_ENUM(HW_WireProperty);
 
@@ -112,9 +113,12 @@ void HW_Init(Arena* perm);
 
 HW_Instance HW_Copy(HW_Instance in,Arena* out);
 
-bool        HW_IsMemoryInterface(HW_Interface* in);
-bool        HW_IsMemoryMapped(HW_Interface* in);
-bool        HW_IsDatabus(HW_Interface* in);
+bool HW_IsMemory2P(HW_Interface* in);
+bool HW_IsMemoryDP(HW_Interface* in);
+
+bool HW_IsMemoryInterface(HW_Interface* in);
+bool HW_IsMemoryMapped(HW_Interface* in);
+bool HW_IsDatabus(HW_Interface* in);
 
 // ======================================
 // Helpers
@@ -137,6 +141,12 @@ HW_ValueResult HW_ExtractValues(HW_Interface* expectedInterface,String content,A
 HW_Instance HW_Instantiate(HW_Interface* inter,HW_InterfaceSizeSelect select,Arena* out);
 
 // ======================================
+// Size getters
+
+SYM_Expr HW_GetDataSize(HW_Instance in,int port,Direction dir = Direction_NONE);
+SYM_Expr HW_GetAddrSize(HW_Instance in,int port);
+
+// ======================================
 // Repr
 
 String HW_GetWireRepresentation(HW_Interface* inter,int wireIndex,int port,int interface,Arena* out);
@@ -149,5 +159,5 @@ void   HW_GetWireRepresentation(StringBuilder* b,HW_Instance* inst,int wireIndex
 // Emission
 
 void HW_EmitPortDeclaration(VEmitter* v,HW_Instance* inst,bool isController);
-void HW_EmitPortConnection(VEmitter* v,HW_Instance* inst,bool isController);
+//void HW_EmitPortConnect(VEmitter* v,HW_Instance* inst,HW_Schema* wire);
 void HW_EmitUnpacking(VEmitter* v,Array<HW_Instance> instances,String packedPrefix,String unpackedPrefix,char sep,bool isController);

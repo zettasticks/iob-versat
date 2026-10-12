@@ -38,9 +38,6 @@ static VerilatedVcdC* tfp = NULL;
 #endif // TRACE
 
 #include "VVersat_verilator_wrapper.h"
-#ifdef SIMULATE_LOOPS
-#include "VSuperAddress.h"
-#endif
 
 struct DatabusAccess{
    int counter;

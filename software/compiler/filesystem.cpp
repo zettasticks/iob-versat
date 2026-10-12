@@ -139,7 +139,7 @@ void FILE_Init(){
     file.state = FileContentState_OK;
   }
 
-  for(FileContent& file : defaultVerilogFiles){
+  for(FileContent& file : commonVersatVerilog){
     file.id.id = FILE_State.currentId++;
     file.state = FileContentState_OK;
   }
@@ -180,7 +180,7 @@ FileContent GetContentsOfFile(String filepath,FilePurpose purpose){
     }
   }
 
-  for(FileContent file : defaultVerilogFiles){
+  for(FileContent file : commonVersatVerilog){
     if(filepath == file.fileName){
       return file;
     }
@@ -223,7 +223,7 @@ FileContent FILE_FileContentsFromId(FILE_Handle id){
     }
   }
 
-  for(FileContent file : defaultVerilogFiles){
+  for(FileContent file : commonVersatVerilog){
     if(file.id.id == id.id){
       return file;
     }

@@ -145,6 +145,12 @@ bool DECL_HasVariableInputs(FUDeclaration* decl){
   return res;
 }
 
+bool DECL_IsComposite(FUDeclaration* decl){
+  bool res = (decl->type == DeclarationType_COMPOSITE ||
+              decl->type == DeclarationType_MERGED);
+  return res;
+}
+
 // ======================================
 // Init
 

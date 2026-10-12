@@ -126,6 +126,8 @@ void GetSubWorkRequirement(Hashmap<String,Work>* typeToWork,ConstructDef type){
   }
 }
 
+#endif
+
 int CopyFileGroup(Array<FileContent> fileGroup,String filepathBase,bool flattenedDirs,FilePurpose purpose){
   TEMP_REGION(temp,nullptr);
     
@@ -135,7 +137,7 @@ int CopyFileGroup(Array<FileContent> fileGroup,String filepathBase,bool flattene
   }
   
   for(FileContent content : fileGroup){
-    String pathWithoutCommon = Offset(content.originalRelativePath,common.size);
+    String pathWithoutCommon = Cut(content.originalRelativePath,common.size,0);
 
     String pathWithExpectedCommon = {};
     if(flattenedDirs){
@@ -167,7 +169,6 @@ int CopyFileGroup(Array<FileContent> fileGroup,String filepathBase,bool flattene
   return 0;
 };
 
-#endif
 
 struct OptionsGather{
   Arena* arena;
@@ -467,11 +468,13 @@ int main(int argc,char* argv[]){
   FUDeclaration* topType = DECL_GetType(topLevelTypeStr,{});
   
   // Only output if units are actually used by top level ========================
+  int compositeCount = 0;
   FUDeclarationNode* compositeHead = 0;
   FUDeclarationNode* compositeTail = 0;
   {
     static FUDeclarationNode top = {};
     top.val = topType;
+    compositeCount += 1;
     LL_Append(compositeHead,compositeTail,next,&top);
 
     for(FUDeclarationNode* ptr = compositeHead; ptr; ptr = ptr->next){
@@ -488,37 +491,71 @@ int main(int argc,char* argv[]){
         if(!exists){
           FUDeclarationNode* node = PushStruct<FUDeclarationNode>(temp);
           node->val = decl;
+          compositeCount += 1;
           LL_Append(compositeHead,compositeTail,next,node);
         }
       }
     }
   }
 
-  for(FUDeclarationNode* node = compositeHead; node; node = node->next){
-    FUDeclaration* decl = node->val;
-
-    String path = PushString(temp,"%.*s/%.*s.v",UN(globalOptions.hardwareOutputFilepath),UN(decl->name));
-    FILE* sourceCode = OpenFileAndCreateDirectories(path,"w",FilePurpose_VERILOG_CODE);
-    DEFER_CLOSE_FILE(sourceCode);
-
-    String content = GEN_OutputCircuitSource(decl,temp);
-    fprintf(sourceCode,"%.*s",UN(content));
-
-    printf("Outputted: %.*s\n",UN(decl->name));
-  }
+  Array<String> generated = PushArray<String>(temp,compositeCount);
 
   {
-    GEN_TopInfo info = GEN_CalculateTopInfo(topType,temp);
-    String topContent = GEN_OutputHardwareInstance(&info,temp);
+    int index = 0;
+    for(FUDeclarationNode* node = compositeHead; node; index++,node = node->next){
+      FUDeclaration* decl = node->val;
+      generated[index] = decl->name;
 
-    String path = PushString(temp,"%.*s/%s.v",UN(globalOptions.hardwareOutputFilepath),"versat_instance");
-    FILE* sourceCode = OpenFileAndCreateDirectories(path,"w",FilePurpose_VERILOG_CODE);
-    DEFER_CLOSE_FILE(sourceCode);
+      String path = PushString(temp,"%.*s/%.*s.v",UN(globalOptions.hardwareOutputFilepath),UN(decl->name));
+      FILE* sourceCode = OpenFileAndCreateDirectories(path,"w",FilePurpose_VERILOG_CODE);
+      DEFER_CLOSE_FILE(sourceCode);
 
-    fprintf(sourceCode,"%.*s",UN(topContent));
+      String content = GEN_OutputCircuitSource(decl,temp);
+      fprintf(sourceCode,"%.*s",UN(content));
+
+      printf("Outputted: %.*s\n",UN(decl->name));
+    }
   }
 
-  //GEN_TopContent top = GEN_OutputTopLevel(topType,temp);
+  GEN_TopInfo info = GEN_CalculateTopInfo(topType,temp);
+  GEN_TopContent content = GEN_OutputTopLevel(&info,temp);
+  String makefileContent = GEN_OutputMakefile(&info,generated,temp);
+
+  String hardware = globalOptions.hardwareOutputFilepath;
+  String software = globalOptions.softwareOutputFilepath;
+  
+  auto Output = [&](String path,String name,FilePurpose p,String content){
+    String fullpath = SF("%.*s/%.*s",UN(path),UN(name));
+    FILE* output = OpenFileAndCreateDirectories(fullpath,"w",p);
+    fprintf(output,"%.*s",UN(content));
+    if(p == FilePurpose_SCRIPT){
+      OS_SetScriptPermissions(output);
+    }
+    fclose(output);
+  };
+
+  Output(hardware,"iob_versat.v",FilePurpose_VERILOG_CODE,content.topHardwareWrapper);
+  Output(hardware,"versat_instance.v",FilePurpose_VERILOG_CODE,content.hardwareInstance);
+  Output(hardware,"versat_defs.vh",FilePurpose_VERILOG_INCLUDE,content.verilogDefines);
+  Output(hardware,"versat_undefs.vh",FilePurpose_VERILOG_INCLUDE,content.verilogUndefs);
+  Output(hardware,"versat_internal_memory_wires.vh",FilePurpose_VERILOG_INCLUDE,content.externalMemWires);
+  Output(hardware,"versat_external_memory_inst.vh",FilePurpose_VERILOG_INCLUDE,content.externalMemInst);
+  Output(hardware,"versat_internal_memory_wires.vh",FilePurpose_VERILOG_INCLUDE,content.externalMemWires);
+  Output(hardware,"versat_external_memory_port.vh",FilePurpose_VERILOG_INCLUDE,content.externalMemPorts);
+  Output(hardware,"versat_external_memory_internal_portmap.vh",FilePurpose_VERILOG_INCLUDE,content.externalMemPortmap);
+
+  Output(software,"VerilatorMake.mk",FilePurpose_MAKEFILE,makefileContent);
+  Output(software,"versat_accel.h",FilePurpose_SOFTWARE,content.headerFile);
+  Output(software,"iob_versat.c",FilePurpose_SOFTWARE,content.softwareFirmware);
+  Output(software,"Versat_verilator_wrapper.v",FilePurpose_VERILOG_CODE,content.verilatorHardwareWrapper);
+  Output(software,"verilator_wrapper.cpp",FilePurpose_VERILOG_CODE,content.verilatorSoftwareWrapper);
+  Output(software,"GetVerilatorRoot.sh",FilePurpose_SCRIPT,content.getVerilatorRoot);
+  Output(software,"ExtractVerilatedSignals.py",FilePurpose_SCRIPT,content.extractVerilatedSignal);
+
+  int res = CopyFileGroup(commonVersatVerilog,hardware,true,FilePurpose_VERILOG_COMMON_CODE);
+  if(res){
+    return res;
+  }
   
   DEBUG_BREAK();
 

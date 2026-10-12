@@ -1,7 +1,6 @@
 #pragma once 
 
 #include "versatSpecificationParser.hpp"
-//#include "declaration.hpp"
 #include "symbolic.hpp"
 #include "addressGen.hpp"
 
@@ -59,6 +58,8 @@ struct COM_Unit{
   int id;
 
   int numberInputs; // Some units that support variable inputs have this value different than 
+
+
 
 #if 0
   int configPos;

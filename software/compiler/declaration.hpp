@@ -140,6 +140,7 @@ bool DECL_IsSource(FUDeclaration* decl);
 bool DECL_IsSink(FUDeclaration* decl);
 bool DECL_IsVersatGenerated(FUDeclaration* decl);
 bool DECL_IsVersatOperation(FUDeclaration* decl);
+bool DECL_IsComposite(FUDeclaration* decl);
 
 // NOTE: Units that can have any number of inputs. Not predefined.
 bool DECL_HasVariableInputs(FUDeclaration* decl);
