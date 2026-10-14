@@ -566,7 +566,7 @@ int main(int argc,char* argv[]){
 
   GEN_TopInfo info = GEN_CalculateTopInfo(topType,temp);
   GEN_TopContent content = GEN_OutputTopLevel(&info,temp);
-  String makefileContent = GEN_OutputMakefile(&info,generated,temp);
+  String makefileContent = GEN_OutputVerilatorMakefile(&info,generated,temp);
 
   String hardware = globalOptions.hardwareOutputFilepath;
   String software = globalOptions.softwareOutputFilepath;

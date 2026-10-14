@@ -589,7 +589,7 @@ COM_UnpackedExpr COM_UnpackExpr(COM_Env* env,SP_Node* node){
   if(node){
     bool isExpr = SP_Type_IsExpr(node->type);
     bool isVarStuff = SP_Type_IsVarAccess(node->type);
-          
+
     bool found = 0;
     if(!found && isVarStuff){
       ent = COM_ResolveEntity(env,node,true);
@@ -1052,6 +1052,8 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
         }
 #endif
       }
+
+      
 
       // Pack into function =========================================================
       COM_FunctionNode* func = PushStruct<COM_FunctionNode>(out);
@@ -1575,11 +1577,6 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
       // Align inputs so that they arrive at the unit at the same time ==============
       for(int index : dependPorts){
         data->globalInputLatency[index] = max;
-        
-        
-        //int val = max - data->globalInputLatency[index];
-        //Assert(val >= 0 && "If this fails then we need to add delays to outputs because of the fact that now ports can have individual delays");
-        //data->inputExtraDelay[index] = val;
       }
     }
 
@@ -1594,6 +1591,9 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
     }
   }
   
+  // Delays is the amount of cycles that we must delay a given port in order for things to line up.
+  // 
+
   // TODO: Handle any delay edges in order to support 
   auto OutputDotGraph = [&](){
     BLOCK_REGION(temp);
@@ -1660,6 +1660,18 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
     }
   }
 
+  // TODO: We are currently processing things based on latencies. We can just convert latencies into delays
+  //       and interact with the graph that way. A delay can be pushed across units (we can remove the delay of 
+  //       an edge by changing the delays of the units and the edges that the delay affects).
+  //       In theory this should make things simpler, the final algorithm purpose is to push delays towards
+  //       input and output units, trying to minimize the amount of extra buffers needed to insert.
+  //       We could even try to check if we could transform the problem into a optimization problem that 
+  //       we can then solve by minimization. Do not know if this is actually needed to obtain the minimum values
+  //       but could try.
+
+  COM_PortDelay* portHead = 0;
+  COM_PortDelay* portTail = 0;
+
   COM_EdgeDelay* head = 0;
   COM_EdgeDelay* tail = 0;
   for(COM_Edge* edge = edges; edge; edge = edge->next){
@@ -1672,13 +1684,38 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
     int edgeExtraDelay = inputLatency - outputLatency;
     Assert(edgeExtraDelay >= 0);
 
+    // TODO: If a port is connected to multiple inputs then we can only select one value for this.
+    //       Proper implementation needs to do this stuff in more steps, we are trying to force 1 pass for no reason.
+    if(edge->out->decl->numberDelays){
+      COM_PortDelay* d = PushStruct<COM_PortDelay>(outArena);
+      d->unit = edge->out;
+      d->port = edge->outPort;
+      d->dir = Direction_OUTPUT;
+      d->latency = edgeExtraDelay;
+
+      LL_Append(portHead,portTail,next,d);
+
+      edgeExtraDelay = 0;
+    }
+    if(edge->in->decl->numberDelays){
+      COM_PortDelay* d = PushStruct<COM_PortDelay>(outArena);
+      d->unit = edge->in;
+      d->port = edge->inPort;
+      d->dir = Direction_INPUT;
+      d->latency = edgeExtraDelay;
+
+      LL_Append(portHead,portTail,next,d);
+
+      edgeExtraDelay = 0;
+    }
+
     // TODO: We need to implement pushing delays to source and sink units.
     //       I think that I also would like to formalize the fact that units can associate a delay port
     //       to an input or output port. The delay wire is always bound to either a set of ports or to a single port.
     //       If we do this right then we should also be able to have units like Reg having two delays, one for the
     //       input and another for the output which allow us to better control delay calculations.
     //       Also the example of memories connected to eachother probably requires something like this.
-#if 0
+#if 1
     if(edge->out->decl == BasicDeclaration::input ||
        edge->in->decl  == BasicDeclaration::output){
       edgeExtraDelay = 0;
@@ -1698,6 +1735,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
 
   COM_DelayResult res = {};
   res.edgeDelays = head;
+  res.portDelays = portHead;
   res.inputDelays = inputDelays;
   res.outputLatencies = outputLatencies;
 

@@ -205,11 +205,16 @@ struct GEN_StructInfo{
   GEN_StructElem* elements;
 };
 
+struct GEN_StructInfoList{
+  GEN_StructInfo* head;
+  GEN_StructInfo* tail;
+};
+
 // ======================================
 // Gen Type
 
-GEN_StructInfo* GEN_GenerateConfigStruct(String topName,COM_Unit* top,Arena* out);
-GEN_StructInfo* GEN_GenerateStateStruct(String topName,COM_Unit* top,Arena* out);
+GEN_StructInfo* GEN_GenerateConfigStruct(COM_Unit* top,GEN_StructInfoList* allStructs,Arena* out);
+GEN_StructInfo* GEN_GenerateStateStruct(COM_Unit* top,GEN_StructInfoList* allStructs,Arena* out);
 
 bool GEN_IsSimpleType(GEN_StructElem* elem);
 bool GEN_IsUnion(GEN_StructElem* top);
@@ -308,7 +313,7 @@ void GEN_InitializeAuxGraphData(COM_Unit* units,COM_Edge* edge,Arena* out);
 
 String         GEN_OutputCircuitSource(FUDeclaration* decl,Arena* out);
 GEN_TopContent GEN_OutputTopLevel(GEN_TopInfo* info,Arena* out);
-String         GEN_OutputMakefile(GEN_TopInfo* info,Array<String> allUnitsGenerated,Arena* out);
+String         GEN_OutputVerilatorMakefile(GEN_TopInfo* info,Array<String> allUnitsGenerated,Arena* out);
 
 String         GEN_OutputTestbench(FUDeclaration* decl,Arena* out);
 

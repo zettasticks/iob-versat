@@ -170,20 +170,6 @@ struct ExternalMemoryInfo{
   ExternalMemoryType type;
 };
 
-enum SingleInterfaces{
-  SingleInterfaces_DONE        = (1<<1),
-  SingleInterfaces_CLK         = (1<<2),
-  SingleInterfaces_RESET       = (1<<3),
-  SingleInterfaces_RUN         = (1<<4),
-  SingleInterfaces_RUNNING     = (1<<5),
-  SingleInterfaces_SIGNAL_LOOP = (1<<6)
-};
-
-static inline SingleInterfaces& operator|=(SingleInterfaces& left,SingleInterfaces in){
-  left = (SingleInterfaces) (((int) left) | ((int) in));
-  return left;
-}
-
 struct PortInfo{
   int delay;
   ExpressionRange range;
@@ -209,7 +195,6 @@ struct ModuleInfo{
   int nIO;
   ExpressionRange memoryMappedBits;
   ExpressionRange databusAddrSize;
-  SingleInterfaces singleInterfaces;
   bool doesIO;
   bool memoryMapped;
   bool isSource;

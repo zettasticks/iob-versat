@@ -23,17 +23,6 @@ typedef intptr_t iptr;
 // State
 @{stateStructs}
 
-@{acceleratorState}
-
-// Address
-@{addrStructs}
-
-@{acceleratorConfig}
-
-@{acceleratorStatic}
-
-@{acceleratorDelay}
-
 // NOTE: The address for memory mapped units depends on the address of
 //       the accelerator.  Because of this, the full address can only
 //       be calculated after calling versat_init(iptr), which is the
@@ -43,8 +32,6 @@ typedef intptr_t iptr;
 //       versat_init.
 
 // Base address for each memory mapped unit
-
-@{memMappedAddresses}
 
 extern iptr versat_base;
 
@@ -133,9 +120,7 @@ static bool acceleratorSupportsDMA = @{useDMA};
 static const int memMappedStart = @{memMappedStart};
 static const int versatAddressSpace = @{versatAddressSpace};
 
-#define ACCELERATOR_TOP_ADDR_INIT @{addrBlock}
 static unsigned int delayBuffer[] = @{delayBlock};
-static AcceleratorDelay accelDelay = @{delayBlock};
 
 static const int staticStart = @{staticStart} * sizeof(iptr);
 static const int delayStart = @{delayStart} * sizeof(iptr);
@@ -158,7 +143,7 @@ static inline iptr ALIGN(iptr base,iptr alignment){
   return result;
 }
 
-extern volatile AcceleratorStatic* accelStatic;
+//extern volatile AcceleratorStatic* accelStatic;
 
 @{allStaticDefines}
 

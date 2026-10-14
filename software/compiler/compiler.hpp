@@ -59,7 +59,7 @@ struct COM_Unit{
 
   int numberInputs; // Some units that support variable inputs have this value different than 
 
-
+  Array<int> extraDelay; // TODO: Probably not good anymore.
 
 #if 0
   int configPos;
@@ -82,7 +82,6 @@ struct COM_Unit{
 
 #if 0
   int calculatedDelay; // TODO: This is not what we actually want, since latency and delays should be calculated based on port info instead of unit. We still keep the same unit delay for now.
-  Array<int> extraDelay;
   int baseNodeDelay;
 
   Array<int> inputDelays;
@@ -407,8 +406,6 @@ void      COM_InsertMiddle(COM_Graph* graph,COM_Edge* edge,COM_Unit* toInsert,in
 void      COM_ClearGeneralPtr(COM_Unit* units);
 void      COM_ClearGeneralPtr(COM_Edge* edges);
 
-//COM_Graph COM_Copy(COM_Graph* in,Arena* out);
-
 // ======================================
 // Graph algorithms
 
@@ -418,8 +415,18 @@ struct COM_EdgeDelay{
   int delay;
 };
 
+struct COM_PortDelay{
+  COM_PortDelay* next;
+
+  COM_Unit* unit;
+  int port;
+  Direction dir;
+  int latency;
+};
+
 struct COM_DelayResult{
   COM_EdgeDelay* edgeDelays;
+  COM_PortDelay* portDelays;
   Array<int> inputDelays;
   Array<int> outputLatencies;
 };

@@ -226,11 +226,13 @@ bool DECL_RegisterMeta(String name,SP_Node* module){
   // TODO: We need to standardize this. We need to have all the params that are set by default in all the interfaces.
   //       If a standard external memory interface uses DATA_W, then we need to have DATA_W as a param otherwise
   //       the instantiation code does not know that we have DATA_W dependencies.
-  Array<DECL_Param> params = PushArray<DECL_Param>(DECL_State.arena,4);
+  Array<DECL_Param> params = PushArray<DECL_Param>(DECL_State.arena,6);
   params[0] = {"ADDR_W",SYM_AddrW};
   params[1] = {"DATA_W",SYM_DataW};
   params[2] = {"LEN_W",SYM_LenW};
   params[3] = {"DELAY_W",SYM_DelayW};
+  params[4] = {"AXI_DATA_W",SYM_AxiDataW};
+  params[5] = {"AXI_ADDR_W",SYM_AxiAddrW};
 
   DECL_Meta* node = PushStruct<DECL_Meta>(DECL_State.arena);
   node->name = PushString(DECL_State.arena,name);
@@ -803,7 +805,7 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
   res->externalMemory = PushArray<HW_Instance>(out,externalMemoryCount);
   res->numberDelays = delayCount;
   res->numberDatabus = databusCount;
-  res->numberDones = (simple & SingleInterfaces_DONE) ? 1 : 0;
+  res->numberDones = (simple & DECL_SingleInterface_DONE) ? 1 : 0;
   res->singleInterfaces = simple;
   res->supportedAddressGen = supportedAddressGen;
   res->error = error;
@@ -899,6 +901,17 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
 
   order = COM_CalculateDAGOrder(graph,temp);
   delays = COM_CalculateDelay(graph,order,temp);
+
+  for(COM_PortDelay* d = delays.portDelays; d; d = d->next){
+    COM_Unit* unit = d->unit;
+    FUDeclaration* decl = unit->decl;
+    Assert(unit->extraDelay.size == 0);
+
+    unit->extraDelay = PushArray<int>(out,decl->numberDelays);
+    for(int i = 0; i < decl->numberDelays; i++){
+      unit->extraDelay[i] = d->latency;
+    }
+  }
 
   Assert(delays.edgeDelays == nullptr);
 

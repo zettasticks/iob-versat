@@ -2103,7 +2103,7 @@ int main(int argc,const char* argv[]){
 
           if(printHeader){
             fseek(f,0,SEEK_SET);
-            ftruncate(fileno(f),0);
+            bool error = ftruncate(fileno(f),0);
             fprintf(f,"%.*s",UN(headerContent));
             fclose(f);
           }

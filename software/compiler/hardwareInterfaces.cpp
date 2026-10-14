@@ -374,7 +374,7 @@ HW_Instance HW_Instantiate(HW_Interface* inter,HW_InterfaceSizeSelect select,Are
         size = select.addrSize;
       }
 
-      res.wires[index].size = def.defaultSize;
+      res.wires[index].size = size;
       res.wires[index].def = &def;
       res.wires[index].port = port;
     }
