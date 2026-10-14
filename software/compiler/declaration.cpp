@@ -129,6 +129,11 @@ bool DECL_IsSink(FUDeclaration* decl){
   return res;
 }
 
+bool DECL_IsVersatDefault(FUDeclaration* decl){
+  bool res = (decl->type == DeclarationType_SINGLE && decl->operation.size == 0);
+  return res;
+}
+
 bool DECL_IsVersatGenerated(FUDeclaration* decl){
   bool res = (decl->type == DeclarationType_COMPOSITE ||
               decl->type == DeclarationType_MERGED);
@@ -218,10 +223,20 @@ bool DECL_RegisterMeta(String name,SP_Node* module){
   LL_Find(DECL_State.metaHead,next,exists,it->name == name);
   Assert(!exists); // TODO: Proper solve this, either report error or allow overriding
 
+  // TODO: We need to standardize this. We need to have all the params that are set by default in all the interfaces.
+  //       If a standard external memory interface uses DATA_W, then we need to have DATA_W as a param otherwise
+  //       the instantiation code does not know that we have DATA_W dependencies.
+  Array<DECL_Param> params = PushArray<DECL_Param>(DECL_State.arena,4);
+  params[0] = {"ADDR_W",SYM_AddrW};
+  params[1] = {"DATA_W",SYM_DataW};
+  params[2] = {"LEN_W",SYM_LenW};
+  params[3] = {"DELAY_W",SYM_DelayW};
+
   DECL_Meta* node = PushStruct<DECL_Meta>(DECL_State.arena);
   node->name = PushString(DECL_State.arena,name);
   node->type = DECL_MetaType_COMPOSITE;
   node->compositeUnit = module;
+  node->params = params;
   LL_Append(DECL_State.metaHead,DECL_State.metaTail,next,node);
 
   return node;
@@ -293,6 +308,8 @@ FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params){
     }
 
     Assert(normalizedParams.size == defaultParams.size);
+  } else {
+    normalizedParams = params;
   }
 
   // Check if a declaration with same params already exists =====================
@@ -389,7 +406,7 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
     HW_Interface* inter;
     int interfaceIndex;
     Array<bool> wiresSeen;
-    Array<int> wiresSize;
+    Array<SYM_Expr> wiresSize;
   };
 
   enum DECL_SimpleType{
@@ -409,7 +426,7 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
   struct DECL_ConfigOrState{
     DECL_ConfigOrState* next;
     String name;
-    int size;
+    SYM_Expr size;
     VersatStage stage;
     bool isState;
   };
@@ -451,16 +468,13 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
     }
     V_SymConvResult topConv = V_ConvertToSym(range->first,params);
     V_SymConvResult bottomConv = V_ConvertToSym(range->second,params);
+
+    error |= topConv.error | bottomConv.error;
+
+    // TODO: We must make sure that all the identifiers used by symbolic expressions are contained in the params.
+    //       Otherwise the generated verilog code would depend on something that does not exist.
+    SYM_Expr portSize = topConv.res - bottomConv.res + SYM_1;
     
-    SYM_EvaluateResult topEval = SYM_ConstantEvaluate(topConv.res);
-    SYM_EvaluateResult bottomEval = SYM_ConstantEvaluate(bottomConv.res);
-
-    error |= topConv.error | bottomConv.error | topEval.Error() | bottomEval.Error();
-
-    int top = topEval.result;
-    int bottom = bottomEval.result;
-    int portSize = top - bottom + 1;
-
     // Unpack attributes ==========================================================
     int versatLatency = 0;
     VersatStage stage = {};
@@ -570,7 +584,7 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
 
         if(!info){
           info = PushStruct<DECL_InterfaceInfo>(temp);
-          info->wiresSize = PushArray<int>(temp,size * inter->maxPorts);
+          info->wiresSize = PushArray<SYM_Expr>(temp,size * inter->maxPorts);
           info->wiresSeen = PushArray<bool>(temp,size * inter->maxPorts);
           info->interfaceIndex = res.interface;
           info->inter = inter;
@@ -592,7 +606,7 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
         info->wiresSize[res.port * size + res.wireIndex] = portSize;
 
         if(isMemoryMapped && (inter->wires[res.wireIndex].prop & HW_WireProperty_ADDR)){
-          memoryMappedAddrSize = SYM_Lit(portSize);
+          memoryMappedAddrSize = portSize;
         }
       }
     }
@@ -697,12 +711,12 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
   for(DECL_ConfigOrState* ptr = configStateHead; ptr; ptr = ptr->next){
     if(ptr->isState){
       states[stateIndex].name = PushString(out,ptr->name);
-      states[stateIndex].sizeExpr = SYM_Lit(ptr->size);
+      states[stateIndex].sizeExpr = ptr->size;
       states[stateIndex].stage = ptr->stage;
       stateIndex += 1;
     } else {
       configs[configIndex].name = PushString(out,ptr->name);
-      configs[configIndex].sizeExpr = SYM_Lit(ptr->size);
+      configs[configIndex].sizeExpr = ptr->size;
       configs[configIndex].stage = ptr->stage;
       configIndex += 1;
     }
@@ -830,7 +844,7 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
       int interIndex = i % ptr->inter->wires.size;
       int port = i / ptr->inter->wires.size;
       
-      res->externalMemory[externalIndex].wires[i] = HW_MakeWire(&ptr->inter->wires[interIndex],SYM_Lit(ptr->wiresSize[i]),port);
+      res->externalMemory[externalIndex].wires[i] = HW_MakeWire(&ptr->inter->wires[interIndex],ptr->wiresSize[i],port);
     }
 
     externalIndex += 1;
@@ -850,14 +864,18 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
 
   Arena* out = DECL_State.arena;
   TEMP_REGION(temp,out);
-
+  
   // Pack params and compile ====================================================
+  TrieMap<String,SYM_Expr>* paramReplace = PushTrieMap<String,SYM_Expr>(temp);
   Array<COM_Param> comParams = PushArray<COM_Param>(temp,normalizedParams.size);
   for(int i = 0; i < normalizedParams.size; i++){
     comParams[i].name = normalizedParams[i].name;
     comParams[i].val = normalizedParams[i].val;
+
+    paramReplace->Insert(normalizedParams[i].name,normalizedParams[i].val);
   }
   COM_Module module = COM_InstantiateModule(meta->compositeUnit,comParams,out);
+  COM_Graph baseGraph = COM_Copy(module.graph,false,out).result;
 
   COM_Graph graph = module.graph;
   
@@ -887,7 +905,6 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
   TrieSet<DECL_StaticWire>* statics = PushTrieSet<DECL_StaticWire>(temp);
 
   // TODO: Share and static
-
   int configCount = 0;
   int stateCount = 0;
   int delayCount = 0;
@@ -945,7 +962,8 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
   res->numberDatabus = databusCount;
   res->numberDones = donesCount;
 
-  res->base = module.graph;
+  res->base = baseGraph;
+  res->fixedDelays = graph;
 
   for(int i = 0; i < delays.inputDelays.size; i++){
     res->inputs[i].delay = delays.inputDelays[i];
@@ -968,19 +986,20 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
       for(Wire w : ptr->decl->configs){
         res->configs[configIndex] = w;
         res->configs[configIndex].name = PushString(out,"%.*s_%.*s",UN(ptr->name),UN(res->configs[configIndex].name));
+        res->configs[configIndex].sizeExpr = SYM_Replace(w.sizeExpr,paramReplace);
         configIndex += 1;
       }
       for(Wire w : ptr->decl->states){
         res->states[stateIndex] = w;
         res->states[stateIndex].name = PushString(out,"%.*s_%.*s",UN(ptr->name),UN(res->states[stateIndex].name));
+        res->states[stateIndex].sizeExpr = SYM_Replace(w.sizeExpr,paramReplace);
         stateIndex += 1;
       }
       for(HW_Instance e : ptr->decl->memoryMapped){
-        res->memoryMapped[memMappedIndex++] = HW_Copy(e,out);
+        res->memoryMapped[memMappedIndex++] = HW_InstantiateParams(e,paramReplace,out);
       }
-
       for(HW_Instance& inst : ptr->decl->externalMemory){
-        res->externalMemory[externalIndex] = HW_Copy(inst,out);
+        res->externalMemory[externalIndex] = HW_InstantiateParams(inst,paramReplace,out);
         res->externalMemory[externalIndex].index = externalIndex;
         
         externalIndex += 1;

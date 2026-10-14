@@ -130,7 +130,7 @@ DEBUG_Marker::DEBUG_Marker(String functionName,String entity,String stage){
 DEBUG_Marker::~DEBUG_Marker(){
   for(int i = 0; i < count; i++){
     DEBUG_Node* node = debugTail;
-    DLL_Remove(debugHead,debugTail,next,prev,debugTail);
+    DLL_Remove(debugHead,debugTail,next,prev,node);
     LL_PushNoTail(debugFreeList,next,node);
   }
 }

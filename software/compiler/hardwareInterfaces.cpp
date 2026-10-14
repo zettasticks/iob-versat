@@ -76,6 +76,18 @@ HW_Instance HW_Copy(HW_Instance in,Arena* out){
   return res;
 }
 
+HW_Instance HW_InstantiateParams(HW_Instance in,TrieMap<String,SYM_Expr>* paramReplace,Arena* out){
+  HW_Instance res = {};
+  res.index = in.index;
+  res.inter = in.inter;
+  res.wires = CopyArray(in.wires,out);
+
+  for(int i = 0; i < res.wires.size; i++){
+    res.wires[i].size = SYM_Replace(res.wires[i].size,paramReplace);
+  }
+  return res;
+}
+
 bool HW_IsMemory2P(HW_Interface* in){
   bool res = (in == &HW_Default::HW_2P);
   return res;

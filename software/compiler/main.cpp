@@ -398,8 +398,17 @@ int main(int argc,char* argv[]){
   }
 
   // TODO: Merge flow and check if we are overriding any units or not.
+  struct SimpleTypeFileInfo{
+    SimpleTypeFileInfo* next;
+    String simpleTypeName;
+    String content;
+  };
+
+  SimpleTypeFileInfo* fileInfoHead = 0;
+  SimpleTypeFileInfo* fileInfoTail = 0;
+
   bool anyError = 0;
-  for(FileContent file : defaultVerilogUnits){
+  for(FileContent& file : defaultVerilogUnits){
     String content = file.content;
     V_ParseResult parsed = V_ParseVerilogFile(content,perm);
 
@@ -417,6 +426,11 @@ int main(int argc,char* argv[]){
 
       String name = ptr->token.val;
       DECL_RegisterMeta(name,ptr);
+
+      SimpleTypeFileInfo* info = PushStruct<SimpleTypeFileInfo>(perm);
+      info->simpleTypeName = PushString(perm,name);
+      info->content = file.content;
+      LL_Append(fileInfoHead,fileInfoTail,next,info);
     }
   }
 
@@ -465,10 +479,21 @@ int main(int argc,char* argv[]){
   }
 
   String topLevelTypeStr = globalOptions.topName;
-  FUDeclaration* topType = DECL_GetType(topLevelTypeStr,{});
+  Array<DECL_Param> params = PushArray<DECL_Param>(temp,20);
+  params[0] = DECL_Param{"ADDR_W",SYM_Lit(32)};
+  params[1] = DECL_Param{"DATA_W",SYM_Lit(32)};
+  FUDeclaration* topType = DECL_GetType(topLevelTypeStr,params);
   
+  if(IsNil(topType)){
+    printf("Did not find module named: '%.*s'\n",UN(topLevelTypeStr));
+    return -1;
+  }
+
   // Only output if units are actually used by top level ========================
   int compositeCount = 0;
+  FUDeclarationNode* simpleHead = 0;
+  FUDeclarationNode* simpleTail = 0;
+
   FUDeclarationNode* compositeHead = 0;
   FUDeclarationNode* compositeTail = 0;
   {
@@ -480,25 +505,47 @@ int main(int argc,char* argv[]){
     for(FUDeclarationNode* ptr = compositeHead; ptr; ptr = ptr->next){
       for(COM_Unit* unit = ptr->val->base.units.head; unit; unit = unit->next){
         FUDeclaration* decl = unit->decl;
-
-        if(!DECL_IsVersatGenerated(decl)){
-          continue;
-        }
-        
         FUDeclarationNode* exists = 0;
-        LL_Find(compositeHead,next,exists,it->val->name == decl->name);
 
-        if(!exists){
-          FUDeclarationNode* node = PushStruct<FUDeclarationNode>(temp);
-          node->val = decl;
-          compositeCount += 1;
-          LL_Append(compositeHead,compositeTail,next,node);
+        if(DECL_IsVersatGenerated(decl)){
+          LL_Find(compositeHead,next,exists,it->val->name == decl->name);
+
+          if(!exists){
+            FUDeclarationNode* node = PushStruct<FUDeclarationNode>(temp);
+            node->val = decl;
+            compositeCount += 1;
+            LL_Append(compositeHead,compositeTail,next,node);
+          }
+
+          continue;
+        } else if(DECL_IsVersatDefault(decl)){
+          LL_Find(simpleHead,next,exists,it->val->name == decl->name);
+
+          if(!exists){
+            FUDeclarationNode* node = PushStruct<FUDeclarationNode>(temp);
+            node->val = decl;
+            LL_Append(simpleHead,simpleTail,next,node);
+          }
         }
       }
     }
   }
 
   Array<String> generated = PushArray<String>(temp,compositeCount);
+
+  for(FUDeclarationNode* node = simpleHead; node; node = node->next){
+    FUDeclaration* decl = node->val;
+
+    SimpleTypeFileInfo* info = 0;
+    LL_Find(fileInfoHead,next,info,it->simpleTypeName == decl->name);
+    
+    Assert(info);
+    String path = PushString(temp,"%.*s/%.*s.v",UN(globalOptions.hardwareOutputFilepath),UN(decl->name));
+    FILE* file = OpenFileAndCreateDirectories(path,"w",FilePurpose_VERILOG_CODE);
+    fprintf(file,"%.*s",UN(info->content));
+
+    fclose(file);
+  }
 
   {
     int index = 0;

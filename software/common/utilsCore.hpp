@@ -869,4 +869,6 @@ inline bool Contains(Array<String> array,String toCheck){
     } else { \
       TAIL = prev; \
     } \
-  } 
+    (NODE)->NEXT = 0; \
+    (NODE)->PREV = 0; \
+  }

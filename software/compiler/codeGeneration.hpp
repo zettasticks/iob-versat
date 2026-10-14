@@ -208,8 +208,8 @@ struct GEN_StructInfo{
 // ======================================
 // Gen Type
 
-GEN_StructInfo* GEN_GenerateConfigStruct(String topName,InstanceInfo* top,Arena* out);
-GEN_StructInfo* GEN_GenerateStateStruct(String topName,InstanceInfo* top,Arena* out);
+GEN_StructInfo* GEN_GenerateConfigStruct(String topName,COM_Unit* top,Arena* out);
+GEN_StructInfo* GEN_GenerateStateStruct(String topName,COM_Unit* top,Arena* out);
 
 bool GEN_IsSimpleType(GEN_StructElem* elem);
 bool GEN_IsUnion(GEN_StructElem* top);
@@ -228,19 +228,23 @@ struct GEN_TopInfo{
   FUDeclaration* decl;
 
   Array<VersatRegister> registers;
+  Array<String> memoryMappedDecisionMask;
 
   int configCount;
-  int configAddressBits;
   SYM_Expr configBitCount;
 
+  // TODO:
+  int staticCount;
+  SYM_Expr staticBitCount;
+
   int stateCount;
-  int stateAddressBits;
   SYM_Expr stateBitCount;
 
+  int addressBits;
   int memoryAddressBits;
   int memoryConfigDecisionBit;
 
-  SYM_Expr delayBitStart;
+  SYM_Expr delayBitCount;
 
   int numberDatabus; // Can differ from declaration because of DMA
 };
@@ -313,6 +317,6 @@ String         GEN_OutputTestbench(FUDeclaration* decl,Arena* out);
 
 String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out);
 String GEN_OutputHeader(GEN_TopInfo* info,Arena* out);
-String GEN_OutputVerilatorTop(GEN_TopInfo* info,Arena* out);
+String GEN_OutputVerilatorHardwareWrapper(GEN_TopInfo* info,Arena* out);
 String GEN_OutputVerilatorSoftwareWrapper(GEN_TopInfo* top,Arena* out);
 String GEN_OutputFirmware(GEN_TopInfo* info,Arena* out);

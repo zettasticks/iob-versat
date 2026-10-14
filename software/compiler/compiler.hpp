@@ -130,6 +130,7 @@ struct COM_PortNode{
 
 struct COM_Edge{
   COM_Edge* next;
+  void* general;
 
   COM_Unit* out;
   int outPort;
@@ -153,6 +154,25 @@ struct COM_Graph{
 
   COM_Unit* freeUnits;
   COM_Edge* freeEdges;
+};
+
+struct COM_UnitMap{
+  COM_UnitMap* next;
+  COM_Unit* unit0;
+  COM_Unit* unit1;
+};
+
+struct COM_EdgeMap{
+  COM_EdgeMap* next;
+  COM_Edge* edge0;
+  COM_Edge* edge1;
+};
+
+struct COM_CopyResult{
+  COM_Graph result;
+  // Maps from input to output
+  COM_EdgeMap* edgeMapping;
+  COM_UnitMap* unitMapping;
 };
 
 // ======================================
@@ -214,17 +234,7 @@ struct COM_Env{
   int tempIndex;
 
   COM_Graph graph;
-  
-#if 0
-  int unitCount;
-  COM_Unit* unitHead;
-  COM_Unit* unitTail;
-
-  int edgeCount;
-  COM_Edge* edgeHead;
-  COM_Edge* edgeTail;
-#endif
-  
+ 
   int scope;
   COM_EntNode*entFreeList;
   COM_EntNode* entHead;
@@ -287,7 +297,7 @@ struct COM_UnpackedExpr{
 };
 
 // ======================================
-// Functions
+// User Functions
 
 enum COM_StmtType{
   COM_StmtType_ASSIGN,
@@ -333,6 +343,8 @@ bool COM_Ent_IsVar(COM_EntType in);
 bool COM_Ent_IsArray(COM_EntType in);
 bool COM_Ent_IsExpr(COM_EntType in);
 bool COM_Ent_IsWire(COM_EntType in);
+
+COM_CopyResult COM_Copy(COM_Graph in,bool computeMapping,Arena* out);
 
 // ======================================
 // Constant expressions and computations
@@ -393,6 +405,7 @@ COM_Unit* COM_PushUnit(COM_Graph* graph,String name,FUDeclaration* decl,Arena* o
 void      COM_InsertMiddle(COM_Graph* graph,COM_Edge* edge,COM_Unit* toInsert,int inPort,int outPort,Arena* out);
 
 void      COM_ClearGeneralPtr(COM_Unit* units);
+void      COM_ClearGeneralPtr(COM_Edge* edges);
 
 //COM_Graph COM_Copy(COM_Graph* in,Arena* out);
 

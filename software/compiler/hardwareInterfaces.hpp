@@ -112,6 +112,7 @@ void HW_Init(Arena* perm);
 // Type
 
 HW_Instance HW_Copy(HW_Instance in,Arena* out);
+HW_Instance HW_InstantiateParams(HW_Instance in,TrieMap<String,SYM_Expr>* paramReplace,Arena* out);
 
 bool HW_IsMemory2P(HW_Interface* in);
 bool HW_IsMemoryDP(HW_Interface* in);

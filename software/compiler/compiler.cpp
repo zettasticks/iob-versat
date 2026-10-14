@@ -57,6 +57,78 @@ bool COM_Ent_IsWire(COM_EntType in){
   return res;
 }
 
+COM_CopyResult COM_Copy(COM_Graph in,bool computeMapping,Arena* out){
+  COM_UnitList units = {};
+  COM_EdgeList edges = {};
+
+  for(COM_Unit* unit = in.units.head; unit; unit = unit->next){
+    COM_Unit* copied = PushStruct<COM_Unit>(out);
+    *copied = *unit;
+    copied->name = PushString(out,unit->name);
+
+    copied->next = copied->prev = nullptr;
+
+    units.count += 1;
+    LL_Append(units.head,units.tail,next,copied);
+
+    unit->general = copied;
+  }
+
+  for(COM_Edge* edge = in.edges.head; edge; edge = edge->next){
+    COM_Unit* outUnit = (COM_Unit*) edge->out->general;
+    COM_Unit* inUnit = (COM_Unit*) edge->in->general;
+    
+    COM_Edge* newEdge = PushStruct<COM_Edge>(out);
+    *newEdge = *edge;
+    newEdge->next = 0;
+    newEdge->out = outUnit;
+    newEdge->in = inUnit;
+
+    edges.count += 1;
+    LL_Append(edges.head,edges.tail,next,newEdge);
+
+    edge->general = newEdge;
+  }
+
+  // Calculate mapping ==========================================================
+  COM_UnitMap* unitMapping = 0;
+  COM_EdgeMap* edgeMapping = 0;
+
+  if(computeMapping){
+    COM_UnitMap* unitTail = 0;
+    COM_EdgeMap* edgeTail = 0;
+    
+    for(COM_Unit* unit = in.units.head; unit; unit = unit->next){
+      COM_Unit* mapped = (COM_Unit*) unit->general;
+      
+      COM_UnitMap* map = PushStruct<COM_UnitMap>(out);
+      map->unit0 = unit;
+      map->unit1 = mapped;
+      LL_Append(unitMapping,unitTail,next,map);
+    }
+
+    for(COM_Edge* edge = in.edges.head; edge; edge = edge->next){
+      COM_Edge* mapped = (COM_Edge*) edge->general;
+      
+      COM_EdgeMap* map = PushStruct<COM_EdgeMap>(out);
+      map->edge0 = edge;
+      map->edge1 = mapped;
+      LL_Append(edgeMapping,edgeTail,next,map);
+    }
+  }
+
+  COM_CopyResult res = {};
+  res.result.edges = edges;
+  res.result.units = units;
+  res.unitMapping = unitMapping;
+  res.edgeMapping = edgeMapping;
+
+  COM_ClearGeneralPtr(in.units.head);
+  COM_ClearGeneralPtr(in.edges.head);
+
+  return res;
+}
+
 // ======================================
 // Constant expressions and computations
 
@@ -1252,7 +1324,13 @@ void COM_InsertMiddle(COM_Graph* graph,COM_Edge* edge,COM_Unit* toInsert,int inP
 
 void COM_ClearGeneralPtr(COM_Unit* units){
   for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
-    units->general = 0;
+    ptr->general = 0;
+  }
+}
+
+void COM_ClearGeneralPtr(COM_Edge* edges){
+  for(COM_Edge* ptr = edges; ptr; ptr = ptr->next){
+    ptr->general = 0;
   }
 }
 

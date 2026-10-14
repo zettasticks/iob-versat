@@ -11,6 +11,16 @@
 #include "compiler.hpp"
 #include "declaration_meta.hpp"
 
+/*
+
+TODO: SYM_Expr that we have inside FUDeclaration cannot depend on identifiers except if they are DECL_Meta params. Any identifier that is not a parameter would lead to wrong verilog code since the identifier would not exist in Verilog.
+
+Basically configs.size,state.size,mm,2p,dp sizes can only have identifiers contained in the set of params. Any other identifier would lead to a verilog error code since the indentifier would not exist.
+
+We need to check this and properly report error.
+
+*/
+
 struct COM_Unit;
 struct COM_Edge;
 
@@ -98,6 +108,7 @@ struct FUDeclaration{
 
   // Graph related data for modular units =======================================
   COM_Graph base;
+  COM_Graph fixedDelays;
 
   COM_FunctionNode* funcs;
 
@@ -138,6 +149,7 @@ bool IsNil(FUDeclaration* decl);
 
 bool DECL_IsSource(FUDeclaration* decl);
 bool DECL_IsSink(FUDeclaration* decl);
+bool DECL_IsVersatDefault(FUDeclaration* decl);
 bool DECL_IsVersatGenerated(FUDeclaration* decl);
 bool DECL_IsVersatOperation(FUDeclaration* decl);
 bool DECL_IsComposite(FUDeclaration* decl);
