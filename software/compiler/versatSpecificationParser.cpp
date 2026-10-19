@@ -3622,10 +3622,11 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
   }
 
   if(parser->IfNextToken(TokenType_DOUBLE_DOT)){
-    SP_Node* right = SP_ParseExpressionInternal(parser,out,99);
-    atom->next = right;
+    SP_Node* range = SP_PushNode(out,SP_Type_RANGE,{},0);
+    range->first = atom;
+    range->second = SP_ParseExpressionInternal(parser,out,99);
 
-    atom = SP_PushNode(out,SP_Type_RANGE,{},atom);
+    atom = range;
   }
 
   struct OpInfo{
@@ -3694,6 +3695,7 @@ SP_Node* SP_ParseExpression(Parser* parser,Arena* out){
 }
 
 SP_Node* SP_ParseRange(Parser* parser,Arena* out){
+#if 0
   SP_Node* first = SP_ParseExpressionInternal(parser,out,99);
 
   SP_Node* second = first;
@@ -3706,6 +3708,9 @@ SP_Node* SP_ParseRange(Parser* parser,Arena* out){
   range->second = second;
 
   SP_Node* res = SP_PushNode(out,SP_Type_EXPR,{},range);
+#endif
+  // Because expressions can be range the parse range is no longer needed, I think
+  SP_Node* res = SP_ParseExpression(parser,out);
   return res;
 }
 

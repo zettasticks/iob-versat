@@ -115,17 +115,33 @@ bool Equal(DECL_StaticWire lhs,DECL_StaticWire rhs){
   return res;
 }
 
+// NOTE: 
+// TODO: Maybe change delay to be input_delay%d and output_delay%d so that we can just simplify all this logic
+
 bool DECL_IsSource(FUDeclaration* decl){
-  bool res = (decl->inputs.size == 0 && decl->outputs.size > 0);
+  bool res = (decl->inputs.size == 0 && decl->outputs.size > 0 || decl->isSource);
+  return res;
+}
+
+bool DECL_IsCompute(FUDeclaration* decl){
+  if(DECL_IsSource(decl) || DECL_IsSink(decl)){
+    return false;
+  }
+
+  bool res = (decl->inputs.size > 0 && decl->outputs.size > 0);
   return res;
 }
 
 bool DECL_IsSink(FUDeclaration* decl){
+  if(decl->isSource){
+    return false;
+  }
+  
   bool res = ((decl == BasicDeclaration::output) ||
-              (decl->inputs.size > 0 && decl->outputs.size == 0) || 
+              (decl->inputs.size > 0 && decl->outputs.size == 0)); // || 
              
               // NOTE: If a unit has delays then we assume it is a sink even if it contains outputs.
-              (decl->inputs.size > 0 && decl->outputs.size > 0 && decl->numberDelays > 0));
+              //(decl->inputs.size > 0 && decl->outputs.size > 0 && decl->numberDelays > 0));
   return res;
 }
 
@@ -227,12 +243,12 @@ bool DECL_RegisterMeta(String name,SP_Node* module){
   //       If a standard external memory interface uses DATA_W, then we need to have DATA_W as a param otherwise
   //       the instantiation code does not know that we have DATA_W dependencies.
   Array<DECL_Param> params = PushArray<DECL_Param>(DECL_State.arena,6);
-  params[0] = {"ADDR_W",SYM_AddrW};
-  params[1] = {"DATA_W",SYM_DataW};
-  params[2] = {"LEN_W",SYM_LenW};
-  params[3] = {"DELAY_W",SYM_DelayW};
-  params[4] = {"AXI_DATA_W",SYM_AxiDataW};
-  params[5] = {"AXI_ADDR_W",SYM_AxiAddrW};
+  params[0] = {"ADDR_W",SYM_32};
+  params[1] = {"DATA_W",SYM_32};
+  params[2] = {"LEN_W",SYM_32};
+  params[3] = {"DELAY_W",SYM_32};
+  params[4] = {"AXI_DATA_W",SYM_32};
+  params[5] = {"AXI_ADDR_W",SYM_32};
 
   DECL_Meta* node = PushStruct<DECL_Meta>(DECL_State.arena);
   node->name = PushString(DECL_State.arena,name);
@@ -378,10 +394,6 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
 
   String moduleName = top->token.val;
   
-  for(V_Node* ptr = top->attributes; ptr; ptr = ptr->next){
-    // TODO: module attributes
-  }
-
   // Convert param into sym pair ================================================
   Array<SYM_Pair> params = PushArray<SYM_Pair>(temp,normalizedParams.size);
   for(int i = 0; i < normalizedParams.size; i++){
@@ -451,7 +463,25 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
   int memoryMappedCount = 0;
   int externalMemoryCount = 0;
   int databusCount = 0;
+  bool isSource = false;
   SYM_Expr memoryMappedAddrSize = SYM_0;
+
+  DEBUG_BREAK_IF(meta->name == "Reg");
+
+  for(V_Node* ptr = top->attributes; ptr; ptr = ptr->next){
+    // TODO: module attributes
+    bool found = 0;
+    if(ptr->token.val == "source"){
+      DEBUG_BREAK();
+      isSource = true;
+      found = 1;
+    }
+
+    if(!found){
+      // TODO: Better error reporting
+      printf("Unknown attribute: %.*s",UN(ptr->token.val));
+    }
+  }
 
   for(V_Node* ptr = top->childs; ptr; ptr = ptr->next){
     if(!V_IsPort(ptr->type)){
@@ -809,7 +839,8 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
   res->singleInterfaces = simple;
   res->supportedAddressGen = supportedAddressGen;
   res->error = error;
-
+  res->isSource = isSource;
+  
   for(DECL_SimpleWireInfo* ptr = simpleHead; ptr; ptr = ptr->next){
     int index = ptr->index;
     switch(ptr->type){
@@ -902,10 +933,17 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
   order = COM_CalculateDAGOrder(graph,temp);
   delays = COM_CalculateDelay(graph,order,temp);
 
+  DEBUG_BREAK();
+
   for(COM_PortDelay* d = delays.portDelays; d; d = d->next){
     COM_Unit* unit = d->unit;
     FUDeclaration* decl = unit->decl;
-    Assert(unit->extraDelay.size == 0);
+
+    if(unit->extraDelay.size != 0){
+      LOCATION();
+      printf("Unit already has delays\nCheck what is happening\n");
+      continue;
+    }
 
     unit->extraDelay = PushArray<int>(out,decl->numberDelays);
     for(int i = 0; i < decl->numberDelays; i++){
@@ -977,6 +1015,7 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
 
   res->base = baseGraph;
   res->fixedDelays = graph;
+  res->funcs = module.funcs;
 
   for(int i = 0; i < delays.inputDelays.size; i++){
     res->inputs[i].delay = delays.inputDelays[i];
@@ -1019,6 +1058,9 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
       }
     }
   }
+  
+  // TODO: 
+  res->isSource = false;
 
   return res;
 }

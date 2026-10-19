@@ -186,6 +186,10 @@ Arena* InitArena_(size_t size,const char* file,int line){
 }
 
 Byte* PushBytes(Arena* arena, size_t size){
+  if(size == 0){
+    return nullptr;
+  }
+
   Byte* ptr = &arena->mem[arena->used];
 
   if(arena->used + size > arena->totalAllocated){

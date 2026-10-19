@@ -669,6 +669,7 @@ bool CompareString(String str1,String str2);
 int CompareStringOrdered(String str1,String str2);
 
 bool Empty(String str);
+inline bool IsNil(String str){return Empty(str);}
 
 char GetHexadecimalChar(int value);
 unsigned char* GetHexadecimal(const unsigned char* text, int str_size); // Helper function to display result
@@ -805,7 +806,7 @@ inline bool Contains(Array<String> array,String toCheck){
 //       But until then, basically allocate a next and prev pointer before the loop.
 //       Next is set immediatly every iteration with the next of the node
 //       Prev is only set if the node is not removed.
-#define LL_Remove(HEAD,TAIL,NEXT,NODE,PREV) \
+#define LL_Remove(HEAD,TAIL,NEXT,PREV,NODE) \
   if((NODE) != nullptr) { \
     if(!PREV) { \
       Assert(NODE == HEAD); \

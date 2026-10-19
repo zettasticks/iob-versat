@@ -112,7 +112,7 @@ struct InstantiateOptions{
   Direction dir;
 };
 
-#if 0
+#if 1
 
 // ======================================
 // Representation

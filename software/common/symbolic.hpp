@@ -111,6 +111,8 @@ extern SYM_Expr SYM_0;
 extern SYM_Expr SYM_1;
 extern SYM_Expr SYM_2;
 extern SYM_Expr SYM_8;
+extern SYM_Expr SYM_16;
+extern SYM_Expr SYM_32;
 
 extern SYM_Expr SYM_AddrW;
 extern SYM_Expr SYM_AxiAddrW;

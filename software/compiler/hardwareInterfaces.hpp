@@ -130,6 +130,7 @@ HW_Wire HW_MakeWire(HW_WireDef* def,SYM_Expr size,int port);
 // Schema building
 
 HW_SchemaBuild HW_SchemaFromString(String format,char sep,Arena* out);
+HW_Schema*     HW_RemoveFromSchema(HW_Schema* in,HW_SchemaType toRemove,Arena* out);
 
 // ======================================
 // Extract values 

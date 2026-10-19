@@ -245,8 +245,10 @@ struct GEN_TopInfo{
   int stateCount;
   SYM_Expr stateBitCount;
 
+  // Address is divided into two regions (memory mapped vs config/state)
+  // nocheckin: TODO: We only care about two regions, why do we have memoryMappedBit and configDecisionBit?
   int addressBits;
-  int memoryAddressBits;
+  int memoryMappedDecisionBit;
   int memoryConfigDecisionBit;
 
   SYM_Expr delayBitCount;
@@ -321,6 +323,7 @@ String         GEN_OutputTestbench(FUDeclaration* decl,Arena* out);
 // Individual code generation helpers
 
 String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out);
+String GEN_OutputHardwareConfigurations(GEN_TopInfo* info,Arena* out);
 String GEN_OutputHeader(GEN_TopInfo* info,Arena* out);
 String GEN_OutputVerilatorHardwareWrapper(GEN_TopInfo* info,Arena* out);
 String GEN_OutputVerilatorSoftwareWrapper(GEN_TopInfo* top,Arena* out);

@@ -98,8 +98,12 @@ struct FUDeclaration{
 
   Array<DECL_StaticWire> statics;
 
-  String operation;
+  // NOTE: Delays have multiple jobs. For source units they encode the number of cycles unit must wait before outputting
+  //       For sink the cycles to wait before starting to receive.
+  //       Compute units might have delays since they care about when the data is valid.
   int numberDelays;
+
+  String operation;
   int numberDatabus;
   int numberDones;
   DECL_SingleInterface singleInterfaces;
@@ -112,6 +116,7 @@ struct FUDeclaration{
 
   COM_FunctionNode* funcs;
 
+  bool isSource;
   bool error;
 };
 extern FUDeclaration FUDeclaration_Nil;
@@ -148,6 +153,7 @@ bool Equal(DECL_StaticWire lhs,DECL_StaticWire rhs);
 bool IsNil(FUDeclaration* decl);
 
 bool DECL_IsSource(FUDeclaration* decl);
+bool DECL_IsCompute(FUDeclaration* decl);
 bool DECL_IsSink(FUDeclaration* decl);
 bool DECL_IsVersatDefault(FUDeclaration* decl);
 bool DECL_IsVersatGenerated(FUDeclaration* decl);

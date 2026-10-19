@@ -25,6 +25,14 @@ bool IsNil(COM_ConnectInfo* con){
   return res;
 }
 
+// nocheckin
+#if 0
+bool IsNil(COM_UnpackedExpr in){
+  bool res = (in.type == COM_UnpackedType_NIL);
+  return res;
+}
+#endif
+
 bool COM_Ent_IsVar(COM_EntType in){
   bool res = (in == COM_EntType_ARG_DYN || 
               in == COM_EntType_ARG_NONE || 
@@ -313,9 +321,12 @@ COM_ConnectInfoList COM_UnpackVarGroup(COM_Env* env,SP_Node* top,Arena* out){
 
     switch(ptr->type){
     case SP_Type_VAR:{
-      head = tail = PushStruct<COM_ConnectInfo>(out);
-      head->ent = var;
+      COM_ConnectInfo* info = PushStruct<COM_ConnectInfo>(out);
+
+      info->ent = var;
       size += 1;
+
+      LL_Append(head,tail,next,info);
     } break;
     case SP_Type_PORT_ACCESS:
     case SP_Type_DELAY_ACCESS:
@@ -382,9 +393,12 @@ COM_RangeValues COM_CalculateRange(COM_Env* env,SP_Node* node){
 
 COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail){
   SP_Node* node = varAccessNode;
-  bool isVarStuff = SP_Type_IsVarAccess(node->type);
-  Assert(isVarStuff && "Can only call this function with valid access expressions");
 
+  bool isVarStuff = SP_Type_IsVarAccess(varAccessNode->type);
+  if(!isVarStuff){
+    return {};
+  }
+  
   COM_Ent res = COM_Ent_Nil;
 
   bool handled = 1;
@@ -404,7 +418,6 @@ COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail){
     
       String name = access.val;
 
-      bool found = 0;
       COM_EntType type = {};
       String wireName = {};
 
@@ -417,32 +430,29 @@ COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail){
 
       if(dir != Direction_NONE){
         type = COM_EntType_VAR_WITH_VIRTUAL_MEM;
-        found = 1;
       }
       
-      if(!found){
+      if(!type){
         for(Wire w : decl->configs){
           if(w.name == name){
             type = COM_EntType_VAR_WITH_CONFIG;
-            wireName = name;
-            found = true;
+            wireName = w.name;
             break;
           }
         }
       }
 
-      if(!found){
+      if(!type){
         for(Wire w : decl->states){
           if(w.name == name){
             type = COM_EntType_VAR_WITH_STATE;
-            wireName = name;
-            found = true;
+            wireName = w.name;
             break;
           }
         }
       }
 
-      if(!found){
+      if(!type){
         COM_ReportError(env,"Entity does not contain wire",access);
       }
       
@@ -458,7 +468,7 @@ COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail){
     
     COM_ConstantResult val = COM_ComputeConstantValue(env,accessExpr);
 
-    if(!val.anyError){
+    if(!val.divByZero){
       bool constant = !val.nonConstant;
 
       if(constant){
@@ -580,8 +590,10 @@ COM_EntPort COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out){
   return res;
 };
 
+// nocheckin
+#if 0
 COM_UnpackedExpr COM_UnpackExpr(COM_Env* env,SP_Node* node){
-  COM_ExprType type = {};
+  COM_UnpackedType type = {};
   COM_Ent ent = {};
   SP_Node* expr = 0;
   String name = {};
@@ -597,25 +609,25 @@ COM_UnpackedExpr COM_UnpackExpr(COM_Env* env,SP_Node* node){
       bool isExpr = COM_Ent_IsExpr(ent.type);
       
       if(!found && ent.type == COM_EntType_VAR_WITH_LEFTOVER_RANGE){
-        type = COM_ExprType_ARRAY_ACCESS;
+        type = COM_UnpackedType_ARRAY_ACCESS;
         expr = ent.node;
         found = 1;
       }
 
       if(!found && isWire){
-        type = COM_ExprType_WIRE;
+        type = COM_UnpackedType_WIRE;
         name = ent.wireName;
         found = 1;
       }
 
       if(!found && isExpr){
-        type = COM_ExprType_EXPR;
-        expr = ent.node;
+        type = COM_UnpackedType_EXPR;
+        expr = node;
         found = 1;
       }
 
       if(!found && ent.type == COM_EntType_NIL && node->type == SP_Type_VAR){
-        type = COM_ExprType_NAME;
+        type = COM_UnpackedType_NAME;
         name = node->token.val;
         found = 1;
       }
@@ -623,13 +635,13 @@ COM_UnpackedExpr COM_UnpackExpr(COM_Env* env,SP_Node* node){
 
     if(!found && node->type == SP_Type_FUNCTION_CALL){
       NOT_IMPLEMENTED("TODO");
-      type = COM_ExprType_FUNC_CALL;
+      type = COM_UnpackedType_FUNC_CALL;
       found = 1;
     }
-          
+
     if(isExpr){
       expr = node;
-      type = COM_ExprType_EXPR;
+      type = COM_UnpackedType_EXPR;
       found = 1;
     }
           
@@ -645,6 +657,30 @@ COM_UnpackedExpr COM_UnpackExpr(COM_Env* env,SP_Node* node){
   
   return res;
 }
+
+COM_UnpackedExpr COM_CollapseToName(COM_UnpackedExpr expr,Arena* out){
+  COM_UnpackedExpr res = {};
+
+  if(expr.type == COM_UnpackedType_NAME){
+    res = expr;
+    Assert(!Empty(res.name));
+  }
+  if(expr.type == COM_UnpackedType_VAR){
+    res = expr;
+    res.name = expr.ent.name;
+    Assert(!Empty(res.name));
+  }
+  if(expr.type == COM_UnpackedType_EXPR){
+    if(expr.expr->type == SP_Type_VAR){
+      res.type = COM_UnpackedType_NAME;
+      res.name = PushString(out,expr.expr->token.val);
+      Assert(!Empty(res.name));
+    }
+  }
+
+  return res;
+}
+#endif
 
 // ======================================
 // Compilation
@@ -706,6 +742,37 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
       ArenaList<DECL_Param>* paramList = PushList<DECL_Param>(temp);
       Array<DECL_Param> params = {};
       FUDeclaration* decl = nullptr;
+
+      {
+        DECL_Param* param = paramList->PushElem();
+        param->name = "DELAY_W";
+        param->val = SYM_DelayW;
+      }
+      if(0){
+        DECL_Param* param = paramList->PushElem();
+        param->name = "ADDR_W";
+        param->val = SYM_AddrW;
+      }
+      {
+        DECL_Param* param = paramList->PushElem();
+        param->name = "DATA_W";
+        param->val = SYM_DataW;
+      }
+      {
+        DECL_Param* param = paramList->PushElem();
+        param->name = "LEN_W";
+        param->val = SYM_LenW;
+      }
+      {
+        DECL_Param* param = paramList->PushElem();
+        param->name = "AXI_DATA_W";
+        param->val = SYM_AxiDataW;
+      }
+      {
+        DECL_Param* param = paramList->PushElem();
+        param->name = "AXI_ADDR_W";
+        param->val = SYM_AxiAddrW;
+      }
 
       for(SP_Node* child = ptr->childs; child; child = child->next){
         bool modDebug = 0;
@@ -795,6 +862,8 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
       COM_ConnectInfoList lhsList = COM_UnpackVarGroup(env,lhsVarGroup,temp);
       COM_ConnectInfoList rhsList = COM_UnpackVarGroup(env,rhsVarGroup,temp);
 
+      DEBUG_BREAK();
+
       int lhsSize = lhsList.size;
       int rhsSize = rhsList.size;
 
@@ -849,7 +918,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
     case SP_Type_FUNC_CONFIG:{
       TEMP_REGION(temp,out);
 
-      Token name = ptr->token;
+      Token funcName = ptr->token;
 
       bool isState  = (ptr->type == SP_Type_FUNC_STATE);
       bool isConfig = (ptr->type == SP_Type_FUNC_CONFIG);
@@ -862,6 +931,8 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
       COM_PushScope(env);
       defer{COM_PopScope(env);};
 
+      auto argList = PushList<COM_Arg>(temp);
+      
       SP_Node* stmtGroup = nullptr;
       for(SP_Node* input = ptr->childs; input; input = input->next){
         bool handled = 1;
@@ -878,6 +949,14 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
         case SP_Type_FUNC_TYPE_BUFFER:{ if(type == COM_EntType_NIL) type = COM_EntType_ARG_BUFFER; // fallthrough
           Token varName = input->token;
           COM_PushEnt(env,varName,type);
+
+          COM_Arg* arg = argList->PushElem();
+          arg->name = PushString(out,varName.val);
+          arg->type = COM_ArgType_SIMPLE;
+
+          if(type == COM_EntType_ARG_BUFFER){
+            arg->type = COM_ArgType_ADDR;
+          }
         } break;
         case SP_Type_STMT_LIST: stmtGroup = input; break;
         default: handled = 0;
@@ -981,82 +1060,105 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
         SP_Node* lhsNode = SP_UnpackExpr(equalityOrFunction->childs);
         SP_Node* rhsNode = SP_UnpackExpr(equalityOrFunction->childs->next);
 
-        COM_UnpackedExpr lhs = COM_UnpackExpr(env,lhsNode);
-        COM_UnpackedExpr rhs = COM_UnpackExpr(env,rhsNode);
-
-        if(isState){
-          if(lhs.type != COM_ExprType_NAME){
-            COM_ReportError(env,"State functions can only have simple variables on left side of assignments",lhsNode);
-          }
-        }
-
-#if 1
-        Assert(rhs.type != COM_ExprType_FUNC_CALL);
-
         COM_Stmt* stmt = nullptr;
-        
+
+        // Handle state in here =======================================================
         if(isState){
+          COM_Ent rhsEnt = COM_ResolveEntity(env,rhsNode,true);
+
+          if(lhsNode->type != SP_Type_VAR){
+            COM_ReportError(env,"LHS of state function must be a simple name",lhsNode);
+          }
+          if(rhsEnt.type != COM_EntType_VAR_WITH_STATE){
+            COM_ReportError(env,"RHS of state function must be a state wire",rhsNode);
+          }
+
+          String name = lhsNode->token.val;
+
+          // TODO: Need to unpack the rhs as well.
           stmt = PushStruct<COM_Stmt>(out);
           stmt->type = COM_StmtType_ASSIGN;
-          stmt->lhs = PushString(out,lhs.name);
-          stmt->rhs = PushString(out,rhs.name);
+          stmt->lhs = PushString(out,name);
+          stmt->rhs = PushString(out,"%.*s.%.*s",UN(rhsEnt.name),UN(rhsEnt.wireName));
         } else {
-          // We need to downgrade one of these into an expression =======================
-          if(lhs.type == COM_ExprType_VAR && 
-             rhs.type == COM_ExprType_VAR){
+          // Unpack entities ============================================================
+          
+          // We decide which statement type we currently are from the lhs.
+          COM_Ent lhsEnt = COM_ResolveEntity(env,lhsNode,true);
 
-            bool found = 0;
-            if(lhs.ent.type == COM_EntType_VAR_WITH_CONFIG){
-              rhs.type = COM_ExprType_EXPR;
-              rhs.expr = rhs.expr;
-              found = 1;
-            }
-
-            Assert(found && "Can we handle Var - Var ???");
+          // Missing function handling.
+#if 0
+          if(!stmt && lhsEnt.type == COM_EntType_){
+            NOT_IMPLEMENTED();
           }
+#endif
 
-          // MARK
-          if(lhs.type == COM_ExprType_FUNC_CALL){
+          if(!stmt && lhsEnt.type == COM_EntType_MODULE_UNIT){
+            COM_Ent rhsEnt = COM_ResolveEntity(env,rhsNode,true);
+
+            if(rhsEnt.type != COM_EntType_VAR_WITH_LEFTOVER_RANGE){
+              COM_ReportError(env,"Expected an address gen expression on the right side",rhsNode);
+            }
             
+            SYM_Expr expr = COM_SymbolicFromExpression(env,rhsEnt.node);
+            AddressAccess* access = CompileAddressGen2(forLoops,expr);
+
+            // TODO: Need to set current data based on the unit declaration.
+            stmt = PushStruct<COM_Stmt>(out);
+            stmt->type = COM_StmtType_ADDR_GEN;
+            stmt->lhs = lhsEnt.name;
+            stmt->rhs = rhsEnt.name;
+            stmt->access.access = access;
+            stmt->access.dir = Direction_READ;
+            stmt->access.inst.type = AddressGenType_READ;
+            stmt->access.inst.loopsSupported = 2;
           }
-        
-          // 
-          if(lhs.type == COM_ExprType_ARRAY_ACCESS){
-            if(isConfig){
-              SYM_Expr expr = COM_SymbolicFromExpression(env,lhs.expr);
 
-              AddressAccess* access = CompileAddressGen2(forLoops,expr);
+          if(!stmt && lhsEnt.type == COM_EntType_VAR_WITH_LEFTOVER_RANGE){
+            //SYM_Expr expr = COM_SymbolicFromExpression(env,rhsNode);
+            COM_Ent rhsEnt = COM_ResolveEntity(env,rhsNode,true);
 
-              stmt = PushStruct<COM_Stmt>(out);
-              stmt->type = COM_StmtType_ADDR_GEN;
-              stmt->rhs = rhs.ent.unit->name;
-              stmt->access = access;
+            if(rhsEnt.type != COM_EntType_MODULE_UNIT){
+              COM_ReportError(env,"Expected an unit on the right side",rhsNode);
             }
-          }
-          if(rhs.type == COM_ExprType_ARRAY_ACCESS){
-            if(isConfig){
-              SYM_Expr expr = COM_SymbolicFromExpression(env,rhs.expr);
 
-              AddressAccess* access = CompileAddressGen2(forLoops,expr);
+            SYM_Expr expr = COM_SymbolicFromExpression(env,lhsEnt.node);
+            AddressAccess* access = CompileAddressGen2(forLoops,expr);
 
-              stmt = PushStruct<COM_Stmt>(out);
-              stmt->type = COM_StmtType_ADDR_GEN;
-              stmt->lhs = lhs.ent.unit->name;
-              stmt->access = access;
-            }
+            // TODO: Need to set current data based on the unit declaration.
+            stmt = PushStruct<COM_Stmt>(out);
+            stmt->type = COM_StmtType_ADDR_GEN;
+            stmt->lhs = rhsEnt.name;
+            stmt->rhs = lhsEnt.name;
+            stmt->access.access = access;
+            stmt->access.dir = Direction_READ;
+            stmt->access.inst.type = AddressGenType_READ;
+            stmt->access.inst.loopsSupported = 2;
           }
+
+          if(!stmt && COM_Ent_IsWire(lhsEnt.type)){
+            stmt = PushStruct<COM_Stmt>(out);
+            stmt->type = COM_StmtType_ASSIGN;
+            stmt->lhs = PushString(out,"%.*s.%.*s",UN(lhsEnt.name),UN(lhsEnt.wireName));
+ 
+            SYM_Expr asExpr = COM_SymbolicFromExpression(env,rhsNode);
+            stmt->rhs = SYM_Repr(asExpr,out);
+          }
+
+          Assert(stmt && "Missing some processing");
         }
         
         if(stmt){
           LL_Append(stmtHead,stmtTail,next,stmt);
         }
-#endif
       }
-
-      
 
       // Pack into function =========================================================
       COM_FunctionNode* func = PushStruct<COM_FunctionNode>(out);
+      func->v.name = PushString(out,funcName.val);
+      func->v.stmts = stmtHead;
+      func->v.type = COM_FunctionType_CONFIG;
+      func->v.args = PushArray(out,argList);
 
       LL_Append(funcHead,funcTail,next,func);
     } break;
@@ -1109,6 +1211,7 @@ COM_Ent* COM_PushEnt(COM_Env* env,String name,COM_EntType type){
   if(env->entFreeList){
     res = env->entFreeList;
     LL_PopFrontNoTail(env->entFreeList,next);
+    *res = {};
   } else {
     res = PushStruct<COM_EntNode>(env->arena);
   }
@@ -1683,26 +1786,39 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
 
     int edgeExtraDelay = inputLatency - outputLatency;
     Assert(edgeExtraDelay >= 0);
-
+    
     // TODO: If a port is connected to multiple inputs then we can only select one value for this.
     //       Proper implementation needs to do this stuff in more steps, we are trying to force 1 pass for no reason.
-    if(edge->out->decl->numberDelays){
+    if(edge->out->decl->numberDelays && DECL_IsSource(edge->out->decl)){
       COM_PortDelay* d = PushStruct<COM_PortDelay>(outArena);
       d->unit = edge->out;
       d->port = edge->outPort;
       d->dir = Direction_OUTPUT;
-      d->latency = edgeExtraDelay;
+      d->latency = outputLatency - edge->out->decl->outputs[edge->outPort].delay;  //edgeExtraDelay;
 
       LL_Append(portHead,portTail,next,d);
 
       edgeExtraDelay = 0;
     }
-    if(edge->in->decl->numberDelays){
+    if(edge->in->decl->numberDelays && DECL_IsSink(edge->in->decl)){
       COM_PortDelay* d = PushStruct<COM_PortDelay>(outArena);
       d->unit = edge->in;
       d->port = edge->inPort;
       d->dir = Direction_INPUT;
-      d->latency = edgeExtraDelay;
+      d->latency = inputLatency - edge->in->decl->inputs[edge->inPort].delay;
+
+      LL_Append(portHead,portTail,next,d);
+
+      edgeExtraDelay = 0;
+    }
+
+    if(edge->in->decl->numberDelays && DECL_IsCompute(edge->in->decl)){
+      DEBUG_BREAK();
+      COM_PortDelay* d = PushStruct<COM_PortDelay>(outArena);
+      d->unit = edge->in;
+      d->port = edge->inPort;
+      d->dir = Direction_INPUT;
+      d->latency = inputLatency;
 
       LL_Append(portHead,portTail,next,d);
 

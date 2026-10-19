@@ -456,6 +456,11 @@ int main(int argc,char* argv[]){
 
         String name = ptr->token.val;
         DECL_RegisterMeta(name,ptr);
+
+        SimpleTypeFileInfo* info = PushStruct<SimpleTypeFileInfo>(perm);
+        info->simpleTypeName = PushString(perm,name);
+        info->content = content;
+        LL_Append(fileInfoHead,fileInfoTail,next,info);
       }
     }
   }
@@ -479,9 +484,13 @@ int main(int argc,char* argv[]){
   }
 
   String topLevelTypeStr = globalOptions.topName;
-  Array<DECL_Param> params = PushArray<DECL_Param>(temp,20);
+  Array<DECL_Param> params = PushArray<DECL_Param>(temp,6);
   params[0] = DECL_Param{"ADDR_W",SYM_Lit(32)};
   params[1] = DECL_Param{"DATA_W",SYM_Lit(32)};
+  params[2] = DECL_Param{"DELAY_W",SYM_DelayW};
+  params[3] = DECL_Param{"LEN_W",SYM_LenW};
+  params[4] = DECL_Param{"AXI_DATA_W",SYM_AxiDataW};
+  params[5] = DECL_Param{"AXI_ADDR_W",SYM_AxiAddrW};
   FUDeclaration* topType = DECL_GetType(topLevelTypeStr,params);
   
   if(IsNil(topType)){
@@ -603,9 +612,41 @@ int main(int argc,char* argv[]){
   if(res){
     return res;
   }
-  
-  DEBUG_BREAK();
 
+  printf("ADDR_W:%d\n",info.addressBits);
+  if(info.numberDatabus){
+    printf("HAS_AXI:True\n");
+  }
+
+  if(globalOptions.exportInternalMemories){
+    int index = 0;
+#if 0
+    for(ExternalMemorySymbolic inter : external){
+      switch(inter.type){
+      case ExternalMemoryType::ExternalMemoryType_DP:{
+        printf("DP - %d",index++);
+        for(int i = 0; i < 2; i++){
+          printf(",%.*s",UN(SYM_Repr(inter.dp[i].bitSize,temp)));
+          printf(",%.*s",UN(SYM_Repr(inter.dp[i].dataSizeOut,temp)));
+          printf(",%.*s",UN(SYM_Repr(inter.dp[i].dataSizeIn,temp)));
+        }
+        printf("\n");
+      }break;
+      case ExternalMemoryType::ExternalMemoryType_2P:{
+        printf("2P - %d",index++);
+        printf(",%.*s",UN(SYM_Repr(inter.tp.bitSizeOut,temp)));
+        printf(",%.*s",UN(SYM_Repr(inter.tp.bitSizeIn,temp)));
+        printf(",%.*s",UN(SYM_Repr(inter.tp.dataSizeOut,temp)));
+        printf(",%.*s",UN(SYM_Repr(inter.tp.dataSizeIn,temp)));
+        printf("\n");
+      }break;
+      }
+    }
+#endif
+  }
+
+  ReportFileCreation();
+  
 /*
 
 #if 0

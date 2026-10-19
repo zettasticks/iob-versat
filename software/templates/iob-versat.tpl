@@ -37,7 +37,7 @@ static bool enableDMA;
 // TODO: Need to dephase typeof, it is a gnu extension, not valid C until version C23 which is too recent to support
 typeof(accelConfig) accelConfig  = 0;
 typeof(accelState)  accelState   = 0;
-typeof(accelStatic) accelStatic = 0;
+//typeof(accelStatic) accelStatic = 0;
 
 @{registerLocation}
 
@@ -52,7 +52,7 @@ void versat_init(int base){
 
   accelConfig = (typeof(accelConfig)) (versat_base + configStart);
   accelState  = (typeof(accelState))  (versat_base + stateStart);
-  accelStatic = (volatile AcceleratorStatic*)  (versat_base + staticStart);
+  //accelStatic = (volatile AcceleratorStatic*)  (versat_base + staticStart);
 
   VersatLoadDelay(delayBuffer);
 }

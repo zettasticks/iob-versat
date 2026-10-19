@@ -56,14 +56,18 @@ bool CreateVCD;
 bool SimulateDatabus;
 bool versatInitialized;
 
+@{acceleratorConfig}
+
 static @{typeName}Config configBuffer = {};
 static @{typeName}State stateBuffer = {};
-static AcceleratorStatic staticBuffer = {};
 static DatabusAccess databusBuffer[@{nIOs}] = {}; 
+
+//static AcceleratorStatic staticBuffer = {};
 
 volatile @{typeName}Config* accelConfig = (volatile @{typeName}Config*) &configBuffer;
 volatile @{typeName}State* accelState = (volatile @{typeName}State*) &stateBuffer;
-volatile AcceleratorStatic* accelStatic = (volatile AcceleratorStatic*) &staticBuffer;
+
+//volatile AcceleratorStatic* accelStatic = (volatile AcceleratorStatic*) &staticBuffer;
 
 // ============================================================================
 // Utilities
@@ -432,7 +436,7 @@ void versat_init(int base){
 
   VersatLoadDelay(delayBuffer);
   
-  accelStatic = &staticBuffer;
+  //accelStatic = &staticBuffer;
 }
 
 void SetVersatDebugPrintfFunction(VersatPrintf function){

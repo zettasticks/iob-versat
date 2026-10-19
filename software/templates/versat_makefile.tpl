@@ -20,10 +20,10 @@ VERILATOR_COMMON_ARGS += @{traceType}
 all: libaccel.a
 
 # Joins wrapper with verilator object files into a library
-libaccel.a: $(VHEADER) wrapper.o createVerilatorObjects
-	ar -rcs libaccel.a wrapper.o $(wildcard ./obj_dir/*.o)
+libaccel.a: $(VHEADER) verilator_wrapper.o createVerilatorObjects
+	ar -rcs libaccel.a verilator_wrapper.o $(wildcard ./obj_dir/*.o)
 
-createVerilatorObjects: $(VHEADER) wrapper.o
+createVerilatorObjects: $(VHEADER) verilator_wrapper.o
 	$(MAKE) verilatorObjects
 
 VUnitWireInfo.h: $(VHEADER)
@@ -34,8 +34,8 @@ $(VHEADER): $(HARDWARE_SRC)
 	$(MAKE) -C ./obj_dir -f V$(TYPE_NAME).mk
 	cp ./obj_dir/*.h ./
 
-wrapper.o: $(VHEADER) VUnitWireInfo.h wrapper.cpp
-	g++ -std=c++17 -march=native -O2 -g -c -o wrapper.o -I $(VERILATOR_ROOT)/include $(abspath wrapper.cpp)
+verilator_wrapper.o: $(VHEADER) VUnitWireInfo.h verilator_wrapper.cpp
+	g++ -std=c++17 -march=native -O2 -g -c -o verilator_wrapper.o -I $(VERILATOR_ROOT)/include $(abspath verilator_wrapper.cpp)
 
 # Created after calling verilator. Need to recall make to have access to the variables
 -include ./obj_dir/V$(TYPE_NAME)_classes.mk

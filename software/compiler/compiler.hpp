@@ -191,7 +191,8 @@ enum COM_EntType{
   COM_EntType_ARG_BUFFER,
 
   COM_EntType_VAR_WITH_LEFTOVER_RANGE,
-
+  
+  // Var.Wire
   COM_EntType_VAR_WITH_CONFIG,
   COM_EntType_VAR_WITH_STATE,
   COM_EntType_VAR_WITH_VIRTUAL_MEM,
@@ -277,28 +278,32 @@ struct COM_RangeValues{
   bool constant;
 };
 
-enum COM_ExprType{
-  COM_ExprType_NIL,
-  COM_ExprType_FUNC_CALL,
-  COM_ExprType_ARRAY_ACCESS,
-  COM_ExprType_VAR,
-  COM_ExprType_WIRE,
-  COM_ExprType_EXPR,
-  COM_ExprType_NAME
+// nocheckin
+#if 0
+enum COM_UnpackedType{
+  COM_UnpackedType_NIL,
+  COM_UnpackedType_FUNC_CALL,
+  COM_UnpackedType_ARRAY_ACCESS,
+  COM_UnpackedType_VAR,
+  COM_UnpackedType_WIRE,
+  COM_UnpackedType_EXPR,
+  COM_UnpackedType_NAME
 };
 
 struct COM_UnpackedExpr{
-  COM_ExprType type;
+  COM_UnpackedType type;
   
   COM_Ent ent;
   SP_Node* expr;
   String name;
 };
+#endif
 
 // ======================================
 // User Functions
 
 enum COM_StmtType{
+  COM_StmtType_NIL,
   COM_StmtType_ASSIGN,
   COM_StmtType_ADDR_GEN,
   COM_StmtType_MEM_COPY
@@ -306,21 +311,45 @@ enum COM_StmtType{
 
 struct COM_Stmt{
   COM_Stmt* next;
-
   COM_StmtType type;
+
+  // TODO: Probably gonna need to change into hierarchical names.
   String lhs;
   String rhs;
-  AddressAccess* access;
+  AccessAndType access;
+};
+
+enum COM_ArgType{
+  COM_ArgType_NIL,
+  COM_ArgType_SIMPLE,
+  COM_ArgType_ADDR,
+};
+
+struct COM_Arg{
+  COM_ArgType type;
+  String name;
+};
+
+enum COM_FunctionType{
+  COM_FunctionType_NIL,
+  COM_FunctionType_CONFIG,
+  COM_FunctionType_STATE,
+  COM_FunctionType_MEM
 };
 
 struct COM_Function{
+  COM_FunctionType type;
   String name;
+  Array<COM_Arg> args;
   COM_Stmt* stmts;
 };
 
+// What is the most raw form of storing this stuff?
+// Names are hierarchical names, address gen are address gen, simple calculations.
+
 struct COM_FunctionNode{
   COM_FunctionNode* next;
-  COM_Function* v;
+  COM_Function v;
 };
 
 // ======================================
@@ -337,6 +366,9 @@ struct COM_Module{
 
 bool IsNil(COM_Ent ent);
 bool IsNil(COM_ConnectInfo* con);
+
+// nocheckin
+//bool IsNil(COM_UnpackedExpr in);
 
 bool COM_Ent_IsVar(COM_EntType in);
 bool COM_Ent_IsArray(COM_EntType in);
@@ -358,7 +390,10 @@ COM_ConnectInfoList COM_UnpackVarGroup(COM_Env* env,SP_Node* top,Arena* out);
 COM_RangeValues     COM_CalculateRange(COM_Env* env,SP_Node* range);
 COM_Ent             COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail);
 COM_EntPort         COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out);
-COM_UnpackedExpr    COM_UnpackExpr(COM_Env* env,SP_Node* expr);
+
+// nocheckin
+//COM_UnpackedExpr COM_UnpackExpr(COM_Env* env,SP_Node* expr);
+//COM_UnpackedExpr COM_CollapseToName(COM_UnpackedExpr expr,Arena* out);
 
 // ======================================
 // Compilation
@@ -372,8 +407,6 @@ COM_Ent* COM_PushEnt(COM_Env* env,String name,COM_EntType type);
 COM_Ent* COM_PushEnt(COM_Env* env,Token name,COM_EntType type);
 COM_Ent  COM_GetEnt(COM_Env* env,Token name,bool canFail);
 COM_Ent  COM_ArrayAccess(COM_Env* env,COM_Ent array,int index);
-
-//COM_Unit* COM_PushUnit(COM_Env* env);
 
 void COM_PushScope(COM_Env* env);
 void COM_PopScope(COM_Env* env);

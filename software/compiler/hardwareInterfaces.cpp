@@ -204,6 +204,29 @@ HW_SchemaBuild HW_SchemaFromString(String format,char sep,Arena* out){
   return res;
 }
 
+HW_Schema* HW_RemoveFromSchema(HW_Schema* in,HW_SchemaType toRemove,Arena* out){
+  HW_SchemaNode* head = 0;
+  HW_SchemaNode* tail = 0;
+
+  for(HW_SchemaNode* ptr = in->head; ptr; ptr = ptr->next){
+    if(ptr->type == toRemove){
+      continue;
+    }
+
+    HW_SchemaNode* node = PushStruct<HW_SchemaNode>(out);
+    node->content = PushString(out,ptr->content);
+    node->type = ptr->type;
+    
+    LL_Append(head,tail,next,node);
+  }
+
+  HW_Schema* res = PushStruct<HW_Schema>(out);
+  res->head = head;
+  res->sep = in->sep;
+
+  return res;
+}
+
 // ======================================
 // Extract values 
 

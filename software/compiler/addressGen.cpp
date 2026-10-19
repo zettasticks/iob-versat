@@ -1,6 +1,6 @@
 #include "addressGen.hpp"
 
-#if 0
+#if 1
 
 #include "globals.hpp"
 #include "memory.hpp"
@@ -493,6 +493,7 @@ Array<Pair<String,SYM_Expr>> InstantiateIndividualAssignments(AddressAccess* acc
 }
 
 AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenForDef> loops,SYM_Expr addr,String content){
+#if 0
   Arena* out = globalPermanent;
   
   TEMP_REGION(temp,out);
@@ -615,6 +616,8 @@ AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenFo
   result->loopVars = loopVars;
   
   return result;
+#endif
+  return {};
 };
 
 static void EmitDebugAddressGenInfo(AddressAccess* access,CEmitter* c){
@@ -644,6 +647,8 @@ CodeNode* PushCodeNode(Arena* out,CodeNodeType type,String name,SYM_Expr expr){
 
 CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions options){
   TEMP_REGION(temp,out);
+
+  Assert(options.type != AddressGenType_NIL);
 
   AddressAccess* initial = access.access;
   int maxLoops = access.inst.loopsSupported;
@@ -979,10 +984,10 @@ CodeNode* EmitStatements(AccessAndType access,Arena* out,InstantiateOptions opti
 
 // nocheckin: Reorganize
 AddressAccess* CompileAddressGen2(Array<AddressGenForDef2> loops,SYM_Expr addr){
-  return {};
-  NOT_IMPLEMENTED();
+  //return {};
+  //NOT_IMPLEMENTED();
 
-#if 0
+#if 1
   Arena* out = globalPermanent;
   TEMP_REGION(temp,out);
   

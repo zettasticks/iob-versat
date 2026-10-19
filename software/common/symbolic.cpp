@@ -212,6 +212,8 @@ SYM_Expr SYM_0;
 SYM_Expr SYM_1;
 SYM_Expr SYM_2;
 SYM_Expr SYM_8;
+SYM_Expr SYM_16;
+SYM_Expr SYM_32;
 
 SYM_Expr SYM_AddrW;
 SYM_Expr SYM_AxiAddrW;
@@ -2942,6 +2944,8 @@ void SYM_Init(){
   SYM_1 = GetOrAllocateLiteral(1);
   SYM_2 = GetOrAllocateLiteral(2);
   SYM_8 = GetOrAllocateLiteral(8);
+  SYM_16 = GetOrAllocateLiteral(16);
+  SYM_32 = GetOrAllocateLiteral(32);
 
   SYM_AddrW = GetOrAllocateVariable("ADDR_W");
   SYM_AxiAddrW = GetOrAllocateVariable("AXI_ADDR_W");

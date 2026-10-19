@@ -2098,7 +2098,7 @@ String V_PreprocessVerilogFile(String content,Array<String> includeFilepaths,Are
         DefineInfo* prev = 0;
         DefineInfo* node = 0;
         LL_FindPrev(defineHead,next,node,prev,it->name == name);
-        LL_Remove(defineHead,definePtr,next,node,prev);
+        LL_Remove(defineHead,definePtr,next,prev,node);
       } break;
 
       case TokenType_VERILOG_TIMESCALE:{
