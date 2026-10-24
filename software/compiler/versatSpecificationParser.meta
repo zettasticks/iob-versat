@@ -40,6 +40,7 @@ table NodeTable(name,isExprType,constantOpCount,varAccess){
   CONNECTION           0   0   0
   PARAM_DECL           0   0   0
   MODULE_DECL          0   0   0
+  MERGE_DECL           0   0   0
   FUNC_CONFIG          0   0   0
   FUNC_STATE           0   0   0
   FUNC_MEM             0   0   0

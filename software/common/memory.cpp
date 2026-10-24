@@ -725,13 +725,14 @@ int BitArray::FirstBitSetIndex(){
 int BitArray::FirstBitSetIndex(int start){
   // TODO: For now I want correctness, find the bug to trailing zero.
   //#ifdef VERSAT_DEBUG
-  int correct = 0;
+  int correct = -1;
   for(int i = start; i < this->bitSize; i++){
     if(Get(i)){
       correct = i;
       break;
     }
   }
+  
   return correct;
 //#endif
 
@@ -805,6 +806,16 @@ BitIterator BitArray::end(){
   iter.currentByte = bitSize/ 8;
   iter.currentBit = bitSize % 8;
   return iter;
+}
+
+String Repr(BitArray in,Arena* out){
+  int size = in.bitSize;
+  char* bytes = (char*) PushBytes(out,size);
+  for(int i = 0; i < size; i++){
+    bytes[i] = in.Get(i) ? '1' : '0';
+  }
+  String res = String(bytes,size);
+  return res;
 }
 
 GenericPoolIterator IteratePool(void* pool,int sizeOfType,int alignmentOfType){

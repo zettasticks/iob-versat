@@ -1,6 +1,81 @@
 #pragma once
 
-#include "versat.hpp"
+#include "compiler.hpp"
+
+struct MERGE_Result{
+  COM_Unit* units;
+  COM_Edge* edges;
+};
+
+MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out);
+
+String MERGE_GetValidMuxName(COM_Unit* units,int muxInserted,Arena* out);
+
+struct ConsolidationGraphOptions{
+  //Array<SpecificMergeNodes> specifics;
+  int order;
+  int difference;
+  bool mapNodes;
+  enum {NOTHING,SAME_ORDER,EXACT_ORDER} type;
+};
+
+struct MergeEdge{
+  COM_Unit* instances[2];
+};
+
+enum MERGE_MapType{
+  MERGE_MapType_NIL,
+  MERGE_MapType_NODE,
+  MERGE_MapType_EDGE
+};
+
+struct MERGE_Map{
+  MERGE_MapType type;
+  union{
+    // 0 is dst, 1 is src
+    COM_Unit* units[2];
+    COM_Edge* edges[2];
+  };
+};
+
+struct MERGE_MapNode{
+  MERGE_MapNode* next;
+  MERGE_Map v;
+};
+
+struct ConsolidationGraph{
+  Array<MERGE_Map> nodes;
+  Array<BitArray> edges;
+};
+
+struct ConsolidationResult{
+  ConsolidationGraph graph;
+  //Pool<MERGE_Map> specificsAdded;
+  int upperBound;
+};
+
+#if 0
+struct CliqueState{
+  int max;
+  int upperBound;
+  int startI;
+  int iterations;
+  Time start;
+  bool found;
+};
+#endif
+
+struct MERGE_CliqueResult{
+  BitArray result;
+  bool didTimeout;
+};
+
+ConsolidationGraph MERGE_GenerateConsolidationGraph(COM_Unit* unit,COM_Edge* edge,COM_Graph toMap,ConsolidationGraphOptions options,Arena* out);
+
+MERGE_CliqueResult MERGE_MaxClique(ConsolidationGraph graph,int upperBound,Time timeout,Arena* out);
+
+void MERGE_Repr(StringBuilder* b,MERGE_Map* map);
+void MERGE_DebugOutputCG(ConsolidationGraph graph,String filename,BitArray* optionalValid = nullptr);
 
 #if 0
 

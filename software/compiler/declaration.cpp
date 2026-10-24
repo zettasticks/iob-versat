@@ -2,6 +2,7 @@
 
 #include "hardwareInterfaces.hpp"
 #include "debugVersat.hpp"
+#include "merge.hpp"
 
 // ======================================
 // Globals
@@ -115,11 +116,21 @@ bool Equal(DECL_StaticWire lhs,DECL_StaticWire rhs){
   return res;
 }
 
+bool DECL_IsInput(FUDeclaration* decl){
+  bool res = (decl == BasicDeclaration::input);
+  return res;
+}
+
+bool DECL_IsOutput(FUDeclaration* decl){
+  bool res = (decl == BasicDeclaration::output);
+  return res;
+}
+
 // NOTE: 
 // TODO: Maybe change delay to be input_delay%d and output_delay%d so that we can just simplify all this logic
 
 bool DECL_IsSource(FUDeclaration* decl){
-  bool res = (decl->inputs.size == 0 && decl->outputs.size > 0 || decl->isSource);
+  bool res = (decl->inputs.size == 0 && (decl->outputs.size > 0 || decl->isSource));
   return res;
 }
 
@@ -252,7 +263,12 @@ bool DECL_RegisterMeta(String name,SP_Node* module){
 
   DECL_Meta* node = PushStruct<DECL_Meta>(DECL_State.arena);
   node->name = PushString(DECL_State.arena,name);
-  node->type = DECL_MetaType_COMPOSITE;
+
+  node->type = DECL_MetaType_MODULE;
+  if(module->type == SP_Type_MERGE_DECL){
+    node->type = DECL_MetaType_MERGE;
+  }
+
   node->compositeUnit = module;
   node->params = params;
   LL_Append(DECL_State.metaHead,DECL_State.metaTail,next,node);
@@ -359,8 +375,11 @@ FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params){
     if(metaExists->type == DECL_MetaType_SIMPLE){
       res = DECL_InstantiateSimple(metaExists,normalizedParams);
     }
-    if(metaExists->type == DECL_MetaType_COMPOSITE){
-      res = DECL_InstantiateComplex(metaExists,normalizedParams);
+    if(metaExists->type == DECL_MetaType_MODULE){
+      res = DECL_InstantiateModule(metaExists,normalizedParams);
+    }
+    if(metaExists->type == DECL_MetaType_MERGE){
+      res = DECL_InstantiateMerge(metaExists,normalizedParams);
     }
   }
 
@@ -380,6 +399,11 @@ FUDeclaration* DECL_GetBufferType(int delay){
   params.size = 1;
  
   FUDeclaration* res = DECL_GetType("FixedBuffer",params);
+  return res;
+}
+
+FUDeclaration* DECL_GetVariableBufferType(){
+  static FUDeclaration* res = DECL_GetType("Buffer",{});
   return res;
 }
 
@@ -466,13 +490,10 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
   bool isSource = false;
   SYM_Expr memoryMappedAddrSize = SYM_0;
 
-  DEBUG_BREAK_IF(meta->name == "Reg");
-
   for(V_Node* ptr = top->attributes; ptr; ptr = ptr->next){
     // TODO: module attributes
     bool found = 0;
     if(ptr->token.val == "source"){
-      DEBUG_BREAK();
       isSource = true;
       found = 1;
     }
@@ -890,7 +911,7 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
   return res;
 }
 
-FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normalizedParams){
+FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normalizedParams){
   DEBUG_TOP(meta->name);
 
   DEBUG_STAGE("Start");
@@ -920,6 +941,7 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
     int insertedBuffers = 0;
     for(COM_EdgeDelay* ptr = delays.edgeDelays; ptr; insertedBuffers++,ptr = ptr->next){
       FUDeclaration* decl = DECL_GetBufferType(ptr->delay);
+      // TODO: Make sure that the name is free to be used.
       COM_Unit* buffer = COM_PushUnit(&graph,SF("_versat_buffer%d",insertedBuffers),decl,out);
       
       COM_Edge* edge = ptr->edge;
@@ -932,8 +954,6 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
 
   order = COM_CalculateDAGOrder(graph,temp);
   delays = COM_CalculateDelay(graph,order,temp);
-
-  DEBUG_BREAK();
 
   for(COM_PortDelay* d = delays.portDelays; d; d = d->next){
     COM_Unit* unit = d->unit;
@@ -1063,4 +1083,25 @@ FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normali
   res->isSource = false;
 
   return res;
+}
+
+FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalizedParams){
+  TEMP_REGION(temp,DECL_State.arena);
+  
+  SP_Node* top = meta->compositeUnit;
+
+  int mergeCount = 0;
+  for(SP_Node* ptr = top->childs; ptr; ptr = ptr->next){
+    mergeCount += 1;
+  }
+  Array<FUDeclaration*> types = PushArray<FUDeclaration*>(temp,mergeCount);
+
+  int index = 0;
+  for(SP_Node* ptr = top->childs; ptr; index += 1,ptr = ptr->next){
+    types[index] = DECL_GetType(ptr->token.val,{});
+  }
+ 
+  MERGE_Result res = MERGE_Merge(types,DECL_State.arena);
+  
+  return {};
 }

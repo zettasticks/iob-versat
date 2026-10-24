@@ -58,7 +58,8 @@ struct DECL_PortInfo{
 enum DECL_MetaType{
   DECL_MetaType_NIL,
   DECL_MetaType_SIMPLE,
-  DECL_MetaType_COMPOSITE
+  DECL_MetaType_MODULE,
+  DECL_MetaType_MERGE
 };
 
 struct DECL_Meta{
@@ -147,10 +148,12 @@ namespace BasicDeclaration{
 // ======================================
 // Type
 
+bool IsNil(FUDeclaration* decl);
 u64  Hash(DECL_StaticWire in);
 bool Equal(DECL_StaticWire lhs,DECL_StaticWire rhs);
 
-bool IsNil(FUDeclaration* decl);
+bool DECL_IsInput(FUDeclaration* decl);
+bool DECL_IsOutput(FUDeclaration* decl);
 
 bool DECL_IsSource(FUDeclaration* decl);
 bool DECL_IsCompute(FUDeclaration* decl);
@@ -185,11 +188,11 @@ FUDeclaration* DECL_RegisterFU(String name,DeclarationType type);
 
 FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params);
 FUDeclaration* DECL_GetBufferType(int delay);
+FUDeclaration* DECL_GetVariableBufferType();
 
 // ======================================
 // Instantiation
 
 FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normalizedParams);
-FUDeclaration* DECL_InstantiateComplex(DECL_Meta* meta,Array<DECL_Param> normalizedParams);
-
-
+FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normalizedParams);
+FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalizedParams);

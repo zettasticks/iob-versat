@@ -3541,7 +3541,7 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
       }
 
       parser->ExpectNext(')');
-      var = SP_PushNode(out,SP_Type_FUNC_CALL,name,0);
+      var = SP_PushNode(out,SP_Type_FUNC_CALL,name,argHead);
     } else {
       var = SP_PushNode(out,SP_Type_VAR,name,0);
     }
@@ -4322,7 +4322,32 @@ SP_Node* SP_ParseSpec(String content,Arena* out){
     if(tok.type == TokenType_KEYWORD_MODULE){
       node = SP_ParseModuleDef(parser,out);
     } else if(tok.type == TokenType_KEYWORD_MERGE){
-      // Nothing
+      parser->Advance(tok);
+      Token name = parser->NextToken();
+
+      if(parser->IfNextToken('=')){
+        SP_Node* typeHead = 0;
+        SP_Node* typeTail = 0;
+
+        while(!parser->Done()){
+          Token type = parser->NextToken();
+
+          SP_Node* node = SP_PushNode(out,SP_Type_VAR_DECL,type,0);
+          LL_Append(typeHead,typeTail,next,node);
+
+          if(parser->IfNextToken('|')){
+            continue;
+          } else {
+            break;
+          }
+        }
+
+        parser->ExpectNext(';');
+
+        node = SP_PushNode(out,SP_Type_MERGE_DECL,name,typeHead);
+      } else {
+        NOT_IMPLEMENTED();
+      }
     } else {
       parser->ReportUnexpectedToken(tok,{TokenType_KEYWORD_MODULE,TokenType_KEYWORD_MERGE});
       parser->Synch({TokenType_KEYWORD_MODULE,TokenType_KEYWORD_MERGE});

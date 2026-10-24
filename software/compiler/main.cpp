@@ -26,107 +26,17 @@
 #include <filesystem>
 namespace fs = std::filesystem;
 
+/*
+  Stuff:
+  - StringBuilder -> Write to file and Template helpers instead of double copy.
+
+
+*/
+
 // TODO: For some reason, in the makefile we cannot stringify the arguments that we want to
 //       Do not actually want to do these preprocessor things. Fix the makefile so that it passes as a string
 #define DO_STRINGIFY(ARG) #ARG
 #define STRINGIFY(ARG) DO_STRINGIFY(ARG)
-
-#if 0
-// Only for graphs that we know for sure are DAG
-Array<int> CalculateDAG(Array<Pair<int,int>> edges,int start,Arena* out){
-  TEMP_REGION(temp,out);
-
-  int maxNode = 0;
-
-  for(Pair<int,int> p : edges){
-    maxNode = MAX(maxNode,p.first);
-    maxNode = MAX(maxNode,p.second);
-  }
-
-  int NOT_SEEN = 0; 
-  int WAIT_CHILDREN = 1;
-  int PERMANENT = 2;
-
-  int size = maxNode + 1;
-  Stack<int>* toSee = PushQueue<int>(temp,size * 2);
-  Array<int> marked = PushArray<int>(temp,size);
-  Memset(marked,NOT_SEEN);
-  
-  toSee->Push(start);
-
-  auto list = PushList<int>(temp);
-  while(toSee->Size()){
-    int head = toSee->Pop();
-
-    if(marked[head] == WAIT_CHILDREN){
-      marked[head] = PERMANENT;
-      *list->PushElem() = head;
-      continue;
-    }
-    
-    if(marked[head] != NOT_SEEN){
-      continue;
-    }
-
-    bool firstSon = true;
-    for(auto p : edges){
-      if(p.first == head){
-        if(!marked[p.second]){
-          if(firstSon){
-            firstSon = false;
-            marked[head] = WAIT_CHILDREN;
-            // Basically using the stack to accomplish two things. Store the children and to store another visit to the parent node, which is now marked with WAIT_CHILDREN and we only arrive at this after we have seen all the children.
-            // The parent node can only be visit after all the children have been visited, since we are working on graphs that we know are DAG. 
-            toSee->Push(head); // So we are sure to reach the WAIT_CHILDREN check
-          }
-          toSee->Push(p.second);
-        }
-      }
-    }
-
-    // No sons
-    if(firstSon == true){
-      marked[head] = PERMANENT;
-      *list->PushElem() = head;
-    }
-  }
-  return PushArray(out,list);
-}
-#endif
-
-#if 0
-// This structure needs to represent the entire work that is required to perform 
-struct Work{
-  ConstructDef definition;
-  Array<ParamNameAndValue> params;
-
-  bool calculateDelayFixedGraph;
-  bool flattenWithMapping;
-};
-
-void Print(Work* work){
-  printf("Name: %.*s\n",UN(work->definition.base.name.val));
-  printf("calculateDelayFixedGraph: %d\n",work->calculateDelayFixedGraph ? 1 : 0);
-  printf("flattenWithMapping: %d\n",work->flattenWithMapping ? 1 : 0);
-}
-
-void GetSubWorkRequirement(Hashmap<String,Work>* typeToWork,ConstructDef type){
-  TEMP_REGION(temp,nullptr);
-  Array<Token> subTypesUsed = TypesUsed(type,temp);
-  
-  for(Token tok : subTypesUsed){
-    Work* work = typeToWork->Get(tok.val);
-    if(!work){
-      continue;
-    }
-
-    // For now, assume that we want everything
-    work->calculateDelayFixedGraph = true;
-    work->flattenWithMapping = true;
-  }
-}
-
-#endif
 
 int CopyFileGroup(Array<FileContent> fileGroup,String filepathBase,bool flattenedDirs,FilePurpose purpose){
   TEMP_REGION(temp,nullptr);
@@ -168,7 +78,6 @@ int CopyFileGroup(Array<FileContent> fileGroup,String filepathBase,bool flattene
 
   return 0;
 };
-
 
 struct OptionsGather{
   Arena* arena;
@@ -574,6 +483,7 @@ int main(int argc,char* argv[]){
   }
 
   GEN_TopInfo info = GEN_CalculateTopInfo(topType,temp);
+  DEBUG_BREAK();
   GEN_TopContent content = GEN_OutputTopLevel(&info,temp);
   String makefileContent = GEN_OutputVerilatorMakefile(&info,generated,temp);
 
@@ -592,6 +502,7 @@ int main(int argc,char* argv[]){
 
   Output(hardware,"iob_versat.v",FilePurpose_VERILOG_CODE,content.topHardwareWrapper);
   Output(hardware,"versat_instance.v",FilePurpose_VERILOG_CODE,content.hardwareInstance);
+  Output(hardware,"versat_configurations.v",FilePurpose_VERILOG_CODE,content.hardwareConfigs);
   Output(hardware,"versat_defs.vh",FilePurpose_VERILOG_INCLUDE,content.verilogDefines);
   Output(hardware,"versat_undefs.vh",FilePurpose_VERILOG_INCLUDE,content.verilogUndefs);
   Output(hardware,"versat_internal_memory_wires.vh",FilePurpose_VERILOG_INCLUDE,content.externalMemWires);

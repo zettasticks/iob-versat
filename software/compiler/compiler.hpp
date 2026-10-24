@@ -36,7 +36,7 @@ struct COM_Unit{
   COM_Unit* next;
   COM_Unit* prev;
   COM_Unit* mergeNext;
-  COM_Unit* mergePrev;
+  COM_Unit* mergePrev; // Instead of prev we probably only care about returning to node 0.
 
  // NOTE: General purpose pointer to help map from units to temporary
   // data (avoids having to create maps all the time). Good practice
@@ -57,7 +57,7 @@ struct COM_Unit{
   // Computed data ==============================================================
   int id;
 
-  int numberInputs; // Some units that support variable inputs have this value different than 
+  int numberInputs; // Some units that support variable inputs have this value different than declaration 
 
   Array<int> extraDelay; // TODO: Probably not good anymore.
 
@@ -98,7 +98,6 @@ extern COM_Unit COM_Unit_Nil;
 struct COM_UnitList{
   COM_Unit* head;
   COM_Unit* tail;
-  int count;
 };
 
 struct COM_UnitNode{
@@ -131,17 +130,33 @@ struct COM_Edge{
   COM_Edge* next;
   void* general;
 
-  COM_Unit* out;
-  int outPort;
-  COM_Unit* in;
-  int inPort;
+  // out:outPort -> in:inPort
+  union{
+    struct{
+      union{
+        struct {
+          COM_Unit* out;
+          int outPort;
+        };
+        COM_Port conOut;
+      };
+      union{
+        struct {
+          COM_Unit* in;
+          int inPort;
+        };
+        COM_Port conIn;
+      };
+    };
+    COM_Port units[2];
+  };
+
   int delay;
 };
 
 struct COM_EdgeList{
   COM_Edge* head;
   COM_Edge* tail;
-  int count;
 };
 
 // ======================================
@@ -375,6 +390,8 @@ bool COM_Ent_IsArray(COM_EntType in);
 bool COM_Ent_IsExpr(COM_EntType in);
 bool COM_Ent_IsWire(COM_EntType in);
 
+void           COM_Copy(COM_Unit* out,COM_Unit* in);
+COM_Unit*      COM_Copy(COM_Unit* unit,Arena* out);
 COM_CopyResult COM_Copy(COM_Graph in,bool computeMapping,Arena* out);
 
 // ======================================
@@ -428,13 +445,22 @@ void COM_ReportError(COM_Env* env,String msg,Token token);
 // Repr
 
 String COM_Repr(COM_Unit* top,Arena* out);
-void   COM_DebugPushDotGraph(String filename,COM_Unit* top,COM_Edge* edges);
+
+typedef String COM_ReprFunction(COM_Unit* node,COM_Edge* edge,Arena* out);
+inline String COM_DefaultReprFunction(COM_Unit* node,COM_Edge* edge,Arena* out){return {};};
+
+String COM_DebugPushDotGraph(String name,COM_Unit* units,COM_Edge* edges,Arena* out,COM_ReprFunction repr = COM_DefaultReprFunction);
+void   COM_DebugOutputDotGraph(String filepath,String name,COM_Unit* units,COM_Edge* edges,COM_ReprFunction repr = COM_DefaultReprFunction);
 
 // ======================================
 // Graph helpers
 
+COM_Unit* COM_GetInputUnit(COM_Graph graph,int index);
+COM_Unit* COM_GetOutputUnit(COM_Graph graph);
+
 COM_Unit* COM_PushUnit(COM_Graph* graph,String name,FUDeclaration* decl,Arena* out);
-void      COM_InsertMiddle(COM_Graph* graph,COM_Edge* edge,COM_Unit* toInsert,int inPort,int outPort,Arena* out);
+COM_Edge* COM_PushEdge(COM_Graph* graph,Arena* out);
+COM_Edge* COM_InsertMiddle(COM_Graph* graph,COM_Edge* edge,COM_Unit* toInsert,int inPort,int outPort,Arena* out);
 
 void      COM_ClearGeneralPtr(COM_Unit* units);
 void      COM_ClearGeneralPtr(COM_Edge* edges);
@@ -446,6 +472,7 @@ struct COM_EdgeDelay{
   COM_EdgeDelay* next;
   COM_Edge* edge;
   int delay;
+  bool isAny;
 };
 
 struct COM_PortDelay{
@@ -465,4 +492,5 @@ struct COM_DelayResult{
 };
 
 COM_UnitNodeList COM_CalculateDAGOrder(COM_Graph graph,Arena* out);
-COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena* out);
+COM_DelayResult  COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena* out);
+COM_Graph        COM_Flatten(COM_Graph in,Arena* out);

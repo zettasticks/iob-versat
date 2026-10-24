@@ -229,14 +229,39 @@ String GEN_Repr(GEN_StructInfo* info,Arena* out);
 
 #include "accelerator_meta.hpp"
 
+enum GEN_WireType{
+  GEN_WireType_NONE = 0,
+  GEN_WireType_IS_VERSAT = (1 << 1),
+  GEN_WireType_IS_STATIC = (1 << 2),
+  GEN_WireType_IS_DELAY  = (1 << 3)
+};
+C_STYLE_ENUM(GEN_WireType);
+
+struct GEN_Wire{
+  String name;
+  VersatStage stage;
+  SYM_Expr size;
+  SYM_Expr startBit;
+  int address; // Byte aligned
+  GEN_WireType type;
+};
+
 struct GEN_TopInfo{
   FUDeclaration* decl;
 
   Array<VersatRegister> registers;
   Array<String> memoryMappedDecisionMask;
 
-  int configCount;
-  SYM_Expr configBitCount;
+  Array<GEN_Wire> allConfigs;
+  Array<GEN_Wire> allStates;
+
+  int totalConfigs; // Config + Static + Delay
+  int configStart;
+  int staticStart;
+  int delayStart;
+
+  SYM_Expr configOnlyBitCount;
+  SYM_Expr configTotalBitCount;
 
   // TODO:
   int staticCount;
@@ -246,12 +271,12 @@ struct GEN_TopInfo{
   SYM_Expr stateBitCount;
 
   // Address is divided into two regions (memory mapped vs config/state)
+  // If no memory mapped then no division (config/state occupies the entire address space).
+  //   At which point addressBits == memoryConfigDecisionBit
   // nocheckin: TODO: We only care about two regions, why do we have memoryMappedBit and configDecisionBit?
   int addressBits;
   int memoryMappedDecisionBit;
   int memoryConfigDecisionBit;
-
-  SYM_Expr delayBitCount;
 
   int numberDatabus; // Can differ from declaration because of DMA
 };
@@ -285,6 +310,7 @@ struct GEN_TopContent{
   // Hardware top files 
   String topHardwareWrapper;
   String hardwareInstance;
+  String hardwareConfigs;
 
   // Softare verilator helpers
   String verilatorHardwareWrapper;
@@ -296,6 +322,11 @@ struct GEN_TopContent{
   String headerFile;
   String softwareFirmware;
 };
+
+// ======================================
+// Type
+
+bool GEN_IsConfigOnly(GEN_WireType type);
 
 // ======================================
 // Naming schemes

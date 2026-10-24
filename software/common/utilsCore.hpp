@@ -858,18 +858,27 @@ inline bool Contains(Array<String> array,String toCheck){
 #define DLL_Remove(HEAD,TAIL,NEXT,PREV,NODE) \
   if((NODE) != nullptr){ \
     Assert(HEAD && TAIL); \
-    auto prev = (NODE)->PREV; \
-    auto next = (NODE)->NEXT; \
-    if(prev){ \
-      prev->NEXT = next; \
+    auto _prev = (NODE)->PREV; \
+    auto _next = (NODE)->NEXT; \
+    if(_prev){ \
+      _prev->NEXT = _next; \
     } else { \
-      HEAD = next; \
+      HEAD = _next; \
     } \
-    if(next){ \
-      next->PREV = prev; \
+    if(_next){ \
+      _next->PREV = _prev; \
     } else { \
-      TAIL = prev; \
+      TAIL = _prev; \
     } \
-    (NODE)->NEXT = 0; \
-    (NODE)->PREV = 0; \
+    if(NODE) (NODE)->NEXT = 0; \
+    if(NODE) (NODE)->PREV = 0; \
+  }
+
+#define FIFO_Push(HEAD,TAIL,NEXT,PREV,NODE) \
+  DLL_Append(HEAD,TAIL,NEXT,PREV,NODE)
+
+#define FIFO_Pop(HEAD,TAIL,NEXT,PREV) \
+  { \
+    auto _node = TAIL; \
+    DLL_Remove(HEAD,TAIL,NEXT,PREV,_node) \
   }

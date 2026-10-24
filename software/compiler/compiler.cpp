@@ -65,6 +65,15 @@ bool COM_Ent_IsWire(COM_EntType in){
   return res;
 }
 
+COM_Unit* COM_Copy(COM_Unit* unit,Arena* out){
+  COM_Unit* copied = PushStruct<COM_Unit>(out);
+  *copied = *unit;
+  copied->next = copied->prev = 0;
+  copied->mergeNext = copied->mergePrev = 0;
+  copied->name = PushString(out,unit->name);
+  return copied;
+}
+
 COM_CopyResult COM_Copy(COM_Graph in,bool computeMapping,Arena* out){
   COM_UnitList units = {};
   COM_EdgeList edges = {};
@@ -76,7 +85,6 @@ COM_CopyResult COM_Copy(COM_Graph in,bool computeMapping,Arena* out){
 
     copied->next = copied->prev = nullptr;
 
-    units.count += 1;
     LL_Append(units.head,units.tail,next,copied);
 
     unit->general = copied;
@@ -92,7 +100,6 @@ COM_CopyResult COM_Copy(COM_Graph in,bool computeMapping,Arena* out){
     newEdge->out = outUnit;
     newEdge->in = inUnit;
 
-    edges.count += 1;
     LL_Append(edges.head,edges.tail,next,newEdge);
 
     edge->general = newEdge;
@@ -252,7 +259,23 @@ SYM_Expr COM_SymbolicFromExpression(COM_Env* env,SP_Node* node){
       }
     } break;
 
-    case SP_Node_FUNCTION_CALL: {
+    case SP_Node_ACCESS:  Assert(false);
+#endif
+
+    case SP_Type_FUNC_CALL: {
+      String funcName = top->token.val;
+
+      SP_Node* firstArg = top->childs;
+      SP_Node* secondArg = top->childs->next;
+
+      if(funcName == "Duty"){
+        res = SYM_Duty(Recurse(Recurse,firstArg),Recurse(Recurse,secondArg));
+      } else {
+        // TODO: Change into proper error reporting.
+        Assert(false);
+      }
+      
+#if 0
       Array<MathExpression*> args = top->expressions;
 
       if(top->name.identifier == "Duty"){
@@ -266,10 +289,8 @@ SYM_Expr COM_SymbolicFromExpression(COM_Env* env,SP_Node* node){
         Entity funcEnt = AddComputation(top->name.identifier,expressions);
         res = SYM_Var(funcEnt.name.identifier);
       }
-    } break;
-
-    case SP_Node_ACCESS:  Assert(false);
 #endif
+    } break;
 
     default: handled = 0;
     }
@@ -862,8 +883,6 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
       COM_ConnectInfoList lhsList = COM_UnpackVarGroup(env,lhsVarGroup,temp);
       COM_ConnectInfoList rhsList = COM_UnpackVarGroup(env,rhsVarGroup,temp);
 
-      DEBUG_BREAK();
-
       int lhsSize = lhsList.size;
       int rhsSize = rhsList.size;
 
@@ -1054,6 +1073,8 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
             forLoops[i].endSym = COM_SymbolicFromExpression(env,end);
           }
         }
+
+        ReverseInPlace(forLoops);
         
         SP_Node* equalityOrFunction = work->node;
 
@@ -1169,7 +1190,8 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
   }
 
   if(env->anyError){
-     exit(-1);
+    printf("Error on instantiate, terminating\n");
+    exit(-1);
   }
 
   // Update id ==================================================================
@@ -1315,7 +1337,6 @@ void COM_Connect(COM_Env* env,COM_Ent out,int outPort,COM_Ent in,int inPort,int 
     con->inPort = inPort;
     con->delay = delay;
 
-    env->graph.edges.count += 1;
     LL_Append(env->graph.edges.head,env->graph.edges.tail,next,con);
   }
 }
@@ -1353,16 +1374,20 @@ String COM_Repr(COM_Unit* top,Arena* out){
   return res;
 }
 
-void COM_DebugPushDotGraph(String filename,COM_Unit* top,COM_Edge* edges){
-  NOT_IMPLEMENTED();
-#if 0
-  TEMP_REGION(temp,nullptr);
+String COM_DebugPushDotGraph(String name,COM_Unit* units,COM_Edge* edges,Arena* out,COM_ReprFunction Repr){
+  TEMP_REGION(temp,out);
 
   auto l = PushList<GraphPrintingNodeInfo>(temp);
-  for(COM_Unit* ptr = top; ptr; ptr = ptr->next){
+  for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
     GraphPrintingNodeInfo* info = l->PushElem();
+
+    String content = Repr(ptr,nullptr,temp);
+    if(Empty(content)){
+      content = ptr->name;
+    }
+
     info->name = PushString(temp,"%p",ptr);
-    info->content = PushString(temp,ptr->name);
+    info->content = content;
     info->color = Color_BLUE;
   }
 
@@ -1370,61 +1395,103 @@ void COM_DebugPushDotGraph(String filename,COM_Unit* top,COM_Edge* edges){
   for(COM_Edge* con = edges; con; con = con->next){
     GraphPrintingEdgeInfo* info = e->PushElem();
 
+    String content = Repr(nullptr,con,temp);
+    if(Empty(content)){
+      content = PushString(temp,"%d -> %d",con->outPort,con->inPort);
+    }
+
     info->firstNode = PushString(temp,"%p",con->out);
     info->secondNode = PushString(temp,"%p",con->in);
-    info->content = PushString(temp,"%d -> %d",con->outPort,con->inPort);
+    info->content = content;
     info->color = Color_BLACK;
   }
 
   GraphPrintingContent content = {};
-  content.graphLabel = filename;
+  content.graphLabel = name;
   content.nodes = PushArray(temp,l);
   content.edges = PushArray(temp,e);
 
-  String result = GenerateDotGraph(content,temp);
+  String result = GenerateDotGraph(content,out);
+  return result;
+}
 
-  String filePath = GetDebugRegionFilepath(filename,temp);
-  OutputContentToFile(filePath,result);
-#endif
+void COM_DebugOutputDotGraph(String filepath,String name,COM_Unit* units,COM_Edge* edges,COM_ReprFunction repr){
+  TEMP_REGION(temp,nullptr);
+  String content = COM_DebugPushDotGraph(name,units,edges,temp,repr);
+
+  String filePath = DEBUG_GetDebugRegionFilepath(filepath,temp);
+  OutputContentToFile(filePath,content);
 }
 
 // ======================================
 // Graph helpers
 
+COM_Unit* COM_GetInputUnit(COM_Graph graph,int index){
+  for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
+    if(ptr->decl == BasicDeclaration::input && ptr->special == index){
+      return ptr;
+    }
+  }
+  return &COM_Unit_Nil;
+}
+
+COM_Unit* COM_GetOutputUnit(COM_Graph graph){
+  for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
+    if(ptr->decl == BasicDeclaration::output){
+      return ptr;
+    }
+  }
+  return &COM_Unit_Nil;
+}
+
 COM_Unit* COM_PushUnit(COM_Graph* graph,String name,FUDeclaration* decl,Arena* out){
-  COM_Unit* unit = PushStruct<COM_Unit>(out);
+  COM_Unit* unit = 0;
+
+  if(graph->freeUnits){
+    unit = graph->freeUnits;
+    LL_PopFrontNoTail(graph->freeUnits,next);
+    *unit = {};
+  } else {
+    unit = PushStruct<COM_Unit>(out);
+  }
+
   unit->name = PushString(out,name);
   unit->decl = decl;
   unit->numberInputs = decl->inputs.size;
 
-  graph->units.count += 1;
   DLL_Append(graph->units.head,graph->units.tail,next,prev,unit);
   return unit;
 }
 
-void COM_InsertMiddle(COM_Graph* graph,COM_Edge* edge,COM_Unit* toInsert,int inPort,int outPort,Arena* out){
+COM_Edge* COM_PushEdge(COM_Graph* graph,Arena* out){
+  COM_Edge* edge = 0;
+
+  if(graph->freeEdges){
+    edge = graph->freeEdges;
+    LL_PopFrontNoTail(graph->freeEdges,next);
+    *edge = {};
+  } else {
+    edge = PushStruct<COM_Edge>(out);
+  }
+
+  LL_Append(graph->edges.head,graph->edges.tail,next,edge);
+  return edge;
+}
+
+COM_Edge* COM_InsertMiddle(COM_Graph* graph,COM_Edge* edge,COM_Unit* toInsert,int inPort,int outPort,Arena* out){
   COM_Unit* savedIn = edge->in;
   int savedInPort = edge->inPort;
 
   edge->in = toInsert;
   edge->inPort = inPort;
 
-  COM_Edge* newEdge = {};
-  if(graph->freeEdges){
-    newEdge = graph->freeEdges;
-    LL_PopFrontNoTail(graph->freeEdges,next);
-    *newEdge = {};
-  } else {
-    newEdge = PushStruct<COM_Edge>(out);
-  }
-
+  COM_Edge* newEdge = COM_PushEdge(graph,out);
   newEdge->out = toInsert;
   newEdge->outPort = outPort;
   newEdge->in = savedIn;
   newEdge->inPort = savedInPort;
 
-  graph->edges.count += 1;
-  LL_Append(graph->edges.head,graph->edges.tail,next,newEdge);
+  return newEdge;
 }
 
 void COM_ClearGeneralPtr(COM_Unit* units){
@@ -1620,6 +1687,10 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
     Array<int> outputExtraDelay;
   };
 
+  struct DELAY_EdgeData{
+    bool isAny;
+  };
+
   int count = 0;
   int inputCount = 0;
   int outputCount = 0;
@@ -1647,7 +1718,17 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
     data->inputExtraDelay = PushArray<int>(temp,unit->numberInputs);
     data->outputExtraDelay = PushArray<int>(temp,decl->outputs.size);
   }
-  
+
+  FUDeclaration* varBuffer = DECL_GetVariableBufferType();
+  for(COM_Edge* edge = edges; edge; edge = edge->next){
+    DELAY_EdgeData* data = PushStruct<DELAY_EdgeData>(temp);
+    edge->general = data;
+    
+    if(edge->out->decl == varBuffer){
+      data->isAny = true;
+    }
+  }
+
   // Calculate global latency ===================================================
   for(COM_UnitNode* ptr = order.head; ptr; ptr = ptr->next){
     COM_Unit* unit = ptr->v;
@@ -1657,6 +1738,8 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
     // Calculate output global latency from input latency =========================
     for(int outPort = 0; outPort < data->globalOutputLatency.size; outPort++){
       DECL_PortInfo outInfo = decl->outputs[outPort];
+
+      // TODO: Take another look at isAny and properly propagate it if possible.
 
       Array<int> dependPorts = {};
       if(outInfo.inputDependencies.size > 0){
@@ -1698,12 +1781,11 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
   // 
 
   // TODO: Handle any delay edges in order to support 
-  auto OutputDotGraph = [&](){
-    BLOCK_REGION(temp);
-    // Generate debug graph
-    auto l = PushList<GraphPrintingNodeInfo>(temp);
-    for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
-      DELAY_Data* data = (DELAY_Data*) ptr->general;
+  auto DelayRepr = [](COM_Unit* unit,COM_Edge* edge,Arena* out){
+    String res = {};
+    if(unit){
+      DELAY_Data* data = (DELAY_Data*) unit->general;
+
       int nodeDelay = INT_MAX;
       for(int delay : data->globalInputLatency){
         nodeDelay = MIN(nodeDelay,delay);
@@ -1711,41 +1793,23 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
       if(nodeDelay == INT_MAX){
         nodeDelay = 0;
       }
-
-      GraphPrintingNodeInfo* info = l->PushElem();
-      info->name = PushString(temp,"%p",ptr);
-      info->content = PushString(temp,"%.*s (%d)",UN(ptr->name),nodeDelay);
-      info->color = Color_BLUE;
+      res = PushString(out,"%.*s (%d)",UN(unit->name),nodeDelay);
     }
-
-    auto e = PushList<GraphPrintingEdgeInfo>(temp);
-    for(COM_Edge* edge = edges; edge; edge = edge->next){
-      GraphPrintingEdgeInfo* info = e->PushElem();
-
+    if(edge){
       DELAY_Data* outData = (DELAY_Data*) edge->out->general;
       DELAY_Data* inData = (DELAY_Data*) edge->in->general;
 
       int extraOut = outData->outputExtraDelay[edge->outPort];
       int extraIn = inData->inputExtraDelay[edge->inPort];
 
-      info->firstNode = PushString(temp,"%p",edge->out);
-      info->secondNode = PushString(temp,"%p",edge->in);
-      info->content = PushString(temp,"%d - %d | %d - %d | (%d -> %d)",outData->globalOutputLatency[edge->outPort],inData->globalInputLatency[edge->inPort],extraOut,extraIn,edge->outPort,edge->inPort);
-      info->color = Color_BLACK;
+      res = PushString(out,"%d - %d | %d - %d | (%d -> %d)",outData->globalOutputLatency[edge->outPort],inData->globalInputLatency[edge->inPort],extraOut,extraIn,edge->outPort,edge->inPort);
     }
 
-    GraphPrintingContent content = {};
-    content.graphLabel = "Global latency, Node: Contains the minimum latency of every input edge. Edges: format is latency from OutPort to InPort, numbers inside parenthesis are the ports. [In a proper delay fixed graph the OutPort and InPort numbers match for all edges";
-    content.nodes = PushArray(temp,l);
-    content.edges = PushArray(temp,e);
-
-    String result = GenerateDotGraph(content,temp);
-
-    String filePath = DEBUG_GetDebugRegionFilepath("GlobalLatency.dot",temp);
-    OutputContentToFile(filePath,result);
+    return res;
   };
 
-  OutputDotGraph();
+  String label = "Global latency, Node: Contains the minimum latency of every input edge. Edges: format is latency from OutPort to InPort, numbers inside parenthesis are the ports. [In a proper delay fixed graph the OutPort and InPort numbers match for all edges";
+  COM_DebugOutputDotGraph("GlobalLatency.dot",label,units,edges,DelayRepr);
   
   // Pack result ================================================================
   Array<int> inputDelays = PushArray<int>(outArena,inputCount);
@@ -1778,6 +1842,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
   COM_EdgeDelay* head = 0;
   COM_EdgeDelay* tail = 0;
   for(COM_Edge* edge = edges; edge; edge = edge->next){
+    DELAY_EdgeData* edgeData = edge->general;
     DELAY_Data* outData = (DELAY_Data*) edge->out->general;
     DELAY_Data* inData = (DELAY_Data*) edge->in->general;
 
@@ -1813,7 +1878,6 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
     }
 
     if(edge->in->decl->numberDelays && DECL_IsCompute(edge->in->decl)){
-      DEBUG_BREAK();
       COM_PortDelay* d = PushStruct<COM_PortDelay>(outArena);
       d->unit = edge->in;
       d->port = edge->inPort;
@@ -1838,7 +1902,9 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
     }
 #endif
 
-    if(edgeExtraDelay){
+    // TODO: nocheckin: Need to store the amount of delays for variable buffers somewhere.
+
+    if(edgeExtraDelay != 0 && !edgeData->isAny){
       COM_EdgeDelay* node = PushStruct<COM_EdgeDelay>(outArena);
       node->delay = edgeExtraDelay;
       node->edge = edge;
@@ -1848,6 +1914,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
   }
   
   COM_ClearGeneralPtr(units);
+  COM_ClearGeneralPtr(edges);
 
   COM_DelayResult res = {};
   res.edgeDelays = head;
@@ -1856,4 +1923,422 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
   res.outputLatencies = outputLatencies;
 
   return res;
+}
+
+COM_Graph COM_Flatten(COM_Graph in,Arena* out){
+  TEMP_REGION(temp,out);
+
+  COM_CopyResult copied = COM_Copy(in,false,out);
+  COM_Graph graph = copied.result;
+
+  void* MARK_TO_DELETE = (void*) 0x1;
+
+  struct Work{
+    Work* next;
+    COM_Unit* toProcess;
+  };
+
+  Work* workHead = 0;
+  Work* workTail = 0;
+
+  for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
+    if(DECL_IsComposite(ptr->decl)){
+      Work* w = PushStruct<Work>(temp);
+      LL_Append(workHead,workTail,next,w);
+    }
+  }
+
+  FREE_ARENA(mapArena);
+  while(workHead){
+    BLOCK_REGION(mapArena);
+
+    Work* w = workHead;
+    LL_PopFront(workHead,workTail,next);
+
+    COM_Unit* unit = w->toProcess;
+
+    // Maps from default graph to unit in new flattened graph.
+    TrieMap<COM_Unit*,COM_Unit*>* unitMap = PushTrieMap<COM_Unit*,COM_Unit*>(mapArena);
+    
+    COM_Graph subGraph = unit->decl->base;
+    COM_Unit* outputUnit = COM_GetOutputUnit(subGraph);
+      
+    for(COM_Unit* u = subGraph.units.head; u; u = u->next){
+      COM_Unit* newUnit = COM_PushUnit(&graph,u->name,u->decl,out);
+      unitMap->Insert(u,newUnit);
+
+      if(DECL_IsComposite(newUnit->decl)){
+        Work* w = PushStruct<Work>(temp);
+        LL_Append(workHead,workTail,next,w);
+      }
+    }
+
+    // Handle edges that have unit as input =======================================
+    for(COM_Edge* outerEdge = graph.edges.head; outerEdge; outerEdge = outerEdge->next){
+      if(outerEdge->in != unit){
+        continue;
+      }
+
+      int inputIndex = outerEdge->inPort;
+
+      for(COM_Edge* innerEdge = subGraph.edges.head; innerEdge; innerEdge = innerEdge->next){
+        if(DECL_IsInput(innerEdge->out->decl) && innerEdge->out->special == inputIndex){
+          outerEdge->general = MARK_TO_DELETE;
+
+          COM_Edge* newEdge = COM_PushEdge(&graph,out);
+          newEdge->out = outerEdge->out;
+          newEdge->outPort = outerEdge->outPort;
+          newEdge->in = unitMap->GetOrFail(innerEdge->in);
+          newEdge->inPort = innerEdge->inPort;
+          newEdge->delay = outerEdge->delay + innerEdge->delay;
+        }
+      }
+    }
+
+    // Handle edges that have unit as output ======================================
+    for(COM_Edge* innerEdge = subGraph.edges.head; innerEdge; innerEdge = innerEdge->next){
+      if(!DECL_IsOutput(innerEdge->in->decl)){
+        continue;
+      } 
+
+      for(COM_Edge* outerEdge = graph.edges.head; outerEdge; outerEdge = outerEdge->next){
+        if(outerEdge->out == unit){
+          outerEdge->general = MARK_TO_DELETE;
+
+          COM_Edge* newEdge = COM_PushEdge(&graph,out);
+          newEdge->out = unitMap->GetOrFail(innerEdge->out);
+          newEdge->outPort = innerEdge->outPort;
+          newEdge->in = outerEdge->in;
+          newEdge->inPort = outerEdge->inPort;
+          newEdge->delay = outerEdge->delay + innerEdge->delay;
+        }
+      }
+    }
+
+    // Handle inner edges only ====================================================
+    for(COM_Edge* innerEdge = subGraph.edges.head; innerEdge; innerEdge = innerEdge->next){
+      if(DECL_IsInput(innerEdge->out->decl) || DECL_IsOutput(innerEdge->in->decl)){
+        continue;
+      }
+
+      COM_Edge* newEdge = COM_PushEdge(&graph,out);
+      newEdge->out = unitMap->GetOrFail(innerEdge->out);
+      newEdge->outPort = innerEdge->outPort;
+      newEdge->in = unitMap->GetOrFail(innerEdge->in);
+      newEdge->inPort = innerEdge->inPort;
+      newEdge->delay = innerEdge->delay;
+    }
+
+    // Remove edges marked to remove ==============================================
+    {
+      COM_Edge* next = 0;
+      COM_Edge* prev = 0;
+      for(COM_Edge* ptr = graph.edges.head; ptr; ptr = next){
+        next = ptr;
+
+        if(ptr->general == MARK_TO_DELETE){
+          ptr->general = 0;
+          LL_Remove(graph.edges.head,graph.edges.tail,next,prev,ptr);
+          LL_PushNoTail(graph.freeEdges,next,ptr);
+        } else {
+          prev = ptr;
+        }
+      }
+    }
+
+    // Remove the unit ============================================================
+    {
+      COM_Unit* next = 0;
+      COM_Unit* prev = 0;
+      for(COM_Unit* ptr = graph.units.head; ptr; ptr = next){
+        next = ptr;
+
+        if(ptr == unit){
+          LL_Remove(graph.units.head,graph.units.tail,next,prev,ptr);
+          LL_PushNoTail(graph.freeUnits,next,ptr);
+        } else {
+          prev = ptr;
+        }
+      }
+    }
+  }
+
+  return graph;
+
+  // Unit 0 port A has edge to Unit X port B.
+  // Unit X is composite and has edge from Input B to unit Y port D.
+  // Flattened we get, unit 0 port A has edge to unit Y port D
+  // Which means that we need to get the input edge.
+  // Because we can have multiple edges from input to node, need to iterate inside edges as well.
+  // Output is the same except the edges we iterate once are inside and the edges that can repeat are outside.
+
+#if 0
+  Pair<Accelerator*,AcceleratorMapping*> pair = CopyAcceleratorWithMapping(accel,AcceleratorPurpose_FLATTEN,true,temp);
+  Accelerator* newAccel = pair.first;
+  
+  Pool<FUInstance*> compositeInstances = {};
+  Pool<FUInstance*> toRemove = {};
+
+  TrieMap<StaticId,int>* staticToIndex = PushTrieMap<StaticId,int>(temp);
+  SubMap* subMappingDone = PushTrieMap<SubMappingInfo,PortInstance>(globalPermanent);
+  
+  for(int i = 0; i < times; i++){
+    for(FUInstance* instPtr : newAccel->allocated){
+      FUInstance* inst = instPtr;
+
+      bool containsStatic = false;
+      containsStatic = inst->isStatic || inst->declaration->staticUnits != nullptr;
+      // TODO: For now we do not flatten units that are static or contain statics. It messes merge configurations and still do not know how to procceed. Need to beef merge up a bit before handling more complex cases. The problem was that after flattening statics would become shared (unions) and as such would appear in places where they where not supposed to appear.
+
+      // TODO: Maybe static and shared units configurations could be stored in a separated structure.
+      if(inst->declaration->baseCircuit && !containsStatic){
+        FUInstance** ptr = compositeInstances.Alloc();
+
+        *ptr = instPtr;
+      }
+    }
+
+    if(compositeInstances.Size() == 0){
+      break;
+    }
+
+    TrieMap<int,int>* sharedToFirstChildIndex = PushTrieMap<int,int>(temp);
+
+    int freeSharedIndex = GetFreeShareIndex(newAccel); //(maxSharedIndex != -1 ? maxSharedIndex + 1 : 0);
+    int count = 0;
+    for(FUInstance** instPtr : compositeInstances){
+      FUInstance* inst = (*instPtr);
+
+      Assert(inst->declaration->baseCircuit);
+
+      count += 1;
+      Accelerator* circuit = inst->declaration->baseCircuit;
+      FUInstance* outputInstance = GetOutputInstance(&circuit->allocated);
+
+      int savedSharedIndex = freeSharedIndex;
+      int instSharedIndex = freeSharedIndex;
+      if(inst->sharedEnable){
+        // Flattening a shared unit
+        int* val = sharedToFirstChildIndex->Get(inst->sharedIndex);
+
+        if(val){
+          sharedToFirstChildIndex->Insert(inst->sharedIndex,freeSharedIndex);
+        } else {
+          freeSharedIndex = *val;
+        }
+      }
+
+      TrieMap<int,int>* sharedToShared = PushTrieMap<int,int>(temp);
+      //std::unordered_map<int,int> sharedToShared;
+      // Create new instance and map then
+      AcceleratorMapping* map = MappingSimple(circuit,newAccel,temp); // TODO: Leaking
+
+      for(FUInstance* ptr : circuit->allocated){
+        FUInstance* circuitInst = ptr;
+        if(circuitInst->declaration->type == FUDeclarationType_SPECIAL){
+          continue;
+        }
+
+        String newName = PushString(globalPermanent,"%.*s_%.*s",UN(inst->name),UN(circuitInst->name));
+
+        // We are copying the instance but some differences are gonna happen in relation to static and config sharing. 
+        FUInstance* newInst = CopyInstance(newAccel,circuitInst,true,newName);
+        MappingInsertEqualNode(map,circuitInst,newInst);
+
+        if(circuitInst->isStatic){
+          bool found = false;
+          int shareIndex = 0;
+          for(auto iter : staticToIndex){
+            if(iter.first.parent == inst->declaration && CompareString(iter.first.name,circuitInst->name)){
+              found = true;
+              shareIndex = iter.second;
+              break;
+            }
+          }
+
+          if(!found){
+            shareIndex = GetFreeShareIndex(newAccel);
+
+            StaticId id = {};
+            id.name = circuitInst->name;
+            id.parent = inst->declaration;
+            staticToIndex->Insert(id,shareIndex);
+          }
+
+          ShareInstanceConfig(newInst,shareIndex);
+        } else if(circuitInst->sharedEnable && inst->sharedEnable){
+          int* val = sharedToShared->Get(circuitInst->sharedIndex);
+
+          if(val){
+            ShareInstanceConfig(newInst,*val);
+          } else {
+            int newIndex = GetFreeShareIndex(newAccel);
+
+            sharedToShared->Insert(circuitInst->sharedIndex,newIndex);
+
+            ShareInstanceConfig(newInst,newIndex);
+          }
+        } else if(inst->sharedEnable){ // Currently flattening instance is shared
+          ShareInstanceConfig(newInst,instSharedIndex); // Always use the same inst index
+        } else if(circuitInst->sharedEnable){
+          int* val = sharedToShared->Get(circuitInst->sharedIndex);
+
+          if(val){
+            ShareInstanceConfig(newInst,*val);
+          } else {
+            int newIndex = freeSharedIndex;
+            
+            sharedToShared->Insert(circuitInst->sharedIndex,newIndex);
+
+            ShareInstanceConfig(newInst,newIndex);
+            freeSharedIndex = GetFreeShareIndex(newAccel);
+          }
+        }
+      }
+
+      if(inst->sharedEnable && savedSharedIndex > freeSharedIndex){
+        freeSharedIndex = savedSharedIndex;
+      }
+
+      // TODO: All these iterations could be converted to a single loop where inside we check if its input,output or inernal edge
+      // Add accel edges to output instances
+      for(EdgeIterator iter = IterateEdges(newAccel); iter.IsValid(); iter.Next()){
+        Edge edge = iter.Value();
+
+        if(edge.units[0].inst == inst){
+          for(EdgeIterator iter2 = IterateEdges(circuit); iter2.IsValid(); iter2.Next()){
+            Edge circuitEdge = iter2.Value();
+
+            if(circuitEdge.units[1].inst == outputInstance && circuitEdge.units[1].port == edge.units[0].port){
+              FUInstance* other = MappingMapOutput(map,circuitEdge.units[0]).inst;
+
+              if(other == nullptr){
+                continue;
+              }
+
+              FUInstance* out = other;
+              FUInstance* in = edge.units[1].inst;
+              int outPort = circuitEdge.units[0].port;
+              int inPort = edge.units[1].port;
+              int delay = edge.delay + circuitEdge.delay;
+
+              SubMappingInfo t = {};
+
+              t.subDeclaration = inst->declaration;
+              t.higherName = inst->name;
+              t.isInput = false;
+              t.subPort = circuitEdge.units[1].port;
+
+              subMappingDone->Insert(t,{in,inPort});
+              
+              ConnectUnits(out,outPort,in,inPort,delay);
+            }
+          }
+        }
+      }
+
+      // Add accel edges to input instances
+      for(EdgeIterator iter = IterateEdges(newAccel); iter.IsValid(); iter.Next()){
+        Edge edge = iter.Value();
+
+        //Edge* edge = &edgeInst;
+        if(edge.units[1].inst == inst){
+          FUInstance* circuitInst = GetInputInstance(&circuit->allocated,edge.units[1].port);
+
+          for(EdgeIterator iter2 = IterateEdges(circuit); iter2.IsValid(); iter2.Next()){
+            Edge circuitEdge = iter2.Value();
+
+            if(circuitEdge.units[0].inst == circuitInst){
+              FUInstance* other = MappingMapInput(map,circuitEdge.units[1]).inst;
+
+              if(other == nullptr){
+                continue;
+              }
+
+              FUInstance* out = edge.units[0].inst;
+              FUInstance* in = other;
+              int outPort = edge.units[0].port;
+              int inPort = circuitEdge.units[1].port;
+              int delay = edge.delay + circuitEdge.delay;
+
+              SubMappingInfo t = {};
+
+              t.subDeclaration = inst->declaration;
+              t.higherName = inst->name;
+              t.isInput = true;
+              t.subPort = edge.units[1].port;
+              
+              subMappingDone->Insert(t,{out,outPort});
+              
+              ConnectUnits(out,outPort,in,inPort,delay);
+            }
+          }
+        }
+      }
+
+      // Add circuit specific edges
+      for(EdgeIterator iter = IterateEdges(circuit); iter.IsValid(); iter.Next()){
+        Edge edge = iter.Value();
+
+        FUInstance* otherInput = MappingMapOutput(map,edge.units[0]).inst;
+        FUInstance* otherOutput = MappingMapInput(map,edge.units[1]).inst;
+
+        if(otherInput == nullptr || otherOutput == nullptr){
+          continue;
+        }
+
+        FUInstance* out = otherInput;
+        FUInstance* in = otherOutput;
+        int outPort = edge.units[0].port;
+        int inPort = edge.units[1].port;
+        int delay = edge.delay;
+
+        ConnectUnits(out,outPort,in,inPort,delay);
+      }
+
+      // Add input to output specific edges
+      for(EdgeIterator iter = IterateEdges(newAccel); iter.IsValid(); iter.Next()){
+        Edge edge1 = iter.Value();
+
+        if(edge1.units[1].inst == inst){
+          PortInstance input = edge1.units[0];
+          FUInstance* circuitInput = GetInputInstance(&circuit->allocated,edge1.units[1].port);
+
+          for(EdgeIterator iter2 = IterateEdges(newAccel); iter2.IsValid(); iter2.Next()){
+            Edge edge2 = iter2.Value();
+
+            if(edge2.units[0].inst == inst){
+              PortInstance output = edge2.units[1];
+              int outputPort = edge2.units[0].port;
+
+              for(EdgeIterator iter3 = IterateEdges(newAccel); iter3.IsValid(); iter3.Next()){
+                Edge circuitEdge = iter3.Value();
+
+                if(circuitEdge.units[0].inst == circuitInput
+                   && circuitEdge.units[1].inst == outputInstance
+                   && circuitEdge.units[1].port == outputPort){
+                  int delay = edge1.delay + circuitEdge.delay + edge2.delay;
+
+                  ConnectUnits(input,output,delay);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      RemoveFUInstance(newAccel,*instPtr);
+    }
+
+    toRemove.Clear();
+    compositeInstances.Clear();
+  }
+
+  toRemove.Clear(true);
+  compositeInstances.Clear(true);
+
+  newAccel->name = accel->name;
+  
+  return {newAccel,subMappingDone};
+#endif
 }

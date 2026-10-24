@@ -4,8 +4,6 @@
 
 #include "accelerator.hpp"
 #include "configurations.hpp"
-#include "debug.hpp"
-#include "debugVersat.hpp"
 #include "declaration.hpp"
 #include "filesystem.hpp"
 #include "globals.hpp"
@@ -1606,7 +1604,7 @@ Array<GraphAndMapping> GetAllBaseMergeTypes(FUDeclaration* decl,Arena* out){
   Regardless of being a merged or a module, we need a mapping from each possible merged type to the flattened graph.
 
   The reason we end up on that recursive structure is because we wanted to have the recon of the lowest possible types.
-  So, in the example of tryint to merge X | Y, we first need to make the recon of X and then the recon of Y and only then we can make the recon of X_A and X_B and so on.
+  So, in the example of trying to merge X | Y, we first need to make the recon of X and then the recon of Y and only then we can make the recon of X_A and X_B and so on.
 
   Because merge is already "recursive" by nature, the fact that we need to go to the lowest levels seems off. What is the point of doing the merge of the lower levels if we just end up not using the data?. Or not using the data correctly?
 
@@ -2898,6 +2896,7 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
   Array<DAGOrderNodes> reconOrder = PushArray<DAGOrderNodes>(temp,size);
   Array<CalculateDelayResult> reconDelay = PushArray<CalculateDelayResult>(temp,size);
 
+  // MARK
   int attempt = -1;
   while(true){
     attempt += 1;
@@ -3094,6 +3093,1782 @@ IMPORTANT:
   */
 }
 
+#endif
 
+#include "debug.hpp"
+#include "debugVersat.hpp"
+#include "compiler.hpp"
+#include "declaration.hpp"
+#include "globals.hpp"
+
+
+#if 0
+
+
+bool NodeConflict(FUInstance* inst){
+  // For now, do not even try to map nodes that contain any config modifiers.
+  if(inst->isStatic){
+    return true;
+  }
+
+  if(inst->sharedEnable){
+    return true;
+  }
+
+  if(inst->isMergeMultiplexer){
+    return true;
+  }
+  
+  return false;
+}
+
+bool NodeConflict(FUInstance* first,FUInstance* second){
+  TEMP_REGION(temp,nullptr);
+  
+  // Only call this function if instances are the same decl.
+  if(first->declaration != second->declaration){
+    return true;
+  }
+
+  FUDeclaration* decl = first->declaration;
+
+  TrieMap<String,SYM_Expr>* param1 = GetParametersOfUnit(first,temp);
+  TrieMap<String,SYM_Expr>* param2 = GetParametersOfUnit(second,temp);
+
+  for(int i = 0; i <  decl->parameters.size; i++){
+    Parameter param = decl->parameters[i];
+
+    // NOTE: 
+    // How do we know that the params are different? They could be anything and there is a 
+    // possability that instantiation could make these equal.
+    // If we have parameters with value X and value Y then it might fail but it could turn out
+    // later that X == Y. At the same time we cannot assume this unless we know that the merged 
+    // unit is the top unit.
+    if(param.flags & ParamFlags_UNIQUE){
+      SYM_Expr val1 = param1->GetOrFail(param.name);
+      SYM_Expr val2 = param2->GetOrFail(param.name);
+
+      if(!Equal(val1,val2)){
+        return true;
+      }
+    }
+
+    // TODO: To handle order and reverse order, we need to store in the mapping the node that is supposed to be used.
+    //       Basically, if we have a node that has ADDR_W = 10 and another that has ADDR_W = 12, then all else being equal we want to use the ADDR_W = 12 values instead of keeping the ADDR_W = 10.
+    // NOTE: This requires to move the logic a little bit higher. This function not only needs to report conflict but it also needs to be able to report which node preference. 
+    // NOTE2: Or we move the node preference to the merging function. Node conflict remains the same but we then add logic to the merging where we check if the node already present is preferred or if we want the "new" node (we only care about parameters since that is what separates nodes from each other [also static and config sharing but that needs to be resolved on node conflict anyway).
+  }
+
+  return false;
+}
+
+bool NodeMappingConflict(Edge edge1,Edge edge2){
+  PortInstance p00 = edge1.units[0];
+  PortInstance p01 = edge1.units[1];
+  PortInstance p10 = edge2.units[0];
+  PortInstance p11 = edge2.units[1];
+
+  if(NodeConflict(p00.inst) || NodeConflict(p01.inst) || 
+     NodeConflict(p10.inst) || NodeConflict(p11.inst)){
+    return true;
+  }
+
+#if 0
+  if(NodeConflict(p00.inst,p10.inst) || NodeConflict(p01.inst,p11.inst)){
+     return true;
+  }
+#endif
+     
+  if(p00.inst == p10.inst && p01.inst != p11.inst){
+    return true;
+  }
+  if(p00.inst == p11.inst && p01.inst != p10.inst){
+    return true;
+  }
+  if(p00.inst != p10.inst && p01.inst == p11.inst){
+    return true;
+  }
+  if(p00.inst != p11.inst && p01.inst == p10.inst){
+    return true;
+  }
+
+  return false;
+}
+
+bool MappingConflict(MappingNode map1,MappingNode map2){
+  if(map1.type == MappingNode::NODE && map2.type == MappingNode::NODE){
+    FUInstance* p00 = map1.nodes.instances[0];
+    FUInstance* p01 = map1.nodes.instances[1];
+    FUInstance* p10 = map2.nodes.instances[0];
+    FUInstance* p11 = map2.nodes.instances[1];
+
+    if(NodeConflict(p00) || NodeConflict(p01) || 
+       NodeConflict(p10) || NodeConflict(p11)){
+      return true;
+    }
+
+#if 0
+    if(NodeConflict(p00,p01) || NodeConflict(p10,p11)){
+      return true;
+    }
+#endif
+    
+    if(p00 == p10 && p01 != p11){
+      return true;
+    }
+
+    if(p00 != p10 && p01 == p11){
+      return true;
+    }
+  } else if(map1.type == MappingNode::EDGE && map2.type == MappingNode::EDGE){
+    Edge nodeMapping00 = {map1.edges[0].units[0],map1.edges[1].units[0]};
+    Edge nodeMapping01 = {map1.edges[0].units[1],map1.edges[1].units[1]};
+    Edge nodeMapping10 = {map2.edges[0].units[0],map2.edges[1].units[0]};
+    Edge nodeMapping11 = {map2.edges[0].units[1],map2.edges[1].units[1]};
+    
+    bool res = NodeMappingConflict(nodeMapping00,nodeMapping10) ||
+               NodeMappingConflict(nodeMapping01,nodeMapping10) ||
+               NodeMappingConflict(nodeMapping00,nodeMapping11) ||
+               NodeMappingConflict(nodeMapping01,nodeMapping11);
+
+    return res;
+  } else {
+    // Set node mapping to map1 if not already
+
+    if(map1.type == MappingNode::EDGE){
+      MappingNode tmp = map2;
+      map2 = map1;
+      map1 = tmp;
+    }
+
+    FUInstance* p0 = map1.nodes.instances[0]; // Maps node p0 to p1
+    FUInstance* p1 = map1.nodes.instances[1];
+
+    FUInstance* e00 = map2.edges[0].units[0].inst; // Maps node e00 to e10
+    FUInstance* e10 = map2.edges[1].units[0].inst;
+
+    FUInstance* e01 = map2.edges[0].units[1].inst; // Maps node e10 to e11
+    FUInstance* e11 = map2.edges[1].units[1].inst;
+
+    if(NodeConflict( p0) ||  NodeConflict(p1) || 
+       NodeConflict(e00) || NodeConflict(e01) || 
+       NodeConflict(e10) || NodeConflict(e11)){
+      return true;
+    }
+
+#define XOR(A,B,C,D) ((A == B && !(C == D)) || (!(A == B) && C == D))
+
+    if(XOR(p0,e00,p1,e10)){
+      return true;
+    }
+    if(XOR(p0,e01,p1,e11)){
+      return true;
+    }
+#undef XOR
+    
+  }
+
+  return false;
+}
+
+int EdgeEqual(Edge edge1,Edge edge2){
+  int res = (memcmp(&edge1,&edge2,sizeof(Edge)) == 0);
+
+  return res;
+}
+
+ConsolidationGraph Copy(ConsolidationGraph graph,Arena* out){
+  ConsolidationGraph res = {};
+
+  res = graph;
+  res.validNodes.Init(out,graph.nodes.size);
+  res.validNodes.Copy(graph.validNodes);
+
+  return res;
+}
+
+IsCliqueResult IsClique(ConsolidationGraph graph){
+  IsCliqueResult res = {};
+  res.result = true;
+
+  int cliqueSize = graph.validNodes.GetNumberBitsSet();
+
+  // Zero or one are always cliques
+  if(cliqueSize == 0 || cliqueSize == 1){
+    return res;
+  }
+
+  for(int i = 0; i < graph.nodes.size; i++){
+    if(!graph.validNodes.Get(i)){
+      continue;
+    }
+
+    int count = 0;
+    for(int ii = 0; ii < graph.edges.size; ii++){
+      if(!graph.validNodes.Get(ii)){
+        continue;
+      }
+
+      if(graph.edges[i].Get(ii)){
+        count += 1;
+      }
+    }
+
+    if(count != cliqueSize - 1){ // Each node must have (cliqueSize - 1) connections otherwise not a clique
+      res.failedIndex = i;
+      res.result = false;
+      return res;
+    }
+  }
+
+  return res;
+}
+
+// Checks if nodes are "equal" in terms of mapping
+bool EqualPortMapping(PortInstance p1,PortInstance p2){
+  FUDeclaration* d1 = p1.inst->declaration;
+  FUDeclaration* d2 = p2.inst->declaration;
+
+  if(d1 == BasicDeclaration::input && d2 == BasicDeclaration::input){ // Check the special case for inputs
+      if(GetInputPortNumber(p1.inst) == GetInputPortNumber(p2.inst)){
+        return true;
+      } else {
+        return false;
+      }
+  }
+
+  bool res = (d1 == d2);
+
+  if(NodeConflict(p1.inst,p2.inst)){
+    return false;
+  }
+
+  return res;
+}
+
+ConsolidationResult GenerateConsolidationGraph(Accelerator* accel0,Accelerator* accel1,ConsolidationGraphOptions options,Arena* out){
+  TEMP_REGION(temp,out);
+  ConsolidationGraph graph = {};
+
+  // Should be temp memory instead of using memory intended for the graph, but since the graph is expected to use a lot of memory and we are technically saving memory using this mapping, no major problem
+  Hashmap<FUInstance*,MergeEdge>* specificsMapping = PushHashmap<FUInstance*,MergeEdge>(out,1000);
+  Pool<MappingNode> specificsAdded = {};
+  
+  for(SpecificMergeNodes specific : options.specifics){
+    // TODO: Currently there is no logic that checks if these mappings are correct or not. Need to eventually tackle this.
+    MergeEdge node = {};
+    node.instances[0] = specific.instA;
+    node.instances[1] = specific.instB;
+
+    specificsMapping->Insert(specific.instA,node);
+    specificsMapping->Insert(specific.instB,node);
+
+    MappingNode* n = specificsAdded.Alloc();
+    n->nodes = node;
+    n->type = MappingNode::NODE;
+  }
+
+  FUInstance* accel0Output = GetOutputInstance(&accel0->allocated);
+  FUInstance* accel1Output = GetOutputInstance(&accel1->allocated);
+#if 1
+  // Map outputs
+  if(accel0Output && accel1Output){
+    MergeEdge node = {};
+    node.instances[0] = accel0Output;
+    node.instances[1] = accel1Output;
+
+    specificsMapping->Insert(accel0Output,node);
+    specificsMapping->Insert(accel1Output,node);
+
+    MappingNode* n = specificsAdded.Alloc();
+    n->nodes = node;
+    n->type = MappingNode::NODE;
+  }
+
+  // Map inputs
+  for(FUInstance* ptr1 : accel0->allocated){
+    FUInstance* instA = ptr1;
+    if(instA->declaration != BasicDeclaration::input){
+      continue;
+    }
+
+    for(FUInstance* ptr2 : accel1->allocated){
+      FUInstance* instB = ptr2;
+      if(instB->declaration != BasicDeclaration::input){
+        continue;
+      }
+
+      if(instA->portIndex != instB->portIndex){
+        continue;
+      }
+
+      MergeEdge node = {};
+      node.instances[0] = instA;
+      node.instances[1] = instB;
+
+      specificsMapping->Insert(instA,node);
+      specificsMapping->Insert(instB,node);
+
+      MappingNode* n = specificsAdded.Alloc();
+      n->nodes = node;
+      n->type = MappingNode::NODE;
+    }
+  }
+#endif
+  
+  // Insert specific mappings first (the first mapping nodes are the specifics)
+#if 0
+  for(int i = 0; i < options.nSpecifics; i++){
+    SpecificMergeNodes specific = options.specifics[i];
+
+    MappingNode* node = nodes.PushElem()
+
+    node->type = MappingNode::NODE;
+    node->nodes.instances[0] = specific.instA;
+    node->nodes.instances[1] = specific.instB;
+  }
+#endif
+
+  auto nodes = StartGrowableArray<MappingNode>(out);
+  
+#if 1
+  // Check possible edge mapping
+  Array<Edge> accel0Edges = GetAllEdges(accel0,temp);
+  Array<Edge> accel1Edges = GetAllEdges(accel1,temp);
+
+  for(Edge& edge0 : accel0Edges){
+    for(Edge& edge1 : accel1Edges){
+  // TODO: some nodes do not care about which port is connected (think the inputs for common operations, like multiplication, adders and the likes)
+      // Can augment the algorithm further to find more mappings
+      if(!(EqualPortMapping(edge0.units[0],edge1.units[0]) &&
+           EqualPortMapping(edge0.units[1],edge1.units[1]))){
+        continue;
+      }
+
+      if(edge0.delay != edge1.delay){
+        continue;
+      }
+      
+      MappingNode node = {};
+      node.type = MappingNode::EDGE;
+      node.edges[0].units[0] = edge0.units[0];
+      node.edges[0].units[1] = edge0.units[1];
+      node.edges[1].units[0] = edge1.units[0];
+      node.edges[1].units[1] = edge1.units[1];
+
+      if(NodeConflict(edge0.units[0].inst) || NodeConflict(edge0.units[1].inst) || 
+         NodeConflict(edge1.units[0].inst) || NodeConflict(edge1.units[1].inst)){
+        continue;
+      }
+      
+      // Checks to see if we are in conflict with any specific node.
+      MergeEdge* possibleSpecificConflict = specificsMapping->Get(node.edges[0].units[0].inst);
+      if(!possibleSpecificConflict) possibleSpecificConflict = specificsMapping->Get(node.edges[0].units[1].inst);
+      if(!possibleSpecificConflict) possibleSpecificConflict = specificsMapping->Get(node.edges[1].units[0].inst);
+      if(!possibleSpecificConflict) possibleSpecificConflict = specificsMapping->Get(node.edges[1].units[1].inst);
+
+      if(possibleSpecificConflict){
+        MappingNode specificNode = {};
+        specificNode.type = MappingNode::NODE;
+        specificNode.nodes = *possibleSpecificConflict;
+
+        if(MappingConflict(node,specificNode)){
+          continue;
+        }
+      }
+
+      *nodes.PushElem() = node;
+    }
+  }
+#endif
+
+  // Check node mapping
+#if 1
+  if(1 /*options.mapNodes */){
+    for(FUInstance* instA : accel0->allocated){
+      PortInstance portA = {};
+      portA.inst = instA;
+
+      if(instA == accel0Output || instA->declaration == BasicDeclaration::input){
+        continue;
+      }
+
+      for(FUInstance* instB : accel1->allocated){
+        PortInstance portB = {};
+        portB.inst = instB;
+
+        if(instB == accel1Output || instB->declaration == BasicDeclaration::input){
+          continue;
+        }
+
+        if(!EqualPortMapping(portA,portB)){
+          continue;
+        }
+
+        MappingNode node = {};
+        node.type = MappingNode::NODE;
+        node.nodes.instances[0] = instA;
+        node.nodes.instances[1] = instB;
+
+        MergeEdge* possibleSpecificConflict = specificsMapping->Get(node.nodes.instances[0]);
+        if(!possibleSpecificConflict) possibleSpecificConflict = specificsMapping->Get(node.nodes.instances[1]);
+
+        if(possibleSpecificConflict){
+          MappingNode specificNode = {};
+          specificNode.type = MappingNode::NODE;
+          specificNode.nodes = *possibleSpecificConflict;
+
+          if(MappingConflict(node,specificNode)){
+            continue;
+          }
+        }
+
+#if 0
+        // Same check for nodes in regards to specifics
+        bool conflict = false;
+        for(int i = 0; i < options.nSpecifics; i++){
+          MappingNode specificNode = graph.nodes[i];
+
+          // No point adding same exact node
+          if(specificNode.nodes.instances[0] == instA &&
+             specificNode.nodes.instances[1] == instB){
+            conflict = true;
+            break;
+          }
+
+          if(MappingConflict(node,specificNode)){
+            conflict = true;
+            break;
+          }
+        }
+        if(conflict){
+          continue;
+        }
+#endif
+        
+        *nodes.PushElem() = node;
+      }
+    }
+  }
+#endif
+
+  graph.nodes = EndArray(nodes);
+
+#if 0
+  printf("Size (MB):%d ",((graph.nodes.size / 8) * graph.nodes.size) / Megabyte(1));
+  exit(0);
+#endif
+
+  // Order nodes based on how equal in depth they are
+#if 0
+  region(out){
+    AcceleratorView view1 = CreateAcceleratorView(accel0,out);
+    AcceleratorView view2 = CreateAcceleratorView(accel1,out);
+    view1.CalculateDAGOrdering(out);
+    view2.CalculateDAGOrdering(out);
+
+    Array<int> count = PushArray<int>(out,graph.nodes.size);
+    Memset(count,0);
+    int max = 0;
+    for(int i = 0; i < graph.nodes.size; i++){
+      int depth = NodeDepth(graph.nodes[i]);
+      max = std::max(max,depth);
+
+      if(depth >= graph.nodes.size){
+        depth = graph.nodes.size - 1;
+      }
+
+      count[depth] += 1;
+    }
+    Array<int> offsets = PushArray<int>(out,max + 1);
+    Memset(offsets,0);
+    for(int i = 1; i < offsets.size; i++){
+      offsets[i] = offsets[i-1] + count[i-1];
+    }
+    Array<MappingNode> sorted = PushArray<MappingNode>(out,graph.nodes.size);
+    for(int i = 0; i < graph.nodes.size; i++){
+      int depth = NodeDepth(graph.nodes[i]);
+
+      int offset = offsets[depth];
+      offsets[depth] += 1;
+
+      sorted[offset] = graph.nodes[i];
+    }
+
+    for(int i = 0; i < sorted.size; i++){
+      graph.nodes[i] = sorted[sorted.size - i - 1];
+    }
+#if 1
+    for(int i = 0; i < graph.nodes.size; i++){
+      int depth = NodeDepth(graph.nodes[i]);
+      //printf("%d\n",depth);
+    }
+#endif
+  }
+#endif
+
+  int upperBound = MIN(accel0Edges.size,accel1Edges.size);
+  Array<BitArray> neighbors = PushArray<BitArray>(out,graph.nodes.size);
+  int times = 0;
+  for(int i = 0; i < graph.nodes.size; i++){
+    neighbors[i].Init(out,graph.nodes.size);
+    neighbors[i].Fill(0);
+  }
+  for(int i = 0; i < graph.nodes.size; i++){
+    MappingNode node1 = graph.nodes[i];
+
+    for(int ii = 0; ii < i; ii++){
+      times += 1;
+
+      MappingNode node2 = graph.nodes[ii];
+
+      if(MappingConflict(node1,node2)){
+        continue;
+      }
+
+      neighbors.data[i].Set(ii,1);
+      neighbors.data[ii].Set(i,1);
+    }
+  }
+  graph.edges = neighbors;
+
+  // Reorder based on degree of nodes
+#if 0
+  region(out){
+    Array<int> degree = PushArray<int>(out,graph.nodes.size);
+    Memset(degree,0);
+    for(int i = 0; i < graph.nodes.size; i++){
+      degree[i] = graph.edges[i].GetNumberBitsSet();
+    }
+  }
+#endif
+
+  graph.validNodes.Init(out,graph.nodes.size);
+  graph.validNodes.Fill(1);
+
+  ConsolidationResult res = {};
+  res.graph = graph;
+  res.upperBound = upperBound;
+  res.specificsAdded = specificsAdded;
+
+  return res;
+}
+
+void Clique(CliqueState* state,ConsolidationGraph graphArg,int index,IndexRecord* record,int size,Arena* temp,Time MAX_CLIQUE_TIME){
+  state->iterations += 1;
+
+  ConsolidationGraph graph = graphArg;
+
+  int num = graph.validNodes.GetNumberBitsSet();
+  if(num == 0){
+    if(size > state->max){
+      state->max = size;
+
+      // Record best clique found so far
+      state->clique.validNodes.Fill(0);
+      for(IndexRecord* ptr = record; ptr != nullptr; ptr = ptr->next){
+        state->clique.validNodes.Set(ptr->index,1);
+      }
+
+      state->found = true;
+    }
+    return;
+  }
+
+  auto end = GetTime();
+  Time elapsed = end - state->start;
+  if(elapsed > MAX_CLIQUE_TIME){
+    state->found = true;
+    return;
+  }
+
+  int lastI = index;
+  do{
+    if(size + num <= state->max){
+      return;
+    }
+
+#if 0
+    if(size + num <= state->table[index]){
+      return;
+    }
+#endif
+
+    int i = graph.validNodes.FirstBitSetIndex(lastI);
+
+    if(size + state->table[i] <= state->max){
+      return;
+    }
+
+    graph.validNodes.Set(i,0);
+
+    auto mark = MarkArena(temp);
+    ConsolidationGraph tempGraph = Copy(graph,temp);
+
+    tempGraph.validNodes &= graph.edges[i];
+
+    IndexRecord newRecord = {};
+    newRecord.index = i;
+    newRecord.next = record;
+
+    Clique(state,tempGraph,i,&newRecord,size + 1,temp,MAX_CLIQUE_TIME);
+
+    PopMark(mark);
+
+    if(state->found == true){
+      return;
+    }
+
+    lastI = i;
+  } while((num = graph.validNodes.GetNumberBitsSet()) != 0);
+}
+
+CliqueState MaxClique(ConsolidationGraph graph,int upperBound,Arena* out,Time MAX_CLIQUE_TIME){
+  CliqueState state = {};
+  state.table = PushArray<int>(out,graph.nodes.size);
+  state.clique = Copy(graph,out); // Preserve nodes and edges, but allocates different valid nodes
+
+  graph.validNodes.Fill(0);
+
+  state.start = GetTime();
+  for(int i = graph.nodes.size - 1; i >= 0; i--){
+    BLOCK_REGION(out);
+
+    state.found = false;
+    for(int j = i; j < graph.nodes.size; j++){
+      graph.validNodes.Set(j,1);
+    }
+
+    graph.validNodes &= graph.edges[i];
+
+    IndexRecord record = {};
+    record.index = i;
+
+    Clique(&state,graph,i,&record,1,out,MAX_CLIQUE_TIME);
+    state.table[i] = state.max;
+
+    if(state.max == upperBound){
+      break;
+    }
+
+    auto end = GetTime();
+    Time elapsed = end - state.start;
+    if(elapsed > MAX_CLIQUE_TIME){
+      break;
+    }
+  }
+
+  Assert(IsClique(state.clique).result);
+
+  return state;
+}
 
 #endif
+
+MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
+  DEBUG_STAGE("Merge");
+ 
+  TEMP_REGION(temp,out);
+  
+  int size = types.size;
+
+  Assert(size >= 2);
+
+  Array<COM_Graph> flattened = PushArray<COM_Graph>(temp,size);
+  for(int i = 0; i < size; i++){
+    flattened[i] = COM_Flatten(types[i]->base,temp);
+
+    COM_DebugOutputDotGraph(SF("Flattened%d.dot",i),"Flattened graph",flattened[i].units.head,flattened[i].edges.head);
+  }
+
+  // TODO: Might not be necessary
+  struct COM_ReconInfo{
+    COM_Graph graph;
+  };
+
+  Array<COM_ReconInfo> mergedRecons = PushArray<COM_ReconInfo>(temp,size);
+  for(int i = 0; i < size; i++){
+    mergedRecons[i].graph = flattened[i];
+  }
+
+  COM_Unit* unitHead = 0;
+  COM_Unit* unitTail = 0;
+  COM_Edge* edgeHead = 0;
+  COM_Edge* edgeTail = 0;
+
+  for(int i = 0; i < size; i++){
+    COM_Graph graph = mergedRecons[i].graph;
+    
+    ConsolidationGraph CG = MERGE_GenerateConsolidationGraph(unitHead,edgeHead,graph,{},temp);
+
+    MERGE_DebugOutputCG(CG,SF("ConsolidationGraph_%d.dot",i));
+
+    int upperBound = INT_MAX;
+    MERGE_CliqueResult result = MERGE_MaxClique(CG,upperBound,Seconds(10),temp);
+
+    MERGE_DebugOutputCG(CG,SF("MaxClique_%d.dot",i),&result.result);
+    
+    BitArray bestClique = result.result;
+
+    // Store the mapping from recon to graph directly inside nodes and edges ======
+    COM_ClearGeneralPtr(graph.units.head);
+    COM_ClearGeneralPtr(graph.edges.head);
+    for(int i = 0; i < CG.nodes.size; i++){
+      int isValid = bestClique.Get(i);
+      if(!isValid){
+        continue;
+      }
+
+      MERGE_Map map = CG.nodes[i];
+      FULL_SWITCH(map.type){
+      case MERGE_MapType_NIL: Assert(false);
+      case MERGE_MapType_NODE:{
+        map.units[1]->general = map.units[0];
+      } break;
+      case MERGE_MapType_EDGE:{
+        map.edges[1]->general = map.edges[0];
+      } break;
+    }
+    }
+
+    // Create any unit that has not been mapped already ===========================
+    for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
+      if(ptr->general){
+        continue;
+      }
+
+      COM_Unit* node = COM_Copy(ptr, out);
+      LL_Append(unitHead,unitTail,next,node);
+      Assert(!ptr->general && "How can this be set if we have not created the mapped node in the first place?");
+      ptr->general = node;
+    }
+
+    // Create any edge that has not been mapped already ===========================
+    for(COM_Edge* ptr = graph.edges.head; ptr; ptr = ptr->next){
+      if(ptr->general){
+        continue;
+      }
+
+      COM_Edge* newEdge = PushStruct<COM_Edge>(out);
+      newEdge->in = (COM_Unit*) ptr->in->general;
+      newEdge->inPort = ptr->inPort;
+      newEdge->out = (COM_Unit*) ptr->out->general;
+      newEdge->outPort = ptr->outPort;
+      newEdge->delay = ptr->delay;
+      Assert(!ptr->general && "How can this be set if we have not created the mapped node in the first place?");
+      ptr->general = newEdge;
+
+      LL_Append(edgeHead,edgeTail,next,newEdge);
+    }
+  }
+
+  // Resolve shared inputs by inserting muxs ====================================
+  struct COM_Data{
+    int inputCount;
+    Array<int> incidentEdgeCount;
+  };
+
+  // Initialize unit/edge data and calculate incidence ==========================
+  for(COM_Unit* ptr = unitHead; ptr; ptr = ptr->next){
+    COM_Data* data = PushStruct<COM_Data>(temp);
+    ptr->general = data;
+  }
+  for(COM_Edge* ptr = edgeHead; ptr; ptr = ptr->next){
+    COM_Data* data = (COM_Data*) ptr->in->general;
+    data->inputCount = MAX(data->inputCount,ptr->inPort + 1);
+  }  
+  for(COM_Unit* ptr = unitHead; ptr; ptr = ptr->next){
+    COM_Data* data = (COM_Data*) ptr->general;
+    data->incidentEdgeCount = PushArray<int>(temp,data->inputCount);
+  }  
+  for(COM_Edge* ptr = edgeHead; ptr; ptr = ptr->next){
+    COM_Data* data = (COM_Data*) ptr->in->general;
+    data->incidentEdgeCount[ptr->inPort] += 1;
+  }
+
+  int muxInserted = 0;
+  for(COM_Unit* unit = unitHead; unit; unit = unit->next){
+    COM_Data* data = (COM_Data*) unit->general;
+
+    for(int port = 0; port < data->incidentEdgeCount.size; port++){
+      int edgeCount = data->incidentEdgeCount[port];
+
+      if(edgeCount > 1){
+        COM_Unit* graphMux = PushStruct<COM_Unit>(out);
+        
+        Array<DECL_Param> params = PushArray<DECL_Param>(temp,1);
+        params[0].name = "SIZE";
+        params[0].val = SYM_Lit(edgeCount);
+        graphMux->decl = DECL_GetType("VERSAT_MUX",params);
+        graphMux->name = MERGE_GetValidMuxName(unitHead,muxInserted++,out);
+        
+        // Create edge from mux to input unit ===================================
+        COM_Edge* graphMuxEdge = PushStruct<COM_Edge>(out);
+        graphMuxEdge->out = graphMux;
+        graphMuxEdge->outPort = 0;
+        graphMuxEdge->in = unit;
+        graphMuxEdge->inPort = port;
+
+        // Collect all the recon edges that map to the edge we trying to remove =======
+        int freeMuxPort = 0;
+        for(int i = 0; i < size; i++){
+          COM_Graph graph = mergedRecons[i].graph;
+          
+          for(COM_Edge* edge = graph.edges.head; edge; edge = edge->next){
+            COM_Unit* reconUnit = edge->in;
+            COM_Unit* graphNodeFromRecon = (COM_Unit*) reconUnit->general;
+
+            // Recon edge is one of the edges multiple connected to a single unit port
+            if(unit == graphNodeFromRecon && edge->inPort == port){
+              //reconEdge[i] = edge;
+
+              // Create mux instance on recon graph =========================================
+              COM_Unit* reconMux = COM_Copy(graphMux,out);
+              reconMux->general = graphMux;
+              LL_Append(mergedRecons[i].graph.units.head,mergedRecons[i].graph.units.tail,next,reconMux);
+              
+              // Create edge from recon mux to input unit ===================================
+              COM_Edge* muxEdge = PushStruct<COM_Edge>(out);
+              muxEdge->out = reconMux;
+              muxEdge->outPort = 0;
+              muxEdge->in = reconUnit;
+              muxEdge->inPort = port;
+              muxEdge->general = graphMuxEdge;
+
+              // Change edge to point to multiplexer port ===================================
+              edge->in = reconMux;
+              edge->inPort = size;
+
+              // Change edge on graph unless already changed by another recon ===============
+              COM_Edge* graphEdge = (COM_Edge*) edge->general;
+              if(graphEdge->in != graphMux){
+                graphEdge->in = graphMux;
+                graphEdge->inPort = freeMuxPort++;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // TODO: Save the graph at this point to make it the base graph (before delay fixing).
+  
+  COM_DebugOutputDotGraph("Merged.dot","MergedGraph",unitHead,edgeHead);
+  
+  // Fix delays by delays from recons ===========================================
+  int insertedBuffers = 0;
+  FUDeclaration* varBufferType = DECL_GetVariableBufferType();
+  for(int attempt = 0; true; attempt++){
+    bool insertedBuffer = false;
+    for(int i = 0; i < size; i++){
+      COM_UnitNodeList order  = COM_CalculateDAGOrder(mergedRecons[i],temp);
+      COM_DelayResult  delays = COM_CalculateDelay(mergedRecons[i],order,temp);
+      
+      for(COM_EdgeDelay* delay = delays.edgeDelays; delay; delay = delay->next){
+        insertedBuffer = true;
+
+        int bufferIndex = insertedBuffers++;
+        COM_Unit* buffer = COM_PushUnit(&graph,SF("_versat_varBuffer%d",bufferIndex),varBufferType,out);
+
+        // Insert on original graph
+        COM_Edge* edge = delay->edge;
+        edge->delay = 0;
+        COM_Edge* newGraphEdge = COM_InsertMiddle(&graph,edge,buffer,0,0,out);
+
+        for(int i = 0; i < size; i++){
+          for(COM_Edge* reconEdge = mergedRecons[i].graph.edges.head; reconEdge; reconEdge = reconEdge->next){
+            if(reconEdge->general == edge){
+              COM_Unit* buffer = COM_PushUnit(&mergedRecons[i].graph,SF("_versat_varBuffer%d",bufferIndex),varBufferType,out);
+              
+              reconEdge->delay = 0;
+              COM_Edge* newReconEdge = COM_InsertMiddle(&mergedRecons[i].graph,reconEdge,buffer,0,0,out);
+              newReconEdge->general = newGraphEdge;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // TODO(perf): We can change var buffers into fixed buffers if we can detect that they have the same value
+  //             regardless of 
+
+  -- LEFT HERE -- The only thing missing is to pack the results and return.
+
+  exit(-1);
+  return {};
+
+#if 0
+  // Set graph pointers =========================================================
+  for(int i = 0; i < size; i++){
+    mergedRecons[i].ptr = mergedRecons[i].units.head;
+  }
+
+  for(COM_Unit* ptr = head; ptr; ptr = mergedRecons[0].ptr){
+    for(int i = 0; i < size; i++){
+      if(i > 0){
+        mergedRecons[i].ptr->mergePrev = mergedRecons[i-1].ptr;
+      }
+      if(i < size - 1){
+        mergedRecons[i].ptr->mergeNext = mergedRecons[i+1].ptr;
+      }
+    }
+
+    for(int i = 0; i < size; i++){
+      mergedRecons[i].ptr = mergedRecons[i].ptr->next;
+    }
+  }
+#endif
+  
+
+  
+#if 0
+  
+  MergeAndRecons* merged = StartMerge(size,flatten);
+  Accelerator* mergedGraph = merged->mergedGraph;
+
+  // Creates units
+  for(FUInstance* inst : flatten[0]->allocated){
+    FUInstance* recon = MapOrCreateNode(merged->recons[0],merged->inputToRecon[0],inst);
+    MapOrCreateNode(merged->mergedGraph,merged->reconToMerged[0],recon);
+  }
+  
+  for(EdgeIterator iter = IterateEdges(flatten[0]); iter.IsValid(); iter.Next()){
+    Edge edge = iter.Value();
+
+    // TODO: Because the nodes already exist, we could change this to only map instead of creating units.
+    //       We do not want to create units at this point
+    AddEdgeSingle(merged,edge,0);
+  }
+  
+  for(int i = 1; i < size; i++){
+    // Maps from flatten to mergedGraph
+    GraphMapping map = {};
+
+    if(modifier & MergeModifier_NO_UNIT_MERGED){
+      map = InitGraphMapping(temp); // Empty map
+    } else { 
+      map = CalculateMergeMapping(merged->mergedGraph,flatten[i],{},strat,temp);
+    }
+
+    Accelerator* recon = merged->recons[i];
+    AcceleratorMapping* inputToRecon = merged->inputToRecon[i];
+    AcceleratorMapping* reconToMerged = merged->reconToMerged[i];
+    
+    // Insert the mapping for the recons
+    for(Pair<FUInstance*,FUInstance**> mapped : map.instanceMap){
+      FUInstance* flattenInst = mapped.first;
+      FUInstance* mergedInst = *mapped.second;
+
+      FUInstance* reconInst = MapOrCreateNode(recon,inputToRecon,flattenInst);
+
+      FUDeclaration* decl = flattenInst->declaration;
+      
+      for(int i = 0; i < decl->parameters.size; i++){
+        Parameter param = decl->parameters[i];
+
+        // TODO: Need to finish this and do it properly. 
+        //       Also we might need to rethink our approach to merge and the best way of making sure that 
+        //       parameters are properly handled.
+        if(param.flags & ParamFlags_ORDER){
+          Opt<SYM_Expr> flatValOpt = flattenInst->parameterValues[i].val;
+          Opt<SYM_Expr> mergeValOpt = mergedInst->parameterValues[i].val;
+
+          if(flatValOpt.has_value() || mergeValOpt.has_value()){
+            SYM_Expr flatVal = flatValOpt.value_or(param.defaultVal);
+            SYM_Expr mergeVal = mergeValOpt.value_or(param.defaultVal);
+
+            mergedInst->parameterValues[i].val = SYM_PosMax(flatVal,mergeVal);
+            reconInst->parameterValues[i].val = SYM_PosMax(flatVal,mergeVal);
+          }
+        }
+      }
+
+      if(mergedInst){
+        if(!(mergedInst->name == flattenInst->name)){
+          mergedInst->name = PushString(globalPermanent,"%.*s_%.*s",UN(mergedInst->name),UN(flattenInst->name));
+        }
+      }
+      
+      MappingInsertEqualNode(reconToMerged,reconInst,mergedInst);
+    }
+
+    // Create nodes
+    for(FUInstance* inst : flatten[i]->allocated){
+      FUInstance* recon = MapOrCreateNode(merged->recons[i],merged->inputToRecon[i],inst);
+      MapOrCreateNode(merged->mergedGraph,merged->reconToMerged[i],recon);
+    }
+    
+    // TODO: Because the nodes already exist, we could change this to only map instead of creating units.
+    //       We do not want to create units at this point
+    for(EdgeIterator iter = IterateEdges(flatten[i]); iter.IsValid(); iter.Next()){
+      Edge edge = iter.Value();
+
+      AddEdgeSingle(merged,edge,i);
+    }
+  }
+
+  Array<AcceleratorMapping*> mergedToRecon = PushArray<AcceleratorMapping*>(temp,size);
+  for(int i = 0; i < size; i++){
+    mergedToRecon[i] = MappingInvert(merged->reconToMerged[i],temp);
+  }
+  
+  // It feels like I need to preserve mapping from flattened modules that contain merge units in order to properly implement the hierarchical merge.
+
+  // For now I'm going to ignore hierarchical merge and solve simple merge
+
+  // TODO: We have the full information needed to only use the minimum amount of ports needed.
+  //       We are not forced to use a fixed amount of ports.
+  FUDeclaration* muxType = GetTypeByName(muxTypeName);
+
+  DebugOutputGraphs(merged,"BeforeInsertingMux");
+  
+  // At this point we need to add the multiplexers
+  // Also assuming that we already removed all the superfluous edges (same node and input connected to same node and input edges can just be collapsed into one)
+  for(FUInstance* inst : merged->mergedGraph->allocated){
+    if(!inst->multipleSamePortInputs){
+      continue;
+    }
+
+    for(int port = 0; port < inst->declaration->NumberInputs(); port++){
+      Array<PortInstance> portInstancesConnectSameInput = PushArray<PortInstance>(temp,size);
+      Array<int> edgeDelays = PushArray<int>(temp,size);
+      int inputCount = 0;
+      FOREACH_LIST(ConnectionNode*,node,inst->allInputs){
+        if(node->port == port){
+          portInstancesConnectSameInput[inputCount] = node->instConnectedTo;
+          edgeDelays[inputCount] = node->edgeDelay;
+          inputCount += 1;
+        }
+      }
+      portInstancesConnectSameInput.size = inputCount;
+
+      if(inputCount <= 1){
+        continue;
+      }
+      
+      PortInstance inputPort = MakePortIn(inst,port);
+
+      for(PortInstance output : portInstancesConnectSameInput){
+        RemoveConnection(mergedGraph,output.inst,output.port,inputPort.inst,inputPort.port);
+      }
+      
+      String uniqueName = GetFreeMergeMultiplexerName(mergedGraph,globalPermanent);
+      FUInstance* multiplexer = CreateFUInstance(mergedGraph,muxType,uniqueName);
+      multiplexer->isMergeMultiplexer = true;
+      
+      ConnectUnits(MakePortOut(multiplexer,0),MakePortIn(inst,port),0);
+
+      // NOTE: Because units can be merged and recon graphs might contain more muxes than there are conflicts (because the input node is shared between recons) then we need to make sure that we do not map more 
+      Hashmap<Pair<PortInstance,int>,int>* portsMapped = PushHashmap<Pair<PortInstance,int>,int>(temp,size);
+
+      int multiplexerInputPortUsed = 0;
+
+      // NOTE: By going with recon order, we are "allocating" stuff in order (graph 0 will take port 0, graph 1 will take port 1 or 0 and so on. Care that we still want code to be generic and to not assume that 0 belongs to graph 0 and the likes).
+      for(int reconIndex = 0; reconIndex < size; reconIndex++){
+        AcceleratorMapping* map = mergedToRecon[reconIndex];
+        Accelerator* recon = merged->recons[reconIndex];
+
+        PortInstance mappedReconInput  = MappingMapInput(map,inputPort);
+
+        if(!mappedReconInput.inst){
+          continue;
+        }
+        
+        for(int i = 0; i <  portInstancesConnectSameInput.size; i++){
+          PortInstance outputPort  =  portInstancesConnectSameInput[i];
+          int edgeDelay = edgeDelays[i];
+
+          PortInstance mappedReconOutput = MappingMapOutput(map,outputPort);
+
+          if(!mappedReconOutput.inst){
+            continue;
+          }
+          // NOTE: Need to check if the edge exists (because we might have different graphs with almost equal edges because of different delays)
+          Opt<Edge> edge = FindEdge(mappedReconOutput,mappedReconInput,edgeDelay);
+          if(!edge.has_value()){
+            continue;
+          }
+
+          int mergeGraphInputPort = -1;
+          if(portsMapped->Exists({outputPort,edgeDelay})){
+            // Only add multiplexer to recon graph
+            mergeGraphInputPort = portsMapped->GetOrFail({outputPort,edgeDelay});
+          } else {
+            mergeGraphInputPort = multiplexerInputPortUsed++;
+            portsMapped->Insert({outputPort,edgeDelay},mergeGraphInputPort);
+
+            // Also adds connection to merged graph multiplexer
+            ConnectUnits(outputPort,MakePortIn(multiplexer,mergeGraphInputPort),edgeDelay);
+          }
+          Assert(mergeGraphInputPort >= 0);
+                
+          // Add multiplexer to recon graph
+          FUInstance* reconMux = CreateFUInstance(recon,muxType,uniqueName);
+          reconMux->isMergeMultiplexer = true;
+
+          InsertUnit(recon,mappedReconOutput,mappedReconInput,MakePortOut(reconMux,0),MakePortIn(reconMux,mergeGraphInputPort),edgeDelay);
+                
+          MappingInsertEqualNode(merged->reconToMerged[reconIndex],reconMux,multiplexer);
+        }
+      }
+    }
+  }
+
+  DebugOutputGraphs(merged,"AfterInsertingMux");
+
+  FUDeclaration declInst = {};
+  declInst.type = FUDeclarationType_MERGED;
+
+  // TODO: Kinda hacked approach to this
+  declInst.parameters = PushArray<Parameter>(globalPermanent,6);
+
+  declInst.parameters[0] = {"ADDR_W",SYM_Lit(32)};
+  declInst.parameters[1] = {"DATA_W",SYM_Lit(32)};
+  declInst.parameters[2] = {"DELAY_W",SYM_Lit(7)};
+  declInst.parameters[3] = {"AXI_ADDR_W",SYM_Lit(32)};
+  declInst.parameters[4] = {"AXI_DATA_W",SYM_Lit(32)};
+  declInst.parameters[5] = {"LEN_W",SYM_Lit(20)};
+
+  declInst.name = PushString(globalPermanent,name);
+
+  Pair<Accelerator*,AcceleratorMapping*> baseCopy = CopyAcceleratorWithMapping(mergedGraph,AcceleratorPurpose_BASE,true,globalPermanent);
+
+  // ======================================
+  // Calculate and fix delays
+
+  // MERGE
+  Array<DAGOrderNodes> reconOrder = PushArray<DAGOrderNodes>(temp,size);
+  Array<CalculateDelayResult> reconDelay = PushArray<CalculateDelayResult>(temp,size);
+
+  int attempt = -1;
+  while(true){
+    attempt += 1;
+
+    DEBUG_PATH(SF("ReconDelayAttemp%d",attempt));
+
+    bool insertedBuffer = false;
+    for(int i = 0; i < size; i++){
+      Accelerator* recon = merged->recons[i];
+
+      DEBUG_PATH(SF("ReconIndex%d",i));
+
+      reconDelay[i] = CalculateDelay(recon,temp);
+      
+      Array<DelayToAdd> delaysToAdd = GenerateFixDelays(recon,reconDelay[i].edgesDelay,globalPermanent);
+
+      // NOTE: Is not enough to add the buffer to the recon that needed it. We also need to add the buffer to all the recons that are affected by it.
+      // We first need to map the edge to the merged graph and then reverse map it 
+
+      for(DelayToAdd toAdd : delaysToAdd){
+        insertedBuffer = true;
+        
+        static int added = 0;
+        String uniqueName = PushString(globalPermanent,"%.*s_%d_%d",UN(toAdd.bufferName),i,added++);
+
+        Edge mergedEdge = MapReconEdgeToMerged(merged,toAdd.edge,i);
+
+        PortInstance n0 = mergedEdge.out;
+        PortInstance n1 = mergedEdge.in;
+        
+        InsertNewUnit(merged,uniqueName,BasicDeclaration::variableBuffer,n0,n1,0,true);
+      }
+    }
+
+    if(insertedBuffer){
+      continue;
+    }
+
+    break;
+  }
+
+  // TODO: Because we added the muxes and buffers we calculate the inversion again to update stuff.
+  //       This is wasteful and the better approach would be to implement a bimap.
+  for(int i = 0; i < size; i++){
+    mergedToRecon[i] = MappingInvert(merged->reconToMerged[i],temp);
+  }
+
+  for(int i = 0; i < size; i++){
+    Accelerator* recon = merged->recons[i];
+
+    reconOrder[i] = CalculateDAGOrder(recon,temp);
+  }
+  
+  DebugOutputGraphs(merged,"AfterInsertingBuffers");
+
+  Array<Hashmap<FUInstance*,int>*> reconToOrder = PushArray<Hashmap<FUInstance*,int>*>(temp,size);
+  for(int i = 0; i < reconToOrder.size; i++){
+    DAGOrderNodes order = reconOrder[i];
+    reconToOrder[i] = PushHashmap<FUInstance*,int>(temp,order.instances.size);
+
+    for(int ii = 0; ii < order.instances.size; ii++){
+      reconToOrder[i]->Insert(order.instances[ii],order.order[ii]);
+    }
+  }
+
+#endif
+
+  return {};
+}
+
+String MERGE_GetValidMuxName(COM_Unit* units,int muxInserted,Arena* out){
+  bool good = false;
+  int index = muxInserted;
+
+  ArenaMark mark = MarkArena(out);
+  String possibleName = {};
+
+  while(1){
+    PopMark(mark);
+    String possibleName = PushString(out,"VERSAT_MUX_%d",index);
+    
+    bool conflict = false;
+    for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
+      if(ptr->name == possibleName){
+        conflict = true;
+        break;
+      }
+    }
+
+    if(conflict){
+      index += 1;
+      continue;
+    }
+    
+    break;
+  }
+
+  return possibleName;
+}
+
+
+// Start ======================================================================
+
+bool NodeConflict(COM_Unit* inst){
+  // For now, do not even try to map nodes that contain any config modifiers.
+  // TODO: nocheckin
+#if 0
+  if(inst->isStatic){
+    return true;
+  }
+
+  if(inst->sharedEnable){
+    return true;
+  }
+
+  if(inst->isMergeMultiplexer){
+    return true;
+  }
+#endif
+  
+  return false;
+}
+
+bool NodeConflict(COM_Unit* first,COM_Unit* second){
+  TEMP_REGION(temp,nullptr);
+  
+  // Only call this function if instances are the same decl.
+  if(first->decl->meta != second->decl->meta){
+    return true;
+  }
+
+  FUDeclaration* decl = first->decl;
+
+  // TODO: This needs another look at.
+#if 0
+  TrieMap<String,SYM_Expr>* param1 = GetParametersOfUnit(first,temp);
+  TrieMap<String,SYM_Expr>* param2 = GetParametersOfUnit(second,temp);
+
+  for(int i = 0; i <  decl->parameters.size; i++){
+    Parameter param = decl->parameters[i];
+
+    // NOTE: 
+    // How do we know that the params are different? They could be anything and there is a 
+    // possability that instantiation could make these equal.
+    // If we have parameters with value X and value Y then it might fail but it could turn out
+    // later that X == Y. At the same time we cannot assume this unless we know that the merged 
+    // unit is the top unit.
+    if(param.flags & ParamFlags_UNIQUE){
+      SYM_Expr val1 = param1->GetOrFail(param.name);
+      SYM_Expr val2 = param2->GetOrFail(param.name);
+
+      if(!Equal(val1,val2)){
+        return true;
+      }
+    }
+
+    // TODO: To handle order and reverse order, we need to store in the mapping the node that is supposed to be used.
+    //       Basically, if we have a node that has ADDR_W = 10 and another that has ADDR_W = 12, then all else being equal we want to use the ADDR_W = 12 values instead of keeping the ADDR_W = 10.
+    // NOTE: This requires to move the logic a little bit higher. This function not only needs to report conflict but it also needs to be able to report which node preference. 
+    // NOTE2: Or we move the node preference to the merging function. Node conflict remains the same but we then add logic to the merging where we check if the node already present is preferred or if we want the "new" node (we only care about parameters since that is what separates nodes from each other [also static and config sharing but that needs to be resolved on node conflict anyway).
+  }
+#endif
+
+  return false;
+}
+
+bool NodeMappingConflict(COM_Edge edge1,COM_Edge edge2){
+#if 0
+  PortInstance p00 = edge1.units[0];
+  PortInstance p01 = edge1.units[1];
+  PortInstance p10 = edge2.units[0];
+  PortInstance p11 = edge2.units[1];
+#endif
+
+#if 0
+  if(NodeConflict(p00.inst) || NodeConflict(p01.inst) || 
+     NodeConflict(p10.inst) || NodeConflict(p11.inst)){
+    return true;
+  }
+
+#if 0
+  if(NodeConflict(p00.inst,p10.inst) || NodeConflict(p01.inst,p11.inst)){
+     return true;
+  }
+#endif
+     
+  if(p00.inst == p10.inst && p01.inst != p11.inst){
+    return true;
+  }
+  if(p00.inst == p11.inst && p01.inst != p10.inst){
+    return true;
+  }
+  if(p00.inst != p10.inst && p01.inst == p11.inst){
+    return true;
+  }
+  if(p00.inst != p11.inst && p01.inst == p10.inst){
+    return true;
+  }
+#endif
+
+  return false;
+}
+
+bool EqualPortMapping(COM_Unit* unit0,COM_Unit* unit1){
+#if 1
+  FUDeclaration* d0 = unit0->decl;
+  FUDeclaration* d1 = unit1->decl;
+
+  if(d0 == BasicDeclaration::input && d1 == BasicDeclaration::input){ // Check the special case for inputs
+      if(unit0->special == unit1->special){
+        return true;
+      } else {
+        return false;
+      }
+  }
+
+  if(NodeConflict(unit0,unit1)){
+    return false;
+  }
+  
+  bool res = (d0->meta == d1->meta);
+  return res;
+#endif
+}
+
+bool MappingConflict(MERGE_Map map1,MERGE_Map map2){
+  if(map1.type == MERGE_MapType_NODE && map2.type == MERGE_MapType_NODE){
+    COM_Unit* p00 = map1.units[0];
+    COM_Unit* p01 = map1.units[1];
+    COM_Unit* p10 = map2.units[0];
+    COM_Unit* p11 = map2.units[1];
+
+    if(NodeConflict(p00) || NodeConflict(p01) || 
+       NodeConflict(p10) || NodeConflict(p11)){
+      return true;
+    }
+    
+    if(p00 == p10 && p01 != p11){
+      return true;
+    }
+
+    if(p00 != p10 && p01 == p11){
+      return true;
+    }
+  } else if(map1.type == MERGE_MapType_EDGE && map2.type == MERGE_MapType_EDGE){
+    COM_Edge nodeMapping00 = {.conOut = map1.edges[0]->units[0],.conIn = map1.edges[1]->units[0]};
+    COM_Edge nodeMapping01 = {.conOut = map1.edges[0]->units[1],.conIn = map1.edges[1]->units[1]};
+    COM_Edge nodeMapping10 = {.conOut = map2.edges[0]->units[0],.conIn = map2.edges[1]->units[0]};
+    COM_Edge nodeMapping11 = {.conOut = map2.edges[0]->units[1],.conIn = map2.edges[1]->units[1]};
+
+    bool res = NodeMappingConflict(nodeMapping00,nodeMapping10) ||
+               NodeMappingConflict(nodeMapping01,nodeMapping10) ||
+               NodeMappingConflict(nodeMapping00,nodeMapping11) ||
+               NodeMappingConflict(nodeMapping01,nodeMapping11);
+
+    return res;
+  } else {
+    // Set node mapping to map1 if not already
+
+    if(map1.type == MERGE_MapType_EDGE){
+      MERGE_Map tmp = map2;
+      map2 = map1;
+      map1 = tmp;
+    }
+
+    COM_Unit* p0 = map1.units[0]; // Maps node p0 to p1
+    COM_Unit* p1 = map1.units[1];
+
+    COM_Unit* e00 = map2.edges[0]->units[0].unit; // Maps node e00 to e10
+    COM_Unit* e10 = map2.edges[1]->units[0].unit;
+
+    COM_Unit* e01 = map2.edges[0]->units[1].unit; // Maps node e10 to e11
+    COM_Unit* e11 = map2.edges[1]->units[1].unit;
+
+    if(NodeConflict( p0) ||  NodeConflict(p1) || 
+       NodeConflict(e00) || NodeConflict(e01) || 
+       NodeConflict(e10) || NodeConflict(e11)){
+      return true;
+    }
+
+#define XOR(A,B,C,D) ((A == B && !(C == D)) || (!(A == B) && C == D))
+
+    if(XOR(p0,e00,p1,e10)){
+      return true;
+    }
+    if(XOR(p0,e01,p1,e11)){
+      return true;
+    }
+#undef XOR
+    
+  }
+
+  return false;
+}
+
+// End ========================================================================
+
+ConsolidationGraph MERGE_GenerateConsolidationGraph(COM_Unit* units,COM_Edge* edges,COM_Graph toMap,ConsolidationGraphOptions options,Arena* out){
+  TEMP_REGION(temp,out);
+
+  auto nodeList = PushList<MERGE_Map>(temp);
+
+  for(COM_Edge* edge0 = edges; edge0; edge0 = edge0->next){
+    for(COM_Edge* edge1 = toMap.edges.head; edge1; edge1 = edge1->next){
+      
+      if(!(EqualPortMapping(edge0->units[0].unit,edge1->units[0].unit) &&
+           EqualPortMapping(edge0->units[1].unit,edge1->units[1].unit))){
+        continue;
+      }
+
+      if(edge0->delay != edge1->delay){
+        continue;
+      }
+      
+
+      MERGE_Map* node = nodeList->PushElem();
+      node->type = MERGE_MapType_EDGE;
+      node->edges[0] = edge0;
+      node->edges[1] = edge1;
+    }
+  }
+
+  for(COM_Unit* unit0 = units; unit0; unit0 = unit0->next){
+    for(COM_Unit* unit1 = toMap.units.head; unit1; unit1 = unit1->next){
+      if(!EqualPortMapping(unit0,unit1)){
+        continue;
+      }
+
+      MERGE_Map* node = nodeList->PushElem();
+      node->type = MERGE_MapType_NODE;
+      node->units[0] = unit0;
+      node->units[1] = unit1;
+    }
+  }
+
+  Array<MERGE_Map> nodes = PushArray(out,nodeList);
+  int size = nodes.size;
+  Array<BitArray> CGEdges = PushArray<BitArray>(out,size);
+
+  for(int i = 0; i < size; i++){
+    CGEdges[i].Init(out,size);
+    CGEdges[i].Fill(0);
+  }
+
+  for(int i = 0; i < size; i++){
+    for(int j = i + 1; j < size; j++){
+      MERGE_Map map0 = nodes[i];
+      MERGE_Map map1 = nodes[j];
+
+      if(MappingConflict(map0,map1)){
+        continue;
+      }
+
+      CGEdges[i].Set(j,1);
+      CGEdges[j].Set(i,1);
+    }
+  }
+  
+  ConsolidationGraph graph = {};
+  graph.edges = CGEdges;
+  graph.nodes = nodes;
+
+  return graph;
+}
+
+#if 0
+void Clique(CliqueState* state,BitArray nodes,int index,IndexRecord* record,int size,Arena* out,Time timeout){
+  TEMP_REGION(temp,out);
+
+  state->iterations += 1;
+
+  int num = nodes.GetNumberBitsSet();
+  if(num == 0){
+    if(size > state->max){
+      state->max = size;
+
+      // Record best clique found so far
+      state->clique.validNodes.Fill(0);
+      for(IndexRecord* ptr = record; ptr != nullptr; ptr = ptr->next){
+        state->clique.validNodes.Set(ptr->index,1);
+      }
+
+      state->found = true;
+    }
+    return;
+  }
+
+  auto end = GetTime();
+  Time elapsed = end - state->start;
+  if(elapsed > MAX_CLIQUE_TIME){
+    state->found = true;
+    return;
+  }
+
+  int lastI = index;
+  do{
+    if(size + num <= state->max){
+      return;
+    }
+
+#if 0
+    if(size + num <= state->table[index]){
+      return;
+    }
+#endif
+
+    int i = nodes.FirstBitSetIndex(lastI);
+
+    if(size + state->table[i] <= state->max){
+      return;
+    }
+
+    nodes.Set(i,0);
+
+    auto mark = MarkArena(temp);
+    ConsolidationGraph tempGraph = Copy(graph,temp);
+
+    tempGraph.validNodes &= graph.edges[i];
+
+    IndexRecord newRecord = {};
+    newRecord.index = i;
+    newRecord.next = record;
+
+    Clique(state,tempGraph,i,&newRecord,size + 1,temp,MAX_CLIQUE_TIME);
+
+    PopMark(mark);
+
+    if(state->found == true){
+      return;
+    }
+
+    lastI = i;
+  } while((num = graph.validNodes.GetNumberBitsSet()) != 0);
+}
+#endif
+
+MERGE_CliqueResult MERGE_MaxClique(ConsolidationGraph graph,int upperBound,Time MAX_CLIQUE_TIME,Arena* out){
+  TEMP_REGION(temp,out);
+
+  struct Work{
+    Work* next;
+    Work* prev;
+    Work* parent;
+
+    BitArray nodes;
+    int onePastLastIndex;
+    int nodesSet;
+  };
+
+  int size = graph.nodes.size;
+
+  BitArray maxCliqueFound = {};
+  maxCliqueFound.Init(out,size);
+  int maxFoundSoFar = 0;
+
+  Work* workHead = 0;
+  Work* workTail = 0;
+  Work* workFree = 0;
+
+  auto AllocateWork = [&](){
+    Work* res = 0;
+    if(workFree){
+      res = workFree;
+      LL_PopFrontNoTail(workFree,next);
+    } else {
+      res = PushStruct<Work>(temp);
+      res->nodes.Init(temp,size);
+    }
+    res->next = res->prev = res->parent = 0;
+    return res;
+  };
+
+  Work topLevel = {};
+
+  Work* top = AllocateWork();
+  top->parent = &topLevel;
+  top->nodes.Fill(1);
+  FIFO_Push(workHead,workTail,next,prev,top);
+
+  while(workTail){
+    Work* w = workTail;
+
+#if 0
+    String repr = Repr(w->nodes,temp);
+    printf("%p %d %d: %.*s\n",w,w->nodesSet,w->onePastLastIndex,UN(repr));
+#endif
+    
+    // Node whose children finished processing ====================================
+    if(w->onePastLastIndex == -1 || w->onePastLastIndex >= size){
+      FIFO_Pop(workHead,workTail,next,prev);
+      LL_PushNoTail(workFree,next,w);
+      continue;
+    } 
+
+    while(w->onePastLastIndex < size){
+      int index = w->nodes.FirstBitSetIndex(w->onePastLastIndex);
+
+      bool spawnedChilren = false;
+      bool noWork = false;
+
+      // No more edges to test, record node count on parent =========================
+      if(index == -1){
+        if(w->nodesSet > maxFoundSoFar){
+          maxFoundSoFar = w->nodesSet;
+          maxCliqueFound.Fill(0);
+
+          for(Work* ptr = w->parent; ptr; ptr = ptr->parent){
+            maxCliqueFound.Set(ptr->onePastLastIndex - 1,1);
+          }
+        }
+
+        FIFO_Pop(workHead,workTail,next,prev);
+        LL_PushNoTail(workFree,next,w);
+        noWork = true;
+      } else {
+        Work* node = AllocateWork();
+        node->parent = w;
+        node->nodes.Copy(w->nodes);
+
+        node->nodes.Set(index,0);
+        node->nodes &= graph.edges[index];
+        node->nodesSet = w->nodesSet + 1;
+
+        // Optimization, no point in processing if maximum is smaller than already found =
+        if(node->nodesSet + node->nodes.GetNumberBitsSet() < maxFoundSoFar){
+          LL_PushNoTail(workFree,next,node);
+        } else {
+          FIFO_Push(workHead,workTail,next,prev,node);
+          spawnedChilren = true;
+        }
+      }
+      
+      w->onePastLastIndex = index + 1;
+
+      if(spawnedChilren || noWork){
+        break;
+      }
+    }
+  }
+
+  int maxClique = maxFoundSoFar;
+
+  MERGE_CliqueResult res = {};
+  res.result = maxCliqueFound;
+  res.didTimeout = false;
+  return res;
+}
+
+#include "filesystem.hpp"
+
+void MERGE_Repr(StringBuilder* b,MERGE_Map* map){
+  switch(map->type){
+    case MERGE_MapType_NIL: b->PushString("<ERROR: NoType>"); break;
+    case MERGE_MapType_NODE:{
+      b->PushString("%.*s - %.*s",UN(map->units[0]->name),UN(map->units[1]->name)); break;
+    }
+    case MERGE_MapType_EDGE: {
+      b->PushString("%.*s - %.*s || %.*s - %.*s",UN(map->edges[0]->units[0].unit->name),UN(map->edges[0]->units[1].unit->name),UN(map->edges[1]->units[0].unit->name),UN(map->edges[1]->units[1].unit->name));
+    } break;
+  }
+}
+
+void MERGE_DebugOutputCG(ConsolidationGraph graph,String name,BitArray* optionalValid){
+  if(!globalOptions.debug){
+    return;
+  }
+
+  if(graph.nodes.size == 0){
+    return;
+  }
+
+  TEMP_REGION(temp,nullptr);
+
+  auto b = StartString(temp);
+
+  b->PushString("graph GraphName {\n\tnode [fontcolor=white,style=filled,color=\"160,60,176\"];\n");
+  for(int i = 0; i < graph.nodes.size; i++){
+    MERGE_Map* node = &graph.nodes[i];
+
+#if 1
+    if(optionalValid && !optionalValid->Get(i)){
+      continue;
+    }
+#endif
+
+    b->PushString("\t\"");
+    MERGE_Repr(b,node);
+    b->PushString("\";\n");
+  }
+
+  for(int i = 0; i < graph.nodes.size; i++){
+#if 1
+    if(optionalValid && !optionalValid->Get(i)){
+      continue;
+    }
+#endif
+
+    MERGE_Map* node1 = &graph.nodes[i];
+    for(int ii = i + 1; ii < graph.edges.size; ii++){
+#if 1
+      if(optionalValid && !optionalValid->Get(ii)){
+        continue;
+      }
+#endif
+      if(!graph.edges[i].Get(ii)){
+        continue;
+      }
+
+      MERGE_Map* node2 = &graph.nodes[ii];
+
+      b->PushString("\t\"");
+      MERGE_Repr(b,node1);
+      b->PushString("\" -- ");
+      b->PushString("\"");
+      MERGE_Repr(b,node2);
+      b->PushString("\";\n");
+    }
+  }
+
+  b->PushString("}\n");
+
+  String filePath = DEBUG_GetDebugRegionFilepath(name,temp);
+  
+  FILE* outputFile = OpenFileAndCreateDirectories(filePath,"w",FilePurpose_DEBUG_INFO);
+  if(outputFile){
+    String content = EndString(temp,b);
+    fprintf(outputFile,"%.*s",UN(content));
+    fclose(outputFile);
+  }
+}

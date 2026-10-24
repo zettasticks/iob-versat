@@ -240,6 +240,8 @@ static void InternalStartAccelerator(){
   self->running = 1;
   self->run = 0;
 
+  self->eval();
+
 #ifdef TRACE
   if(CreateVCD) tfp->dump(contextp->time());
   contextp->timeInc(1);
@@ -268,6 +270,8 @@ extern "C" void VersatAcceleratorSimulate(){
 
   for(int i = 0; !IsDone() ; i++){
     InternalUpdateAccelerator();
+
+    versat_printf("%d\n",i);
 
     if(i >= 10000000){
       versat_printf("Accelerator simulation has surpassed 10000000 cycles for a single run\n");
@@ -366,7 +370,8 @@ extern "C" void VersatSignalLoop(){
 extern "C" void VersatLoadDelay(volatile const unsigned int* delayBuffer){
   TopType* self = dut;
 
-@{setDelays}
+  @{setDelays}
+  InternalUpdateAccelerator();
 }
 
 void VERSAT_DisableReadsAndWrites(){

@@ -350,13 +350,15 @@ public:
   int GetNumberBitsSet();
 
   int FirstBitSetIndex();
-  int FirstBitSetIndex(int start);
+  int FirstBitSetIndex(int startIncluded);
 
   void operator&=(BitArray& other);
 
   BitIterator begin();
   BitIterator end();
 };
+
+String Repr(BitArray in,Arena* out);
 
 /*
   Hashmap

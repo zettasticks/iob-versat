@@ -4122,7 +4122,6 @@ void Output_VerilatorWrapper(String typeName,AccelInfo info,FUDeclaration* topLe
     for(int i = 0; i < info.delays; i++){
       c->Assignment(PushString(temp,"self->delay%d",i),PushString(temp,"delayBuffer[%d]",i));
     }
-    c->RawLine("self->eval();");
         
     String content = PushASTRepr(c,temp,false,1);
     TE_SetString("setDelays",content);
@@ -5258,6 +5257,14 @@ Array<FormatContent> ParseFormat(String format,Arena* out){
 }
 
 // ======================================
+// Type
+
+bool GEN_IsConfigOnly(GEN_WireType type){
+  bool res = (type == GEN_WireType_NONE);
+  return res;
+}
+
+// ======================================
 // Naming schemes
 
 String GEN_StaticName(DECL_StaticWire w,Arena* out){
@@ -5700,23 +5707,17 @@ GEN_TopContent GEN_OutputTopLevel(GEN_TopInfo* info,Arena* out){
   String versatUndefs = {};
 
   {
-    SYM_EvaluateResult configSize = SYM_ConstantEvaluate(info->configBitCount);
+    SYM_EvaluateResult configSize = SYM_ConstantEvaluate(info->configTotalBitCount);
     SYM_EvaluateResult stateSize = SYM_ConstantEvaluate(info->stateBitCount);
 
     auto d = StartString(temp);
     auto u = StartString(temp);
 
-    //d->PushString("`define NUMBER_UNITS %d\n",info accel->allocated.Size());
-    //u->PushString("`undef  NUMBER_UNITS\n");
     d->PushString("`define CONFIG_W %d\n",configSize.result);
     u->PushString("`undef  CONFIG_W\n");
     d->PushString("`define STATE_W %d\n",stateSize.result);
     u->PushString("`undef  STATE_W\n");
-    d->PushString("`define MAPPED_UNITS %d\n",info->decl->memoryMapped.size);
-    u->PushString("`undef  MAPPED_UNITS\n");
-    d->PushString("`define MAPPED_BIT %d\n",info->memoryMappedDecisionBit);
-    u->PushString("`undef  MAPPED_BIT\n");
-    d->PushString("`define nIO %d\n",info->decl->numberDatabus);
+    d->PushString("`define nIO %d\n",info->numberDatabus);
     u->PushString("`undef  nIO\n");
     d->PushString("`define LEN_W %d\n",20);
     u->PushString("`undef  LEN_W\n");
@@ -5969,22 +5970,22 @@ assign axi_araddr_o = temp_axi_araddr_o;
 
       if(HW_IsMemoryDP(ext.inter)){
         for(int k = 0; k < 2; k++){
-          m->PortConnect(PushString(temp,"ext_dp_out_%d_port_%d",i,k),PushString(temp,"ext_dp_out_%d_port_%d_o",i,k));
-          m->PortConnect(PushString(temp,"ext_dp_addr_%d_port_%d",i,k),PushString(temp,"ext_dp_addr_%d_port_%d_o",i,k));
-          m->PortConnect(PushString(temp,"ext_dp_enable_%d_port_%d",i,k),PushString(temp,"ext_dp_enable_%d_port_%d_o",i,k));
-          m->PortConnect(PushString(temp,"ext_dp_write_%d_port_%d",i,k),PushString(temp,"ext_dp_write_%d_port_%d_o",i,k));
-          m->PortConnect(PushString(temp,"ext_dp_in_%d_port_%d",i,k),PushString(temp,"ext_dp_in_%d_port_%d_i",i,k));
+          m->PortConnect(PushString(temp,"ext_dp_out_%d_port_%d_o",i,k),PushString(temp,"ext_dp_out_%d_port_%d_o",i,k));
+          m->PortConnect(PushString(temp,"ext_dp_addr_%d_port_%d_o",i,k),PushString(temp,"ext_dp_addr_%d_port_%d_o",i,k));
+          m->PortConnect(PushString(temp,"ext_dp_enable_%d_port_%d_o",i,k),PushString(temp,"ext_dp_enable_%d_port_%d_o",i,k));
+          m->PortConnect(PushString(temp,"ext_dp_write_%d_port_%d_o",i,k),PushString(temp,"ext_dp_write_%d_port_%d_o",i,k));
+          m->PortConnect(PushString(temp,"ext_dp_in_%d_port_%d_i",i,k),PushString(temp,"ext_dp_in_%d_port_%d_i",i,k));
         }
       }
 
       if(HW_IsMemory2P(ext.inter)){
-        m->PortConnect(PushString(temp,"ext_2p_write_%d",i),PushString(temp,"ext_2p_write_%d_o",i));
-        m->PortConnect(PushString(temp,"ext_2p_addr_out_%d",i),PushString(temp,"ext_2p_addr_out_%d_o",i));
-        m->PortConnect(PushString(temp,"ext_2p_data_out_%d",i),PushString(temp,"ext_2p_data_out_%d_o",i));
+        m->PortConnect(PushString(temp,"ext_2p_write_%d_o",i),PushString(temp,"ext_2p_write_%d_o",i));
+        m->PortConnect(PushString(temp,"ext_2p_addr_out_%d_o",i),PushString(temp,"ext_2p_addr_out_%d_o",i));
+        m->PortConnect(PushString(temp,"ext_2p_data_out_%d_o",i),PushString(temp,"ext_2p_data_out_%d_o",i));
 
-        m->PortConnect(PushString(temp,"ext_2p_read_%d",i),PushString(temp,"ext_2p_read_%d_o",i));
-        m->PortConnect(PushString(temp,"ext_2p_addr_in_%d",i),PushString(temp,"ext_2p_addr_in_%d_o",i));
-        m->PortConnect(PushString(temp,"ext_2p_data_in_%d",i),PushString(temp,"ext_2p_data_in_%d_i",i));
+        m->PortConnect(PushString(temp,"ext_2p_read_%d_o",i),PushString(temp,"ext_2p_read_%d_o",i));
+        m->PortConnect(PushString(temp,"ext_2p_addr_in_%d_o",i),PushString(temp,"ext_2p_addr_in_%d_o",i));
+        m->PortConnect(PushString(temp,"ext_2p_data_in_%d_i",i),PushString(temp,"ext_2p_data_in_%d_i",i));
       }
     }
 
@@ -6006,6 +6007,7 @@ assign axi_araddr_o = temp_axi_araddr_o;
   res.externalMemPorts = externalMemPorts;
   res.externalMemPortmap = externalMemPortmap;
   res.hardwareInstance = GEN_OutputHardwareInstance(info,out);
+  res.hardwareConfigs = GEN_OutputHardwareConfigurations(info,out);
   res.headerFile = GEN_OutputHeader(info,out);
   res.verilatorSoftwareWrapper = GEN_OutputVerilatorSoftwareWrapper(info,out);
   res.verilatorHardwareWrapper = GEN_OutputVerilatorHardwareWrapper(info,out);
@@ -6024,25 +6026,73 @@ String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out){
   COM_Unit* units = decl->base.units.head;
   COM_Edge* edges = decl->base.edges.head;
 
-  int configCount = info->configCount;
   int stateCount = info->stateCount;
   int databusCount = info->numberDatabus;
   int donesCount = decl->numberDones;
   int memoryMappedCount = decl->memoryMapped.size;
   int memoryConfigDecisionBit = info->memoryConfigDecisionBit;
 
-  SYM_Expr configBitCount = info->configBitCount;
+  SYM_Expr configBitCount = info->configTotalBitCount;
   SYM_Expr stateBitCount = info->stateBitCount;
 
   auto AddrIf = [info](VEmitter* m,VersatRegister r){
     int index = GEN_GetRegisterIndex(info,r);
-    m->If(SF("csr_addr >= %d && csr_addr < %d",index,index+4));
+    m->If(SF("csr_addr >= %d && csr_addr < %d",index * 4,(index + 1) * 4));
   };
+
+  // Inputs and Outputs =========================================================
+  {
+    VEmitter* m = StartVCode(temp);
+    m->StartPortGroup();
+
+    for(int i = 0; i < decl->externalMemory.size; i++){
+      HW_Instance ext = decl->externalMemory[i];
+      SYM_Expr addrSize = HW_GetAddrSize(ext,0);
+      Assert(!IsNil(addrSize));
+
+      if(HW_IsMemoryDP(ext.inter)){
+        SYM_Expr data0Size = HW_GetDataSize(ext,0);
+        SYM_Expr data1Size = HW_GetDataSize(ext,1);
+        SYM_Expr dataSize[2] = {data0Size,data1Size};
+        Assert(!IsNil(data0Size) && !IsNil(data1Size));
+
+        for(int k = 0; k < 2; k++){
+          m->Output(SF("ext_dp_addr_%d_port_%d_o",i,k),addrSize);
+          m->Output(SF("ext_dp_out_%d_port_%d_o",i,k),dataSize[k]);
+          m->Input(SF("ext_dp_in_%d_port_%d_i",i,k),dataSize[k]);
+          m->Output(SF("ext_dp_enable_%d_port_%d_o",i,k));
+          m->Output(SF("ext_dp_write_%d_port_%d_o",i,k));
+        }
+      }
+
+      if(HW_IsMemory2P(ext.inter)){
+        SYM_Expr dataOutSize = HW_GetDataSize(ext,0,Direction_OUTPUT);
+        SYM_Expr dataInSize = HW_GetDataSize(ext,0,Direction_INPUT);
+        Assert(!IsNil(dataOutSize) && !IsNil(dataInSize));
+
+        m->Output(SF("ext_2p_write_%d_o",i));
+        m->Output(SF("ext_2p_addr_out_%d_o",i),addrSize);
+        m->Output(SF("ext_2p_data_out_%d_o",i),dataOutSize);
+
+        m->Output(SF("ext_2p_read_%d_o",i));
+        m->Output(SF("ext_2p_addr_in_%d_o",i),addrSize);
+        m->Input(SF("ext_2p_data_in_%d_i",i),dataInSize);
+      }
+    }
+
+    m->EndPortGroup();
+    auto b = StartString(temp);
+    Repr(EndVCode(m),b);
+    String content = EndString(temp,b);
+    TE_SetString("externalMemPorts",content);
+  }
+
+  TE_SetString("inAndOuts",{});
 
   {
     VEmitter* m = StartVCode(temp);
 
-    Array<HW_Instance> databus = PushArray<HW_Instance>(temp,decl->numberDatabus);
+    Array<HW_Instance> databus = PushArray<HW_Instance>(temp,info->numberDatabus);
     for(int i = 0; i < databus.size; i++){
       databus[i] = HW_Instantiate(&HW_Default::HW_DATABUS,{},temp);
       databus[i].inter->schema = HW_RemoveFromSchema(databus[i].inter->schema,HW_SchemaType_INTERFACE,temp);
@@ -6060,133 +6110,6 @@ String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out){
   
   {
     VEmitter* m = StartVCode(temp);
-    m->StartInstance(decl->name,decl->name);
-
-    for(DECL_Param p : decl->parameters){
-      m->InstanceParam(p.name,p.val);
-    }
-
-    // Configs
-    SYM_Expr configDataExpr = SYM_0;
-    for(Wire w : decl->configs){
-      String repr = SYM_Repr(configDataExpr,temp);
-      String size = SYM_Repr(w.sizeExpr,temp);
-      
-      m->PortConnect(w.name,PushString(temp,"configdata[(%.*s)+:%.*s]",UN(repr),UN(size)));
-      
-      configDataExpr += w.sizeExpr;
-    }
-
-    for(DECL_StaticWire w : decl->statics){
-      String name = GEN_StaticName(w,temp);
-      m->PortConnect(name,name);
-    }
-
-    // Delays
-    SYM_Expr delayExpr = SYM_0;
-    for(int i = 0; i < decl->numberDelays; i++){
-      String repr = SYM_Repr(delayExpr,temp);
-
-      m->PortConnectIndexed("delay%d",i,PushString(temp,"delaydata[(%.*s)+:DELAY_W]",UN(repr)));
-      delayExpr += SYM_DelayW;
-    }
-    
-    // State
-    SYM_Expr stateIndex = SYM_0;
-    for(Wire w : decl->states){
-      String repr = SYM_Repr(stateIndex,temp);
-      String size = SYM_Repr(w.sizeExpr,temp);
-
-      m->PortConnect(w.name,PushString(temp,"statedata[(%.*s)+:%.*s]",UN(repr),UN(size)));
-      stateIndex += w.sizeExpr;
-    }
-
-    // External memories
-    for(int i = 0; i <  decl->externalMemory.size; i++){
-      HW_Instance& ext = decl->externalMemory[i];
-      int externalSeen = i;
-      if(ext.inter == &HW_Default::HW_DP){
-        m->PortConnectIndexed("ext_dp_addr_%d_port_0",i,"ext_dp_addr_%d_port_0_o",externalSeen);
-        m->PortConnectIndexed("ext_dp_out_%d_port_0",i,"ext_dp_out_%d_port_0_o",externalSeen);
-        m->PortConnectIndexed("ext_dp_in_%d_port_0",i,"ext_dp_in_%d_port_0_i",externalSeen);
-        m->PortConnectIndexed("ext_dp_enable_%d_port_0",i,"ext_dp_enable_%d_port_0_o",externalSeen);
-        m->PortConnectIndexed("ext_dp_write_%d_port_0",i,"ext_dp_write_%d_port_0_o",externalSeen);
-
-        m->PortConnectIndexed("ext_dp_addr_%d_port_1",i,"ext_dp_addr_%d_port_1_o",externalSeen);
-        m->PortConnectIndexed("ext_dp_out_%d_port_1",i,"ext_dp_out_%d_port_1_o",externalSeen);
-        m->PortConnectIndexed("ext_dp_in_%d_port_1",i,"ext_dp_in_%d_port_1_i",externalSeen);
-        m->PortConnectIndexed("ext_dp_enable_%d_port_1",i,"ext_dp_enable_%d_port_1_o",externalSeen);
-        m->PortConnectIndexed("ext_dp_write_%d_port_1",i,"ext_dp_write_%d_port_1_o",externalSeen);
-      } else {
-        m->PortConnectIndexed("ext_2p_addr_out_%d",i,"ext_2p_addr_out_%d_o",externalSeen);
-        m->PortConnectIndexed("ext_2p_addr_in_%d",i,"ext_2p_addr_in_%d_o",externalSeen);
-        m->PortConnectIndexed("ext_2p_write_%d",i,"ext_2p_write_%d_o",externalSeen);
-        m->PortConnectIndexed("ext_2p_read_%d",i,"ext_2p_read_%d_o",externalSeen);
-        m->PortConnectIndexed("ext_2p_data_in_%d",i,"ext_2p_data_in_%d_i",externalSeen);
-        m->PortConnectIndexed("ext_2p_data_out_%d",i,"ext_2p_data_out_%d_o",externalSeen);
-      }
-    }
-
-    if(decl->memoryMapped.size > 0){
-      m->PortConnect("wstrb","data_wstrb");
-      m->PortConnect("addr",SF("csr_addr[%d-1:0]",info->memoryMappedDecisionBit));
-      m->PortConnect("rdata",SF("unitRData"));
-      m->PortConnect("rvalid",SF("unitRValid"));
-      m->PortConnect("wdata","data_data");
-        
-      if(DECL_IsComposite(decl)){
-        for(int i = 0; i < decl->memoryMapped.size; i++){
-          m->PortConnectIndexed("unit_valid_%d",i,SF("unit_valids[%d]",i));
-        }
-      } else {
-        m->PortConnect("valid",SF("unit_valids[%d]",0));
-      }
-    }
-
-    // Databus
-    int ioSeen = 0;
-    for(int i = 0; i < decl->numberDatabus; i++){
-      m->PortConnectIndexed("databus_ready_%d",i,"databus_ready[%d]",ioSeen);
-      m->PortConnectIndexed("databus_valid_%d",i,"databus_valid[%d]",ioSeen);
-      m->PortConnectIndexed("databus_addr_%d",i,"databus_addr[%d]",ioSeen);
-      m->PortConnectIndexed("databus_rdata_%d",i,"databus_rdata[%d]",ioSeen);
-      m->PortConnectIndexed("databus_wdata_%d",i,"databus_wdata[%d]",ioSeen);
-      m->PortConnectIndexed("databus_wstrb_%d",i,"databus_wstrb[%d]",ioSeen);
-      m->PortConnectIndexed("databus_len_%d",i,"databus_len[%d]",ioSeen);
-      m->PortConnectIndexed("databus_last_%d",i,"databus_last[%d]",ioSeen);
-
-      ioSeen += 1;
-    }
-
-    if(decl->singleInterfaces & DECL_SingleInterface_LOOP){
-      m->PortConnect("signal_loop","signal_loop");
-    }
-    if(decl->singleInterfaces & DECL_SingleInterface_RUNNING){
-      m->PortConnect("running","running");
-    }
-    if(decl->singleInterfaces & DECL_SingleInterface_RUN){
-      m->PortConnect("run","run");
-    }
-    if(decl->singleInterfaces & DECL_SingleInterface_DONE){
-      m->PortConnect("done",SF("unitDone"));
-    }
-    if(decl->singleInterfaces & DECL_SingleInterface_CLK){
-      m->PortConnect("clk","clk");
-    }
-    if(decl->singleInterfaces & DECL_SingleInterface_RESET){
-      m->PortConnect("rst","rst");
-    }
-      
-    m->EndInstance();
-    
-    auto b = StartString(temp);
-    Repr(EndVCode(m),b);
-    String content = EndString(temp,b);
-    TE_SetString("topUnit",content);
-  }
-  
-  {
-    VEmitter* m = StartVCode(temp);
     GEN_EmitConnectOutputsToOut(m,units,edges);
     auto b = StartString(temp);
     Repr(EndVCode(m),b);
@@ -6197,24 +6120,9 @@ String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out){
 
   {
     VEmitter* m = StartVCode(temp);
-    m->StartPortGroup();
-    for(HW_Instance& inst : decl->externalMemory){
-      HW_EmitPortDeclaration(m,&inst,true);
-    }
-    m->EndPortGroup();
-    auto b = StartString(temp);
-    Repr(EndVCode(m),b);
-    String content = EndString(temp,b);
-    TE_SetString("externalMemPorts",content);
-  }
 
-  TE_SetString("inAndOuts",{});
-
-  {
-    VEmitter* m = StartVCode(temp);
-
-    if(donesCount){
-      m->Wire("unitDone",donesCount);
+    if(decl->singleInterfaces & DECL_SingleInterface_DONE){
+      m->Wire("unitDone",SYM_1);
     } else {
       m->WireAndAssignJoinBlock("unitDone","",1);
       m->Expression("1'b1");
@@ -6246,7 +6154,7 @@ String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out){
 
     if(!SYM_IsZeroValue(configBitCount)){
       m->Wire("configSet");
-      m->Assign("configSet",SF("csr_valid && we && !memoryMappedAddr && data_address >= %d",(configCount * 4)));
+      m->Assign("configSet",SF("csr_valid && we && !memoryMappedAddr && data_address >= %d",(info->configStart * 4)));
     }
 
     m->AlwaysBlock("clk","rst_int");
@@ -6690,8 +6598,8 @@ assign data_wstrb = csr_wstrb;
   {
     VEmitter* m = StartVCode(temp);
       
-    if(!SYM_IsZeroValue(info->configBitCount)){
-      m->Wire("configdata",info->configBitCount);
+    if(!SYM_IsZeroValue(info->configTotalBitCount)){
+      m->Wire("configdata",info->configTotalBitCount);
 
       for(DECL_StaticWire w : decl->statics){
         String name = GEN_StaticName(w,temp);
@@ -6775,6 +6683,120 @@ assign data_wstrb = csr_wstrb;
   }
 
   TE_SetNumber("databusDataSize",globalOptions.databusDataSize);
+  
+  {
+    VEmitter* m = StartVCode(temp);
+    m->StartInstance(decl->name,decl->name);
+
+    for(DECL_Param p : decl->parameters){
+      m->InstanceParam(p.name,p.val);
+    }
+
+    // Configs
+    for(GEN_Wire w : info->allConfigs){
+      if(w.type & GEN_WireType_IS_VERSAT){
+        continue;
+      }
+      String repr = SYM_Repr(w.startBit,temp);
+      String size = SYM_Repr(w.size,temp);
+      
+      m->PortConnect(w.name,PushString(temp,"configdata[(%.*s)+:%.*s]",UN(repr),UN(size)));
+    }
+
+    // State
+    for(GEN_Wire w : info->allStates){
+      if(w.type & GEN_WireType_IS_VERSAT){
+        continue;
+      }
+      String repr = SYM_Repr(w.startBit,temp);
+      String size = SYM_Repr(w.size,temp);
+
+      m->PortConnect(w.name,PushString(temp,"statedata[(%.*s)+:%.*s]",UN(repr),UN(size)));
+    }
+
+    // External memories
+    for(int i = 0; i <  decl->externalMemory.size; i++){
+      HW_Instance& ext = decl->externalMemory[i];
+      int externalSeen = i;
+      if(ext.inter == &HW_Default::HW_DP){
+        m->PortConnectIndexed("ext_dp_addr_%d_port_0",i,"ext_dp_addr_%d_port_0_o",externalSeen);
+        m->PortConnectIndexed("ext_dp_out_%d_port_0",i,"ext_dp_out_%d_port_0_o",externalSeen);
+        m->PortConnectIndexed("ext_dp_in_%d_port_0",i,"ext_dp_in_%d_port_0_i",externalSeen);
+        m->PortConnectIndexed("ext_dp_enable_%d_port_0",i,"ext_dp_enable_%d_port_0_o",externalSeen);
+        m->PortConnectIndexed("ext_dp_write_%d_port_0",i,"ext_dp_write_%d_port_0_o",externalSeen);
+
+        m->PortConnectIndexed("ext_dp_addr_%d_port_1",i,"ext_dp_addr_%d_port_1_o",externalSeen);
+        m->PortConnectIndexed("ext_dp_out_%d_port_1",i,"ext_dp_out_%d_port_1_o",externalSeen);
+        m->PortConnectIndexed("ext_dp_in_%d_port_1",i,"ext_dp_in_%d_port_1_i",externalSeen);
+        m->PortConnectIndexed("ext_dp_enable_%d_port_1",i,"ext_dp_enable_%d_port_1_o",externalSeen);
+        m->PortConnectIndexed("ext_dp_write_%d_port_1",i,"ext_dp_write_%d_port_1_o",externalSeen);
+      } else {
+        m->PortConnectIndexed("ext_2p_addr_out_%d",i,"ext_2p_addr_out_%d_o",externalSeen);
+        m->PortConnectIndexed("ext_2p_addr_in_%d",i,"ext_2p_addr_in_%d_o",externalSeen);
+        m->PortConnectIndexed("ext_2p_write_%d",i,"ext_2p_write_%d_o",externalSeen);
+        m->PortConnectIndexed("ext_2p_read_%d",i,"ext_2p_read_%d_o",externalSeen);
+        m->PortConnectIndexed("ext_2p_data_in_%d",i,"ext_2p_data_in_%d_i",externalSeen);
+        m->PortConnectIndexed("ext_2p_data_out_%d",i,"ext_2p_data_out_%d_o",externalSeen);
+      }
+    }
+
+    if(decl->memoryMapped.size > 0){
+      m->PortConnect("wstrb","data_wstrb");
+      m->PortConnect("addr",SF("csr_addr[%d:0]",info->addressBits));
+      m->PortConnect("rdata",SF("unitRData"));
+      m->PortConnect("rvalid",SF("unitRValid"));
+      m->PortConnect("wdata","data_data");
+        
+      if(DECL_IsComposite(decl)){
+        for(int i = 0; i < decl->memoryMapped.size; i++){
+          m->PortConnectIndexed("unit_valid_%d",i,SF("unit_valids[%d]",i));
+        }
+      } else {
+        m->PortConnect("valid",SF("unit_valids[%d]",0));
+      }
+    }
+
+    // Databus
+    int ioSeen = 0;
+    for(int i = 0; i < decl->numberDatabus; i++){
+      m->PortConnectIndexed("databus_ready_%d",i,"databus_ready[%d]",ioSeen);
+      m->PortConnectIndexed("databus_valid_%d",i,"databus_valid[%d]",ioSeen);
+      m->PortConnectIndexed("databus_addr_%d",i,"databus_addr[%d]",ioSeen);
+      m->PortConnectIndexed("databus_rdata_%d",i,"databus_rdata[%d]",ioSeen);
+      m->PortConnectIndexed("databus_wdata_%d",i,"databus_wdata[%d]",ioSeen);
+      m->PortConnectIndexed("databus_wstrb_%d",i,"databus_wstrb[%d]",ioSeen);
+      m->PortConnectIndexed("databus_len_%d",i,"databus_len[%d]",ioSeen);
+      m->PortConnectIndexed("databus_last_%d",i,"databus_last[%d]",ioSeen);
+
+      ioSeen += 1;
+    }
+
+    if(decl->singleInterfaces & DECL_SingleInterface_LOOP){
+      m->PortConnect("signal_loop","signal_loop");
+    }
+    if(decl->singleInterfaces & DECL_SingleInterface_RUNNING){
+      m->PortConnect("running","running");
+    }
+    if(decl->singleInterfaces & DECL_SingleInterface_RUN){
+      m->PortConnect("run","run");
+    }
+    if(decl->singleInterfaces & DECL_SingleInterface_DONE){
+      m->PortConnect("done",SF("unitDone"));
+    }
+    if(decl->singleInterfaces & DECL_SingleInterface_CLK){
+      m->PortConnect("clk","clk");
+    }
+    if(decl->singleInterfaces & DECL_SingleInterface_RESET){
+      m->PortConnect("rst","rst");
+    }
+      
+    m->EndInstance();
+    
+    auto b = StartString(temp);
+    Repr(EndVCode(m),b);
+    String content = EndString(temp,b);
+    TE_SetString("topUnit",content);
+  }
     
   String res = TE_ProcessTemplate(out,META_TopInstanceTemplate,true);
 
@@ -6838,16 +6860,16 @@ String GEN_OutputHardwareConfigurations(GEN_TopInfo* info,Arena* out){
 #if 1
   TEMP_REGION(temp,out);
 
-  
-  
-  //Array<WireInformation> wireInfo = val.allWiresInfo;
+  FUDeclaration* decl = info->decl;
 
   VEmitter* m = StartVCode(temp);
 
   // VARS
-  SYM_Expr configurationsBits = val.configurationBits;
-  int configurationAddressBits = val.configurationAddressBits;
+  SYM_Expr configurationsBits = info->configTotalBitCount;
+  int configurationAddressBits = info->memoryConfigDecisionBit;
   
+  SYM_Print(configurationsBits);
+
   m->Timescale("1ns","1ps");
 
   m->Include("versat_defs.vh");
@@ -6880,9 +6902,9 @@ String GEN_OutputHardwareConfigurations(GEN_TopInfo* info,Arena* out){
 
     m->Input("change_config_pulse");
 
-    for(WireInformation info : wireInfo){
-      if(info.isStatic){
-        m->Output(info.wire.name,info.wire.sizeExpr);
+    for(GEN_Wire w : info->allConfigs){
+      if(w.type & GEN_WireType_IS_STATIC){
+        m->Output(w.name,w.size);
       }
     }
 
@@ -6891,13 +6913,12 @@ String GEN_OutputHardwareConfigurations(GEN_TopInfo* info,Arena* out){
 
     m->Assign("config_data_o","configdata");
 
-    for(WireInformation info : wireInfo){
-      Wire w = info.wire;
+    for(GEN_Wire w : info->allConfigs){
       if(w.stage == VersatStage_COMPUTE || w.stage == VersatStage_WRITE){
-        m->Reg(SF("Compute_%.*s",UN(w.name)),info.wire.sizeExpr);
+        m->Reg(SF("Compute_%.*s",UN(w.name)),w.size);
       }
       if(w.stage == VersatStage_WRITE){
-        m->Reg(SF("Write_%.*s",UN(w.name)),info.wire.sizeExpr);
+        m->Reg(SF("Write_%.*s",UN(w.name)),w.size);
       }
     }
 
@@ -6924,15 +6945,19 @@ String GEN_OutputHardwareConfigurations(GEN_TopInfo* info,Arena* out){
         m->Set("shadow_configdata",0);
         m->ElseIf("data_write & !memoryMappedAddr");
         
-        for(WireInformation info : wireInfo){
-          m->Comment(info.wire.name);
-          m->If(SF("address[%d:0] == %d",configurationAddressBits + 1,info.addr));
+        for(GEN_Wire w : info->allConfigs){
+          if(w.type & GEN_WireType_IS_VERSAT){
+            continue;
+          }
           
-          String configStartExpr = SYM_Repr(info.startBitExpr,temp);
-          SYM_Expr size = info.wire.sizeExpr;
+          m->Comment(w.name);
+          m->If(SF("address[%d:0] == %d",configurationAddressBits,w.address));
+          
+          String configStartExpr = SYM_Repr(w.startBit,temp);
+          SYM_Expr size = w.size;
           
           if(!IsLiteral(size)){
-            String repr = SYM_Repr(info.wire.sizeExpr,temp);
+            String repr = SYM_Repr(w.size,temp);
 
             // TODO: Need to handle endianess
             m->Loop("i = 0",SF("i < %.*s",UN(repr)),"i++");
@@ -6941,7 +6966,7 @@ String GEN_OutputHardwareConfigurations(GEN_TopInfo* info,Arena* out){
             m->EndIf();
             m->EndLoop();
           } else {
-            int litVal = LiteralValue(size);
+            int litVal = LiteralValue(w.size);
             EmitStrobe(m,"data_wstrb","shadow_configdata",configStartExpr,"data_data",litVal);
           }
           
@@ -6957,20 +6982,27 @@ String GEN_OutputHardwareConfigurations(GEN_TopInfo* info,Arena* out){
         m->If("rst_i");
         m->Set("configdata",0);
         m->ElseIf("change_config_pulse");
-        for(WireInformation info : wireInfo){
-          String start = SYM_Repr(info.startBitExpr,temp);
-          String size = SYM_Repr(info.wire.sizeExpr,temp);
+        for(GEN_Wire w : info->allConfigs){
+          if(w.type & GEN_WireType_IS_VERSAT){
+            continue;
+          }
+
+          String start = SYM_Repr(w.startBit,temp);
+          String size = SYM_Repr(w.size,temp);
           
-          if(info.wire.stage == VersatStage_READ){
+          if(w.stage == VersatStage_READ){
             m->Set(SF("configdata[(%.*s)+:%.*s]",UN(start),UN(size)),SF("shadow_configdata[(%.*s)+:%.*s]",UN(start),UN(size)));
           }
         }
-        for(WireInformation info : wireInfo){
-          String start = SYM_Repr(info.startBitExpr,temp);
-          String size = SYM_Repr(info.wire.sizeExpr,temp);
+        for(GEN_Wire w : info->allConfigs){
+          if(w.type & GEN_WireType_IS_VERSAT){
+            continue;
+          }
+          String start = SYM_Repr(w.startBit,temp);
+          String size = SYM_Repr(w.size,temp);
 
-          if(info.wire.stage == VersatStage_COMPUTE || info.wire.stage == VersatStage_WRITE){
-            m->Set(SF("configdata[%.*s+:%.*s]",UN(start),UN(size)),SF("Compute_%.*s",UN(info.wire.name)));
+          if(w.stage == VersatStage_COMPUTE || w.stage == VersatStage_WRITE){
+            m->Set(SF("configdata[%.*s+:%.*s]",UN(start),UN(size)),SF("Compute_%.*s",UN(w.name)));
           }
         }
         m->EndIf();
@@ -6982,22 +7014,31 @@ String GEN_OutputHardwareConfigurations(GEN_TopInfo* info,Arena* out){
     m->AlwaysBlock("clk_i","rst_i");
     {
       m->If("rst_i");
-      for(WireInformation info : wireInfo){
-        if(info.wire.stage == VersatStage_COMPUTE || info.wire.stage == VersatStage_WRITE){
-          m->Set(SF("Compute_%.*s",UN(info.wire.name)),"0");
+      for(GEN_Wire w : info->allConfigs){
+        if(w.type & GEN_WireType_IS_VERSAT){
+          continue;
+        }
+        if(w.stage == VersatStage_COMPUTE || w.stage == VersatStage_WRITE){
+          m->Set(SF("Compute_%.*s",UN(w.name)),"0");
         }
       }
       m->ElseIf("change_config_pulse");
-      for(WireInformation info : wireInfo){
-        String start = SYM_Repr(info.startBitExpr,temp);
-        String size = SYM_Repr(info.wire.sizeExpr,temp);
-        if(info.wire.stage == VersatStage_COMPUTE){
-          m->Set(SF("Compute_%.*s",UN(info.wire.name)),SF("shadow_configdata[(%.*s)+:%.*s]",UN(start),UN(size)));
+      for(GEN_Wire w : info->allConfigs){
+        if(w.type & GEN_WireType_IS_VERSAT){
+          continue;
+        }
+        String start = SYM_Repr(w.startBit,temp);
+        String size = SYM_Repr(w.size,temp);
+        if(w.stage == VersatStage_COMPUTE){
+          m->Set(SF("Compute_%.*s",UN(w.name)),SF("shadow_configdata[(%.*s)+:%.*s]",UN(start),UN(size)));
         }
       }
-      for(WireInformation info : wireInfo){
-        if(info.wire.stage == VersatStage_WRITE){
-          m->Set(SF("Compute_%.*s",UN(info.wire.name)),SF("Write_%.*s",UN(info.wire.name)));
+      for(GEN_Wire w : info->allConfigs){
+        if(w.type & GEN_WireType_IS_VERSAT){
+          continue;
+        }
+        if(w.stage == VersatStage_WRITE){
+          m->Set(SF("Compute_%.*s",UN(w.name)),SF("Write_%.*s",UN(w.name)));
         }
       }
       m->EndIf();
@@ -7008,28 +7049,37 @@ String GEN_OutputHardwareConfigurations(GEN_TopInfo* info,Arena* out){
     m->AlwaysBlock("clk_i","rst_i");
     {
       m->If("rst_i");
-      for(WireInformation info : wireInfo){
-        if(info.wire.stage == VersatStage_WRITE){
-          m->Set(SF("Write_%.*s",UN(info.wire.name)),"0");
+      for(GEN_Wire w : info->allConfigs){
+        if(w.type & GEN_WireType_IS_VERSAT){
+          continue;
+        }
+        if(w.stage == VersatStage_WRITE){
+          m->Set(SF("Write_%.*s",UN(w.name)),"0");
         }
       }
       m->ElseIf("change_config_pulse");
-      for(WireInformation info : wireInfo){
-        String start = SYM_Repr(info.startBitExpr,temp);
-        String size = SYM_Repr(info.wire.sizeExpr,temp);
-        if(info.wire.stage == VersatStage_WRITE){
-          m->Set(SF("Write_%.*s",UN(info.wire.name)),SF("shadow_configdata[(%.*s)+:%.*s]",UN(start),UN(size)));
+      for(GEN_Wire w : info->allConfigs){
+        if(w.type & GEN_WireType_IS_VERSAT){
+          continue;
+        }
+        String start = SYM_Repr(w.startBit,temp);
+        String size = SYM_Repr(w.size,temp);
+        if(w.stage == VersatStage_WRITE){
+          m->Set(SF("Write_%.*s",UN(w.name)),SF("shadow_configdata[(%.*s)+:%.*s]",UN(start),UN(size)));
         }
       }
       m->EndIf();
     }
     m->EndBlock();
 
-    for(WireInformation info : wireInfo){
-      if(info.isStatic){
-        String start = SYM_Repr(info.startBitExpr,temp);
-        String repr = SYM_Repr(info.wire.sizeExpr,temp);
-        m->Assign(info.wire.name,PushString(temp,"configdata[(%.*s)+:%.*s]",UN(start),UN(repr)));
+    for(GEN_Wire w : info->allConfigs){
+      if(w.type & GEN_WireType_IS_VERSAT){
+        continue;
+      }
+      if(w.type & GEN_WireType_IS_STATIC){
+        String start = SYM_Repr(w.startBit,temp);
+        String repr = SYM_Repr(w.size,temp);
+        m->Assign(w.name,PushString(temp,"configdata[(%.*s)+:%.*s]",UN(start),UN(repr)));
       }
     }
   }
@@ -7982,16 +8032,16 @@ String repr = SYM_Repr(symb,temp);
   TE_SetNumber("databusDataSize",globalOptions.databusDataSize);
   TE_SetHex("memMappedStart",1 << info->memoryConfigDecisionBit);
   TE_SetHex("versatAddressSpace",2 * (1 << info->memoryConfigDecisionBit));
-  TE_SetHex("staticStart",info->configCount);
-  TE_SetHex("configStart",info->registers.size);
+  TE_SetHex("staticStart",info->staticStart);
+  TE_SetHex("configStart",info->configStart);
   TE_SetHex("stateStart",info->registers.size);
   TE_SetBool("useDMA",globalOptions.useDMA);
   TE_SetString("typeName",decl->name);
-  TE_SetNumber("nConfigs",info->configCount);
+  TE_SetNumber("nConfigs",info->totalConfigs);
   TE_SetNumber("nStates",info->stateCount);
 
   // TODO
-  TE_SetHex("delayStart",info->configCount + info->staticCount);
+  TE_SetHex("delayStart",info->delayStart);
 
   String res = TE_ProcessTemplate(out,META_HeaderTemplate,true);
   return res;
@@ -8558,7 +8608,7 @@ if(SimulateDatabus){
     }
     
     for(int i = 0; i < decl->numberDatabus; i++){
-      c->RawLine(PushString(temp,"databusBuffer[%d].latencyCounter = INITIAL_MEMORY_LATENCY;\n",i));
+      c->Assignment(SF("databusBuffer[%d].latencyCounter",i),"INITIAL_MEMORY_LATENCY");
     }
       
     String content = PushASTRepr(c,temp);
@@ -9511,8 +9561,7 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
   bool error = 0;
 
   int databusCount = 0;
-  int configCount = 0;
-  int stateCount = 0;
+  int staticCount = 0; // TODO
 
   SYM_Expr configBitCount = SYM_0;
   SYM_Expr stateBitCount = SYM_0;
@@ -9521,8 +9570,6 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
   auto registerList = PushList<VersatRegister>(temp);
 
   auto AddRegister = [&](VersatRegister reg){
-    configCount += 1;
-    stateCount += 1;
     configBitCount = configBitCount + SYM_DataW;
     stateBitCount = stateBitCount + SYM_DataW;
     *registerList->PushElem() = reg;
@@ -9557,19 +9604,104 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
     AddRegister(VersatRegister_CaptureDatabusGetDidCapture);
   }
 
-  configCount += topLevel->configs.size;
-  stateCount += topLevel->states.size;
-  databusCount += topLevel->numberDatabus;
+  // Finish versat registers ====================================================
+  Array<VersatRegister> versatRegisters = PushArray(out,registerList);
+
+  // Calculate final wire info ==================================================
+  auto configBuild = PushList<GEN_Wire>(temp);
+  auto stateBuild = PushList<GEN_Wire>(temp);
+
+  SYM_Expr configAccum = SYM_0;
+  SYM_Expr stateAccum = SYM_0;
+  int configIndex = 0;
+  int stateIndex = 0;
+  int staticIndex = 0;
+
+  // NOTE: The 'index * 4' is because address is byte aligned
+
+  for(VersatRegister v : versatRegisters){
+    SYM_Expr size = SYM_DataW;
+
+    GEN_Wire* c = configBuild->PushElem();
+    GEN_Wire* s = stateBuild->PushElem();
+
+    c->name = s->name = VersatRegister_Name(v);
+    c->size = s->size = size;
+    c->startBit = s->startBit = configAccum;
+    c->address = s->address = configIndex * 4;
+    c->type |= GEN_WireType_IS_VERSAT;
+    s->type |= GEN_WireType_IS_VERSAT;
+
+    configAccum = configAccum + size;
+    stateAccum = stateAccum + size;
+    configIndex += 1;
+    stateIndex += 1;
+  }
 
   for(Wire w : topLevel->configs){
+    GEN_Wire* c = configBuild->PushElem();
+
+    c->name = w.name;
+    c->stage = w.stage;
+    c->size = w.sizeExpr;
+    c->startBit = configAccum;
+    c->address = configIndex * 4;
+
     configBitCount = configBitCount + w.sizeExpr;
-  }
 
+    configAccum = configAccum + w.sizeExpr;
+    configIndex += 1;
+  }
   for(Wire w : topLevel->states){
+    GEN_Wire* c = stateBuild->PushElem();
+
+    c->name = w.name;
+    c->stage = w.stage;
+    c->size = w.sizeExpr;
+    c->startBit = stateAccum;
+    c->address = stateIndex * 4;
+
     stateBitCount = stateBitCount + w.sizeExpr;
+
+    stateAccum = stateAccum + w.sizeExpr;
+    stateIndex += 1;
   }
 
-  SYM_Expr delayBitCount = SYM_Lit(topLevel->numberDelays) * SYM_DataW;
+  SYM_Expr staticAccum = configAccum;
+  for(DECL_StaticWire w : topLevel->statics){
+    GEN_Wire* c = configBuild->PushElem();
+
+    c->name = w.wire.name;
+    c->stage = w.wire.stage;
+    c->size = w.wire.sizeExpr;
+    c->startBit = staticAccum;
+    c->address = (configIndex + staticIndex) * 4;
+    c->type |= GEN_WireType_IS_STATIC;
+
+    staticAccum = staticAccum + w.wire.sizeExpr;
+    staticIndex += 1;
+  }
+
+  SYM_Expr delayAccum = staticAccum;
+  for(int i = 0; i < topLevel->numberDelays; i++){
+    GEN_Wire* c = configBuild->PushElem();
+
+    c->name = PushString(out,"delay%d",i);
+    c->stage = VersatStage_COMPUTE;
+    c->size = SYM_DelayW;
+    c->startBit = delayAccum;
+    c->address = (configIndex + staticIndex + i) * 4;
+    c->type |= GEN_WireType_IS_DELAY;
+    
+    delayAccum = delayAccum + SYM_DelayW;
+  }
+
+  Array<GEN_Wire> configWires = PushArray(out,configBuild);
+  Array<GEN_Wire> stateWires = PushArray(out,stateBuild);
+  
+  int stateCount = stateIndex;
+  int totalConfigCount = configIndex + staticIndex + topLevel->numberDelays;
+  databusCount += topLevel->numberDatabus;
   
   // Huffman allocation of memory regions for mem mapped units ==================
   int memoryMappedBit = 0;
@@ -9682,7 +9814,7 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
   }
 
   // TODO: + 2 since we are dealing with byte addresses
-  int configMemoryDecisionBit = log2i(configCount) + 2;
+  int configMemoryDecisionBit = log2i(totalConfigCount) + 2;
   int stateMemoryDecisionBit = log2i(stateCount) + 2;
 
   int memoryConfigDecisionBit = MAX(configMemoryDecisionBit,stateMemoryDecisionBit);
@@ -9693,17 +9825,23 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
   // Pack =======================================================================
   GEN_TopInfo res = {};
   res.decl = topLevel;
-  res.registers = PushArray(out,registerList);
+  res.registers = versatRegisters;
   res.memoryMappedDecisionMask = memoryMappedDecisionMask;
+  res.allConfigs = configWires;
+  res.allStates = stateWires;
 
-  res.configCount = configCount;
-  res.configBitCount = configBitCount;
+  res.configStart = versatRegisters.size;
+  res.staticStart = res.configStart + topLevel->configs.size;
+  res.delayStart  = res.staticStart + staticCount;
+
+  res.totalConfigs = topLevel->configs.size + staticCount + topLevel->numberDelays;
+  res.configOnlyBitCount = configBitCount;
+  res.configTotalBitCount = delayAccum;
   res.stateCount = stateCount;
   res.stateBitCount = stateBitCount;
   res.addressBits = addressBits;
   res.memoryMappedDecisionBit = memoryMappedBit;
   res.memoryConfigDecisionBit = memoryConfigDecisionBit;
-  res.delayBitCount = delayBitCount;
   res.numberDatabus = databusCount;
   
   return res;
