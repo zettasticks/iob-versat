@@ -120,7 +120,6 @@ FUDeclaration* InstantiateModule(String content,ModuleDef def,Array<ParamNameAnd
   DEBUG_PATH("InstantiateModule");
   
   Arena* perm = globalPermanent;
-  // MARK
 
   TEMP_REGION(temp,perm);
 
@@ -3541,7 +3540,8 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
       }
 
       parser->ExpectNext(')');
-      var = SP_PushNode(out,SP_Type_FUNC_CALL,name,argHead);
+      var = SP_PushNode(out,SP_Type_FUNC_CALL,name,0);
+      var->second = argHead;
     } else {
       var = SP_PushNode(out,SP_Type_VAR,name,0);
     }
@@ -3569,8 +3569,12 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
             break;
           }
 
+          SP_Node* nameNode = SP_PushNode(out,SP_Type_VAR,name,0);
+
           parser->ExpectNext(')');
-          var = SP_PushNode(out,SP_Type_FUNC_CALL,access,var);
+          var = SP_PushNode(out,SP_Type_FUNC_CALL,access,nullptr);
+          var->first = nameNode;
+          var->second = argHead;
         } else {
           var = SP_PushNode(out,SP_Type_HIER_ACCESS,access,var);
         }
@@ -4232,7 +4236,6 @@ SP_Node* SP_ParseModuleDef(Parser* parser,Arena* out){
       
       Token peek = parser->PeekToken(0);
       bool isFunction = 0;
-
       if(peek.type == TokenType_KEYWORD_CONFIG ||
          peek.type == TokenType_KEYWORD_STATE ||
          peek.type == TokenType_KEYWORD_MEM){
@@ -4325,7 +4328,11 @@ SP_Node* SP_ParseSpec(String content,Arena* out){
       parser->Advance(tok);
       Token name = parser->NextToken();
 
-      if(parser->IfNextToken('=')){
+      Token peek = parser->PeekToken();
+
+      if(peek.type == TOK_TYPE('=')){
+        parser->Advance(peek);
+
         SP_Node* typeHead = 0;
         SP_Node* typeTail = 0;
 
@@ -4345,8 +4352,50 @@ SP_Node* SP_ParseSpec(String content,Arena* out){
         parser->ExpectNext(';');
 
         node = SP_PushNode(out,SP_Type_MERGE_DECL,name,typeHead);
+      } else if(peek.type == TOK_TYPE('(')){
+        parser->Advance(peek);
+        parser->ExpectNext(')');
+
+        SP_Node* head = 0;
+        SP_Node* tail = 0;
+
+        parser->ExpectNext('{');
+        int state = 0;
+        while(!parser->Done()){
+          if(parser->IfPeekToken('}')){
+            break;
+          }
+
+          Token peek = parser->PeekToken(0);
+          bool isFunction = 0;
+          if(peek.type == TokenType_KEYWORD_CONFIG ||
+             peek.type == TokenType_KEYWORD_STATE ||
+             peek.type == TokenType_KEYWORD_MEM){
+            isFunction = 1;
+          }
+
+          SP_Node* node = 0;
+          if(isFunction){
+            node = SP_ParseConfigFunction(parser,out);
+          } else {
+            Token typeName = parser->ExpectNext(TokenType_IDENTIFIER);
+            Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+
+            SP_Node* nameNode = SP_PushNode(out,SP_Type_VAR,name,0);
+            node = SP_PushNode(out,SP_Type_VAR_DECL,typeName,nameNode);
+
+            parser->ExpectNext(';');
+          }
+
+          LL_Append(head,tail,next,node);
+        }
+
+        parser->ExpectNext('}');
+
+        node = SP_PushNode(out,SP_Type_MERGE_DECL,name,head);
       } else {
-        NOT_IMPLEMENTED();
+        parser->ReportUnexpectedToken(peek,{TOK_TYPE('='),TOK_TYPE('(')});
+        parser->Advance(peek);
       }
     } else {
       parser->ReportUnexpectedToken(tok,{TokenType_KEYWORD_MODULE,TokenType_KEYWORD_MERGE});
@@ -4375,6 +4424,10 @@ SP_Node* SP_ParseSpec(String content,Arena* out){
 // Helpers
 
 SP_Node* SP_UnpackExpr(SP_Node* exprNode){
+  if(!exprNode){
+    return nullptr;
+  }
+
   SP_Node* node = exprNode;
   if(node->type == SP_Type_EXPR){
     node = node->childs;

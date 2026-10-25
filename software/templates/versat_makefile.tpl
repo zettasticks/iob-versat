@@ -9,13 +9,15 @@ HARDWARE_SRC += Versat_verilator_wrapper.v
 VERILATOR_ROOT?=$(shell ./GetVerilatorRoot.sh)
 INCLUDE := -I$(HARDWARE_FOLDER)
 
-VERILATOR_COMMON_ARGS := --report-unoptflat -GLEN_W=20 -CFLAGS "-O2 -march=native" $(INCLUDE)
-VERILATOR_COMMON_ARGS += -GAXI_ADDR_W=$(shell getconf LONG_BIT)
-VERILATOR_COMMON_ARGS += -GAXI_DATA_W=@{databusDataSize}
-VERILATOR_COMMON_ARGS += -GDATA_W=32
-VERILATOR_COMMON_ARGS += -GDELAY_W=20
-VERILATOR_COMMON_ARGS += -GLEN_W=20
-VERILATOR_COMMON_ARGS += @{traceType}
+VERILATOR_ARGS := -Wall --report-unoptflat --debug
+VERILATOR_ARGS := -CFLAGS "-O2 -march=native" $(INCLUDE)
+VERILATOR_ARGS += -GAXI_ADDR_W=$(shell getconf LONG_BIT)
+VERILATOR_ARGS += -GAXI_DATA_W=@{databusDataSize}
+VERILATOR_ARGS += -GDATA_W=32
+VERILATOR_ARGS += -GDELAY_W=20
+VERILATOR_ARGS += -GLEN_W=20
+VERILATOR_ARGS += -GADDR_W=@{addressSize}
+VERILATOR_ARGS += @{traceType}
 
 all: libaccel.a
 
@@ -30,7 +32,7 @@ VUnitWireInfo.h: $(VHEADER)
 	./ExtractVerilatedSignals.py $(VHEADER) > VUnitWireInfo.h
 
 $(VHEADER): $(HARDWARE_SRC)
-	verilator $(VERILATOR_COMMON_ARGS) -GADDR_W=@{addressSize} --cc $(HARDWARE_SRC) --top-module $(TYPE_NAME)
+	verilator $(VERILATOR_ARGS) --cc $(HARDWARE_SRC) --top-module $(TYPE_NAME)
 	$(MAKE) -C ./obj_dir -f V$(TYPE_NAME).mk
 	cp ./obj_dir/*.h ./
 

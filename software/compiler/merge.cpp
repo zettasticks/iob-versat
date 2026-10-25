@@ -3767,50 +3767,40 @@ CliqueState MaxClique(ConsolidationGraph graph,int upperBound,Arena* out,Time MA
 
 MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
   DEBUG_STAGE("Merge");
- 
   TEMP_REGION(temp,out);
   
   int size = types.size;
-
   Assert(size >= 2);
 
   Array<COM_Graph> flattened = PushArray<COM_Graph>(temp,size);
   for(int i = 0; i < size; i++){
-    flattened[i] = COM_Flatten(types[i]->base,temp);
+    flattened[i] = COM_Flatten(types[i]->baseGraph,out);
 
     COM_DebugOutputDotGraph(SF("Flattened%d.dot",i),"Flattened graph",flattened[i].units.head,flattened[i].edges.head);
   }
 
-  // TODO: Might not be necessary
-  struct COM_ReconInfo{
-    COM_Graph graph;
-  };
-
-  Array<COM_ReconInfo> mergedRecons = PushArray<COM_ReconInfo>(temp,size);
+  Array<COM_Graph> reconGraphs = PushArray<COM_Graph>(out,size);
   for(int i = 0; i < size; i++){
-    mergedRecons[i].graph = flattened[i];
+    reconGraphs[i] = flattened[i];
   }
 
-  COM_Unit* unitHead = 0;
-  COM_Unit* unitTail = 0;
-  COM_Edge* edgeHead = 0;
-  COM_Edge* edgeTail = 0;
+  COM_Graph mergedGraph = {};
+  COM_Unit*& unitHead = mergedGraph.units.head;
+  COM_Unit*& unitTail = mergedGraph.units.tail;
+  COM_Edge*& edgeHead = mergedGraph.edges.head;
+  COM_Edge*& edgeTail = mergedGraph.edges.tail;
+  bool error = false;
 
+  int upperBound = INT_MAX;
   for(int i = 0; i < size; i++){
-    COM_Graph graph = mergedRecons[i].graph;
-    
+    COM_Graph graph = reconGraphs[i];
     ConsolidationGraph CG = MERGE_GenerateConsolidationGraph(unitHead,edgeHead,graph,{},temp);
-
     MERGE_DebugOutputCG(CG,SF("ConsolidationGraph_%d.dot",i));
-
-    int upperBound = INT_MAX;
     MERGE_CliqueResult result = MERGE_MaxClique(CG,upperBound,Seconds(10),temp);
-
     MERGE_DebugOutputCG(CG,SF("MaxClique_%d.dot",i),&result.result);
     
-    BitArray bestClique = result.result;
-
     // Store the mapping from recon to graph directly inside nodes and edges ======
+    BitArray bestClique = result.result;
     COM_ClearGeneralPtr(graph.units.head);
     COM_ClearGeneralPtr(graph.edges.head);
     for(int i = 0; i < CG.nodes.size; i++){
@@ -3912,7 +3902,7 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
         // Collect all the recon edges that map to the edge we trying to remove =======
         int freeMuxPort = 0;
         for(int i = 0; i < size; i++){
-          COM_Graph graph = mergedRecons[i].graph;
+          COM_Graph graph = reconGraphs[i];
           
           for(COM_Edge* edge = graph.edges.head; edge; edge = edge->next){
             COM_Unit* reconUnit = edge->in;
@@ -3925,7 +3915,7 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
               // Create mux instance on recon graph =========================================
               COM_Unit* reconMux = COM_Copy(graphMux,out);
               reconMux->general = graphMux;
-              LL_Append(mergedRecons[i].graph.units.head,mergedRecons[i].graph.units.tail,next,reconMux);
+              LL_Append(reconGraphs[i].units.head,reconGraphs[i].units.tail,next,reconMux);
               
               // Create edge from recon mux to input unit ===================================
               COM_Edge* muxEdge = PushStruct<COM_Edge>(out);
@@ -3954,50 +3944,67 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
 
   // TODO: Save the graph at this point to make it the base graph (before delay fixing).
   
+  for(int i = 0; i < size; i++){
+    COM_DebugOutputDotGraph(SF("BeforeDelay_Recon%d.dot",i),"Recon",reconGraphs[i].units.head,reconGraphs[i].edges.head);
+  }
+  
   COM_DebugOutputDotGraph("Merged.dot","MergedGraph",unitHead,edgeHead);
   
   // Fix delays by delays from recons ===========================================
   int insertedBuffers = 0;
   FUDeclaration* varBufferType = DECL_GetVariableBufferType();
-  for(int attempt = 0; true; attempt++){
+
+  // NOTE: Made up max limit. Make sure that we do not enter an infinite cycle
+  int maxLimit = 20;
+  for(int attempt = 0; attempt < maxLimit; attempt++){
     bool insertedBuffer = false;
     for(int i = 0; i < size; i++){
-      COM_UnitNodeList order  = COM_CalculateDAGOrder(mergedRecons[i],temp);
-      COM_DelayResult  delays = COM_CalculateDelay(mergedRecons[i],order,temp);
+      COM_UnitNodeList order  = COM_CalculateDAGOrder(reconGraphs[i],temp);
+      COM_DelayResult  delays = COM_CalculateDelay(reconGraphs[i],order,temp);
       
       for(COM_EdgeDelay* delay = delays.edgeDelays; delay; delay = delay->next){
         insertedBuffer = true;
 
         int bufferIndex = insertedBuffers++;
-        COM_Unit* buffer = COM_PushUnit(&graph,SF("_versat_varBuffer%d",bufferIndex),varBufferType,out);
+
+        printf("%d\n",bufferIndex);
+        COM_Unit* buffer = COM_PushUnit(&mergedGraph,SF("_versat_varBuffer%d",bufferIndex),varBufferType,out);
 
         // Insert on original graph
         COM_Edge* edge = delay->edge;
         edge->delay = 0;
-        COM_Edge* newGraphEdge = COM_InsertMiddle(&graph,edge,buffer,0,0,out);
+        COM_Edge* newGraphEdge = COM_InsertMiddle(&mergedGraph,edge,buffer,0,0,out);
 
         for(int i = 0; i < size; i++){
-          for(COM_Edge* reconEdge = mergedRecons[i].graph.edges.head; reconEdge; reconEdge = reconEdge->next){
+          for(COM_Edge* reconEdge = reconGraphs[i].edges.head; reconEdge; reconEdge = reconEdge->next){
             if(reconEdge->general == edge){
-              COM_Unit* buffer = COM_PushUnit(&mergedRecons[i].graph,SF("_versat_varBuffer%d",bufferIndex),varBufferType,out);
+              COM_Unit* buffer = COM_PushUnit(&reconGraphs[i],SF("_versat_varBuffer%d",bufferIndex),varBufferType,out);
               
               reconEdge->delay = 0;
-              COM_Edge* newReconEdge = COM_InsertMiddle(&mergedRecons[i].graph,reconEdge,buffer,0,0,out);
+              COM_Edge* newReconEdge = COM_InsertMiddle(&reconGraphs[i],reconEdge,buffer,0,0,out);
               newReconEdge->general = newGraphEdge;
             }
           }
         }
       }
     }
+
+    if(attempt == maxLimit && !insertedBuffer){
+      printf("Error on merge delay calculations, entered a infinite cycle, aborting early");
+      ENTER_DEBUG();
+    }
+
+    if(!insertedBuffer){
+      break;
+    }
   }
 
-  // TODO(perf): We can change var buffers into fixed buffers if we can detect that they have the same value
-  //             regardless of 
+  MERGE_Result res = {};
+  res.mergedGraph = mergedGraph;
+  res.reconGraphs = reconGraphs;
+  res.error = error;
 
-  -- LEFT HERE -- The only thing missing is to pack the results and return.
-
-  exit(-1);
-  return {};
+  return res;
 
 #if 0
   // Set graph pointers =========================================================

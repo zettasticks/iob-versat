@@ -415,6 +415,31 @@ COM_RangeValues COM_CalculateRange(COM_Env* env,SP_Node* node){
 COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail){
   SP_Node* node = varAccessNode;
 
+  if(node->type == SP_Type_FUNC_CALL){
+    SP_Node* varNode = node->first;
+    SP_Node* argHead = node->second;
+
+    COM_Ent var = COM_ResolveEntity(env,varNode,false);
+    if(var.type != COM_EntType_MODULE_UNIT){
+      return {};
+    }
+    
+    String funcName = node->token.val;
+    COM_Function* func = 0;
+    for(COM_FunctionNode* f = var.unit->decl->funcs; f; f = f->next){
+      if(f->v.name == funcName){
+        func = &f->v;
+        break;
+      }
+    }
+
+    var.type = COM_EntType_FUNCTION_CALL;
+    var.node = argHead;
+    var.func = func;
+    
+    return var;
+  }
+
   bool isVarStuff = SP_Type_IsVarAccess(varAccessNode->type);
   if(!isVarStuff){
     return {};
@@ -441,9 +466,9 @@ COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail){
 
       COM_EntType type = {};
       String wireName = {};
-
       Direction dir = Direction_NONE;
       int port = 0;
+
       if(name == "out0"){ dir = Direction_OUTPUT; port = 0; }
       if(name == "out1"){ dir = Direction_OUTPUT; port = 1; }
       if(name == "in0") { dir = Direction_INPUT;  port = 0; }
@@ -476,7 +501,8 @@ COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail){
       if(!type){
         COM_ReportError(env,"Entity does not contain wire",access);
       }
-      
+
+      res = varSide;
       res.type = type;
       res.wireName = wireName;
       res.dir = dir;
@@ -1114,25 +1140,63 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
           }
 #endif
 
+          bool ignore = false;
+
+          if(!stmt && lhsEnt.type == COM_EntType_FUNCTION_CALL){
+            COM_Function* func = lhsEnt.func;
+
+            ignore = 1;
+            
+            // Need to map the function to our side =======================================
+            for(COM_Stmt* node = func->stmts; node; node = node->next){
+              switch(node->type){
+                case COM_StmtType_NIL: Assert(false); break;
+                case COM_StmtType_ASSIGN: {
+                  COM_Stmt* stmt = PushStruct<COM_Stmt>(out);
+                  stmt->type = COM_StmtType_ASSIGN;
+                  stmt->lhs = PushString(out,"%.*s.%.*s",UN(lhsEnt.unit->name),UN(node->lhs));
+                  stmt->rhs = node->rhs;
+                  
+                  LL_Append(stmtHead,stmtTail,next,stmt);
+                } break;
+                case COM_StmtType_ADDR_GEN:{
+                  NOT_IMPLEMENTED();
+                } break;
+                case COM_StmtType_MEM_COPY:{
+                  NOT_IMPLEMENTED();
+                } break;
+              }
+            }
+          }
+
+          if(!stmt && lhsEnt.type == COM_EntType_VAR_WITH_CONFIG){
+            SYM_Expr expr = COM_SymbolicFromExpression(env,rhsNode);
+
+            stmt = PushStruct<COM_Stmt>(out);
+            stmt->type = COM_StmtType_ASSIGN;
+            stmt->lhs = PushString(out,"%.*s.%.*s",UN(lhsEnt.unit->name),UN(lhsEnt.wireName));
+            stmt->rhs = SYM_Repr(expr,out);
+          }
+
           if(!stmt && lhsEnt.type == COM_EntType_MODULE_UNIT){
             COM_Ent rhsEnt = COM_ResolveEntity(env,rhsNode,true);
 
             if(rhsEnt.type != COM_EntType_VAR_WITH_LEFTOVER_RANGE){
-              COM_ReportError(env,"Expected an address gen expression on the right side",rhsNode);
-            }
-            
-            SYM_Expr expr = COM_SymbolicFromExpression(env,rhsEnt.node);
-            AddressAccess* access = CompileAddressGen2(forLoops,expr);
+              COM_ReportError(env,"Unexpected expression",rhsNode);
+            } else {
+              SYM_Expr expr = COM_SymbolicFromExpression(env,rhsEnt.node);
+              AddressAccess* access = CompileAddressGen2(forLoops,expr);
 
-            // TODO: Need to set current data based on the unit declaration.
-            stmt = PushStruct<COM_Stmt>(out);
-            stmt->type = COM_StmtType_ADDR_GEN;
-            stmt->lhs = lhsEnt.name;
-            stmt->rhs = rhsEnt.name;
-            stmt->access.access = access;
-            stmt->access.dir = Direction_READ;
-            stmt->access.inst.type = AddressGenType_READ;
-            stmt->access.inst.loopsSupported = 2;
+              // TODO: Need to set current data based on the unit declaration.
+              stmt = PushStruct<COM_Stmt>(out);
+              stmt->type = COM_StmtType_ADDR_GEN;
+              stmt->lhs = lhsEnt.name;
+              stmt->rhs = rhsEnt.name;
+              stmt->access.access = access;
+              stmt->access.dir = Direction_READ;
+              stmt->access.inst.type = AddressGenType_READ;
+              stmt->access.inst.loopsSupported = 2;
+            }
           }
 
           if(!stmt && lhsEnt.type == COM_EntType_VAR_WITH_LEFTOVER_RANGE){
@@ -1166,7 +1230,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
             stmt->rhs = SYM_Repr(asExpr,out);
           }
 
-          Assert(stmt && "Missing some processing");
+          Assert((stmt || ignore) && "Missing some processing");
         }
         
         if(stmt){
@@ -1842,7 +1906,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
   COM_EdgeDelay* head = 0;
   COM_EdgeDelay* tail = 0;
   for(COM_Edge* edge = edges; edge; edge = edge->next){
-    DELAY_EdgeData* edgeData = edge->general;
+    DELAY_EdgeData* edgeData = (DELAY_EdgeData*) edge->general;
     DELAY_Data* outData = (DELAY_Data*) edge->out->general;
     DELAY_Data* inData = (DELAY_Data*) edge->in->general;
 
@@ -1944,6 +2008,7 @@ COM_Graph COM_Flatten(COM_Graph in,Arena* out){
   for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
     if(DECL_IsComposite(ptr->decl)){
       Work* w = PushStruct<Work>(temp);
+      w->toProcess = ptr;
       LL_Append(workHead,workTail,next,w);
     }
   }
@@ -1960,7 +2025,7 @@ COM_Graph COM_Flatten(COM_Graph in,Arena* out){
     // Maps from default graph to unit in new flattened graph.
     TrieMap<COM_Unit*,COM_Unit*>* unitMap = PushTrieMap<COM_Unit*,COM_Unit*>(mapArena);
     
-    COM_Graph subGraph = unit->decl->base;
+    COM_Graph subGraph = unit->decl->baseGraph;
     COM_Unit* outputUnit = COM_GetOutputUnit(subGraph);
       
     for(COM_Unit* u = subGraph.units.head; u; u = u->next){

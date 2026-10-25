@@ -58,6 +58,8 @@ bool versatInitialized;
 
 @{acceleratorConfig}
 
+@{acceleratorState}
+
 static @{typeName}Config configBuffer = {};
 static @{typeName}State stateBuffer = {};
 static DatabusAccess databusBuffer[@{nIOs}] = {}; 
@@ -80,6 +82,7 @@ volatile @{typeName}State* accelState = (volatile @{typeName}State*) &stateBuffe
    unit->clk = 0; \
    unit->eval(); \
    if(CreateVCD) tfp->dump(contextp->time()); \
+   versat_printf("%d\n",contextp->time()); \
    contextp->timeInc(2); \
    unit->clk = 1; \
    unit->eval();
@@ -87,6 +90,7 @@ volatile @{typeName}State* accelState = (volatile @{typeName}State*) &stateBuffe
 #define UPDATE(unit) \
    unit->clk = 0; \
    unit->eval(); \
+   versat_printf("%d\n",contextp->time()); \
    unit->clk = 1; \
    unit->eval();
 #endif
@@ -119,7 +123,7 @@ extern "C" void InitializeVerilator(){
 
 static void CloseWaveform(){
 #ifdef TRACE
-  if(CreateVCD && tfp){
+  if(tfp){
     tfp->close();
   }
 #endif
@@ -268,10 +272,8 @@ extern "C" int VersatAcceleratorCyclesElapsed(){
 extern "C" void VersatAcceleratorSimulate(){
   InternalStartAccelerator();
 
-  for(int i = 0; !IsDone() ; i++){
+  for(int i = 0; i < 30; i++){
     InternalUpdateAccelerator();
-
-    versat_printf("%d\n",i);
 
     if(i >= 10000000){
       versat_printf("Accelerator simulation has surpassed 10000000 cycles for a single run\n");

@@ -112,7 +112,7 @@ struct FUDeclaration{
   DeclarationType type;
 
   // Graph related data for modular units =======================================
-  COM_Graph base;
+  COM_Graph baseGraph;
   COM_Graph fixedDelays;
 
   COM_FunctionNode* funcs;

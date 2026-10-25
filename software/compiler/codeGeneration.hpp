@@ -251,6 +251,7 @@ struct GEN_TopInfo{
 
   Array<VersatRegister> registers;
   Array<String> memoryMappedDecisionMask;
+  Array<int>    memoryMappedAddrStart;
 
   Array<GEN_Wire> allConfigs;
   Array<GEN_Wire> allStates;

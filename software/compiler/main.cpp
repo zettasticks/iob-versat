@@ -400,8 +400,9 @@ int main(int argc,char* argv[]){
   params[3] = DECL_Param{"LEN_W",SYM_LenW};
   params[4] = DECL_Param{"AXI_DATA_W",SYM_AxiDataW};
   params[5] = DECL_Param{"AXI_ADDR_W",SYM_AxiAddrW};
+
   FUDeclaration* topType = DECL_GetType(topLevelTypeStr,params);
-  
+
   if(IsNil(topType)){
     printf("Did not find module named: '%.*s'\n",UN(topLevelTypeStr));
     return -1;
@@ -421,7 +422,7 @@ int main(int argc,char* argv[]){
     LL_Append(compositeHead,compositeTail,next,&top);
 
     for(FUDeclarationNode* ptr = compositeHead; ptr; ptr = ptr->next){
-      for(COM_Unit* unit = ptr->val->base.units.head; unit; unit = unit->next){
+      for(COM_Unit* unit = ptr->val->baseGraph.units.head; unit; unit = unit->next){
         FUDeclaration* decl = unit->decl;
         FUDeclarationNode* exists = 0;
 
@@ -483,7 +484,6 @@ int main(int argc,char* argv[]){
   }
 
   GEN_TopInfo info = GEN_CalculateTopInfo(topType,temp);
-  DEBUG_BREAK();
   GEN_TopContent content = GEN_OutputTopLevel(&info,temp);
   String makefileContent = GEN_OutputVerilatorMakefile(&info,generated,temp);
 

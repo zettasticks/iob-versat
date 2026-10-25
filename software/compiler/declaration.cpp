@@ -912,12 +912,11 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
 }
 
 FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normalizedParams){
-  DEBUG_TOP(meta->name);
-
-  DEBUG_STAGE("Start");
-
   Arena* out = DECL_State.arena;
   TEMP_REGION(temp,out);
+
+  DEBUG_TOP(meta->name);
+  DEBUG_STAGE("Start");
   
   // Pack params and compile ====================================================
   TrieMap<String,SYM_Expr>* paramReplace = PushTrieMap<String,SYM_Expr>(temp);
@@ -973,9 +972,8 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
 
   Assert(delays.edgeDelays == nullptr);
 
-  TrieSet<DECL_StaticWire>* statics = PushTrieSet<DECL_StaticWire>(temp);
-
   // TODO: Share and static
+  TrieSet<DECL_StaticWire>* statics = PushTrieSet<DECL_StaticWire>(temp);
   int configCount = 0;
   int stateCount = 0;
   int delayCount = 0;
@@ -1019,13 +1017,14 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
   res->meta = meta;
   res->parameters = DECL_Copy(normalizedParams,out);
 
+  // MARK
+
   res->configs = PushArray<Wire>(out,configCount);
   res->states = PushArray<Wire>(out,stateCount);
   res->inputs = PushArray<DECL_PortInfo>(out,delays.inputDelays.size);
   res->outputs = PushArray<DECL_PortInfo>(out,delays.outputLatencies.size);
   res->memoryMapped = PushArray<HW_Instance>(out,memMappedCount);
   res->externalMemory = PushArray<HW_Instance>(out,externalCount);
-
   res->statics = PushArray(out,statics);
 
   res->singleInterfaces = single;
@@ -1033,7 +1032,7 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
   res->numberDatabus = databusCount;
   res->numberDones = donesCount;
 
-  res->base = baseGraph;
+  res->baseGraph = baseGraph;
   res->fixedDelays = graph;
   res->funcs = module.funcs;
 
@@ -1086,22 +1085,171 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
 }
 
 FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalizedParams){
-  TEMP_REGION(temp,DECL_State.arena);
+  Arena* out = DECL_State.arena;
+  TEMP_REGION(temp,out);
+
+  DEBUG_TOP(meta->name);
+  DEBUG_STAGE("MergeCalc");
   
   SP_Node* top = meta->compositeUnit;
 
   int mergeCount = 0;
   for(SP_Node* ptr = top->childs; ptr; ptr = ptr->next){
-    mergeCount += 1;
+    if(ptr->type == SP_Type_VAR_DECL){
+      mergeCount += 1;
+    }
   }
   Array<FUDeclaration*> types = PushArray<FUDeclaration*>(temp,mergeCount);
 
   int index = 0;
   for(SP_Node* ptr = top->childs; ptr; index += 1,ptr = ptr->next){
+    if(ptr->type != SP_Type_VAR_DECL){
+      continue;
+    }
+
     types[index] = DECL_GetType(ptr->token.val,{});
   }
- 
-  MERGE_Result res = MERGE_Merge(types,DECL_State.arena);
+
+  // Pack params ================================================================
+  TrieMap<String,SYM_Expr>* paramReplace = PushTrieMap<String,SYM_Expr>(temp);
+  Array<COM_Param> comParams = PushArray<COM_Param>(temp,normalizedParams.size);
+  for(int i = 0; i < normalizedParams.size; i++){
+    comParams[i].name = normalizedParams[i].name;
+    comParams[i].val = normalizedParams[i].val;
+
+    paramReplace->Insert(normalizedParams[i].name,normalizedParams[i].val);
+  }
+
+  bool error = false;
+  MERGE_Result result = MERGE_Merge(types,DECL_State.arena);
+  error |= result.error;
+
+  COM_Graph graph = result.mergedGraph;
+
+  // TODO: nocheckin: copied from COM_InstantiateModule, refactor if possible
+  FREE_ARENA(envArena);
+  FREE_ARENA(envErrorArena);
+  COM_Env envInst = {};
+  COM_Env* env = &envInst;
+  env->outArena = out;
+  env->arena = envArena;
+  env->errorArena = envErrorArena;
+
+  for(SP_Node* ptr = top->childs; ptr; ptr = ptr->next){
+    if(ptr->type == SP_Type_VAR_DECL){
+      String typeName = ptr->token.val;
+      String name = ptr->childs->token.val;
+
+      COM_Ent* ent = COM_PushEnt(env,name,COM_EntType_MERGE_TYPE);
+      ent->mergeType = typeName;
+    }
+  }
+
+  for(SP_Node* ptr = top->childs; ptr; ptr = ptr->next){
+    case(ptr->type){
+    default: break;
+    case SP_Type_FUNC_STATE:
+    case SP_Type_FUNC_MEM:
+    case SP_Type_FUNC_CONFIG: {
+      -- LEFT HERE - Generalize code from COM_Instantiate module and implement this.
+    } break;
+  }
+  }
+
+  // TODO: Share and Static
+  // TODO: Copy from instantiateModule, reorganize.
+  TrieSet<DECL_StaticWire>* statics = PushTrieSet<DECL_StaticWire>(temp);
+  int configCount = 0;
+  int stateCount = 0;
+  int delayCount = 0;
+  int donesCount = 0;
+  int memMappedCount = 0;
+  int externalCount = 0;
+  int databusCount = 0;
+  DECL_SingleInterface single = {};
+  for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
+    FUDeclaration* decl = ptr->decl;
+
+    if(!ptr->isStatic){
+      configCount += decl->configs.size;
+    } else {
+      for(Wire w : decl->configs){
+        DECL_StaticWire s = {};
+        s.wire = w;
+        s.meta = meta;
+        s.unitName = ptr->name;
+        statics->Insert(s);
+      }
+    }
+
+    for(DECL_StaticWire s : decl->statics){
+      statics->Insert(s);
+    }
+
+    stateCount += decl->states.size;
+    delayCount += decl->numberDelays;
+    donesCount += decl->numberDones;
+    memMappedCount += decl->memoryMapped.size;
+    externalCount += decl->externalMemory.size;
+    databusCount += decl->numberDatabus;
+    single |= decl->singleInterfaces;
+  }
+
+  // Pack =======================================================================
+  String name = PushString(out,meta->name); // TODO: Serialize if needed.
+  FUDeclaration* res = DECL_RegisterFU(name,DeclarationType_MERGED);
+
+  res->meta = meta;
+  res->parameters = DECL_Copy(normalizedParams,out);
+
+  // MARK
+  res->inputs = {}; // TODO:
+  res->outputs = {}; // TODO:
+
+  res->configs = PushArray<Wire>(out,configCount);
+  res->states  = PushArray<Wire>(out,stateCount);
+  res->memoryMapped = PushArray<HW_Instance>(out,memMappedCount);
+  res->externalMemory = PushArray<HW_Instance>(out,externalCount);
+  res->statics = PushArray(out,statics);
+  res->singleInterfaces = single;
+  res->numberDelays = delayCount;
+  res->numberDatabus = databusCount;
+  res->numberDones = donesCount;
+  res->baseGraph = graph;
+  res->fixedDelays = graph;
+  res->singleInterfaces = single;
+  res->funcs = {}; // TODO
+  res->error = error;
+
+  {
+    int stateIndex = 0;
+    int configIndex = 0;
+    int memMappedIndex = 0;
+    int externalIndex = 0;
+    for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
+      for(Wire w : ptr->decl->configs){
+        res->configs[configIndex] = w;
+        res->configs[configIndex].name = PushString(out,"%.*s_%.*s",UN(ptr->name),UN(res->configs[configIndex].name));
+        res->configs[configIndex].sizeExpr = SYM_Replace(w.sizeExpr,paramReplace);
+        configIndex += 1;
+      }
+      for(Wire w : ptr->decl->states){
+        res->states[stateIndex] = w;
+        res->states[stateIndex].name = PushString(out,"%.*s_%.*s",UN(ptr->name),UN(res->states[stateIndex].name));
+        res->states[stateIndex].sizeExpr = SYM_Replace(w.sizeExpr,paramReplace);
+        stateIndex += 1;
+      }
+      for(HW_Instance e : ptr->decl->memoryMapped){
+        res->memoryMapped[memMappedIndex++] = HW_InstantiateParams(e,paramReplace,out);
+      }
+      for(HW_Instance& inst : ptr->decl->externalMemory){
+        res->externalMemory[externalIndex] = HW_InstantiateParams(inst,paramReplace,out);
+        res->externalMemory[externalIndex].index = externalIndex;
+        
+        externalIndex += 1;
+      }
+    }
+  }
   
-  return {};
+  return res;
 }

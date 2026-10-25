@@ -2,9 +2,25 @@
 
 #include "compiler.hpp"
 
+/*
+
+Regarding merged graphs declarations, we could try to flatten the declarations and see if it simplifies the rest of the codebase.
+
+If we have MERGE X = A | B, we could generate 3 declarations: X , X.A , X.B
+The X.A and X.B act as single graphs, equal to modules while being based on top of the merged graph.
+
+A module that instantiates a merged unit could create two graphs, each graph with a version of the flattened graph.
+If we have more merged units this would combine multiplicatively.
+
+Otherwise if we store the two graphs data in a single declaration X, we would need to tell algorithms which 
+graph data to choose from
+
+*/
+
 struct MERGE_Result{
-  COM_Unit* units;
-  COM_Edge* edges;
+  COM_Graph mergedGraph;
+  Array<COM_Graph> reconGraphs;
+  bool error;
 };
 
 MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out);

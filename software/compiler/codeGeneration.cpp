@@ -5575,8 +5575,8 @@ String GEN_OutputCircuitSource(FUDeclaration* module,Arena* out){
   FREE_ARENA(codeArena);
 
   // Initialize data ============================================================
-  COM_Unit* units = module->base.units.head;
-  COM_Edge* edges = module->base.edges.head;
+  COM_Unit* units = module->baseGraph.units.head;
+  COM_Edge* edges = module->baseGraph.edges.head;
 
   GEN_InitializeAuxGraphData(units,edges,temp);
 
@@ -6023,8 +6023,8 @@ String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out){
   TEMP_REGION(temp,out);
 
   FUDeclaration* decl = info->decl;
-  COM_Unit* units = decl->base.units.head;
-  COM_Edge* edges = decl->base.edges.head;
+  COM_Unit* units = decl->baseGraph.units.head;
+  COM_Edge* edges = decl->baseGraph.edges.head;
 
   int stateCount = info->stateCount;
   int databusCount = info->numberDatabus;
@@ -7539,7 +7539,7 @@ String repr = SYM_Repr(symb,temp);
 
       // TODO: Hacked
       String returnType = "void";
-      String fullFunctionName = PushString(temp,"EXAMPLE_Conv_%.*s",UN(func->name));
+      String fullFunctionName = PushString(temp,"%.*s",UN(func->name));
       c->FunctionBlock(SF("static inline %.*s",UN(returnType)),fullFunctionName);
 
       for(COM_Arg var : func->args){
@@ -8231,7 +8231,12 @@ String GEN_OutputVerilatorHardwareWrapper(GEN_TopInfo* info,Arena* out){
   m->StartInstance(module->name,"TOP");
 
   for(DECL_Param p : decl->parameters){
-    m->InstanceParam(p.name,p.val);
+    // TODO: nocheckin HACK
+    if(p.name == "ADDR_W"){
+      m->InstanceParam(p.name,SYM_AddrW);
+    } else {
+      m->InstanceParam(p.name,p.val);
+    }
   }
 
   // Instance
@@ -8361,7 +8366,7 @@ String GEN_OutputVerilatorSoftwareWrapper(GEN_TopInfo* info,Arena* out){
   };
 
   auto build = PushList<WireExtra>(temp);
-  for(COM_Unit* unit = decl->base.units.head; unit; unit = unit->next){
+  for(COM_Unit* unit = decl->baseGraph.units.head; unit; unit = unit->next){
     for(Wire config : unit->decl->configs){
       WireExtra* ptr = build->PushElem();
       ptr->w = config;
@@ -8369,13 +8374,11 @@ String GEN_OutputVerilatorSoftwareWrapper(GEN_TopInfo* info,Arena* out){
       ptr->source = "config->";
     }
   }
-
   for(DECL_StaticWire w : decl->statics){
     WireExtra* ptr = build->PushElem();
     ptr->w = w.wire;
     ptr->source = "statics->";
   }
-
   Array<WireExtra> allConfigsVerilatorSide = PushArray(temp,build);
 
   TE_SetNumber("nIOs",info->numberDatabus);
@@ -8388,13 +8391,27 @@ String GEN_OutputVerilatorSoftwareWrapper(GEN_TopInfo* info,Arena* out){
     c->Struct("AcceleratorConfig");
 
     for(WireExtra e : allConfigsVerilatorSide){
-      c->Member("int",e.name);
+      c->Member("iptr",e.name);
     }
       
     c->EndStruct();
     String content = PushASTRepr(c,temp);
     TE_SetString("acceleratorConfig",content);
   }
+
+  {
+    CEmitter* c = StartCCode(CCode1,CCode2);
+    c->Struct("AcceleratorState");
+
+    for(Wire e : decl->states){
+      c->Member("iptr",e.name);
+    }
+
+    c->EndStruct();
+    String content = PushASTRepr(c,temp);
+    TE_SetString("acceleratorState",content);
+  }
+  
 
 #if 1
   {
@@ -8680,7 +8697,24 @@ static iptr WRITE_@{0} = 0;)FOO";
     TE_SetString("memoryAccessDefines",content);
   }
   
-  if(0){ // nocheckin: HACK - Disabled 
+  if(1){ // nocheckin: HACK - Disabled 
+    CEmitter* c = StartCCode(CCode1,CCode2);
+    for(int i = 0; i < info->memoryMappedAddrStart.size; i++){
+      int addrStart = info->memoryMappedAddrStart[i];
+
+      String expr = PushString(temp,"(address >= %d && address <= %d) ? 1 : 0",addrStart,addrStart + 4);
+
+      c->VarDeclare("int",SF("unit_valid_%d",i),expr);
+
+      String expr2 = PushString(temp,"(address >= %d && address <= %d)",addrStart,addrStart + 4);
+      c->If(expr2);
+      c->Assignment("actualAddress",SF("address - %d",addrStart));
+      c->EndIf();
+    }
+
+    String content = PushASTRepr(c,temp);
+    TE_SetString("memoryUnpack",content);
+
 #if 0
     CEmitter* c = StartCCode(CCode1,CCode2);
 
@@ -8705,8 +8739,6 @@ static iptr WRITE_@{0} = 0;)FOO";
       c->EndIf();
     }
 
-    String content = PushASTRepr(c,temp);
-    TE_SetString("memoryUnpack",content);
 #endif
   } else {
     TE_SetString("memoryUnpack",{});
@@ -9556,7 +9588,7 @@ String GEN_Repr(GEN_StructInfo* info,Arena* out){
 GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
   TEMP_REGION(temp,out);
 
-  COM_Unit* units = topLevel->base.units.head;
+  COM_Unit* units = topLevel->baseGraph.units.head;
 
   bool error = 0;
 
@@ -9706,6 +9738,7 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
   // Huffman allocation of memory regions for mem mapped units ==================
   int memoryMappedBit = 0;
   Array<String> memoryMappedDecisionMask = {};
+  Array<int> memoryMappedAddrStart = {};
   {
     struct HuffmanNode{
       HuffmanNode* next;
@@ -9788,6 +9821,7 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
       HuffmanNode* top = nodesHead;
       memoryMappedBit = top->bitCount;
       memoryMappedDecisionMask = PushArray<String>(out,size);
+      memoryMappedAddrStart = PushArray<int>(out,size);
 
       for(HuffmanNode* ptr = allHead; ptr; ptr = ptr->next){
         Assert(ptr->addrIndex >= 0);
@@ -9801,7 +9835,9 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
           maskBuffer[i] = '0';
         }
 
+        int addrStart = 0;
         for(HuffmanNode* parent = ptr; parent; parent = parent->parent){
+          addrStart |= (1 << parent->bitCount);
           int index = parent->bitCount - offset;
           if(parent->isBitSet){
             maskBuffer[index] = '1';
@@ -9809,6 +9845,7 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
         }
         
         memoryMappedDecisionMask[addrIndex] = String(maskBuffer,maskSize);
+        memoryMappedAddrStart[addrIndex] = addrStart;
       }
     }
   }
@@ -9827,6 +9864,7 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
   res.decl = topLevel;
   res.registers = versatRegisters;
   res.memoryMappedDecisionMask = memoryMappedDecisionMask;
+  res.memoryMappedAddrStart = memoryMappedAddrStart;
   res.allConfigs = configWires;
   res.allStates = stateWires;
 

@@ -37,8 +37,9 @@ struct COM_Unit{
   COM_Unit* prev;
   COM_Unit* mergeNext;
   COM_Unit* mergePrev; // Instead of prev we probably only care about returning to node 0.
+  int mergeIndex;
 
- // NOTE: General purpose pointer to help map from units to temporary
+  // NOTE: General purpose pointer to help map from units to temporary
   // data (avoids having to create maps all the time). Good practice
   // to zero out after every usage
   void* general;
@@ -200,10 +201,14 @@ enum COM_EntType{
   COM_EntType_MODULE_UNIT_ARRAY,
   COM_EntType_GENERATED_UNIT,
 
+  COM_EntType_MERGE_TYPE,
+
   COM_EntType_ARG_NONE,
   COM_EntType_ARG_FIXED,
   COM_EntType_ARG_DYN,
   COM_EntType_ARG_BUFFER,
+
+  COM_EntType_FUNCTION_CALL,
 
   COM_EntType_VAR_WITH_LEFTOVER_RANGE,
   
@@ -212,6 +217,8 @@ enum COM_EntType{
   COM_EntType_VAR_WITH_STATE,
   COM_EntType_VAR_WITH_VIRTUAL_MEM,
 };
+
+struct COM_Function;
 
 struct COM_Ent{
   COM_EntType type;
@@ -224,7 +231,9 @@ struct COM_Ent{
   SP_Node* node;
   Direction dir;
   String wireName;
+  String mergeType;
   int port;
+  COM_Function* func;
 };
 extern COM_Ent COM_Ent_Nil;
 
