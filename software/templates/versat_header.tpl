@@ -33,6 +33,8 @@ typedef intptr_t iptr;
 
 // Base address for each memory mapped unit
 
+@{memMappedAddresses}
+
 extern iptr versat_base;
 
 #ifdef __cplusplus

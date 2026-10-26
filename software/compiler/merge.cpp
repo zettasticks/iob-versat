@@ -3791,6 +3791,9 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
   COM_Edge*& edgeTail = mergedGraph.edges.tail;
   bool error = false;
 
+  TrieMap<COM_Unit*,COM_Unit*>* mapReconUnitToGraph = PushTrieMap<COM_Unit*,COM_Unit*>(temp);
+  TrieMap<COM_Edge*,COM_Edge*>* mapReconEdgeToGraph = PushTrieMap<COM_Edge*,COM_Edge*>(temp);
+
   int upperBound = INT_MAX;
   for(int i = 0; i < size; i++){
     COM_Graph graph = reconGraphs[i];
@@ -3813,44 +3816,47 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
       FULL_SWITCH(map.type){
       case MERGE_MapType_NIL: Assert(false);
       case MERGE_MapType_NODE:{
-        map.units[1]->general = map.units[0];
+        mapReconUnitToGraph->Insert(map.units[1],map.units[0]);
       } break;
       case MERGE_MapType_EDGE:{
-        map.edges[1]->general = map.edges[0];
+        mapReconEdgeToGraph->Insert(map.edges[1],map.edges[0]);
       } break;
     }
     }
 
     // Create any unit that has not been mapped already ===========================
     for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
-      if(ptr->general){
+      if(mapReconUnitToGraph->Exists(ptr)){
         continue;
       }
 
       COM_Unit* node = COM_Copy(ptr, out);
       LL_Append(unitHead,unitTail,next,node);
-      Assert(!ptr->general && "How can this be set if we have not created the mapped node in the first place?");
-      ptr->general = node;
+      mapReconUnitToGraph->Insert(ptr,node);
     }
 
     // Create any edge that has not been mapped already ===========================
     for(COM_Edge* ptr = graph.edges.head; ptr; ptr = ptr->next){
-      if(ptr->general){
+      if(mapReconEdgeToGraph->Exists(ptr)){
         continue;
       }
 
       COM_Edge* newEdge = PushStruct<COM_Edge>(out);
-      newEdge->in = (COM_Unit*) ptr->in->general;
+      newEdge->in = mapReconUnitToGraph->GetOrFail(ptr->in);
       newEdge->inPort = ptr->inPort;
-      newEdge->out = (COM_Unit*) ptr->out->general;
+      newEdge->out = mapReconUnitToGraph->GetOrFail(ptr->out);
       newEdge->outPort = ptr->outPort;
       newEdge->delay = ptr->delay;
-      Assert(!ptr->general && "How can this be set if we have not created the mapped node in the first place?");
-      ptr->general = newEdge;
+      mapReconEdgeToGraph->Insert(ptr,newEdge);
 
       LL_Append(edgeHead,edgeTail,next,newEdge);
     }
   }
+
+  for(int i = 0; i < size; i++){
+    COM_DebugOutputDotGraph(SF("BeforeMuxFix_Recon%d.dot",i),"Recon",reconGraphs[i].units.head,reconGraphs[i].edges.head);
+  }
+  COM_DebugOutputDotGraph("BeforeMuxFix_Merged.dot","MergedGraph",unitHead,edgeHead);
 
   // Resolve shared inputs by inserting muxs ====================================
   struct COM_Data{
@@ -3858,27 +3864,30 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
     Array<int> incidentEdgeCount;
   };
 
-  // Initialize unit/edge data and calculate incidence ==========================
+  // Initialize unit data and calculate incidence ===============================
+  TrieMap<COM_Unit*,COM_Data>* mergedUnitToData = PushTrieMap<COM_Unit*,COM_Data>(temp);
   for(COM_Unit* ptr = unitHead; ptr; ptr = ptr->next){
-    COM_Data* data = PushStruct<COM_Data>(temp);
-    ptr->general = data;
+    mergedUnitToData->Insert(ptr,{});
   }
   for(COM_Edge* ptr = edgeHead; ptr; ptr = ptr->next){
-    COM_Data* data = (COM_Data*) ptr->in->general;
+    COM_Data* data = mergedUnitToData->Get(ptr->in);
     data->inputCount = MAX(data->inputCount,ptr->inPort + 1);
   }  
   for(COM_Unit* ptr = unitHead; ptr; ptr = ptr->next){
-    COM_Data* data = (COM_Data*) ptr->general;
+    COM_Data* data = mergedUnitToData->Get(ptr);
     data->incidentEdgeCount = PushArray<int>(temp,data->inputCount);
   }  
   for(COM_Edge* ptr = edgeHead; ptr; ptr = ptr->next){
-    COM_Data* data = (COM_Data*) ptr->in->general;
+    COM_Data* data = mergedUnitToData->Get(ptr->in);
     data->incidentEdgeCount[ptr->inPort] += 1;
   }
 
+  COM_Unit *newMuxHead = 0,*newMuxTail = 0;
+  COM_Edge *newEdgeHead = 0,*newEdgeTail = 0;
+
   int muxInserted = 0;
   for(COM_Unit* unit = unitHead; unit; unit = unit->next){
-    COM_Data* data = (COM_Data*) unit->general;
+    COM_Data* data = mergedUnitToData->Get(unit);
 
     for(int port = 0; port < data->incidentEdgeCount.size; port++){
       int edgeCount = data->incidentEdgeCount[port];
@@ -3889,66 +3898,111 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
         Array<DECL_Param> params = PushArray<DECL_Param>(temp,1);
         params[0].name = "SIZE";
         params[0].val = SYM_Lit(edgeCount);
-        graphMux->decl = DECL_GetType("VERSAT_MUX",params);
+        graphMux->decl = DECL_GetType("CombMux8",params);
+        graphMux->numberInputs = graphMux->decl->inputs.size;
         graphMux->name = MERGE_GetValidMuxName(unitHead,muxInserted++,out);
-        
+
+        mergedUnitToData->Insert(graphMux,{});
+        LL_Append(newMuxHead,newMuxTail,next,graphMux);
+
         // Create edge from mux to input unit ===================================
         COM_Edge* graphMuxEdge = PushStruct<COM_Edge>(out);
         graphMuxEdge->out = graphMux;
         graphMuxEdge->outPort = 0;
         graphMuxEdge->in = unit;
         graphMuxEdge->inPort = port;
+        LL_Append(newEdgeHead,newEdgeTail,next,graphMuxEdge);
 
         // Collect all the recon edges that map to the edge we trying to remove =======
         int freeMuxPort = 0;
         for(int i = 0; i < size; i++){
           COM_Graph graph = reconGraphs[i];
           
+          COM_Unit *newReconMuxHead = 0,*newReconMuxTail = 0;
+          COM_Edge *newReconEdgeHead = 0,*newReconEdgeTail = 0;
+          
           for(COM_Edge* edge = graph.edges.head; edge; edge = edge->next){
             COM_Unit* reconUnit = edge->in;
-            COM_Unit* graphNodeFromRecon = (COM_Unit*) reconUnit->general;
+            COM_Unit* graphNodeFromRecon = mapReconUnitToGraph->GetOrFail(reconUnit);
 
             // Recon edge is one of the edges multiple connected to a single unit port
             if(unit == graphNodeFromRecon && edge->inPort == port){
-              //reconEdge[i] = edge;
-
               // Create mux instance on recon graph =========================================
               COM_Unit* reconMux = COM_Copy(graphMux,out);
-              reconMux->general = graphMux;
-              LL_Append(reconGraphs[i].units.head,reconGraphs[i].units.tail,next,reconMux);
+
+              mapReconUnitToGraph->Insert(reconMux,graphMux);
+              LL_Append(newReconMuxHead,newReconMuxTail,next,reconMux);
               
               // Create edge from recon mux to input unit ===================================
-              COM_Edge* muxEdge = PushStruct<COM_Edge>(out);
-              muxEdge->out = reconMux;
-              muxEdge->outPort = 0;
-              muxEdge->in = reconUnit;
-              muxEdge->inPort = port;
-              muxEdge->general = graphMuxEdge;
+              COM_Edge* reconEdge = PushStruct<COM_Edge>(out);
+              reconEdge->out = reconMux;
+              reconEdge->outPort = 0;
+              reconEdge->in = reconUnit;
+              reconEdge->inPort = port;
+
+              mapReconEdgeToGraph->Insert(reconEdge,graphMuxEdge);
+              LL_Append(newReconEdgeHead,newReconEdgeTail,next,reconEdge);
 
               // Change edge to point to multiplexer port ===================================
+              int muxPort = freeMuxPort++;
+
               edge->in = reconMux;
-              edge->inPort = size;
+              edge->inPort = muxPort;
 
               // Change edge on graph unless already changed by another recon ===============
-              COM_Edge* graphEdge = (COM_Edge*) edge->general;
+              COM_Edge* graphEdge = mapReconEdgeToGraph->GetOrFail(edge);
               if(graphEdge->in != graphMux){
                 graphEdge->in = graphMux;
-                graphEdge->inPort = freeMuxPort++;
+                graphEdge->inPort = muxPort;
               }
             }
           }
+
+          if(1){
+            COM_Unit* next = 0;
+            for(COM_Unit* ptr = newReconMuxHead; ptr; ptr = next){
+              next = ptr->next;
+              LL_Clear(ptr,next);
+              LL_Append(reconGraphs[i].units.head,reconGraphs[i].units.tail,next,ptr);
+            }
+          }
+
+          if(1){
+            COM_Edge* next = 0;
+            for(COM_Edge* ptr = newReconEdgeHead; ptr; ptr = next){
+              next = ptr->next;
+              LL_Clear(ptr,next);
+              LL_Append(reconGraphs[i].edges.head,reconGraphs[i].edges.tail,next,ptr);
+            }
+          }  
         }
       }
     }
   }
 
+  {
+    COM_Unit* next = 0;
+    for(COM_Unit* ptr = newMuxHead; ptr; ptr = next){
+      next = ptr->next;
+      LL_Clear(ptr,next);
+      LL_Append(unitHead,unitTail,next,ptr);
+    }
+  }
+
+  {
+    COM_Edge* next = 0;
+    for(COM_Edge* ptr = newEdgeHead; ptr; ptr = next){
+      next = ptr->next;
+      LL_Clear(ptr,next);
+      LL_Append(edgeHead,edgeTail,next,ptr);
+    }
+  }  
+
   // TODO: Save the graph at this point to make it the base graph (before delay fixing).
-  
   for(int i = 0; i < size; i++){
     COM_DebugOutputDotGraph(SF("BeforeDelay_Recon%d.dot",i),"Recon",reconGraphs[i].units.head,reconGraphs[i].edges.head);
   }
-  
-  COM_DebugOutputDotGraph("Merged.dot","MergedGraph",unitHead,edgeHead);
+  COM_DebugOutputDotGraph("BeforeDelay_Merged.dot","MergedGraph",unitHead,edgeHead);
   
   // Fix delays by delays from recons ===========================================
   int insertedBuffers = 0;
@@ -3959,9 +4013,13 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
   for(int attempt = 0; attempt < maxLimit; attempt++){
     bool insertedBuffer = false;
     for(int i = 0; i < size; i++){
+      DEBUG_STAGE(SF("RECON_DAG_%d_%d",attempt,i));
       COM_UnitNodeList order  = COM_CalculateDAGOrder(reconGraphs[i],temp);
+
+      DEBUG_STAGE(SF("RECON_DELAY_%d_%d",attempt,i));
       COM_DelayResult  delays = COM_CalculateDelay(reconGraphs[i],order,temp);
       
+#if 0
       for(COM_EdgeDelay* delay = delays.edgeDelays; delay; delay = delay->next){
         insertedBuffer = true;
 
@@ -3977,16 +4035,18 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
 
         for(int i = 0; i < size; i++){
           for(COM_Edge* reconEdge = reconGraphs[i].edges.head; reconEdge; reconEdge = reconEdge->next){
-            if(reconEdge->general == edge){
+            COM_Edge* mapped = mapReconEdgeToGraph->GetOrFail(reconEdge);
+            if(mapped == edge){
               COM_Unit* buffer = COM_PushUnit(&reconGraphs[i],SF("_versat_varBuffer%d",bufferIndex),varBufferType,out);
               
               reconEdge->delay = 0;
               COM_Edge* newReconEdge = COM_InsertMiddle(&reconGraphs[i],reconEdge,buffer,0,0,out);
-              newReconEdge->general = newGraphEdge;
+              mapReconEdgeToGraph->Insert(newReconEdge,newGraphEdge);
             }
           }
         }
       }
+#endif
     }
 
     if(attempt == maxLimit && !insertedBuffer){
@@ -4328,7 +4388,7 @@ String MERGE_GetValidMuxName(COM_Unit* units,int muxInserted,Arena* out){
 
   while(1){
     PopMark(mark);
-    String possibleName = PushString(out,"VERSAT_MUX_%d",index);
+    possibleName = PushString(out,"VERSAT_MUX_%d",index);
     
     bool conflict = false;
     for(COM_Unit* ptr = units; ptr; ptr = ptr->next){

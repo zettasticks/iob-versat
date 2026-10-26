@@ -772,6 +772,9 @@ inline bool Contains(Array<String> array,String toCheck){
    return false;
 }
 
+#define LL_Clear(NODE,NEXT) \
+  (NODE)->NEXT = 0
+
 #define LL_Append(HEAD,TAIL,NEXT,NODE) \
   if((NODE) != nullptr) { \
   Assert(!TAIL || !TAIL->NEXT); \

@@ -82,7 +82,6 @@ volatile @{typeName}State* accelState = (volatile @{typeName}State*) &stateBuffe
    unit->clk = 0; \
    unit->eval(); \
    if(CreateVCD) tfp->dump(contextp->time()); \
-   versat_printf("%d\n",contextp->time()); \
    contextp->timeInc(2); \
    unit->clk = 1; \
    unit->eval();
@@ -90,7 +89,6 @@ volatile @{typeName}State* accelState = (volatile @{typeName}State*) &stateBuffe
 #define UPDATE(unit) \
    unit->clk = 0; \
    unit->eval(); \
-   versat_printf("%d\n",contextp->time()); \
    unit->clk = 1; \
    unit->eval();
 #endif

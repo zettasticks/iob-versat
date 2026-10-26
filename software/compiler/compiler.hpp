@@ -58,6 +58,7 @@ struct COM_Unit{
   // Computed data ==============================================================
   int id;
 
+  // TODO: This is not good, need to take another look at this
   int numberInputs; // Some units that support variable inputs have this value different than declaration 
 
   Array<int> extraDelay; // TODO: Probably not good anymore.
@@ -196,7 +197,6 @@ struct COM_CopyResult{
 enum COM_EntType{
   COM_EntType_NIL,
   COM_EntType_PARAM,
-  COM_EntType_MODULE_INPUT,
   COM_EntType_MODULE_UNIT,
   COM_EntType_MODULE_UNIT_ARRAY,
   COM_EntType_GENERATED_UNIT,
@@ -210,7 +210,7 @@ enum COM_EntType{
 
   COM_EntType_FUNCTION_CALL,
 
-  COM_EntType_VAR_WITH_LEFTOVER_RANGE,
+  //COM_EntType_VAR_WITH_LEFTOVER_RANGE,
   
   // Var.Wire
   COM_EntType_VAR_WITH_CONFIG,
@@ -226,12 +226,13 @@ struct COM_Ent{
 
   Token token;
   COM_Unit* unit;
+  FUDeclaration* decl;
   int currentValue;
   int scope;
   SP_Node* node;
+  SP_Node* leftoverRange;
   Direction dir;
   String wireName;
-  String mergeType;
   int port;
   COM_Function* func;
 };
@@ -340,7 +341,14 @@ struct COM_Stmt{
   // TODO: Probably gonna need to change into hierarchical names.
   String lhs;
   String rhs;
+  SYM_Expr rhsExpr;
+
+  Direction dir;
   AccessAndType access;
+
+  // TODO: This is a bit forced as we try to preserve as much data as possible to allow hierarchical handling.
+  Array<AddressGenForDef2> accessLoops;
+  SYM_Expr accessExpr;
 };
 
 enum COM_ArgType{
@@ -349,7 +357,7 @@ enum COM_ArgType{
   COM_ArgType_ADDR,
 };
 
-struct COM_Arg{
+struct COM_FuncParam{
   COM_ArgType type;
   String name;
 };
@@ -364,8 +372,9 @@ enum COM_FunctionType{
 struct COM_Function{
   COM_FunctionType type;
   String name;
-  Array<COM_Arg> args;
+  Array<COM_FuncParam> params;
   COM_Stmt* stmts;
+  String structToReturn;
 };
 
 // What is the most raw form of storing this stuff?
@@ -398,6 +407,7 @@ bool COM_Ent_IsVar(COM_EntType in);
 bool COM_Ent_IsArray(COM_EntType in);
 bool COM_Ent_IsExpr(COM_EntType in);
 bool COM_Ent_IsWire(COM_EntType in);
+bool COM_Ent_IsUnitLike(COM_EntType type);
 
 void           COM_Copy(COM_Unit* out,COM_Unit* in);
 COM_Unit*      COM_Copy(COM_Unit* unit,Arena* out);
@@ -421,6 +431,8 @@ COM_EntPort         COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* o
 //COM_UnpackedExpr COM_UnpackExpr(COM_Env* env,SP_Node* expr);
 //COM_UnpackedExpr COM_CollapseToName(COM_UnpackedExpr expr,Arena* out);
 
+COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,Arena* out);
+
 // ======================================
 // Compilation
 
@@ -429,8 +441,10 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
 // ======================================
 // Env
 
+COM_Ent* COM_PushEnt(COM_Env* env,COM_Unit* unit,Token nameToken,COM_EntType type);
 COM_Ent* COM_PushEnt(COM_Env* env,String name,COM_EntType type);
 COM_Ent* COM_PushEnt(COM_Env* env,Token name,COM_EntType type);
+
 COM_Ent  COM_GetEnt(COM_Env* env,Token name,bool canFail);
 COM_Ent  COM_ArrayAccess(COM_Env* env,COM_Ent array,int index);
 

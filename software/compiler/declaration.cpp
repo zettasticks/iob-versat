@@ -852,7 +852,7 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
   res->outputs = PushArray<DECL_PortInfo>(out,outputCount);
   res->configs = configs;
   res->states = states;
-  res->memoryMapped = PushArray<HW_Instance>(out,memoryMappedCount);
+  res->memoryMapped = PushArray<DECL_MMInfo>(out,memoryMappedCount);
   res->externalMemory = PushArray<HW_Instance>(out,externalMemoryCount);
   res->numberDelays = delayCount;
   res->numberDatabus = databusCount;
@@ -880,7 +880,8 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
   }
   
   if(res->memoryMapped.size){
-    res->memoryMapped[0] = HW_Instantiate(&HW_Default::HW_MM,{.addrSize = memoryMappedAddrSize},out);
+    res->memoryMapped[0].inst = HW_Instantiate(&HW_Default::HW_MM,{.addrSize = memoryMappedAddrSize},out);
+    res->memoryMapped[0].addrName = {};
   }
 
   int externalIndex = 0;
@@ -1023,7 +1024,7 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
   res->states = PushArray<Wire>(out,stateCount);
   res->inputs = PushArray<DECL_PortInfo>(out,delays.inputDelays.size);
   res->outputs = PushArray<DECL_PortInfo>(out,delays.outputLatencies.size);
-  res->memoryMapped = PushArray<HW_Instance>(out,memMappedCount);
+  res->memoryMapped = PushArray<DECL_MMInfo>(out,memMappedCount);
   res->externalMemory = PushArray<HW_Instance>(out,externalCount);
   res->statics = PushArray(out,statics);
 
@@ -1066,8 +1067,16 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
         res->states[stateIndex].sizeExpr = SYM_Replace(w.sizeExpr,paramReplace);
         stateIndex += 1;
       }
-      for(HW_Instance e : ptr->decl->memoryMapped){
-        res->memoryMapped[memMappedIndex++] = HW_InstantiateParams(e,paramReplace,out);
+      for(DECL_MMInfo e : ptr->decl->memoryMapped){
+        res->memoryMapped[memMappedIndex].inst = HW_InstantiateParams(e.inst,paramReplace,out);
+
+        if(ptr->decl->type == DeclarationType_SINGLE){
+          res->memoryMapped[memMappedIndex].addrName = PushString(out,"%.*s_addr",UN(ptr->name));
+        } else {
+          res->memoryMapped[memMappedIndex].addrName = PushString(out,"%.*s_%.*s",UN(ptr->name),UN(e.addrName));
+        }
+
+        memMappedIndex += 1;
       }
       for(HW_Instance& inst : ptr->decl->externalMemory){
         res->externalMemory[externalIndex] = HW_InstantiateParams(inst,paramReplace,out);
@@ -1141,19 +1150,21 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
       String name = ptr->childs->token.val;
 
       COM_Ent* ent = COM_PushEnt(env,name,COM_EntType_MERGE_TYPE);
-      ent->mergeType = typeName;
+      ent->decl = DECL_GetType(typeName,{});
     }
   }
 
+  COM_FunctionNode *funcHead = 0,*funcTail = 0;
+
   for(SP_Node* ptr = top->childs; ptr; ptr = ptr->next){
-    case(ptr->type){
-    default: break;
-    case SP_Type_FUNC_STATE:
-    case SP_Type_FUNC_MEM:
-    case SP_Type_FUNC_CONFIG: {
-      -- LEFT HERE - Generalize code from COM_Instantiate module and implement this.
-    } break;
-  }
+    bool isFunction = (ptr->type == SP_Type_FUNC_STATE ||
+                       ptr->type == SP_Type_FUNC_MEM ||
+                       ptr->type == SP_Type_FUNC_CONFIG);
+
+    if(isFunction){
+      COM_FunctionNode* func = COM_CompileFunction(env,ptr,out);
+      LL_Append(funcHead,funcTail,next,func);
+    }
   }
 
   // TODO: Share and Static
@@ -1208,7 +1219,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
 
   res->configs = PushArray<Wire>(out,configCount);
   res->states  = PushArray<Wire>(out,stateCount);
-  res->memoryMapped = PushArray<HW_Instance>(out,memMappedCount);
+  res->memoryMapped = PushArray<DECL_MMInfo>(out,memMappedCount);
   res->externalMemory = PushArray<HW_Instance>(out,externalCount);
   res->statics = PushArray(out,statics);
   res->singleInterfaces = single;
@@ -1218,7 +1229,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   res->baseGraph = graph;
   res->fixedDelays = graph;
   res->singleInterfaces = single;
-  res->funcs = {}; // TODO
+  res->funcs = funcHead;
   res->error = error;
 
   {
@@ -1239,8 +1250,15 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
         res->states[stateIndex].sizeExpr = SYM_Replace(w.sizeExpr,paramReplace);
         stateIndex += 1;
       }
-      for(HW_Instance e : ptr->decl->memoryMapped){
-        res->memoryMapped[memMappedIndex++] = HW_InstantiateParams(e,paramReplace,out);
+      for(DECL_MMInfo e : ptr->decl->memoryMapped){
+        res->memoryMapped[memMappedIndex].inst = HW_InstantiateParams(e.inst,paramReplace,out);
+        if(ptr->decl->type == DeclarationType_SINGLE){
+          res->memoryMapped[memMappedIndex].addrName = PushString(out,"%.*s_addr",UN(ptr->name));
+        } else {
+          res->memoryMapped[memMappedIndex].addrName = PushString(out,"%.*s_%.*s",UN(ptr->name),UN(e.addrName));
+        }
+
+        memMappedIndex += 1;
       }
       for(HW_Instance& inst : ptr->decl->externalMemory){
         res->externalMemory[externalIndex] = HW_InstantiateParams(inst,paramReplace,out);

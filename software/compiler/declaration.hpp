@@ -83,6 +83,11 @@ struct DECL_StaticWire{
   Wire wire;
 };
 
+struct DECL_MMInfo{
+  HW_Instance inst;
+  String addrName;
+};
+
 struct FUDeclaration{
   DECL_Meta* meta;
   Array<DECL_Param> parameters; // All parameters even if equal to default values.
@@ -94,7 +99,7 @@ struct FUDeclaration{
   Array<DECL_PortInfo> outputs;
   Array<Wire> configs;
   Array<Wire> states;
-  Array<HW_Instance> memoryMapped; // Only address can change, everything else must be standard
+  Array<DECL_MMInfo> memoryMapped; // Only address can change, everything else must be standard
   Array<HW_Instance> externalMemory;  // For external memory we care about wire size. 
 
   Array<DECL_StaticWire> statics;

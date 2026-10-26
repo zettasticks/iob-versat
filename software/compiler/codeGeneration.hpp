@@ -223,7 +223,6 @@ String GEN_TypeName(GEN_StructElem* elem);
 
 String GEN_Repr(GEN_StructInfo* info,Arena* out);
 
-
 // ======================================
 // TopLevelInfo
 
@@ -246,12 +245,18 @@ struct GEN_Wire{
   GEN_WireType type;
 };
 
+struct GEN_MMInfo{
+  String decisionMask;
+  String addrName;
+  int    addrStart;
+  int    addrSize;
+};
+
 struct GEN_TopInfo{
   FUDeclaration* decl;
 
   Array<VersatRegister> registers;
-  Array<String> memoryMappedDecisionMask;
-  Array<int>    memoryMappedAddrStart;
+  Array<GEN_MMInfo> memoryMapped;
 
   Array<GEN_Wire> allConfigs;
   Array<GEN_Wire> allStates;

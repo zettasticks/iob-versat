@@ -5425,7 +5425,7 @@ void GEN_EmitInstanciateUnits(VEmitter* m,COM_Unit* units,COM_Edge* edges){
     if(decl->memoryMapped.size > 0){
       int addrSize = 0;
       for(int i = 0; i < decl->memoryMapped.size; i++){
-        SYM_Expr sizeExpr = HW_GetAddrSize(decl->memoryMapped[0],0);
+        SYM_Expr sizeExpr = HW_GetAddrSize(decl->memoryMapped[0].inst,0);
         SYM_EvaluateResult res = SYM_ConstantEvaluate(sizeExpr);
         Assert(!res.Error());
         addrSize = MAX(addrSize,res.result);
@@ -7231,7 +7231,6 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     // Generate size function =====================================================
 
 #if 0
-
     if(true){
       for(int mergeIndex = 0; mergeIndex <  info.infos.size; mergeIndex++){
         MergePartition part = info.infos[mergeIndex];
@@ -7537,12 +7536,20 @@ String repr = SYM_Repr(symb,temp);
       COM_Function* func = &funcNode->v;
       bool isState = (func->type == COM_FunctionType_STATE);
 
+      if(isState){
+        c->Struct(func->structToReturn);
+        for(COM_Stmt* stmt = func->stmts; stmt; stmt = stmt->next){
+          c->VarDeclare("iptr",stmt->lhs);
+        }        
+        c->EndStruct();
+      }
+
       // TODO: Hacked
       String returnType = "void";
-      String fullFunctionName = PushString(temp,"%.*s",UN(func->name));
+      String fullFunctionName = PushString(temp,"%.*s_%.*s",UN(decl->name),UN(func->name));
       c->FunctionBlock(SF("static inline %.*s",UN(returnType)),fullFunctionName);
 
-      for(COM_Arg var : func->args){
+      for(COM_FuncParam var : func->params){
         c->Argument(ConfigVarTypeToName(var.type),var.name);
       }
 
@@ -7560,14 +7567,16 @@ String repr = SYM_Repr(symb,temp);
         
       String assignStarter = "accelConfig";
 
-#if 0
+#if 1
       if(isState){
         assignStarter = "accelState";
       }
+#endif
         
       // Because of merge, need to generate the config pointer that allow us to access the named members directly.
+#if 0
       if(isMerge){
-        String stmt;
+        String stmt = {};
         if(isState){
           assignStarter = "state";
           stmt = PushString(temp,"volatile %.*sState* state = &accelState->%.*s",UN(mergeName),UN(mergeName));
@@ -7580,7 +7589,9 @@ String repr = SYM_Repr(symb,temp);
           c->Statement(stmt);
         }
       }
+#endif
 
+#if 0
       for(ConfigComputation comp : func->extraComputations){
         c->InsertCode(comp.cCode);
       }
@@ -7590,7 +7601,24 @@ String repr = SYM_Repr(symb,temp);
       case COM_FunctionType_NIL:{
         Assert(false);
       } break;
+      // MARK
       case COM_FunctionType_MEM:{
+        for(COM_Stmt* stmt = func->stmts; stmt; stmt = stmt->next){
+          String sizeExpr = SYM_Repr(stmt->rhsExpr,temp);
+          
+          FULL_SWITCH(stmt->dir){
+          case Direction_NONE: Assert(false); break;
+          case Direction_READ: {
+            String expr = PushString(temp,"VersatMemoryCopy(TOP_%.*s,%.*s,(%.*s) * sizeof(int));",UN(stmt->lhs),UN(stmt->rhs),UN(sizeExpr));
+            c->RawLine(expr);
+          } break;
+          case Direction_WRITE: {
+            String expr = PushString(temp,"VersatMemoryCopy(%.*s,TOP_%.*s,(%.*s) * sizeof(int));",UN(stmt->rhs),UN(stmt->lhs),UN(sizeExpr));
+            c->RawLine(expr);
+          } break;
+        }
+        }        
+
 #if 0
         for(ConfigStuff assign : func->stuff){
           Assert(assign.type == ConfigStuffType_MEMORY_TRANSFER);
@@ -7627,24 +7655,16 @@ String repr = SYM_Repr(symb,temp);
 #endif
       } break;
       case COM_FunctionType_STATE:{
-#if 0
-        c->VarDeclare(func->structToReturnName,"res","{}");
+        c->VarDeclare(func->structToReturn,"res","{}");
 
-        for(ConfigStuff assign : func->stuff){
-          String lhs = PushString(temp,"res.%.*s",UN(assign.assign.lhs));
-
-          String rhs = {};
-          if(assign.assign.noAccess){
-            rhs = assign.assign.rhsId;
-          } else {
-            rhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(assign.assign.rhsId));
-          }
-
+        for(COM_Stmt* stmt = func->stmts; stmt; stmt = stmt->next){
+          Assert(stmt->type == COM_StmtType_ASSIGN);
+          String lhs = PushString(temp,"res.%.*s",UN(stmt->lhs));
+          String rhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(stmt->rhs));
           c->Assignment(lhs,rhs);
-        }
+        }        
 
         c->Return("res");
-#endif
       } break;
 
       case COM_FunctionType_CONFIG:{
@@ -7741,7 +7761,7 @@ String repr = SYM_Repr(symb,temp);
 
             } break;
             case COM_StmtType_MEM_COPY: {
-              
+              NOT_IMPLEMENTED();
             } break;
           }
         }
@@ -7860,6 +7880,16 @@ String repr = SYM_Repr(symb,temp);
   Array<Array<MuxInfo>> muxInfo = CalculateMuxInformation(&iter,temp);
 #endif
 
+  {
+    CEmitter* c = StartCCode(CCode1,CCode2);
+
+    for(GEN_MMInfo e : info->memoryMapped){
+      c->Define(SF("TOP_%.*s",UN(e.addrName)),PushString(temp,"((void*) (versat_base + memMappedStart + %d))",e.addrStart));
+    }
+      
+    String content = PushASTRepr(c,temp);
+    TE_SetString("memMappedAddresses",content);
+  }
 
   {
     CEmitter* c = StartCCode(CCode1,CCode2);
@@ -8699,14 +8729,15 @@ static iptr WRITE_@{0} = 0;)FOO";
   
   if(1){ // nocheckin: HACK - Disabled 
     CEmitter* c = StartCCode(CCode1,CCode2);
-    for(int i = 0; i < info->memoryMappedAddrStart.size; i++){
-      int addrStart = info->memoryMappedAddrStart[i];
+    for(int i = 0; i < info->memoryMapped.size; i++){
+      int addrStart = info->memoryMapped[i].addrStart;
+      int addrSize = info->memoryMapped[i].addrSize;
 
-      String expr = PushString(temp,"(address >= %d && address <= %d) ? 1 : 0",addrStart,addrStart + 4);
+      String expr = PushString(temp,"(address >= %d && address <= %d) ? 1 : 0",addrStart,addrStart + addrSize);
 
       c->VarDeclare("int",SF("unit_valid_%d",i),expr);
 
-      String expr2 = PushString(temp,"(address >= %d && address <= %d)",addrStart,addrStart + 4);
+      String expr2 = PushString(temp,"(address >= %d && address <= %d)",addrStart,addrStart + addrSize);
       c->If(expr2);
       c->Assignment("actualAddress",SF("address - %d",addrStart));
       c->EndIf();
@@ -9737,8 +9768,7 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
   
   // Huffman allocation of memory regions for mem mapped units ==================
   int memoryMappedBit = 0;
-  Array<String> memoryMappedDecisionMask = {};
-  Array<int> memoryMappedAddrStart = {};
+  Array<GEN_MMInfo> memoryMapped = {};
   {
     struct HuffmanNode{
       HuffmanNode* next;
@@ -9747,6 +9777,7 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
       HuffmanNode* left;
       HuffmanNode* right;
 
+      String addrName;
       int addrIndex;
       int bitCount;
       bool isBitSet;
@@ -9756,7 +9787,8 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
     HuffmanNode* nodesHead = 0;
     HuffmanNode* nodesTail = 0;
     for(int i = 0; i < size; i++){
-      HW_Instance in = topLevel->memoryMapped[i];
+      String addrName = topLevel->memoryMapped[i].addrName;
+      HW_Instance in = topLevel->memoryMapped[i].inst;
       SYM_Expr addrSize = HW_GetAddrSize(in,0);
       SYM_EvaluateResult eval = SYM_ConstantEvaluate(addrSize);
 
@@ -9771,11 +9803,18 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
       HuffmanNode* node = PushStruct<HuffmanNode>(temp);
       node->bitCount = eval.result;
       node->addrIndex = i;
+      node->addrName = addrName;
       DLL_Append(nodesHead,nodesTail,next,prev,node);
     }
+
     if(!error && size > 0){
       HuffmanNode* allHead = 0;
       HuffmanNode* allTail = 0;
+
+      if(nodesHead && !nodesHead->next){
+        LL_Append(allHead,allTail,next,nodesHead);
+      }
+
       while(nodesHead && nodesHead->next){
         HuffmanNode* biggestMin = 0;
         HuffmanNode* smallestMin = 0;
@@ -9820,8 +9859,7 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
 
       HuffmanNode* top = nodesHead;
       memoryMappedBit = top->bitCount;
-      memoryMappedDecisionMask = PushArray<String>(out,size);
-      memoryMappedAddrStart = PushArray<int>(out,size);
+      memoryMapped = PushArray<GEN_MMInfo>(out,size);
 
       for(HuffmanNode* ptr = allHead; ptr; ptr = ptr->next){
         Assert(ptr->addrIndex >= 0);
@@ -9844,8 +9882,11 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
           }
         }
         
-        memoryMappedDecisionMask[addrIndex] = String(maskBuffer,maskSize);
-        memoryMappedAddrStart[addrIndex] = addrStart;
+        memoryMapped[addrIndex].decisionMask = String(maskBuffer,maskSize);
+        memoryMapped[addrIndex].addrStart = addrStart;
+        memoryMapped[addrIndex].addrName = ptr->addrName;
+        memoryMapped[addrIndex].addrSize = (1 << ptr->bitCount);
+        DEBUG_BREAK();
       }
     }
   }
@@ -9863,8 +9904,7 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
   GEN_TopInfo res = {};
   res.decl = topLevel;
   res.registers = versatRegisters;
-  res.memoryMappedDecisionMask = memoryMappedDecisionMask;
-  res.memoryMappedAddrStart = memoryMappedAddrStart;
+  res.memoryMapped = memoryMapped;
   res.allConfigs = configWires;
   res.allStates = stateWires;
 

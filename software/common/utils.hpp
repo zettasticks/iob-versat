@@ -134,6 +134,19 @@ Array<T> Reverse(Array<T> arr,Arena* out){
 }
 
 template<typename T>
+inline Array<T> Combine(Arena* out,Array<T> first,Array<T> second){
+  Array<T> res = PushArray<T>(out,first.size + second.size);
+  int index = 0;
+  for(int i = 0; i < first.size; i++){
+    res[index++] = first[i];
+  }
+  for(int i = 0; i < second.size; i++){
+    res[index++] = second[i];
+  }
+  return res;
+}
+
+template<typename T>
 T* ReverseList(T* head){
    if(head == nullptr){
       return head;
