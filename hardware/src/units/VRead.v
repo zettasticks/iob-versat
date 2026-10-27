@@ -73,7 +73,7 @@ module VRead #(
    input [DELAY_W-1:0]  extra_delay,
    input                ignore_first,
 
-   input [DELAY_W-1:0] delay0
+   input [DELAY_W-1:0] delay_out0
 );
 
    // output databus
@@ -237,7 +237,7 @@ assign data_data = databus_rdata_0;
 
       //configurations 
       .per_i(per),
-      .delay_i (delay0 + extra_delay),
+      .delay_i (delay_out0 + extra_delay),
       .start_i ({1'b0,start[ADDR_W-2:0]}),
       .incr_i  (incr),
 

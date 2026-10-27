@@ -93,6 +93,7 @@ VersatDebugState VersatDebugGetState();
 VersatProfile    VersatProfileGet();
 void             VersatProfileReset();
 void             VersatPrintProfile(VersatProfile profile);
+void             VersatDebugSetStage(int stage);
 
 // PC-Emul side functions that allow to enable or disable certain portions of the emulation
 // Their embedded counterparts simply do nothing

@@ -5,6 +5,7 @@ table RegisterTable(name,profile,capture){
   DmaTransferLength                         0   0
   DmaControl                                0   0
   Debug                                     0   0
+  DebugStage                                0   0
   ProfileControl                            1   0
   ProfileRunCount                           1   0
   ProfileRunCount2                          1   0

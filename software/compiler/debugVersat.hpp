@@ -9,38 +9,38 @@
 // When adding new colors, also add info in the .cpp file
 // TODO: We probably want to move this to meta data
 enum Color{
+  Color_DEFAULT,
   Color_BLACK,
   Color_BLUE,
   Color_RED,
   Color_GREEN,
-  Color_YELLOW
+  Color_YELLOW,
+
+  Color_DEFAULT_NODE = Color_BLUE,
+  Color_DEFAULT_EDGE = Color_BLACK
 };
 
-struct GraphPrintingNodeInfo{
-  String name;
-  String content;
-  Color color;
-};
-
-struct GraphPrintingEdgeInfo{
-  String content;
-  Color color;
+struct DOT_Info{
+  // For edges, name of the node. For nodes, empty
   String firstNode;
   String secondNode;
-};
 
-struct GraphPrintingContent{
-  String graphLabel;
-  Array<GraphPrintingNodeInfo> nodes;
-  Array<GraphPrintingEdgeInfo> edges;
-};
-
-struct GraphInfo{
-  String content;
+  String name;
+  String headContent;
+  String middleContent;
+  String tailContent;
   Color color;
 };
 
-String GenerateDotGraph(GraphPrintingContent content,Arena* out);
+struct DOT_Graph{
+  String graphLabel;
+  Array<DOT_Info> content;
+};
+
+bool DOT_IsNode(DOT_Info* info);
+bool DOT_IsEdge(DOT_Info* info);
+
+String GenerateDotGraph(DOT_Graph content,Arena* out);
 
 void OutputContentToFile(String filepath,String content);
 

@@ -55,6 +55,7 @@ VersatPrintf versat_printf = versat_empty_printf;
 bool CreateVCD;
 bool SimulateDatabus;
 bool versatInitialized;
+static int error = 0;
 
 @{acceleratorConfig}
 
@@ -182,13 +183,14 @@ extern "C" void VersatAcceleratorCreate(){
 static int cyclesDone = 0;
 
 static void InternalUpdateAccelerator(){
-   int baseAddress = 0;
-
-   cyclesDone += 1;
-
-   int sizeOfData = (@{databusDataSize} / 8);
+   if(error){
+     versat_printf("Accelerator Update terminated from previous errors");
+     return;
+   }
 
    TopType* self = dut;
+   int baseAddress = 0;
+   int sizeOfData = (@{databusDataSize} / 8);
 
    // Databus must be updated before memories because databus could drive memories but memories "cannot" drive databus (in the sense that databus acts like a master if connected directly to memories but memories do not act like a master when connected to a databus. The unit logic is the one that acts like a master)
 
@@ -206,25 +208,20 @@ static void InternalUpdateAccelerator(){
 
 // TODO: Technically only need to do this at the end of an accelerator run, do not need to do this every single update
 @{saveState}
+
+   cyclesDone += 1;
 }
 
 static bool IsDone(){
-   TopType* self = dut;
+  TopType* self = dut;
+
+  bool res = @{done};
+  if(error){
+    res = true;
+  } 
        
-  return @{done};
+  return res;
 }
-
-struct Once{};
-struct _OnceTag{};
-template<typename F>
-Once operator+(_OnceTag t,F&& f){
-  f();
-  return Once{};
-}
-
-#define TEMP__once(LINE) TEMPonce_ ## LINE
-#define TEMP_once(LINE) TEMP__once( LINE )
-#define once static Once TEMP_once(__LINE__) = _OnceTag() + [&]()
 
 @{declareExtraConfigs}
 
@@ -270,15 +267,14 @@ extern "C" int VersatAcceleratorCyclesElapsed(){
 extern "C" void VersatAcceleratorSimulate(){
   InternalStartAccelerator();
 
-  for(int i = 0; i < 30; i++){
+  for(int i = 0; !IsDone(); i++){
     InternalUpdateAccelerator();
 
     if(i >= 10000000){
       versat_printf("Accelerator simulation has surpassed 10000000 cycles for a single run\n");
       versat_printf("Assuming that the accelerator is stuck in a never ending loop\n");
       versat_printf("Terminating simulation\n");
-      fflush(stdout);
-      exit(-1);
+      error = 1;
     }   
   }
 
@@ -288,11 +284,24 @@ extern "C" void VersatAcceleratorSimulate(){
 extern "C" int MemoryAccess(int address,int value,int write){
   TopType* self = dut;
 
+  //versat_printf("%d %d %d\n",address,value,write);
+
 @{memoryAccessDefines}
 
+  int MAX_TIMEOUT = 1000;
+  int timeout = 0;
   int actualAddress = address;
+  int validCount = 0;
 
 @{memoryUnpack}
+
+  if(validCount == 0){
+    return 0;
+  }
+  if(validCount > 1){
+    versat_printf("Versat Error on MemoryAccess, multiple memory accesses detected\n");
+    return 0;
+  }
 
 #ifdef HAS_MEMORY_MAP
   if(write){
@@ -305,14 +314,10 @@ extern "C" int MemoryAccess(int address,int value,int write){
     #endif
       self->wdata = value;
 
-      self->eval();
-
-      //while(!self->ready){ For now we assume all writes have no delay 
-          InternalUpdateAccelerator();
-      //}
+      InternalUpdateAccelerator();
 
       @{memoryUnsetValid}
-      //self->valid = 0;
+
       self->wstrb = 0x00;
     #ifdef MEMORY_MAP_BITS
       self->addr = 0x00000000;
@@ -325,7 +330,6 @@ extern "C" int MemoryAccess(int address,int value,int write){
    } else {
       @{memorySetValid}
 
-      //self->valid = 1;
       self->wstrb = 0x0;
     #ifdef MEMORY_MAP_BITS
       self->addr = actualAddress;
@@ -333,8 +337,16 @@ extern "C" int MemoryAccess(int address,int value,int write){
 
       self->eval();
 
+      timeout = 0;
       while(!self->rvalid){
-          InternalUpdateAccelerator();
+        InternalUpdateAccelerator();
+
+        timeout += 1;
+        if(timeout > MAX_TIMEOUT){
+          versat_printf("Error stuck on memory read, expect errors on values read\n");
+          error = 1;
+          return 0;
+        }
       }
 
       int res = self->rdata;
@@ -346,8 +358,17 @@ extern "C" int MemoryAccess(int address,int value,int write){
     #endif
 
       self->eval();
+
+      timeout = 0;
       while(self->rvalid){
-          InternalUpdateAccelerator();
+        InternalUpdateAccelerator();
+
+        timeout += 1;
+        if(timeout > MAX_TIMEOUT){
+          versat_printf("Error stuck on memory read, expect errors on values read\n");
+          error = 1;
+          return 0;
+        }
       }
 
       return res;
@@ -572,7 +593,10 @@ void VersatPrintProfile(VersatProfile p){
 }
 
 void VersatProfileReset(){
+}
 
+void VersatDebugSetStage(int stage){
+  // TODO: We could make this do something similar to sim-run by adding a stage reg to the wrapper
 }
 
 #endif

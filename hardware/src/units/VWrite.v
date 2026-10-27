@@ -67,7 +67,7 @@ module VWrite #(
    input          ignore_first,
    input [20-1:0] extra_delay,
 
-   input [DELAY_W-1:0] delay0
+   input [DELAY_W-1:0] delay_in0
 );
    localparam DELAY_STORE_W = (DELAY_W > 20) ? DELAY_W : 20;
    localparam EXTRA_DELAY_W = 20;
@@ -85,11 +85,11 @@ module VWrite #(
 
    generate
       if (DELAY_W < EXTRA_DELAY_W) begin : gen_delay_smaller
-         assign delay_store = {{(EXTRA_DELAY_W - DELAY_W) {1'b0}}, delay0} + extra_delay;
+         assign delay_store = {{(EXTRA_DELAY_W - DELAY_W) {1'b0}}, delay_in0} + extra_delay;
       end else if (DELAY_W > EXTRA_DELAY_W) begin : gen_delay_bigger
-         assign delay_store = {{(DELAY_W - EXTRA_DELAY_W) {1'b0}}, extra_delay} + delay0;
+         assign delay_store = {{(DELAY_W - EXTRA_DELAY_W) {1'b0}}, extra_delay} + delay_in0;
       end else begin : gen_delay_equal
-         assign delay_store = delay0 + extra_delay;
+         assign delay_store = delay_in0 + extra_delay;
       end
    endgenerate
 

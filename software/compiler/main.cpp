@@ -30,6 +30,8 @@ namespace fs = std::filesystem;
   Stuff:
   - StringBuilder -> Write to file and Template helpers instead of double copy.
 
+  Delay:
+  - IsSource/IsSink is stupid, proper delay wires for each input/output combination that we care about.
 
 */
 
@@ -394,8 +396,8 @@ int main(int argc,char* argv[]){
 
   String topLevelTypeStr = globalOptions.topName;
   Array<DECL_Param> params = PushArray<DECL_Param>(temp,6);
-  params[0] = DECL_Param{"ADDR_W",SYM_Lit(32)};
-  params[1] = DECL_Param{"DATA_W",SYM_Lit(32)};
+  params[0] = DECL_Param{"ADDR_W",SYM_AddrW};
+  params[1] = DECL_Param{"DATA_W",SYM_DataW};
   params[2] = DECL_Param{"DELAY_W",SYM_DelayW};
   params[3] = DECL_Param{"LEN_W",SYM_LenW};
   params[4] = DECL_Param{"AXI_DATA_W",SYM_AxiDataW};
@@ -598,7 +600,6 @@ int main(int argc,char* argv[]){
   BasicDeclaration::multiplexer = GetTypeByNameOrFail("Mux2");
   BasicDeclaration::combMultiplexer = GetTypeByNameOrFail("CombMux2");
   BasicDeclaration::stridedMerge = GetTypeByNameOrFail("StridedMerge");
-  BasicDeclaration::timedMultiplexer = GetTypeByNameOrFail("TimedMux");
   BasicDeclaration::input = GetTypeByNameOrFail("CircuitInput");
   BasicDeclaration::output = GetTypeByNameOrFail("CircuitOutput");
 #endif

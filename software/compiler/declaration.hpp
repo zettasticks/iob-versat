@@ -107,7 +107,9 @@ struct FUDeclaration{
   // NOTE: Delays have multiple jobs. For source units they encode the number of cycles unit must wait before outputting
   //       For sink the cycles to wait before starting to receive.
   //       Compute units might have delays since they care about when the data is valid.
-  int numberDelays;
+  //int numberDelays;
+  int numberInputDelays;
+  int numberOutputDelays;
 
   String operation;
   int numberDatabus;
@@ -122,7 +124,6 @@ struct FUDeclaration{
 
   COM_FunctionNode* funcs;
 
-  bool isSource;
   bool error;
 };
 extern FUDeclaration FUDeclaration_Nil;
@@ -144,7 +145,6 @@ namespace BasicDeclaration{
   extern FUDeclaration* fixedBuffer;
   extern FUDeclaration* multiplexer;
   extern FUDeclaration* combMultiplexer;
-  extern FUDeclaration* timedMultiplexer;
   extern FUDeclaration* stridedMerge;
   extern FUDeclaration* pipelineRegister;
 #endif
@@ -160,9 +160,11 @@ bool Equal(DECL_StaticWire lhs,DECL_StaticWire rhs);
 bool DECL_IsInput(FUDeclaration* decl);
 bool DECL_IsOutput(FUDeclaration* decl);
 
-bool DECL_IsSource(FUDeclaration* decl);
-bool DECL_IsCompute(FUDeclaration* decl);
 bool DECL_IsSink(FUDeclaration* decl);
+bool DECL_IsCompute(FUDeclaration* decl);
+bool DECL_IsComputeWithDelay(FUDeclaration* decl);
+bool DECL_IsSource(FUDeclaration* decl);
+
 bool DECL_IsVersatDefault(FUDeclaration* decl);
 bool DECL_IsVersatGenerated(FUDeclaration* decl);
 bool DECL_IsVersatOperation(FUDeclaration* decl);

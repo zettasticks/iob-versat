@@ -13,24 +13,24 @@ module DelayCalc #(
 
    output     lastCycle,
 
-   input [DELAY_W-1:0] delay0
+   input [DELAY_W-1:0] delay
 );
-   reg [DELAY_W-1:0] delay;
+   reg [DELAY_W-1:0] delay_reg;
 
-   assign lastCycle = (delay == 0) && !done;
+   assign lastCycle = (delay_reg == 0) && !done;
 
    always @(posedge clk, posedge rst) begin
       if (rst) begin
-         delay  <= 0;
+         delay_reg  <= 0;
          done <= 1'b1;
       end else if(run) begin
-         delay <= delay0;
+         delay_reg <= delay;
          done <= 1'b0;
       end else if(running) begin
-         if (delay == 0) begin
+         if (delay_reg == 0) begin
             done <= 1'b1;
          end else begin
-            delay <= delay - 1;
+            delay_reg <= delay_reg - 1;
          end
       end
    end

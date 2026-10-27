@@ -549,10 +549,16 @@ struct SP_NodeNode{
   SP_Node* node;
 };
 
+struct SP_NodeList{
+  SP_NodeNode* head;
+  SP_NodeNode* tail;
+};
+
 // ======================================
 // Type
 
 bool SP_Type_IsLoop(SP_Type in);
+bool SP_Type_IsOperation(SP_Type in);
 
 // ======================================
 // Parsing Helpers
@@ -590,4 +596,4 @@ SP_Node* SP_ParseSpec(String content,Arena* out);
 // Helpers
 
 SP_Node*     SP_UnpackExpr(SP_Node* exprNode);
-SP_NodeNode* SP_Flatten(SP_Node* top,Arena* out);
+SP_NodeList  SP_Flatten(SP_Node* top,Arena* out);

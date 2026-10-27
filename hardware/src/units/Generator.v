@@ -33,7 +33,7 @@ module Generator #(
     input [PERIOD_W - 1:0] duty,
     input [ADDR_W-1:0] start,
 
-    input [DELAY_W-1:0] delay0,
+    input [DELAY_W-1:0] delay_out0,
 
     //outputs 
     (* versat_latency = 0 *)
@@ -81,7 +81,7 @@ module Generator #(
       .iter3_i (iter3),
       .shift3_i(shift3),
 
-      .delay_i(delay0),
+      .delay_i(delay_out0),
 
       .doneDatabus(),
       .doneAddress(),

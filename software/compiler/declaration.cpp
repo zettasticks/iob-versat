@@ -95,7 +95,6 @@ namespace BasicDeclaration{
   FUDeclaration* multiplexer;
   FUDeclaration* combMultiplexer;
   FUDeclaration* stridedMerge;
-  FUDeclaration* timedMultiplexer;
   FUDeclaration* pipelineRegister;
 #endif
 }
@@ -126,33 +125,23 @@ bool DECL_IsOutput(FUDeclaration* decl){
   return res;
 }
 
-// NOTE: 
-// TODO: Maybe change delay to be input_delay%d and output_delay%d so that we can just simplify all this logic
-
-bool DECL_IsSource(FUDeclaration* decl){
-  bool res = (decl->inputs.size == 0 && (decl->outputs.size > 0 || decl->isSource));
+bool DECL_IsSink(FUDeclaration* decl){
+  bool res = (decl->numberInputDelays > 0);
   return res;
 }
 
 bool DECL_IsCompute(FUDeclaration* decl){
-  if(DECL_IsSource(decl) || DECL_IsSink(decl)){
-    return false;
-  }
-
-  bool res = (decl->inputs.size > 0 && decl->outputs.size > 0);
+  bool res = (decl->inputs.size > 0 && decl->outputs.size > 0 && decl->numberOutputDelays == 0);
   return res;
 }
 
-bool DECL_IsSink(FUDeclaration* decl){
-  if(decl->isSource){
-    return false;
-  }
-  
-  bool res = ((decl == BasicDeclaration::output) ||
-              (decl->inputs.size > 0 && decl->outputs.size == 0)); // || 
-             
-              // NOTE: If a unit has delays then we assume it is a sink even if it contains outputs.
-              //(decl->inputs.size > 0 && decl->outputs.size > 0 && decl->numberDelays > 0));
+bool DECL_IsComputeWithDelay(FUDeclaration* decl){
+  bool res = (DECL_IsCompute(decl) && decl->numberInputDelays > 0);
+  return res;
+}
+
+bool DECL_IsSource(FUDeclaration* decl){
+  bool res = (decl->numberOutputDelays > 0);
   return res;
 }
 
@@ -451,7 +440,8 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
     DECL_SimpleType_NIL,
     DECL_SimpleType_INPUT,
     DECL_SimpleType_OUTPUT,
-    DECL_SimpleType_DELAY
+    DECL_SimpleType_INPUT_DELAY,
+    DECL_SimpleType_OUTPUT_DELAY
   };
 
   struct DECL_SimpleWireInfo{
@@ -481,28 +471,15 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
   DECL_SingleInterface simple = {};
   int inputCount = 0;
   int outputCount = 0;
+  int inputDelayCount = 0;
+  int outputDelayCount = 0;
   int delayCount = 0;
   int configCount = 0;
   int stateCount = 0;
   int memoryMappedCount = 0;
   int externalMemoryCount = 0;
   int databusCount = 0;
-  bool isSource = false;
   SYM_Expr memoryMappedAddrSize = SYM_0;
-
-  for(V_Node* ptr = top->attributes; ptr; ptr = ptr->next){
-    // TODO: module attributes
-    bool found = 0;
-    if(ptr->token.val == "source"){
-      isSource = true;
-      found = 1;
-    }
-
-    if(!found){
-      // TODO: Better error reporting
-      printf("Unknown attribute: %.*s",UN(ptr->token.val));
-    }
-  }
 
   for(V_Node* ptr = top->childs; ptr; ptr = ptr->next){
     if(!V_IsPort(ptr->type)){
@@ -585,7 +562,7 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
     // Process single known name wires ============================================
     if(!found){
       int index = 0;
-
+      
       DECL_SimpleType type = {};
       if(!found && SubString(wireName,2) == "in" && IsNumber(Cut(wireName,2,0))){
         found = 1;
@@ -599,11 +576,17 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
         outputCount = MAX(outputCount,index + 1);
         type = DECL_SimpleType_OUTPUT;
       }
-      if(!found && SubString(wireName,5) == "delay" && IsNumber(Cut(wireName,5,0))){
+      if(!found && SubString(wireName,8) == "delay_in" && IsNumber(Cut(wireName,8,0))){
         found = 1;
-        index = ParseInt(Cut(wireName,5,0));
-        delayCount = MAX(delayCount,index + 1);
-        type = DECL_SimpleType_DELAY;
+        index = ParseInt(Cut(wireName,8,0));
+        inputDelayCount = MAX(inputDelayCount,index + 1);
+        type = DECL_SimpleType_INPUT_DELAY;
+      }
+      if(!found && SubString(wireName,9) == "delay_out" && IsNumber(Cut(wireName,9,0))){
+        found = 1;
+        index = ParseInt(Cut(wireName,9,0));
+        outputDelayCount = MAX(outputDelayCount,index + 1);
+        type = DECL_SimpleType_OUTPUT_DELAY;
       }
 
       if(found){
@@ -702,7 +685,8 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
   {
     Array<bool> seenInput = PushArray<bool>(temp,inputCount);
     Array<bool> seenOutput = PushArray<bool>(temp,outputCount);
-    Array<bool> seenDelay = PushArray<bool>(temp,delayCount);
+    Array<bool> seenInputDelay = PushArray<bool>(temp,inputDelayCount);
+    Array<bool> seenOutputDelay = PushArray<bool>(temp,outputDelayCount);
   
     for(DECL_SimpleWireInfo* ptr = simpleHead; ptr; ptr = ptr->next){
       if(ptr->type == DECL_SimpleType_INPUT){
@@ -711,8 +695,11 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
       if(ptr->type == DECL_SimpleType_OUTPUT){
         seenOutput[ptr->index] = 1;
       }
-      if(ptr->type == DECL_SimpleType_DELAY){
-        seenDelay[ptr->index] = 1;
+      if(ptr->type == DECL_SimpleType_INPUT_DELAY){
+        seenInputDelay[ptr->index] = 1;
+      }
+      if(ptr->type == DECL_SimpleType_OUTPUT_DELAY){
+        seenOutputDelay[ptr->index] = 1;
       }
     }
     for(int i = 0; i < seenInput.size; i++){
@@ -727,10 +714,24 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
         printf("Cannot have gaps in delay indexes, out%d does not exist for unit: '%.*s'\n",i,UN(moduleName));
       }
     }
-    for(int i = 0; i < seenDelay.size; i++){
-      if(!seenDelay[i]){
+    for(int i = 0; i < seenInputDelay.size; i++){
+      if(!seenInputDelay[i]){
         error = 1;
-        printf("Cannot have gaps in delay indexes, delay%d does not exist for unit: '%.*s'\n",i,UN(moduleName));
+        printf("Cannot have gaps in delay indexes, delay_in%d does not exist for unit: '%.*s'\n",i,UN(moduleName));
+      }
+      if(seenInputDelay[i] && !seenInput[i]){
+        error = 1;
+        printf("Cannot have input delay (delay_in%d) if input is missing: '%d'",i,i);
+      }
+    }
+    for(int i = 0; i < seenOutputDelay.size; i++){
+      if(!seenOutputDelay[i]){
+        error = 1;
+        printf("Cannot have gaps in delay indexes, delay_out%d does not exist for unit: '%.*s'\n",i,UN(moduleName));
+      }
+      if(seenOutputDelay[i] && !seenOutput[i]){
+        error = 1;
+        printf("Cannot have output delay (delay_out%d) if output is missing: '%d'",i,i);
       }
     }
 
@@ -854,14 +855,14 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
   res->states = states;
   res->memoryMapped = PushArray<DECL_MMInfo>(out,memoryMappedCount);
   res->externalMemory = PushArray<HW_Instance>(out,externalMemoryCount);
-  res->numberDelays = delayCount;
+  res->numberInputDelays = inputDelayCount;
+  res->numberOutputDelays = outputDelayCount;
   res->numberDatabus = databusCount;
   res->numberDones = (simple & DECL_SingleInterface_DONE) ? 1 : 0;
   res->singleInterfaces = simple;
   res->supportedAddressGen = supportedAddressGen;
   res->error = error;
-  res->isSource = isSource;
-  
+
   for(DECL_SimpleWireInfo* ptr = simpleHead; ptr; ptr = ptr->next){
     int index = ptr->index;
     switch(ptr->type){
@@ -873,7 +874,8 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
        res->outputs[index].size = SYM_DataW;
        res->outputs[index].delay = ptr->latency;
      } break;
-     case DECL_SimpleType_DELAY:{
+     case DECL_SimpleType_INPUT_DELAY:
+     case DECL_SimpleType_OUTPUT_DELAY:{
        // Nothing
      } break;
     }
@@ -955,20 +957,27 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
   order = COM_CalculateDAGOrder(graph,temp);
   delays = COM_CalculateDelay(graph,order,temp);
 
+  // Store port delays on units =================================================
+  for(COM_Unit* unit = graph.units.head; unit; unit = unit->next){
+    int totalDelays = unit->decl->numberInputDelays + unit->decl->numberOutputDelays;
+    unit->extraDelay = PushArray<int>(out,totalDelays);
+  }  
   for(COM_PortDelay* d = delays.portDelays; d; d = d->next){
     COM_Unit* unit = d->unit;
     FUDeclaration* decl = unit->decl;
 
-    if(unit->extraDelay.size != 0){
+    int offset = d->port;
+    if(d->dir == Direction_OUTPUT){
+      offset += unit->decl->numberInputDelays;
+    }
+
+    if(unit->extraDelay[offset] != 0){
       LOCATION();
-      printf("Unit already has delays\nCheck what is happening\n");
+      printf("Unit already has delays set\nCheck what is happening\nIt might happen for output delays but its also an error since we need edges to agree on the same delay.\n");
       continue;
     }
 
-    unit->extraDelay = PushArray<int>(out,decl->numberDelays);
-    for(int i = 0; i < decl->numberDelays; i++){
-      unit->extraDelay[i] = d->latency;
-    }
+    unit->extraDelay[offset] = d->extraDelay;
   }
 
   Assert(delays.edgeDelays == nullptr);
@@ -977,7 +986,8 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
   TrieSet<DECL_StaticWire>* statics = PushTrieSet<DECL_StaticWire>(temp);
   int configCount = 0;
   int stateCount = 0;
-  int delayCount = 0;
+  int inputDelayCount = 0;
+  int outputDelayCount = 0;
   int donesCount = 0;
   int memMappedCount = 0;
   int externalCount = 0;
@@ -1003,7 +1013,8 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
     }
 
     stateCount += decl->states.size;
-    delayCount += decl->numberDelays;
+    inputDelayCount += decl->numberInputDelays;
+    outputDelayCount += decl->numberOutputDelays;
     donesCount += decl->numberDones;
     memMappedCount += decl->memoryMapped.size;
     externalCount += decl->externalMemory.size;
@@ -1029,7 +1040,8 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
   res->statics = PushArray(out,statics);
 
   res->singleInterfaces = single;
-  res->numberDelays = delayCount;
+  res->numberInputDelays = inputDelayCount;
+  res->numberOutputDelays = outputDelayCount;
   res->numberDatabus = databusCount;
   res->numberDones = donesCount;
 
@@ -1087,9 +1099,6 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
     }
   }
   
-  // TODO: 
-  res->isSource = false;
-
   return res;
 }
 
@@ -1172,7 +1181,8 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   TrieSet<DECL_StaticWire>* statics = PushTrieSet<DECL_StaticWire>(temp);
   int configCount = 0;
   int stateCount = 0;
-  int delayCount = 0;
+  int inputDelayCount = 0;
+  int outputDelayCount = 0;
   int donesCount = 0;
   int memMappedCount = 0;
   int externalCount = 0;
@@ -1198,7 +1208,8 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
     }
 
     stateCount += decl->states.size;
-    delayCount += decl->numberDelays;
+    inputDelayCount += decl->numberInputDelays;
+    outputDelayCount += decl->numberOutputDelays;
     donesCount += decl->numberDones;
     memMappedCount += decl->memoryMapped.size;
     externalCount += decl->externalMemory.size;
@@ -1223,7 +1234,8 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   res->externalMemory = PushArray<HW_Instance>(out,externalCount);
   res->statics = PushArray(out,statics);
   res->singleInterfaces = single;
-  res->numberDelays = delayCount;
+  res->numberInputDelays = inputDelayCount;
+  res->numberOutputDelays = outputDelayCount;
   res->numberDatabus = databusCount;
   res->numberDones = donesCount;
   res->baseGraph = graph;

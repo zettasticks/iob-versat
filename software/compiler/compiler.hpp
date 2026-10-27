@@ -1,5 +1,6 @@
 #pragma once 
 
+#include "debugVersat.hpp"
 #include "versatSpecificationParser.hpp"
 #include "symbolic.hpp"
 #include "addressGen.hpp"
@@ -61,7 +62,9 @@ struct COM_Unit{
   // TODO: This is not good, need to take another look at this
   int numberInputs; // Some units that support variable inputs have this value different than declaration 
 
-  Array<int> extraDelay; // TODO: Probably not good anymore.
+  // NOTE: First is input delays then output delays.
+  // TODO: We probably wanna take another look at this.
+  Array<int> extraDelay;
 
 #if 0
   int configPos;
@@ -201,6 +204,8 @@ enum COM_EntType{
   COM_EntType_MODULE_UNIT_ARRAY,
   COM_EntType_GENERATED_UNIT,
 
+  COM_EntType_LOOP_VAR,
+
   COM_EntType_MERGE_TYPE,
 
   COM_EntType_ARG_NONE,
@@ -209,8 +214,6 @@ enum COM_EntType{
   COM_EntType_ARG_BUFFER,
 
   COM_EntType_FUNCTION_CALL,
-
-  //COM_EntType_VAR_WITH_LEFTOVER_RANGE,
   
   // Var.Wire
   COM_EntType_VAR_WITH_CONFIG,
@@ -338,15 +341,20 @@ struct COM_Stmt{
   COM_Stmt* next;
   COM_StmtType type;
 
-  // TODO: Probably gonna need to change into hierarchical names.
+  // Assign
   String lhs;
+
+  // TODO: Need to see what is the deal with the difference in here.
   String rhs;
   SYM_Expr rhsExpr;
-
+  SYM_Expr maxLoopSize;
+  
+  // AddressGen and MemCopy
   Direction dir;
   AccessAndType access;
 
   // TODO: This is a bit forced as we try to preserve as much data as possible to allow hierarchical handling.
+  // NOTE: Need for hierarchical  
   Array<AddressGenForDef2> accessLoops;
   SYM_Expr accessExpr;
 };
@@ -360,6 +368,8 @@ enum COM_ArgType{
 struct COM_FuncParam{
   COM_ArgType type;
   String name;
+  bool isDyn;
+  bool usedOnLoopExpressions;
 };
 
 enum COM_FunctionType{
@@ -392,6 +402,15 @@ struct COM_Module{
   String name;
   COM_Graph graph;
   COM_FunctionNode* funcs;
+};
+
+// ======================================
+// Debug repr
+
+struct COM_DebugRepr{
+  String headContent;
+  String middleContent;
+  String tailContent;
 };
 
 // ======================================
@@ -469,8 +488,8 @@ void COM_ReportError(COM_Env* env,String msg,Token token);
 
 String COM_Repr(COM_Unit* top,Arena* out);
 
-typedef String COM_ReprFunction(COM_Unit* node,COM_Edge* edge,Arena* out);
-inline String COM_DefaultReprFunction(COM_Unit* node,COM_Edge* edge,Arena* out){return {};};
+typedef DOT_Info COM_ReprFunction(COM_Unit* node,COM_Edge* edge,Arena* out);
+inline DOT_Info COM_DefaultReprFunction(COM_Unit* node,COM_Edge* edge,Arena* out){return {};};
 
 String COM_DebugPushDotGraph(String name,COM_Unit* units,COM_Edge* edges,Arena* out,COM_ReprFunction repr = COM_DefaultReprFunction);
 void   COM_DebugOutputDotGraph(String filepath,String name,COM_Unit* units,COM_Edge* edges,COM_ReprFunction repr = COM_DefaultReprFunction);
@@ -504,7 +523,7 @@ struct COM_PortDelay{
   COM_Unit* unit;
   int port;
   Direction dir;
-  int latency;
+  int extraDelay;
 };
 
 struct COM_DelayResult{

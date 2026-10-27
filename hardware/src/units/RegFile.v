@@ -46,7 +46,7 @@
    input [3:0]         selectedOutput1,
    input disabled,
    
-   input [DELAY_W-1:0] delay0
+   input [DELAY_W-1:0] delay_in0
 );
 
 wire lastCycle;
@@ -64,7 +64,7 @@ reg ext_read_en;
 
    .lastCycle(lastCycle),
 
-   .delay0(delay0)
+   .delay(delay_in0)
    );
 
 reg [ADDR_W-1:0] address0,address1,addressWrite;

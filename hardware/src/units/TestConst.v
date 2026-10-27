@@ -14,7 +14,7 @@ module TestConst #(
    //input / output data
    output reg [DATA_W-1:0] out0,
 
-   input [DELAY_W-1:0] delay0,
+   input [DELAY_W-1:0] delay_out0,
 
    input [DATA_W-1:0] constant
 );
@@ -25,10 +25,10 @@ module TestConst #(
       if (rst) begin
          out0 <= {DATA_W{1'b0}};
       end else if (run) begin
-         if (delay0 == 0) begin
+         if (delay_out0 == 0) begin
             out0 <= constant;
          end
-         delay <= delay0;
+         delay <= delay_out0;
       end else if (running & (|delay)) begin
          delay <= delay - 1;
          if (delay == 1) begin

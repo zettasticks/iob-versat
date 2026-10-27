@@ -10,7 +10,7 @@ VERILATOR_ROOT?=$(shell ./GetVerilatorRoot.sh)
 INCLUDE := -I$(HARDWARE_FOLDER)
 
 VERILATOR_ARGS := -Wall --report-unoptflat --debug
-VERILATOR_ARGS := -CFLAGS "-O2 -march=native" $(INCLUDE)
+VERILATOR_ARGS := -CFLAGS "-g -O2 -march=native" $(INCLUDE)
 VERILATOR_ARGS += -GAXI_ADDR_W=$(shell getconf LONG_BIT)
 VERILATOR_ARGS += -GAXI_DATA_W=@{databusDataSize}
 VERILATOR_ARGS += -GDATA_W=32

@@ -6,37 +6,80 @@
 // Make sure that it matches the value of the corresponding enum
 static String graphPrintingColorTable[] = {
   "dark",
+  "dark",
   "darkblue",
   "darkred",
   "darkgreen",
   "darkyellow"
 };
 
-String GenerateDotGraph(GraphPrintingContent content,Arena* out){
+bool DOT_IsNode(DOT_Info* info){
+  bool res = Empty(info->firstNode);
+  if(res){
+    Assert(Empty(info->secondNode) && "If node then both first and second must be empty");
+  }
+  return res;
+}
+
+bool DOT_IsEdge(DOT_Info* info){
+  bool res = (!Empty(info->firstNode));
+  if(res){
+    Assert(!Empty(info->secondNode) && "If edge then both first and second must contain name of nodes");
+  }
+  return res;
+}
+
+String GenerateDotGraph(DOT_Graph graph,Arena* out){
   TEMP_REGION(temp,out);
   auto result = StartString(temp);
 
   result->PushString("digraph view {\n\tnode [fontcolor=white,style=filled,color=\"160,60,176\"];\n");
 
-  if(content.graphLabel.size > 0){
-    result->PushString("label=\"%.*s\";\n",UN(content.graphLabel));
+  if(graph.graphLabel.size > 0){
+    result->PushString("label=\"%.*s\";\n",UN(graph.graphLabel));
   }
   
-  for(GraphPrintingNodeInfo& node : content.nodes){
-    String color = graphPrintingColorTable[(int) node.color];
+  for(DOT_Info& node : graph.content){
+    if(!DOT_IsNode(&node)){
+      continue;
+    }
+
+    Color c = node.color;
+    if(c == Color_DEFAULT){
+      c = Color_DEFAULT_NODE;
+    }
+    String color = graphPrintingColorTable[(int) c];
+
     String name = node.name;
-    String label = node.content;
+    String label = node.middleContent;
     result->PushString("\t\"%.*s\" [color=%.*s label=\"%.*s\"];\n",UN(name),UN(color),UN(label));
   }
 
-  for(GraphPrintingEdgeInfo info : content.edges){
-    result->PushString("\t\"%.*s\" -> ",UN(info.firstNode));
-    result->PushString("\"%.*s\"",UN(info.secondNode));
+  for(DOT_Info& node : graph.content){
+    if(!DOT_IsEdge(&node)){
+      continue;
+    }
 
-    String color = graphPrintingColorTable[(int) info.color];
-    String label = info.content;
-      
-    result->PushString("[color=%.*s label=\"%.*s\"];\n",UN(color),UN(label));
+    result->PushString("\t\"%.*s\" -> ",UN(node.firstNode));
+    result->PushString("\"%.*s\"",UN(node.secondNode));
+
+    Color c = node.color;
+    if(c == Color_DEFAULT){
+      c = Color_DEFAULT_EDGE;
+    }
+    String color = graphPrintingColorTable[(int) c];
+
+    result->PushString("[color=%.*s",UN(color));
+    if(!Empty(node.headContent)){
+      result->PushString(" headlabel=\"%.*s\"",UN(node.headContent));
+    }
+    if(!Empty(node.middleContent)){
+      result->PushString(" label=\"%.*s\"",UN(node.middleContent));
+    }
+    if(!Empty(node.tailContent)){
+      result->PushString(" taillabel=\"%.*s\"",UN(node.tailContent));
+    }
+    result->PushString("];\n");
   }
 
   result->PushString("}\n");

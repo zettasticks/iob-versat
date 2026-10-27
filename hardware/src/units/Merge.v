@@ -31,7 +31,7 @@ module Merge #(
 
    (* versat_latency = 1 *) output reg [DATA_W-1:0] out0,
 
-   input [DELAY_W-1:0] delay0
+   input [DELAY_W-1:0] delay_in0
 );
 
    reg  [DELAY_W-1:0] delay;
@@ -62,7 +62,7 @@ module Merge #(
          delay   <= {DELAY_W{1'b0}};
          counter <= 4'b0;
       end else if (run) begin
-         delay   <= delay0;
+         delay   <= delay_in0;
          counter <= 4'b0;
       end else if (running) begin
          if (|delay) begin

@@ -66,8 +66,10 @@
    input              extB,
    input              in1_wr,
 
-   input [DELAY_W-1:0] delay0,
-   input [DELAY_W-1:0] delay1
+   input [DELAY_W-1:0] delay_in0,
+   input [DELAY_W-1:0] delay_in1,
+   input [DELAY_W-1:0] delay_out0,
+   input [DELAY_W-1:0] delay_out1
 );
 
    wire we = |wstrb;
@@ -83,7 +85,7 @@
       if (rst) begin
          testDelay0 <= 0;
       end else if (run) begin
-         testDelay0 <= delay0 + 3;
+         testDelay0 <= delay_out0 + 3;
       end else if (|testDelay0) begin
          testDelay0 <= testDelay0 - 1;
       end
@@ -94,7 +96,7 @@
       if (rst) begin
          testDelay1 <= 0;
       end else if (run) begin
-         testDelay1 <= delay1 + 3;
+         testDelay1 <= delay_out1 + 3;
       end else if (|testDelay1) begin
          testDelay1 <= testDelay1 - 1;
       end
@@ -170,7 +172,7 @@
       .per_i(perA),
       .start_i (startA),
       .incr_i  (incrA),
-      .delay_i (delay0),
+      .delay_i (in0_wr ? delay_in0 : delay_out0),
 
 `ifdef COMPLEX_INTERFACE
       .iter_i(iterA),
@@ -201,7 +203,7 @@
       .per_i(perB),
       .start_i (startB),
       .incr_i  (incrB),
-      .delay_i (delay1),
+      .delay_i (in1_wr ? delay_in1 : delay_out1),
 
 `ifdef COMPLEX_INTERFACE
       .iter_i(iterB),

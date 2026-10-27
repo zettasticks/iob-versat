@@ -34,7 +34,8 @@ bool IsNil(COM_UnpackedExpr in){
 #endif
 
 bool COM_Ent_IsVar(COM_EntType in){
-  bool res = (in == COM_EntType_ARG_DYN || 
+  bool res = (in == COM_EntType_LOOP_VAR ||
+              in == COM_EntType_ARG_DYN || 
               in == COM_EntType_ARG_NONE || 
               in == COM_EntType_ARG_FIXED || 
               in == COM_EntType_ARG_BUFFER);
@@ -48,7 +49,8 @@ bool COM_Ent_IsArray(COM_EntType in){
 }
 
 bool COM_Ent_IsExpr(COM_EntType in){
-  bool res = (in == COM_EntType_PARAM ||
+  bool res = (in == COM_EntType_LOOP_VAR ||
+              in == COM_EntType_PARAM ||
               in == COM_EntType_ARG_NONE ||
               in == COM_EntType_ARG_FIXED ||
               in == COM_EntType_ARG_DYN ||
@@ -556,7 +558,7 @@ COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail){
 }
 
 COM_EntPort COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out){
-  bool isExpr = SP_Type_IsExpr(top->type);
+  bool isOperation = SP_Type_IsOperation(top->type);
 
   // MARK
   COM_Ent ent = COM_Ent_Nil;
@@ -564,7 +566,7 @@ COM_EntPort COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out){
   int delay = 0;
 
   bool handled = 1;
-  if(isExpr){
+  if(isOperation){
     int opCount = SP_Type_OpCount(top->type);
     String typeName = SP_Type_Name(top->type);
 
@@ -667,8 +669,8 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,Arena* out){
   COM_PushScope(env);
   defer{COM_PopScope(env);};
 
-  auto argList = PushList<COM_FuncParam>(temp);
-      
+  // Process arguments and get statements =======================================
+  auto paramList = PushList<COM_FuncParam>(temp);
   SP_Node* stmtGroup = nullptr;
   for(SP_Node* input = ptr->childs; input; input = input->next){
     bool handled = 1;
@@ -686,9 +688,10 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,Arena* out){
           Token varName = input->token;
           COM_PushEnt(env,varName,type);
 
-          COM_FuncParam* arg = argList->PushElem();
+          COM_FuncParam* arg = paramList->PushElem();
           arg->name = PushString(out,varName.val);
           arg->type = COM_ArgType_SIMPLE;
+          arg->isDyn = (type == COM_EntType_ARG_DYN);
 
           if(type == COM_EntType_ARG_BUFFER){
             arg->type = COM_ArgType_ADDR;
@@ -703,11 +706,12 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,Arena* out){
       break;
     }
   }
+  Array<COM_FuncParam> params = PushArray<COM_FuncParam>(out,paramList);
       
   // NOTE We always have a stmt group even if function is empty =================
   Assert(stmtGroup->next == nullptr);
 
-  // Iterative way of breaking apart for loops into individual statements =======
+  // Flatten for loops into individual groups ===================================
   struct Work{
     Work* next;
     Work* parent;
@@ -754,10 +758,9 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,Arena* out){
     }
   }
 
+  // Unpack statements ==========================================================
   COM_Stmt* stmtHead = 0;
   COM_Stmt* stmtTail = 0;
-
-  // Unpack statements ==========================================================
   for(Work* work = equalHead; work; work = work->next){
     COM_PushScope(env);
     defer{COM_PopScope(env);};
@@ -788,10 +791,32 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,Arena* out){
         forLoops[i].loopVariable = loopVar.val;
         forLoops[i].startSym = COM_SymbolicFromExpression(env,start);
         forLoops[i].endSym = COM_SymbolicFromExpression(env,end);
+        
+        // Store if params are used in loop expressions ===============================
+        SP_NodeList flattenedStart = SP_Flatten(start,temp);
+        SP_NodeList flattenedEnd = SP_Flatten(end,temp);
+        flattenedStart.tail->next = flattenedEnd.head;
+
+        for(SP_NodeNode* n = flattenedStart.head; n; n = n->next){
+          SP_Node* node = n->node;
+          if(node->type == SP_Type_VAR){
+            String name = node->token.val;
+            for(COM_FuncParam& p : params){
+              if(p.name == name){
+                p.usedOnLoopExpressions = true;
+              }
+            }
+          }
+        }
       }
     }
 
     ReverseInPlace(forLoops);
+
+    // Push loop variables in entity ==============================================
+    for(AddressGenForDef2 loop : forLoops){
+      COM_PushEnt(env,loop.loopVariable,COM_EntType_LOOP_VAR);
+    } 
         
     SP_Node* equalityOrFunction = work->node;
 
@@ -824,6 +849,8 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,Arena* out){
       COM_Ent lhsEnt = COM_ResolveEntity(env,lhsNode,true);
 
       bool ignore = false;
+
+      // TODO: nocheckin: Cleanup all the statement creation code, a lot of repetition
 
       // Functions ==================================================================
       if(!stmt && lhsEnt.type == COM_EntType_FUNCTION_CALL){
@@ -886,6 +913,7 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,Arena* out){
             stmt->type = COM_StmtType_ADDR_GEN;
             stmt->lhs = lhsEnt.name;
             stmt->rhs = node->rhs;
+            stmt->maxLoopSize = node->maxLoopSize;
             stmt->access.access = access;
             stmt->access.inst.type = node->access.inst.type;
             stmt->access.inst.loopsSupported = node->access.inst.type;
@@ -918,8 +946,8 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,Arena* out){
 
       if(!stmt && isConfig && lhsEnt.type == COM_EntType_MODULE_UNIT){
         COM_Ent rhsEnt = COM_ResolveEntity(env,rhsNode,true);
-        bool isRhsExpr = COM_Ent_IsExpr(rhsEnt.type);
-        
+        bool isRhsExpr = SP_Type_IsExpr(rhsNode->type);
+
         if(!stmt && rhsEnt.leftoverRange){
           SYM_Expr expr = COM_SymbolicFromExpression(env,rhsEnt.leftoverRange);
           AddressAccess* access = CompileAddressGen2(forLoops,expr);
@@ -930,6 +958,7 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,Arena* out){
           stmt->lhs = lhsEnt.name;
           stmt->rhs = rhsEnt.name;
 
+          stmt->maxLoopSize = HW_GetAddrSize(lhsEnt.decl->externalMemory[0],0);
           stmt->access.access = access;
           stmt->access.dir = Direction_READ;
           stmt->access.inst.type = AddressGenType_READ;
@@ -947,8 +976,10 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,Arena* out){
           // TODO: Need to set current data based on the unit declaration.
           stmt = PushStruct<COM_Stmt>(out);
           stmt->type = COM_StmtType_ADDR_GEN;
-          stmt->lhs = rhsEnt.name;
-          stmt->rhs = lhsEnt.name;
+          stmt->maxLoopSize = HW_GetAddrSize(lhsEnt.decl->externalMemory[0],0);
+          stmt->lhs = lhsEnt.name;
+          stmt->rhs = {};
+          stmt->rhsExpr = expr;
           stmt->access.access = access;
           stmt->access.inst.type = AddressGenType_GEN;
           stmt->access.inst.loopsSupported = 2;
@@ -1011,8 +1042,6 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,Arena* out){
           stmt->rhs = addrName;
           stmt->rhsExpr = expr;
           stmt->dir = dir;
-
-          DEBUG_BREAK();
         } else if(isConfig){
           if(rhsEnt.type != COM_EntType_MODULE_UNIT){
             COM_ReportError(env,"Expected an unit on the right side",rhsNode);
@@ -1024,6 +1053,7 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,Arena* out){
           // TODO: Need to set current data based on the unit declaration.
           stmt = PushStruct<COM_Stmt>(out);
           stmt->type = COM_StmtType_ADDR_GEN;
+          stmt->maxLoopSize = HW_GetAddrSize(rhsEnt.decl->externalMemory[0],0);
           stmt->lhs = rhsEnt.name;
           stmt->rhs = lhsEnt.name;
           stmt->access.access = access;
@@ -1053,6 +1083,7 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,Arena* out){
         stmt = PushStruct<COM_Stmt>(out);
         stmt->type = COM_StmtType_ADDR_GEN;
         stmt->lhs = lhsEnt.name;
+        stmt->maxLoopSize = HW_GetAddrSize(lhsEnt.decl->externalMemory[0],0);
         stmt->access.access = access;
         stmt->access.dir = lhsEnt.dir;
         stmt->access.inst.type = AddressGenType_MEM;
@@ -1077,8 +1108,8 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,Arena* out){
   func->v.name = PushString(out,funcName.val);
   func->v.stmts = stmtHead;
   func->v.type = funcType;
-  func->v.params = PushArray(out,argList);
-  func->v.structToReturn = PushString(out,"%.*sStruct",UN(func->v.name));
+  func->v.params = params;
+  func->v.structToReturn = isState ? PushString(out,"%.*s_Struct",UN(func->v.name)) : "";
 
   return func;
 }
@@ -1332,9 +1363,9 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
 
       // Add output unit if found on rhs side. Lhs is always a error so no need to check =
       if(!outputUnit){
-        SP_NodeNode* flatten = SP_Flatten(rhsVarGroup,temp);
+        SP_NodeList flatten = SP_Flatten(rhsVarGroup,temp);
         
-        for(SP_NodeNode* ptr = flatten; ptr; ptr = ptr->next){
+        for(SP_NodeNode* ptr = flatten.head; ptr; ptr = ptr->next){
           SP_Node* node = ptr->node;
 
           if(node->type == SP_Type_VAR && node->token.val == "out"){
@@ -1809,13 +1840,10 @@ COM_Ent COM_ArrayAccess(COM_Env* env,COM_Ent array,int index){
 }
 
 void COM_PushScope(COM_Env* env){
-  printf("Push scope\n");
   env->scope += 1;
 }
 
 void COM_PopScope(COM_Env* env){
-  printf("Pop scope\n");
-
   env->scope -= 1;
   if(env->scope < 0){
     Assert(false && "Too many pop scopes");
@@ -1905,39 +1933,22 @@ String COM_Repr(COM_Unit* top,Arena* out){
 String COM_DebugPushDotGraph(String name,COM_Unit* units,COM_Edge* edges,Arena* out,COM_ReprFunction Repr){
   TEMP_REGION(temp,out);
 
-  auto l = PushList<GraphPrintingNodeInfo>(temp);
+  auto l = PushList<DOT_Info>(temp);
   for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
-    GraphPrintingNodeInfo* info = l->PushElem();
-
-    String content = Repr(ptr,nullptr,temp);
-    if(Empty(content)){
-      content = ptr->name;
-    }
-
-    info->name = PushString(temp,"%p",ptr);
-    info->content = content;
-    info->color = Color_BLUE;
+    DOT_Info* info = l->PushElem();
+    *info = Repr(ptr,nullptr,out);
+    info->name = PushString(out,"%p",ptr);
   }
-
-  auto e = PushList<GraphPrintingEdgeInfo>(temp);
   for(COM_Edge* con = edges; con; con = con->next){
-    GraphPrintingEdgeInfo* info = e->PushElem();
-
-    String content = Repr(nullptr,con,temp);
-    if(Empty(content)){
-      content = PushString(temp,"%d -> %d",con->outPort,con->inPort);
-    }
-
-    info->firstNode = PushString(temp,"%p",con->out);
-    info->secondNode = PushString(temp,"%p",con->in);
-    info->content = content;
-    info->color = Color_BLACK;
+    DOT_Info* info = l->PushElem();
+    *info = Repr(nullptr,con,out);
+    info->firstNode  = PushString(out,"%p",con->out);
+    info->secondNode = PushString(out,"%p",con->in);
   }
 
-  GraphPrintingContent content = {};
+  DOT_Graph content = {};
   content.graphLabel = name;
-  content.nodes = PushArray(temp,l);
-  content.edges = PushArray(temp,e);
+  content.content = PushArray(temp,l);
 
   String result = GenerateDotGraph(content,out);
   return result;
@@ -2149,43 +2160,25 @@ COM_UnitNodeList COM_CalculateDAGOrder(COM_Graph graph,Arena* outArena){
 
   // Generate debug info ========================================================
   {
-    {
-      int count = 0;
-      for(COM_UnitNode* node = nodeHead; node; count++,node = node->next){
-        COM_Unit* ptr = node->v;
-        DAG_Data* data = (DAG_Data*) ptr->general;
-      
-        data->order = count;
-      }
-    }    
-    auto l = PushList<GraphPrintingNodeInfo>(temp);
-    for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
-      GraphPrintingNodeInfo* info = l->PushElem();
+    int count = 0;
+    for(COM_UnitNode* node = nodeHead; node; count++,node = node->next){
+      COM_Unit* ptr = node->v;
       DAG_Data* data = (DAG_Data*) ptr->general;
-      info->name = PushString(temp,"%p",ptr);
-      info->content = PushString(temp,"%.*s (%d)",UN(ptr->name),data->order);
-      info->color = Color_BLUE;
+      
+      data->order = count;
     }
 
-    auto e = PushList<GraphPrintingEdgeInfo>(temp);
-    for(COM_Edge* con = edges; con; con = con->next){
-      GraphPrintingEdgeInfo* info = e->PushElem();
+    auto Repr = [](COM_Unit* unit,COM_Edge* edge,Arena* out) -> DOT_Info{
+      DOT_Info res = {};
+      if(unit){
+        DAG_Data* data = (DAG_Data*) unit->general;
+        res.middleContent = PushString(out,"%.*s (%d)",UN(unit->name),data->order);
+      }
 
-      info->firstNode = PushString(temp,"%p",con->out);
-      info->secondNode = PushString(temp,"%p",con->in);
-      info->content = PushString(temp,"%d -> %d",con->outPort,con->inPort);
-      info->color = Color_BLACK;
-    }
+      return res;
+    };
 
-    GraphPrintingContent content = {};
-    content.graphLabel = "Test";
-    content.nodes = PushArray(temp,l);
-    content.edges = PushArray(temp,e);
-
-    String result = GenerateDotGraph(content,temp);
-
-    String filePath = DEBUG_GetDebugRegionFilepath("DAG.dot",temp);
-    OutputContentToFile(filePath,result);
+    COM_DebugOutputDotGraph("DAG.dot","DAG",units,edges,Repr);
   }
   
   for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
@@ -2205,6 +2198,25 @@ COM_UnitNodeList COM_CalculateDAGOrder(COM_Graph graph,Arena* outArena){
 COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena* outArena){
   TEMP_REGION(temp,outArena);
 
+  /* NOTE: How does this work?
+
+    For every node in order:
+
+    We start with the global latency at each input port. This is just the number of cycles it takes for
+    valid data to arrive at a port (or exit from a port) without regards for anything else.
+
+    We calculate delays based on the ports themselves instead of caring about the unit (since we can calculate wether an output port depends on a given input port). 
+
+    To align inputs we add extra latency to the ports if needed. Because multiple ports might depend on the same input port, we might need to also add extra latency to output ports and align inputs.
+
+    All these calculations are stored as extra latency associated to each port.
+
+    After this point, we propagate this information by setting the global latency of the input ports of the units connected to ours and continue until we finish all the nodes.
+
+    At the end, we end up with extra delays both in the input ports and the output ports. If we wanted we could just add a buffer equal to this sum and everything would line up correctly, but because we have units that can delay themselves, we do a step that tries to push these extra delays towards each edge of the graph (inputs / outputs) and then we pack this information for the output.
+
+   */
+
   COM_Unit* units = graph.units.head;
   COM_Edge* edges = graph.edges.head;
 
@@ -2213,6 +2225,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
     Array<int> globalOutputLatency;
     Array<int> inputExtraDelay;
     Array<int> outputExtraDelay;
+    bool delaySet;
   };
 
   struct DELAY_EdgeData{
@@ -2259,7 +2272,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
     }
   }
 
-  // Calculate global latency ===================================================
+  // Iteration ==================================================================
   for(COM_UnitNode* ptr = order.head; ptr; ptr = ptr->next){
     COM_Unit* unit = ptr->v;
     FUDeclaration* decl = unit->decl;
@@ -2287,13 +2300,22 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
         max = 0;
       }
 
+      // Add extra latency on inputs to align =======================================
+      for(int index : dependPorts){
+        if(data->globalInputLatency[index] != max){
+          data->inputExtraDelay[index] = max - data->inputExtraDelay[index];
+        }
+      }
+
       // Output latency is the maximum of input latency of dependent nodes plus the units own output delay
       data->globalOutputLatency[outPort] = max + decl->outputs[outPort].delay;
 
+#if 0
       // Align inputs so that they arrive at the unit at the same time ==============
       for(int index : dependPorts){
         data->globalInputLatency[index] = max;
       }
+#endif
     }
 
     // Propagate global latency ===================================================
@@ -2311,8 +2333,8 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
   // 
 
   // TODO: Handle any delay edges in order to support 
-  auto DelayRepr = [](COM_Unit* unit,COM_Edge* edge,Arena* out){
-    String res = {};
+  auto DelayRepr = [](COM_Unit* unit,COM_Edge* edge,Arena* out) -> DOT_Info{
+    DOT_Info res = {};
     if(unit){
       DELAY_Data* data = (DELAY_Data*) unit->general;
 
@@ -2323,7 +2345,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
       if(nodeDelay == INT_MAX){
         nodeDelay = 0;
       }
-      res = PushString(out,"%.*s (%d)",UN(unit->name),nodeDelay);
+      res.middleContent = PushString(out,"%.*s (%d)",UN(unit->name),nodeDelay);
     }
     if(edge){
       DELAY_Data* outData = (DELAY_Data*) edge->out->general;
@@ -2332,13 +2354,15 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
       int extraOut = outData->outputExtraDelay[edge->outPort];
       int extraIn = inData->inputExtraDelay[edge->inPort];
 
-      res = PushString(out,"%d - %d | %d - %d | (%d -> %d)",outData->globalOutputLatency[edge->outPort],inData->globalInputLatency[edge->inPort],extraOut,extraIn,edge->outPort,edge->inPort);
+      res.headContent = PushString(out,"(%d - %d)",outData->globalOutputLatency[edge->outPort],extraOut);
+      res.middleContent = PushString(out,"%d -> %d",edge->outPort,edge->inPort);
+      res.tailContent = PushString(out,"(%d - %d)",inData->globalInputLatency[edge->inPort],extraIn);
     }
 
     return res;
   };
 
-  String label = "Global latency, Node: Contains the minimum latency of every input edge. Edges: format is latency from OutPort to InPort, numbers inside parenthesis are the ports. [In a proper delay fixed graph the OutPort and InPort numbers match for all edges";
+  String label = "Global latency, Node: Contains the minimum latency of every input edge. Edges near nodes: (Global latency - extra delay), Edges middle: port connection";
   COM_DebugOutputDotGraph("GlobalLatency.dot",label,units,edges,DelayRepr);
   
   // Pack result ================================================================
@@ -2376,73 +2400,65 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
     DELAY_Data* outData = (DELAY_Data*) edge->out->general;
     DELAY_Data* inData = (DELAY_Data*) edge->in->general;
 
-    int outputLatency = outData->globalOutputLatency[edge->outPort] + outData->outputExtraDelay[edge->outPort];
-    int inputLatency = inData->globalInputLatency[edge->outPort] + inData->inputExtraDelay[edge->inPort];
+    int outputDelay = outData->outputExtraDelay[edge->outPort];
+    int inputDelay = inData->inputExtraDelay[edge->inPort];
 
-    int edgeExtraDelay = inputLatency - outputLatency;
-    Assert(edgeExtraDelay >= 0);
-    
-    // TODO: If a port is connected to multiple inputs then we can only select one value for this.
-    //       Proper implementation needs to do this stuff in more steps, we are trying to force 1 pass for no reason.
-    if(edge->out->decl->numberDelays && DECL_IsSource(edge->out->decl)){
+    int edgeTotalDelay = inputDelay + outputDelay;
+    Assert(edgeTotalDelay >= 0);
+   
+    bool isComputation = DECL_IsComputeWithDelay(edge->in->decl);
+    bool canPushToOut  = DECL_IsSource(edge->out->decl);
+    bool canPushToIn   = DECL_IsSink(edge->in->decl);
+
+    // Already pushed delay for input and outputs =================================
+    if(edge->out->decl == BasicDeclaration::input ||
+       edge->in->decl  == BasicDeclaration::output){
+      edgeTotalDelay = 0;
+
+      canPushToOut = false;
+      canPushToIn = false;
+    }
+
+    if(isComputation || canPushToIn){
+      canPushToIn = false;
+
+      COM_PortDelay* d = PushStruct<COM_PortDelay>(outArena);
+      d->unit = edge->in;
+      d->port = edge->inPort;
+      d->dir = Direction_INPUT;
+      d->extraDelay = inData->globalInputLatency[edge->inPort];
+      outData->delaySet = true;
+
+      LL_Append(portHead,portTail,next,d);
+
+      edgeTotalDelay = 0;
+    }
+
+    if(canPushToOut){
+      canPushToIn = false;
+
       COM_PortDelay* d = PushStruct<COM_PortDelay>(outArena);
       d->unit = edge->out;
       d->port = edge->outPort;
       d->dir = Direction_OUTPUT;
-      d->latency = outputLatency - edge->out->decl->outputs[edge->outPort].delay;  //edgeExtraDelay;
+      d->extraDelay = outputDelay;
+      outData->delaySet = true;
 
       LL_Append(portHead,portTail,next,d);
 
-      edgeExtraDelay = 0;
+      edgeTotalDelay = 0;
     }
-    if(edge->in->decl->numberDelays && DECL_IsSink(edge->in->decl)){
-      COM_PortDelay* d = PushStruct<COM_PortDelay>(outArena);
-      d->unit = edge->in;
-      d->port = edge->inPort;
-      d->dir = Direction_INPUT;
-      d->latency = inputLatency - edge->in->decl->inputs[edge->inPort].delay;
-
-      LL_Append(portHead,portTail,next,d);
-
-      edgeExtraDelay = 0;
-    }
-
-    if(edge->in->decl->numberDelays && DECL_IsCompute(edge->in->decl)){
-      COM_PortDelay* d = PushStruct<COM_PortDelay>(outArena);
-      d->unit = edge->in;
-      d->port = edge->inPort;
-      d->dir = Direction_INPUT;
-      d->latency = inputLatency;
-
-      LL_Append(portHead,portTail,next,d);
-
-      edgeExtraDelay = 0;
-    }
-
-    // TODO: We need to implement pushing delays to source and sink units.
-    //       I think that I also would like to formalize the fact that units can associate a delay port
-    //       to an input or output port. The delay wire is always bound to either a set of ports or to a single port.
-    //       If we do this right then we should also be able to have units like Reg having two delays, one for the
-    //       input and another for the output which allow us to better control delay calculations.
-    //       Also the example of memories connected to eachother probably requires something like this.
-#if 1
-    if(edge->out->decl == BasicDeclaration::input ||
-       edge->in->decl  == BasicDeclaration::output){
-      edgeExtraDelay = 0;
-    }
-#endif
 
     // TODO: nocheckin: Need to store the amount of delays for variable buffers somewhere.
-
-    if(edgeExtraDelay != 0 && !edgeData->isAny){
+    if(edgeTotalDelay != 0 && !edgeData->isAny){
       COM_EdgeDelay* node = PushStruct<COM_EdgeDelay>(outArena);
-      node->delay = edgeExtraDelay;
+      node->delay = edgeTotalDelay;
       node->edge = edge;
       
       LL_Append(head,tail,next,node);
     }
   }
-  
+   
   COM_ClearGeneralPtr(units);
   COM_ClearGeneralPtr(edges);
 

@@ -44,7 +44,8 @@ module OnlyOutputMem #(
    input [ADDR_W-1:0] startA,
    input [ADDR_W-1:0] shiftA,
    input [ADDR_W-1:0] incrA,
-   input [DELAY_W-1:0] delay0
+
+   input [DELAY_W-1:0] delay_out0
 );
 
    wire we = |wstrb;
@@ -79,7 +80,7 @@ module OnlyOutputMem #(
       .per_i(perA),
       .start_i (startA),
       .incr_i  (incrA),
-      .delay_i (delay0),
+      .delay_i (delay_out0),
 
 `ifdef COMPLEX_INTERFACE
       .iter_i(iterA),

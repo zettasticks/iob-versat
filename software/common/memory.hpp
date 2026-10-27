@@ -162,7 +162,7 @@ struct FreeArenaMark{
 
 // For now let PushArray also zero out
 template<typename T>
-Array<T> PushArray(Arena* arena,int size){AlignArena(arena,alignof(T)); Array<T> res = {}; res.size = size; res.data = (T*) PushBytes(arena,sizeof(T) * size); Memset(res,(T){}); return res;};
+Array<T> PushArray(Arena* arena,int size){if(size == 0) return {}; AlignArena(arena,alignof(T)); Array<T> res = {}; res.size = size; res.data = (T*) PushBytes(arena,sizeof(T) * size); Memset(res,(T){}); return res;};
 
 inline void MemZero_(void* ptr,ssize_t size){u8* view = (u8*) ptr; for(ssize_t i = 0; i < size; i++) view[i] = 0;};
 #define MemZero(PTR,TYPE) MemZero_(PTR,sizeof(TYPE));

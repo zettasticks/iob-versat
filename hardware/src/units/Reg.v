@@ -21,10 +21,10 @@
    output     [  DATA_W-1:0] rdata,
 
    //input / output data
-   input [DATA_W-1:0] in0,
-   output reg [DATA_W-1:0]       out0, /* technically should have versat_latency 1 but since it's not a computing unit, output is only used to start a datapath, we save 1 cycle */
+   input [DATA_W-1:0]      in0,
+   output reg [DATA_W-1:0] out0,
 
-   input [DELAY_W-1:0] delay0,
+   input [DELAY_W-1:0] delay_in0,
    input disabled,
 
    output [DATA_W-1:0] currentValue
@@ -42,7 +42,7 @@
 
    .lastCycle(lastCycle),
 
-   .delay0(delay0)
+   .delay(delay_in0)
    );
 
    assign rdata        = (rvalid ? out0 : 0);

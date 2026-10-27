@@ -28,7 +28,7 @@ module Muladd #(
    input [LOOP_W-1:0] iter,
    input [LOOP_W-1:0] period,
 
-   input [DELAY_W-1:0] delay0
+   input [DELAY_W-1:0] delay_in0
 );
 
    reg [DELAY_W-1:0] delay;
@@ -42,7 +42,7 @@ module Muladd #(
          currentIteration <= {LOOP_W{1'b0}};
          currentPeriod    <= {LOOP_W{1'b0}};
       end else if (run) begin
-         delay <= delay0 + 2; // Add 2 because it takes 2 cycles for the accumulator to start working and this whole logic is just the control for the accumulator
+         delay <= delay_in0 + 2; // Add 2 because it takes 2 cycles for the accumulator to start working and this whole logic is just the control for the accumulator
          done <= 1'b0;
       end else if (running) begin
          if (|delay) begin

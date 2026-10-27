@@ -3412,6 +3412,11 @@ bool SP_Type_IsLoop(SP_Type in){
   return res;
 }
 
+bool SP_Type_IsOperation(SP_Type in){
+  bool res = (SP_Type_IsExpr(in) && SP_Type_OpCount(in) > 0);
+  return res;
+}
+
 SP_Node* SP_PushNode(Arena* out,SP_Type type,Token token,SP_Node* childs){
   SP_Node* node = PushStruct<SP_Node>(out);
   node->type = type;
@@ -4436,7 +4441,7 @@ SP_Node* SP_UnpackExpr(SP_Node* exprNode){
   return node;
 }
 
-SP_NodeNode* SP_Flatten(SP_Node* top,Arena* out){
+SP_NodeList SP_Flatten(SP_Node* top,Arena* out){
   SP_NodeNode* head = 0;
   SP_NodeNode* tail = 0;
   
@@ -4466,5 +4471,5 @@ SP_NodeNode* SP_Flatten(SP_Node* top,Arena* out){
 
   Recurse(Recurse,top);
   
-  return head;
+  return {.head = head,.tail = tail};
 }
