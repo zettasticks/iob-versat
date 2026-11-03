@@ -11,6 +11,28 @@
 #include "compiler.hpp"
 #include "declaration_meta.hpp"
 
+#if 0
+-- LEFT HERE --
+The problem is that we need to start defining what the parameters actually mean.
+DataW,DelayW,LenW and AXI are easy.
+What is AddrW?
+For the accelerator is the size of the address signal. This is a constant, calling 
+versat with a higher value does nothing and using a smaller value is an error.
+For the units, AddrW is also used as the size of the address signal, but in this case the size can be anything.
+It is a true parameter. That means that the problems we are facing comes from mixing these two usecases.
+Accelerator AddrW is not a true parameter, but for the units it is.
+
+AddrW is an user facing parameter. It is supposed to be set by the user (at least for now).
+We can calculate at compile time the size of the addr wire, it is just the max of the 
+DataW is a flag parameter. If we could handle it at compile time it would be great but worst case scenario
+handle at versat level.
+Axi are flag parameters.
+DelayW is a computed parameter. Units need it to properly work and we can calculate the best values after we compile a generic version.
+LenW could also be a computed parameter. 
+
+That means that versat should have a fixed addr size and that is it. AddrW is not propagated and has no further meaning in the Versat codebase.
+#endif
+
 /*
 
 TODO: SYM_Expr that we have inside FUDeclaration cannot depend on identifiers except if they are DECL_Meta params. Any identifier that is not a parameter would lead to wrong verilog code since the identifier would not exist in Verilog.
@@ -121,6 +143,10 @@ struct FUDeclaration{
   // Graph related data for modular units =======================================
   COM_Graph baseGraph;
   COM_Graph fixedDelays;
+
+  // Merge specific data ========================================================
+  Array<String> typesMerged;
+  Array<String> mergedNames;
 
   COM_FunctionNode* funcs;
 

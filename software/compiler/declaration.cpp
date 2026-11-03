@@ -961,7 +961,8 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
   for(COM_Unit* unit = graph.units.head; unit; unit = unit->next){
     int totalDelays = unit->decl->numberInputDelays + unit->decl->numberOutputDelays;
     unit->extraDelay = PushArray<int>(out,totalDelays);
-  }  
+  }
+
   for(COM_PortDelay* d = delays.portDelays; d; d = d->next){
     COM_Unit* unit = d->unit;
     FUDeclaration* decl = unit->decl;
@@ -1111,6 +1112,9 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   
   SP_Node* top = meta->compositeUnit;
 
+  String repr = SP_Repr(top,temp);
+  printf("%.*s\n",UN(repr));
+
   int mergeCount = 0;
   for(SP_Node* ptr = top->childs; ptr; ptr = ptr->next){
     if(ptr->type == SP_Type_VAR_DECL){
@@ -1118,6 +1122,8 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
     }
   }
   Array<FUDeclaration*> types = PushArray<FUDeclaration*>(temp,mergeCount);
+  Array<String> typesMerged = PushArray<String>(out,mergeCount);
+  Array<String> mergedNames = PushArray<String>(out,mergeCount);
 
   int index = 0;
   for(SP_Node* ptr = top->childs; ptr; index += 1,ptr = ptr->next){
@@ -1125,7 +1131,15 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
       continue;
     }
 
-    types[index] = DECL_GetType(ptr->token.val,{});
+    FUDeclaration* type = DECL_GetType(ptr->token.val,{});
+    String name = type->name;
+    if(ptr->childs && ptr->childs->type == SP_Type_VAR){
+      name = PushString(out,ptr->childs->token.val);
+    }
+
+    types[index] = type;
+    typesMerged[index] = type->name;
+    mergedNames[index] = name;
   }
 
   // Pack params ================================================================
@@ -1139,10 +1153,59 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   }
 
   bool error = false;
-  MERGE_Result result = MERGE_Merge(types,DECL_State.arena);
-  error |= result.error;
+  MERGE_Result merge = MERGE_Merge(types,DECL_State.arena);
+  error |= merge.error;
 
-  COM_Graph graph = result.mergedGraph;
+  COM_Graph graph = merge.mergedGraph;
+  int size = merge.reconGraphs.size;
+
+  // Merge recon info into a single graph =======================================
+  COM_Unit* head = graph.units.head;
+
+  COM_Unit* ptr = head;
+  Array<COM_Unit*> columnPointers = PushArray<COM_Unit*>(temp,size);
+  while(ptr){
+    COM_Unit* mergePtr = ptr;
+    ptr->mergeIndex = -1;
+    
+    for(int i = 0; i < size; i++){
+      COM_Graph recon = merge.reconGraphs[i];
+      
+      COM_Unit* store = PushStruct<COM_Unit>(out);
+
+      bool found = false;
+      for(COM_Unit* reconUnit = recon.units.head; reconUnit; reconUnit = reconUnit->next){
+        COM_Unit* mapped = merge.mapReconUnitToGraph->GetOrElse(reconUnit,nullptr);
+
+        if(mapped == ptr){
+          *store = *mapped;
+          found = true;
+          break;
+        }
+      }
+
+      if(!found){
+        *store = *ptr;
+        store->doesNotBelong = true;
+      }
+
+      store->next = 0,store->prev = 0,store->mergeNext = 0,store->mergePrev = 0;
+      store->mergeIndex = i;
+
+      mergePtr->mergeNext = store;
+      store->mergePrev = mergePtr;
+
+      // Use next pointer to point to next node =====================================
+      if(columnPointers[i]){
+        columnPointers[i]->next = store;
+      } 
+      columnPointers[i] = store;
+      
+      mergePtr = store;
+    }
+
+    ptr = ptr->next;
+  }
 
   // TODO: nocheckin: copied from COM_InstantiateModule, refactor if possible
   FREE_ARENA(envArena);
@@ -1171,7 +1234,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
                        ptr->type == SP_Type_FUNC_CONFIG);
 
     if(isFunction){
-      COM_FunctionNode* func = COM_CompileFunction(env,ptr,out);
+      COM_FunctionNode* func = COM_CompileFunction(env,ptr,meta->name,out);
       LL_Append(funcHead,funcTail,next,func);
     }
   }
@@ -1238,9 +1301,11 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   res->numberOutputDelays = outputDelayCount;
   res->numberDatabus = databusCount;
   res->numberDones = donesCount;
+  res->singleInterfaces = single;
   res->baseGraph = graph;
   res->fixedDelays = graph;
-  res->singleInterfaces = single;
+  res->typesMerged = typesMerged;
+  res->mergedNames = mergedNames;
   res->funcs = funcHead;
   res->error = error;
 

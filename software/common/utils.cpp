@@ -327,3 +327,56 @@ Array<String> Split(String content,char sep,Arena* out){
   Array<String> res = PushArray(out,list);
   return res;
 }
+
+Array<int> PushArrayRange(int start,int end,Arena* out){
+  Array<int> res = PushArray<int>(out,end - start);
+  int index = 0;
+  for(int i = start; i < end; i++){
+    res[index++] = i;
+  }
+
+  return res;
+}
+
+bool DIM_IsValid(Array<int> indexes,Array<int> end){
+  if(indexes.size == 0 || end.size == 0){
+    return false;
+  }
+  if(indexes[0] >= end[0]){
+    return false;
+  }
+
+  return true;
+}
+
+bool DIM_IncrementInPlace(Array<int> indexes,Array<int> start,Array<int> end){
+  if(indexes.size == 0){
+    return false;
+  }
+  
+  Assert(indexes.size == end.size);
+
+  if(indexes[0] >= end[0]){
+    return false;
+  }
+
+  int size = indexes.size;
+
+  for(int i = size - 1; i >= 0; i--){
+    indexes[i] += 1;
+
+    if(i != 0 && indexes[i] >= end[i]){
+      int val = 0;
+      if(i < start.size){
+        val = start[i];
+      }
+
+      indexes[i] = val;
+      continue;
+    }
+
+    return true;
+  }
+
+  return false;
+}

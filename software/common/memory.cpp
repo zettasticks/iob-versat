@@ -379,14 +379,14 @@ void StringBuilder::vPushString(const char* format,va_list args){
   PushString(toPush);
 }
 
-char StringBuilder::GetLastCharacter(){
+char StringBuilder::GetLastCharacterOrElse(char other){
   StringNode* ptr = this->tail;
 
   if(ptr && ptr->used > 0){
     return ptr->buffer[ptr->used];
   }
 
-  return '\0';
+  return other;
 }
 
 void StringBuilder::PushSpaces(int amount){
@@ -423,6 +423,11 @@ String EndString(Arena* out,StringBuilder* builder){
 
   *data = '\0';
   
+  return res;
+}
+
+bool Empty(StringBuilder* b){
+  bool res = (b->head->used == 0);
   return res;
 }
 

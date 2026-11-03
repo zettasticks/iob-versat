@@ -543,6 +543,7 @@ struct SP_Node{
   SP_Type type;
   Token token;
 };
+extern SP_Node SP_Node_Nil;
 
 struct SP_NodeNode{
   SP_NodeNode* next;

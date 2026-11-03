@@ -5,6 +5,9 @@
 #include "symbolic.hpp"
 #include "addressGen.hpp"
 
+// For std::function
+#include "functional"
+
 struct FUDeclaration;
 
 // NOTE: Delay type is not really needed anymore because we can figure out the delay of a unit by: wether it contains inputs and outputs, the position on the graph and if we eventually add (input and output delay) whether it contains those as well.
@@ -43,6 +46,9 @@ struct COM_Unit{
   // NOTE: General purpose pointer to help map from units to temporary
   // data (avoids having to create maps all the time). Good practice
   // to zero out after every usage
+  // TODO: This might just not be useful since we need to be able to 
+  //       call functions that use this from inside other functions that also 
+  //       need to use this.
   void* general;
 
   // Data provided by parser ====================================================
@@ -213,6 +219,7 @@ enum COM_EntType{
   COM_EntType_ARG_DYN,
   COM_EntType_ARG_BUFFER,
 
+  COM_EntType_STATE,
   COM_EntType_FUNCTION_CALL,
   
   // Var.Wire
@@ -223,10 +230,16 @@ enum COM_EntType{
 
 struct COM_Function;
 
+struct COM_ArrayInfo{
+  COM_ArrayInfo* next;
+  int size;
+};
+
 struct COM_Ent{
   COM_EntType type;
   String name;
 
+  COM_ArrayInfo* array;
   Token token;
   COM_Unit* unit;
   FUDeclaration* decl;
@@ -306,27 +319,6 @@ struct COM_RangeValues{
   bool constant;
 };
 
-// nocheckin
-#if 0
-enum COM_UnpackedType{
-  COM_UnpackedType_NIL,
-  COM_UnpackedType_FUNC_CALL,
-  COM_UnpackedType_ARRAY_ACCESS,
-  COM_UnpackedType_VAR,
-  COM_UnpackedType_WIRE,
-  COM_UnpackedType_EXPR,
-  COM_UnpackedType_NAME
-};
-
-struct COM_UnpackedExpr{
-  COM_UnpackedType type;
-  
-  COM_Ent ent;
-  SP_Node* expr;
-  String name;
-};
-#endif
-
 // ======================================
 // User Functions
 
@@ -341,22 +333,33 @@ struct COM_Stmt{
   COM_Stmt* next;
   COM_StmtType type;
 
-  // Assign
-  String lhs;
+  union {
+    struct {
+      String lhs;
+      String rhs;
+      
+      SYM_Expr rhsExpr;
+    } asAssign;
+    struct {
+      String unitAddressName;
+      String addrVarName;
 
-  // TODO: Need to see what is the deal with the difference in here.
-  String rhs;
-  SYM_Expr rhsExpr;
-  SYM_Expr maxLoopSize;
-  
-  // AddressGen and MemCopy
-  Direction dir;
-  AccessAndType access;
+      SYM_Expr sizeExpr;
+      Direction dir;
+    } asMem;
+    struct {
+      String unitName;
+      String addrVarName;
 
-  // TODO: This is a bit forced as we try to preserve as much data as possible to allow hierarchical handling.
-  // NOTE: Need for hierarchical  
-  Array<AddressGenForDef2> accessLoops;
-  SYM_Expr accessExpr;
+      AccessAndType access;
+      SYM_Expr maxLoopSize;
+
+      // TODO: This is a bit forced as we try to preserve as much data as possible to allow hierarchical handling.
+      // NOTE: Needed for hierarchical  
+      Array<AddressGenForDef2> accessLoops;
+      SYM_Expr accessExpr;
+    } asAddr;
+  };
 };
 
 enum COM_ArgType{
@@ -379,12 +382,24 @@ enum COM_FunctionType{
   COM_FunctionType_MEM
 };
 
+struct COM_StructElem{
+  String typeName;
+  String name;
+};
+
+struct COM_Struct{
+  String originalModule;
+  String name;
+  Array<COM_StructElem> elems;
+};
+
 struct COM_Function{
   COM_FunctionType type;
   String name;
   Array<COM_FuncParam> params;
   COM_Stmt* stmts;
-  String structToReturn;
+  Array<COM_Struct> structs;
+  String returnType;
 };
 
 // What is the most raw form of storing this stuff?
@@ -419,9 +434,6 @@ struct COM_DebugRepr{
 bool IsNil(COM_Ent ent);
 bool IsNil(COM_ConnectInfo* con);
 
-// nocheckin
-//bool IsNil(COM_UnpackedExpr in);
-
 bool COM_Ent_IsVar(COM_EntType in);
 bool COM_Ent_IsArray(COM_EntType in);
 bool COM_Ent_IsExpr(COM_EntType in);
@@ -446,11 +458,7 @@ COM_RangeValues     COM_CalculateRange(COM_Env* env,SP_Node* range);
 COM_Ent             COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail);
 COM_EntPort         COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out);
 
-// nocheckin
-//COM_UnpackedExpr COM_UnpackExpr(COM_Env* env,SP_Node* expr);
-//COM_UnpackedExpr COM_CollapseToName(COM_UnpackedExpr expr,Arena* out);
-
-COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,Arena* out);
+COM_FunctionNode*   COM_CompileFunction(COM_Env* env,SP_Node* topNode,String module,Arena* out);
 
 // ======================================
 // Compilation
@@ -464,8 +472,10 @@ COM_Ent* COM_PushEnt(COM_Env* env,COM_Unit* unit,Token nameToken,COM_EntType typ
 COM_Ent* COM_PushEnt(COM_Env* env,String name,COM_EntType type);
 COM_Ent* COM_PushEnt(COM_Env* env,Token name,COM_EntType type);
 
+COM_Ent  COM_GetEnt(COM_Env* env,String name,bool canFail);
 COM_Ent  COM_GetEnt(COM_Env* env,Token name,bool canFail);
-COM_Ent  COM_ArrayAccess(COM_Env* env,COM_Ent array,int index);
+
+COM_Ent  COM_ArrayAccess(COM_Env* env,COM_Ent ent,int index);
 
 void COM_PushScope(COM_Env* env);
 void COM_PopScope(COM_Env* env);
@@ -488,11 +498,12 @@ void COM_ReportError(COM_Env* env,String msg,Token token);
 
 String COM_Repr(COM_Unit* top,Arena* out);
 
-typedef DOT_Info COM_ReprFunction(COM_Unit* node,COM_Edge* edge,Arena* out);
+//typedef DOT_Info COM_ReprFunction(COM_Unit* node,COM_Edge* edge,Arena* out);
+typedef std::function<DOT_Info(COM_Unit*,COM_Edge*,Arena*)> COM_ReprFunction;
 inline DOT_Info COM_DefaultReprFunction(COM_Unit* node,COM_Edge* edge,Arena* out){return {};};
 
-String COM_DebugPushDotGraph(String name,COM_Unit* units,COM_Edge* edges,Arena* out,COM_ReprFunction repr = COM_DefaultReprFunction);
-void   COM_DebugOutputDotGraph(String filepath,String name,COM_Unit* units,COM_Edge* edges,COM_ReprFunction repr = COM_DefaultReprFunction);
+String COM_DebugPushDotGraph(String name,COM_Unit* units,COM_Edge* edges,Arena* out,COM_ReprFunction repr);
+void   COM_DebugOutputDotGraph(String filepath,String name,COM_Unit* units,COM_Edge* edges,COM_ReprFunction repr);
 
 // ======================================
 // Graph helpers

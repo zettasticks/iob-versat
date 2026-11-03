@@ -23,7 +23,7 @@
 
 #define UNUSED __attribute__((unused))
 
-#define readonly UNUSED __attribute__((section(".data.rel.ro")))
+#define readonly //UNUSED __attribute__((section(".data.rel.ro")))
 
 inline float ABS(float f){return (f < 0.0f ? -f : f);};
 
@@ -230,15 +230,6 @@ if(_){ \
   } else { \
     exit(-1); \
   }
-
-#define WARN_CODE() do{ \
-    once{ \
-      printf("\n\n===========\n"); \
-      printf("WARNING, reached a piece of code that is not properly implemented or tested and can give erroneous results:\n"); \
-      LOCATION(); \
-      printf("===========\n\n\n"); \
-    }; \
-  } while(0)
 
 // If possible use argument to put a simple string indicating the error that must likely occured
 // We do not print it for now but useful for long lasting code.
@@ -771,9 +762,6 @@ inline bool Contains(Array<String> array,String toCheck){
    }
    return false;
 }
-
-#define LL_Clear(NODE,NEXT) \
-  (NODE)->NEXT = 0
 
 #define LL_Append(HEAD,TAIL,NEXT,NODE) \
   if((NODE) != nullptr) { \

@@ -47,6 +47,10 @@ Array<Value> ExtractValues(const char* format,String tok,Arena* arena);
 
 Array<int> PushArrayRange(int start,int end,Arena* out);
 
+// False if last increment
+bool DIM_IsValid(Array<int> indexes,Array<int> end);
+bool DIM_IncrementInPlace(Array<int> indexes,Array<int> start,Array<int> end);
+
 template<typename T>
 struct SingleLink{
   SingleLink<T>* next;

@@ -151,6 +151,7 @@ void Parser::ReportUnexpectedToken(Token token,BracketList<TokenType> expectedLi
   }
 
   *errors->PushElem() = EndString(this->arena,builder);
+  ENTER_DEBUG();
 }
 
 Token Parser::NextToken(ParsingOptions opts){

@@ -65,7 +65,7 @@ VERSAT_COMPILER_OBJS := $(patsubst $(VERSAT_COMPILER_DIR)/%.cpp,$(BUILD_DIR)/%.o
 CPP_OBJ := $(VERSAT_COMMON_OBJS)
 CPP_OBJ += $(VERSAT_COMPILER_OBJS)
 
-COMPILE_OBJ  = g++ -DPC -rdynamic -std=c++17 $(VERSAT_COMMON_FLAGS) -DVERSAT_DEBUG -c -o $@ $< -DROOT_PATH=\"$(abspath $(VERSAT_DIR))\" -g $(VERSAT_COMMON_INCLUDE) $(VERSAT_INCLUDE)
+COMPILE_OBJ  = g++ -DPC -g -rdynamic -std=c++17 $(VERSAT_COMMON_FLAGS) -DVERSAT_DEBUG -c -o $@ $< -DROOT_PATH=\"$(abspath $(VERSAT_DIR))\" $(VERSAT_COMMON_INCLUDE) $(VERSAT_INCLUDE)
 
 # Common objects (used by Versat and tools)
 $(BUILD_DIR)/%.o : $(VERSAT_COMMON_DIR)/%.cpp $(VERSAT_COMMON_HEADERS)
@@ -87,9 +87,12 @@ $(META): $(VERSAT_TOOLS_DIR)/meta.cpp
 
 # Versat
 $(VERSAT_DIR)/versat: $(CPP_OBJ) $(VERSAT_ALL_HEADERS)
-	g++ -std=c++17 $(VERSAT_COMMON_FLAGS) -DVERSAT_DEBUG -DVERSAT_DIR="$(VERSAT_DIR)" -rdynamic -DROOT_PATH=\"$(abspath $(VERSAT_DIR))\" -o $@ $(CPP_OBJ) $(VERSAT_INCLUDE) -lstdc++ -lm -lgcc -lc -pthread -ldl -lbfd
+	g++ -g -std=c++17 $(VERSAT_COMMON_FLAGS) -DVERSAT_DEBUG -DVERSAT_DIR="$(VERSAT_DIR)" -rdynamic -DROOT_PATH=\"$(abspath $(VERSAT_DIR))\" -o $@ $(CPP_OBJ) $(VERSAT_INCLUDE) -lstdc++ -lm -lgcc -lc -pthread -ldl -lbfd
 
 versat: $(VERSAT_DIR)/versat $(HASH)
+
+fresh-compile:
+	clang -g -fno-threadsafe-statics -std=c++17 -o versat $(wildcard ./software/common/*.cpp) $(wildcard ./software/compiler/*.cpp) -DVERSAT_DEBUG -DROOT_PATH=\"$(abspath $(VERSAT_DIR))\" $(VERSAT_INCLUDE) -lstdc++ -lm -lgcc -lc -ldl -lbfd
 
 meta-data: $(META)
 	$(META) $(VERSAT_SW_DIR)/compiler

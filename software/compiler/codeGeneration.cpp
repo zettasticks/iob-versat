@@ -209,7 +209,6 @@ void GEN_EmitInstanciateUnits(VEmitter* m,COM_Unit* units,COM_Edge* edges){
       ioSeen += 1;
     }
 
-
 #if 1
 #if 0
     // Static configs
@@ -262,7 +261,12 @@ void GEN_EmitInstanciateUnits(VEmitter* m,COM_Unit* units,COM_Edge* edges){
       }
 
       m->PortConnect("wstrb","wstrb");
-      m->PortConnect("addr",SF("addr[%d-1:0]",addrSize));
+
+      if(decl->type == DeclarationType_SINGLE){
+        m->PortConnect("addr",SF("addr[%d-1:0]",addrSize));
+      } else if(DECL_IsComposite(decl)){
+        m->PortConnect("addr","addr");
+      }
       m->PortConnect("rdata",SF("unitRData[%d]",mmSeen));
       m->PortConnect("rvalid",SF("unitRValid[%d]",mmSeen));
       m->PortConnect("wdata","wdata");
@@ -374,8 +378,8 @@ String GEN_OutputCircuitSource(FUDeclaration* module,Arena* out){
   FREE_ARENA(codeArena);
 
   // Initialize data ============================================================
-  COM_Unit* units = module->baseGraph.units.head;
-  COM_Edge* edges = module->baseGraph.edges.head;
+  COM_Unit* units = module->fixedDelays.units.head;
+  COM_Edge* edges = module->fixedDelays.edges.head;
 
   GEN_InitializeAuxGraphData(units,edges,temp);
 
@@ -1110,6 +1114,7 @@ end
     if(globalOptions.debug){
       AddrIf(m,VersatRegister_DebugStage);
         m->Set("debugStage","csr_wdata");
+        m->RawStatement("$display(\"Stage set at time: %0t\", $time);\n");
       m->EndIf();
     }
 
@@ -1341,7 +1346,7 @@ assign data_wstrb = csr_wstrb;
     if(memoryMappedCount == 0){
       TE_SetString("memoryConfigDecisionExpr","1'b0");
     } else {
-      String content = PushString(temp,"data_address[%d]",memoryConfigDecisionBit);
+      String content = PushString(temp,"data_address[%d]",info->addressBits - 1);
       TE_SetString("memoryConfigDecisionExpr",content);
     }
   }
@@ -1360,22 +1365,15 @@ assign data_wstrb = csr_wstrb;
       m->Set("unit_valids[0]","1'b1");
       m->EndIf();
     } else {
-#if 0
-      for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
-        InstanceInfo* unit = iter.CurrentUnit();
+      for(int i = 0; i <  info->memoryMapped.size; i++){
+        GEN_MMInfo mm = info->memoryMapped[i];
+        int maxMemoryBit = info->memoryMappedDecisionBit;
+        String mask = mm.decisionMask;
 
-        if(unit->isComposite || Empty(unit->globalMemDecisionMask)){
-          continue;
-        }
-
-        int maxMemoryBit = val.memoryConfigDecisionBit - 1;
-
-        String mask = unit->globalMemDecisionMask;
-        m->If(SF("data_valid & memoryMappedAddr & (csr_addr[(%d-1) -: %d] == %d'b%.*s)",maxMemoryBit,mask.size,mask.size,UN(mask)));
-        m->Set(SF("unit_valids[%d]",unit->memGlobalIndex),"1'b1");
+        m->If(SF("data_valid & memoryMappedAddr & (csr_addr[%d -: %d] == %d'b%.*s)",maxMemoryBit-1,mask.size,mask.size,UN(mask)));
+        m->Set(SF("unit_valids[%d]",i),"1'b1");
         m->EndIf();
       }
-#endif
     }
     m->EndBlock();
 
@@ -1668,7 +1666,6 @@ String GEN_OutputVerilatorMakefile(GEN_TopInfo* info,Array<String> unitsGenerate
 }
 
 String GEN_OutputHardwareConfigurations(GEN_TopInfo* info,Arena* out){
-#if 1
   TEMP_REGION(temp,out);
 
   FUDeclaration* decl = info->decl;
@@ -1901,7 +1898,6 @@ String GEN_OutputHardwareConfigurations(GEN_TopInfo* info,Arena* out){
   Repr(ast,b);
   String content = EndString(out,b);
   return content;
-#endif
 }
 
 String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
@@ -1936,17 +1932,14 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
         if(entry->childs){
           c->Union();
 
-          NOT_IMPLEMENTED("Missing merge stuff");
-#if 0          
-          for(SingleTypeStructElement typeAndName : entry.typeAndNames){
-            if(typeAndName.arraySize > 1){
-              c->Member(typeAndName.type,typeAndName.name,typeAndName.arraySize);
-            } else {
-              c->Member(typeAndName.type,typeAndName.name);
+          for(GEN_StructElem* child = entry->childs; child; child = child->next){
+            String typeName = entry->simpleTypename;
+            if(Empty(typeName)){
+              typeName = SF("%.*sConfig",UN(child->type->name));
             }
-          }
-#endif
 
+            c->Member(typeName,child->name,0);
+          }
           c->EndStruct();
         } else {
           String typeName = entry->simpleTypename;
@@ -2104,10 +2097,10 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
 
     for(COM_Stmt* stmt = func->stmts; stmt; stmt = stmt->next){
       if(stmt->type == COM_StmtType_ADDR_GEN){
-        String symRepr = SYM_Repr(stmt->maxLoopSize,out);  //"10";//SYM_Repr(,temp);
+        String symRepr = SYM_Repr(stmt->asAddr.maxLoopSize,out);  //"10";//SYM_Repr(,temp);
         String maxSize = PushString(temp,"(1 << %.*s)",UN(symRepr));
 
-        AddressAccess* access = stmt->access.access;
+        AddressAccess* access = stmt->asAddr.access.access;
         SYM_Expr symb = GetLoopLinearSumTotalSize(access->internal);
 
         for(COM_FuncParam var : func->params){
@@ -2362,22 +2355,33 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
 
 #endif
 
-    // Output configuration functions =============================================
+    // Collect all state structs and output them ==================================
     for(COM_FunctionNode* funcNode = decl->funcs; funcNode; funcNode = funcNode->next){
       COM_Function* func = &funcNode->v;
       bool isState = (func->type == COM_FunctionType_STATE);
 
-      String returnType = "void";
-      if(!Empty(func->structToReturn)){
-        returnType = PushString(out,"%.*s_%.*s",UN(decl->name),UN(func->structToReturn));
+      if(!isState){
+        continue;
       }
 
-      if(isState){
-        c->Struct(returnType);
-        for(COM_Stmt* stmt = func->stmts; stmt; stmt = stmt->next){
-          c->VarDeclare("iptr",stmt->lhs);
-        }        
+      for(COM_Struct def : func->structs){
+        DEBUG_BREAK();
+        c->Struct(SF("%.*s_%.*s",UN(def.originalModule),UN(def.name)));
+        for(COM_StructElem elem : def.elems){
+          c->VarDeclare(elem.typeName,elem.name);
+        }
         c->EndStruct();
+      }
+    }
+
+    // Output configuration functions =============================================
+    for(COM_FunctionNode* funcNode = decl->funcs; funcNode; funcNode = funcNode->next){
+      COM_Function* func = &funcNode->v;
+      bool isState = (func->type == COM_FunctionType_STATE);
+      
+      String returnType = func->returnType;
+      if(returnType != "void"){
+        returnType = PushString(out,"%.*s_%.*s",UN(decl->name),UN(returnType));
       }
 
       String fullFunctionName = PushString(temp,"%.*s_%.*s",UN(decl->name),UN(func->name));
@@ -2437,16 +2441,16 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
       } break;
       case COM_FunctionType_MEM:{
         for(COM_Stmt* stmt = func->stmts; stmt; stmt = stmt->next){
-          String sizeExpr = SYM_Repr(stmt->rhsExpr,temp);
+          String sizeExpr = SYM_Repr(stmt->asMem.sizeExpr,temp);
           
-          FULL_SWITCH(stmt->dir){
+          FULL_SWITCH(stmt->asMem.dir){
           case Direction_NONE: Assert(false); break;
           case Direction_READ: {
-            String expr = PushString(temp,"VersatMemoryCopy(TOP_%.*s,%.*s,(%.*s) * sizeof(int));",UN(stmt->lhs),UN(stmt->rhs),UN(sizeExpr));
+            String expr = PushString(temp,"VersatMemoryCopy(TOP_%.*s,%.*s,(%.*s) * sizeof(int));",UN(stmt->asMem.unitAddressName),UN(stmt->asMem.addrVarName),UN(sizeExpr));
             c->RawLine(expr);
           } break;
           case Direction_WRITE: {
-            String expr = PushString(temp,"VersatMemoryCopy(%.*s,TOP_%.*s,(%.*s) * sizeof(int));",UN(stmt->rhs),UN(stmt->lhs),UN(sizeExpr));
+            String expr = PushString(temp,"VersatMemoryCopy(%.*s,TOP_%.*s,(%.*s) * sizeof(int));",UN(stmt->asMem.addrVarName),UN(stmt->asMem.unitAddressName),UN(sizeExpr));
             c->RawLine(expr);
           } break;
         }
@@ -2457,8 +2461,8 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
 
         for(COM_Stmt* stmt = func->stmts; stmt; stmt = stmt->next){
           Assert(stmt->type == COM_StmtType_ASSIGN);
-          String lhs = PushString(temp,"res.%.*s",UN(stmt->lhs));
-          String rhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(stmt->rhs));
+          String lhs = PushString(temp,"res.%.*s",UN(stmt->asAssign.lhs));
+          String rhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(stmt->asAssign.rhs));
           c->Assignment(lhs,rhs);
         }        
 
@@ -2470,8 +2474,8 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
           switch(stmt->type){
             case COM_StmtType_NIL: Assert(false);
             case COM_StmtType_ASSIGN: {
-              String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(stmt->lhs));
-              String repr = stmt->rhs;
+              String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(stmt->asAssign.lhs));
+              String repr = stmt->asAssign.rhs;
 
               c->Assignment(lhs,repr);
             } break;
@@ -2480,10 +2484,10 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
             case COM_StmtType_ADDR_GEN: {
               c->RawLine("{");
              
-              AccessAndType access = stmt->access;
+              AccessAndType access = stmt->asAddr.access;
               AddressGenInst inst = access.inst;
               
-              String fullLhs = stmt->lhs; //HIER_GetFullName(stmt->lhs,".",temp);
+              String fullLhs = stmt->asAddr.unitName;
               
               bool pushStartToExt = (inst.type == AddressGenType_READ);
 
@@ -2548,7 +2552,7 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
 
               InstantiateOptions options = {};
               options.type = inst.type;
-              options.extVarName = stmt->rhs; //assign.pointerVarName;
+              options.extVarName = stmt->asAddr.addrVarName;
               options.memPort = access.port;
               options.dir = access.dir;
               
@@ -2559,7 +2563,7 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
 
             } break;
             case COM_StmtType_MEM_COPY: {
-              NOT_IMPLEMENTED();
+              NOT_POSSIBLE("Cannot have mem copy statements in config functions");
             } break;
           }
         }
@@ -2692,7 +2696,8 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
   {
     CEmitter* c = StartCCode(CCode1,CCode2);
 
-    DEBUG_BREAK();
+    // TODO: The delay order being hardcoded is a bit problematic I think
+    // Input delays first, output delays last =====================================
     c->VarBlock();
     for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
       for(int i = 0; i < ptr->extraDelay.size; i++){
@@ -3564,32 +3569,6 @@ static iptr WRITE_@{0} = 0;)FOO";
 
     String content = PushASTRepr(c,temp);
     TE_SetString("memoryUnpack",content);
-
-#if 0
-    CEmitter* c = StartCCode(CCode1,CCode2);
-
-    int varIndex = 0;
-    for(auto iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
-      InstanceInfo* unit = iter.CurrentUnit();
-
-      if(unit->isComposite){
-        continue;
-      }
-      if(SYM_IsNil(unit->memMapSym)){
-        continue;
-      }
-
-      String expr = PushString(temp,"(address >= %d && address <= %d) ? 1 : 0",unit->memStart,unit->memEnd);
-
-      c->VarDeclare("int",SF("unit_valid_%d",varIndex++),expr);
-
-      String expr2 = PushString(temp,"(address >= %d && address <= %d)",unit->memStart,unit->memEnd);
-      c->If(expr2);
-      c->Assignment("actualAddress",SF("address - %d",unit->memStart));
-      c->EndIf();
-    }
-
-#endif
   } else {
     TE_SetString("memoryUnpack",{});
   }
@@ -4225,11 +4204,10 @@ String GEN_OutputTestbench(FUDeclaration* decl,Arena* out){
 #include "configurations.hpp"
 
 GEN_StructInfo* GEN_GenerateConfigStruct(COM_Unit* top,GEN_StructInfoList* allStructs,Arena* out){
-  GEN_StructElem* head = 0;
-  GEN_StructElem* tail = 0;
+  GEN_StructElem *head = 0,*tail = 0;
 
   FUDeclaration* decl = top->decl;
-  
+
   if(!DECL_IsComposite(top->decl)){
     GEN_StructInfo* info = 0;
     LL_Find(allStructs->head,next,info,it->name == decl->name);
@@ -4242,49 +4220,62 @@ GEN_StructInfo* GEN_GenerateConfigStruct(COM_Unit* top,GEN_StructInfoList* allSt
         LL_Append(head,tail,next,elem);
       }
 
-      info = PushStruct<GEN_StructInfo>(out);
-      info->elements = head;
-      info->name = PushString(out,"%.*s",UN(decl->name));
-
-      LL_Append(allStructs->head,allStructs->tail,next,info);
+      info = GEN_AddStruct(allStructs,decl->name,head,out);
     }
 
     return info;
   }
 
-  for(COM_Unit* ptr = top->decl->fixedDelays.units.head; ptr; ptr = ptr->next){
-    if(ptr->decl->configs.size == 0){
-      continue;
-    }
+  if(top->decl->type == DeclarationType_MERGED){
+    GEN_StructElem *childHead = 0,*childTail = 0;
 
-    if(false /* ptr->isMerge */){
-#if 0
-      GEN_StructElem* mergeHead = 0;
-      GEN_StructElem* mergeTail = 0;
+    COM_Unit* start = top->decl->fixedDelays.units.head->mergeNext;
+    for(; start; start = start->mergeNext){
+      int mergeIndex = start->mergeIndex;
+      String typeName = top->decl->typesMerged[mergeIndex];
+      String mergeName = top->decl->mergedNames[mergeIndex];
 
-      COM_Unit* newTop = top->decl->fixedDelays.units.head;
+      // Create merge structure =====================================================
+      // TODO: Could change function to operate on structElem level and top level creates the structInfo
+      GEN_StructElem *subMergeHead = 0,*subMergeTail = 0;
 
-      int partIndex = 0;
-      for(COM_Unit* newPtr = newTop; newPtr; partIndex++,newPtr = newPtr->mergeNext){
-        MergePartition part = ptr->decl->info.infos[partIndex];
-        
-        String partName = part.name;
-
-        GEN_StructInfo* info = GEN_GenerateConfigStruct(partName,newPtr,out);
+      int padInserted = 0;
+      for(COM_Unit* ptr = start; ptr; ptr = ptr->next){
+        if(ptr->decl->configs.size == 0){
+          continue;
+        }
 
         GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
-        elem->name = PushString(out,partName);
-        elem->type = info;
-
-        LL_Append(mergeHead,mergeTail,next,elem);
+        elem->type = GEN_GenerateConfigStruct(ptr,allStructs,out);
+        
+        // TODO: Do we actually care wether a unit belongs or not to a given merge graph?
+        //       Now that functions are properly compiled?
+        if(ptr->doesNotBelong){
+          elem->name = PushString(out,"pad_%d",padInserted++);
+        } else {
+          elem->name = ptr->name;
+        }
+        LL_Append(subMergeHead,subMergeTail,next,elem);
       }
 
-      GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
-      elem->childs = mergeHead;
+      GEN_StructInfo* info = GEN_AddStruct(allStructs,typeName,subMergeHead,out);
 
-      LL_Append(head,tail,next,elem);
-#endif
-    } else {
+      GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
+      elem->name = mergeName;
+      elem->type = info;
+
+      LL_Append(childHead,childTail,next,elem);
+    }
+    
+    GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
+    elem->childs = childHead;
+    LL_Append(head,tail,next,elem);
+  } else {
+    for(COM_Unit* ptr = top->decl->fixedDelays.units.head; ptr; ptr = ptr->next){
+      if(ptr->decl->configs.size == 0){
+        continue;
+      }
+
       GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
       elem->type = GEN_GenerateConfigStruct(ptr,allStructs,out);
       elem->name = ptr->name;
@@ -4292,11 +4283,7 @@ GEN_StructInfo* GEN_GenerateConfigStruct(COM_Unit* top,GEN_StructInfoList* allSt
     }
   }
 
-  GEN_StructInfo* res = PushStruct<GEN_StructInfo>(out);
-  res->elements = head;
-  res->name = PushString(out,"%.*s",UN(top->name));
-
-  LL_Append(allStructs->head,allStructs->tail,next,res);
+  GEN_StructInfo* res = GEN_AddStruct(allStructs,decl->name,head,out);
 
   return res;
 }
@@ -4319,11 +4306,7 @@ GEN_StructInfo* GEN_GenerateStateStruct(COM_Unit* top,GEN_StructInfoList* allStr
         LL_Append(head,tail,next,elem);
       }
 
-      info = PushStruct<GEN_StructInfo>(out);
-      info->elements = head;
-      info->name = PushString(out,"%.*s",UN(decl->name));
-
-      LL_Append(allStructs->head,allStructs->tail,next,info);
+      info = GEN_AddStruct(allStructs,decl->name,head,out);
     }
 
     return info;
@@ -4369,11 +4352,22 @@ GEN_StructInfo* GEN_GenerateStateStruct(COM_Unit* top,GEN_StructInfoList* allStr
     }
   }
 
-  GEN_StructInfo* res = PushStruct<GEN_StructInfo>(out);
-  res->elements = head;
-  res->name = PushString(out,"%.*s",UN(top->name));
+  GEN_StructInfo* res = GEN_AddStruct(allStructs,decl->name,head,out);
 
-  LL_Append(allStructs->head,allStructs->tail,next,res);
+  return res;
+}
+
+GEN_StructInfo* GEN_AddStruct(GEN_StructInfoList* list,String name,GEN_StructElem* head,Arena* out){
+  GEN_StructInfo* res = 0;
+  LL_Find(list->head,next,res,it->name == name);
+
+  if(!res){
+    res = PushStruct<GEN_StructInfo>(out);
+    res->elements = head;
+    res->name = PushString(out,"%.*s",UN(name));
+    
+    LL_Append(list->head,list->tail,next,res);
+  }
 
   return res;
 }
@@ -4573,6 +4567,7 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
     staticIndex += 1;
   }
 
+  int delayInIndex = 0;
   SYM_Expr delayAccum = staticAccum;
   for(int i = 0; i < topLevel->numberInputDelays; i++){
     GEN_Wire* c = configBuild->PushElem();
@@ -4581,10 +4576,11 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
     c->stage = VersatStage_COMPUTE;
     c->size = SYM_DelayW;
     c->startBit = delayAccum;
-    c->address = (configIndex + staticIndex + i) * 4;
+    c->address = (configIndex + staticIndex + delayInIndex) * 4;
     c->type |= GEN_WireType_IS_DELAY;
     
     delayAccum = delayAccum + SYM_DelayW;
+    delayInIndex += 1;
   }
   for(int i = 0; i < topLevel->numberOutputDelays; i++){
     GEN_Wire* c = configBuild->PushElem();
@@ -4593,7 +4589,7 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
     c->stage = VersatStage_COMPUTE;
     c->size = SYM_DelayW;
     c->startBit = delayAccum;
-    c->address = (configIndex + staticIndex + i) * 4;
+    c->address = (configIndex + staticIndex + delayInIndex + i) * 4;
     c->type |= GEN_WireType_IS_DELAY;
     
     delayAccum = delayAccum + SYM_DelayW;

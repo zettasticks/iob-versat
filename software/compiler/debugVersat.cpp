@@ -38,6 +38,8 @@ String GenerateDotGraph(DOT_Graph graph,Arena* out){
   if(graph.graphLabel.size > 0){
     result->PushString("label=\"%.*s\";\n",UN(graph.graphLabel));
   }
+  result->PushString("ranksep=0.9;\n");
+  result->PushString("splines=ortho;\n");
   
   for(DOT_Info& node : graph.content){
     if(!DOT_IsNode(&node)){
@@ -70,15 +72,16 @@ String GenerateDotGraph(DOT_Graph graph,Arena* out){
     String color = graphPrintingColorTable[(int) c];
 
     result->PushString("[color=%.*s",UN(color));
-    if(!Empty(node.headContent)){
-      result->PushString(" headlabel=\"%.*s\"",UN(node.headContent));
+    if(!Empty(node.inContent)){
+      result->PushString(" headlabel=\"%.*s\"",UN(node.inContent));
     }
     if(!Empty(node.middleContent)){
       result->PushString(" label=\"%.*s\"",UN(node.middleContent));
     }
-    if(!Empty(node.tailContent)){
-      result->PushString(" taillabel=\"%.*s\"",UN(node.tailContent));
+    if(!Empty(node.outContent)){
+      result->PushString(" taillabel=\"%.*s\"",UN(node.outContent));
     }
+    result->PushString(" labeldistance=2.0");
     result->PushString("];\n");
   }
 

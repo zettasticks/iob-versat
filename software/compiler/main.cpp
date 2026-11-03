@@ -33,6 +33,9 @@ namespace fs = std::filesystem;
   Delay:
   - IsSource/IsSink is stupid, proper delay wires for each input/output combination that we care about.
 
+  CodeGen:
+  - We might not actually need to create different structures for 
+
 */
 
 // TODO: For some reason, in the makefile we cannot stringify the arguments that we want to
@@ -397,13 +400,15 @@ int main(int argc,char* argv[]){
   String topLevelTypeStr = globalOptions.topName;
   Array<DECL_Param> params = PushArray<DECL_Param>(temp,6);
   params[0] = DECL_Param{"ADDR_W",SYM_AddrW};
-  params[1] = DECL_Param{"DATA_W",SYM_DataW};
+  params[1] = DECL_Param{"DATA_W",SYM_32};
   params[2] = DECL_Param{"DELAY_W",SYM_DelayW};
   params[3] = DECL_Param{"LEN_W",SYM_LenW};
   params[4] = DECL_Param{"AXI_DATA_W",SYM_AxiDataW};
   params[5] = DECL_Param{"AXI_ADDR_W",SYM_AxiAddrW};
 
   FUDeclaration* topType = DECL_GetType(topLevelTypeStr,params);
+
+  DEBUG_BREAK();
 
   if(IsNil(topType)){
     printf("Did not find module named: '%.*s'\n",UN(topLevelTypeStr));
@@ -424,7 +429,7 @@ int main(int argc,char* argv[]){
     LL_Append(compositeHead,compositeTail,next,&top);
 
     for(FUDeclarationNode* ptr = compositeHead; ptr; ptr = ptr->next){
-      for(COM_Unit* unit = ptr->val->baseGraph.units.head; unit; unit = unit->next){
+      for(COM_Unit* unit = ptr->val->fixedDelays.units.head; unit; unit = unit->next){
         FUDeclaration* decl = unit->decl;
         FUDeclarationNode* exists = 0;
 

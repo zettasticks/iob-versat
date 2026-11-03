@@ -288,13 +288,15 @@ struct StringBuilder{
   void PushString(const char* format,...) __attribute__ ((format (printf, 2, 3)));
   void vPushString(const char* format,va_list args);
 
-  char GetLastCharacter();
+  char GetLastCharacterOrElse(char other);
   
   void PushSpaces(int amount);
 };
 
 StringBuilder* StartString(Arena* arena);
 String EndString(Arena* out,StringBuilder* builder);
+
+bool Empty(StringBuilder* b);
 
 template<typename T>
 class Stack{

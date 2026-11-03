@@ -1801,7 +1801,7 @@ SYM_Expr NormalizeLiterals(SYM_Expr in){
       } else {
         SYM_MultPartition part = GetMultPartition(s,temp);
         
-        GetOrAllocateResult res = mapMultPartToLiteral->GetOrAllocate(part.mults);
+        GetOrAllocateResult<SYM_Expr> res = mapMultPartToLiteral->GetOrAllocate(part.mults);
 
         if(res.alreadyExisted){
           *res.data = DoAdd(*res.data,part.literal);

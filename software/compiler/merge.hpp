@@ -19,7 +19,9 @@ graph data to choose from
 
 struct MERGE_Result{
   COM_Graph mergedGraph;
-  Array<COM_Graph> reconGraphs;
+  Array<COM_Graph> reconGraphs; // COM_Unit::general maps to mergedGraph COM_Unit
+  TrieMap<COM_Unit*,COM_Unit*>* mapReconUnitToGraph;
+  TrieMap<COM_Edge*,COM_Edge*>* mapReconEdgeToGraph;
   bool error;
 };
 

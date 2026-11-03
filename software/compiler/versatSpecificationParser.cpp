@@ -19,8 +19,7 @@
 // ======================================
 // Constants
 
-static readonly SP_Node SP_Node_Nil = {};
-
+readonly SP_Node SP_Node_Nil = {};
 
 #if 0
 
