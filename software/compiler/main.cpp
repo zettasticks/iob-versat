@@ -398,14 +398,16 @@ int main(int argc,char* argv[]){
   }
 
   String topLevelTypeStr = globalOptions.topName;
-  Array<DECL_Param> params = PushArray<DECL_Param>(temp,6);
-  params[0] = DECL_Param{"ADDR_W",SYM_AddrW};
-  params[1] = DECL_Param{"DATA_W",SYM_32};
-  params[2] = DECL_Param{"DELAY_W",SYM_DelayW};
-  params[3] = DECL_Param{"LEN_W",SYM_LenW};
-  params[4] = DECL_Param{"AXI_DATA_W",SYM_AxiDataW};
-  params[5] = DECL_Param{"AXI_ADDR_W",SYM_AxiAddrW};
-
+  Array<DECL_Param> params = PushArray<DECL_Param>(temp,5);
+  int index = 0;
+  //params[index++] = DECL_Param{"ADDR_W",SYM_32};
+  params[index++] = DECL_Param{"DATA_W",SYM_32};
+  params[index++] = DECL_Param{"DELAY_W",SYM_DelayW};
+  params[index++] = DECL_Param{"LEN_W",SYM_LenW};
+  params[index++] = DECL_Param{"AXI_DATA_W",SYM_AxiDataW};
+  params[index++] = DECL_Param{"AXI_ADDR_W",SYM_AxiAddrW};
+  Assert(index == params.size);
+  
   FUDeclaration* topType = DECL_GetType(topLevelTypeStr,params);
 
   DEBUG_BREAK();

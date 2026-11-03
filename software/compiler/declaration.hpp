@@ -121,7 +121,10 @@ struct FUDeclaration{
   Array<DECL_PortInfo> outputs;
   Array<Wire> configs;
   Array<Wire> states;
+
   Array<DECL_MMInfo> memoryMapped; // Only address can change, everything else must be standard
+  // TODO: We need to preserve the maximum size of 
+
   Array<HW_Instance> externalMemory;  // For external memory we care about wire size. 
 
   Array<DECL_StaticWire> statics;

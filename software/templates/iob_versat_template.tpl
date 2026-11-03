@@ -7,18 +7,18 @@ module iob_versat #(  //the below parameters are used in cpu if includes below
    parameter AXI_DATA_W = 32,
    parameter AXI_LEN_W  = 8,
    parameter AXI_ID_W   = 1,
-   parameter ADDR_W     = 26,
+   //parameter ADDR_W     = 26,
    parameter DATA_W     = 32,
    parameter WDATA_W    = 32,
    parameter MEM_ADDR_OFFSET = 0
 ) (
-   input                   @{prefix}iob_valid_i,
-   input  [    ADDR_W-1:0] @{prefix}iob_addr_i,
-   input  [    DATA_W-1:0] @{prefix}iob_wdata_i,
-   input  [(DATA_W/8)-1:0] @{prefix}iob_wstrb_i,
-   output                  @{prefix}iob_rvalid_o,
-   output [    DATA_W-1:0] @{prefix}iob_rdata_o,
-   output                  @{prefix}iob_ready_o,
+   input                       @{prefix}iob_valid_i,
+   input  [`VERSAT_ADDR_W-1:0] @{prefix}iob_addr_i,
+   input  [    DATA_W-1:0]     @{prefix}iob_wdata_i,
+   input  [(DATA_W/8)-1:0]     @{prefix}iob_wstrb_i,
+   output                      @{prefix}iob_rvalid_o,
+   output [    DATA_W-1:0]     @{prefix}iob_rdata_o,
+   output                      @{prefix}iob_ready_o,
    @{extraIob}     
 
 `ifdef VERSAT_EXTERNAL_MEMORY
@@ -223,7 +223,6 @@ wire [AXI_ADDR_W-1:0] temp_axi_araddr_o;
    
    // For now keep the versat_instance using old names (no _i or _o)
    versat_instance #(
-      .ADDR_W    (ADDR_W),
       .DATA_W    (DATA_W),
       .AXI_DATA_W(AXI_DATA_W),
       .AXI_ADDR_W(AXI_ADDR_W),

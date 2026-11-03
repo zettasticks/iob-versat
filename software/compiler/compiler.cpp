@@ -1336,7 +1336,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
         param->name = "DELAY_W";
         param->val = SYM_DelayW;
       }
-      if(1){
+      if(0){
         DECL_Param* param = paramList->PushElem();
         param->name = "ADDR_W";
         param->val = SYM_AddrW;

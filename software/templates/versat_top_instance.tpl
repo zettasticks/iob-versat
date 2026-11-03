@@ -3,7 +3,6 @@
 `include "versat_defs.vh"
 
 module versat_instance #(
-      parameter ADDR_W = 32,
       parameter DATA_W = 32,
       parameter AXI_ADDR_W = 32,
       parameter AXI_DATA_W = @{databusDataSize},
@@ -25,7 +24,7 @@ module versat_instance #(
 
 // data/control interface
    input                           csr_valid,
-   input [ADDR_W-1:0]              csr_addr,
+   input [`VERSAT_ADDR_W-1:0]      csr_addr,
    input [DATA_W/8-1:0]            csr_wstrb,
    input [DATA_W-1:0]              csr_wdata,
    output                          csr_rvalid,
@@ -44,7 +43,7 @@ module versat_instance #(
 // This interface is the result of joining the csr or the dma interface
 // Any logic that can interact with the DMA must use this interface.
 wire data_valid;
-wire [ADDR_W-1:0] data_address;
+wire [`VERSAT_ADDR_W-1:0] data_address;
 wire [DATA_W-1:0] data_data;
 wire [(DATA_W/8)-1:0] data_wstrb;
 

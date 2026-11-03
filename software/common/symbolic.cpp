@@ -1087,6 +1087,10 @@ SYM_Expr operator!=(SYM_Expr first,SYM_Expr second){
 #endif
 
 SYM_Expr SYM_Max(SYM_Expr left,SYM_Expr right){
+  if(IsLiteral(left) && IsLiteral(right)){
+    return SYM_Lit(MAX(LiteralValue(left),LiteralValue(right)));
+  }
+
   return GetOrAllocateFunc(SYM_Func_MAX,left,right);
 }
 

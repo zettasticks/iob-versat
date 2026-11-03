@@ -1865,14 +1865,15 @@ FUDeclaration* Merge(Array<FUDeclaration*> types,
   // TODO: Join the Merge and the Subunit register function common functionality into one
   FUDeclaration declInst = {};
   declInst.name = name;
-  declInst.parameters = PushArray<Parameter>(globalPermanent,6);
-
-  declInst.parameters[0] = {"ADDR_W",SYM_Lit(32)};
-  declInst.parameters[1] = {"DATA_W",SYM_Lit(32)};
-  declInst.parameters[2] = {"DELAY_W",SYM_Lit(7)};
-  declInst.parameters[3] = {"AXI_ADDR_W",SYM_Lit(32)};
-  declInst.parameters[4] = {"AXI_DATA_W",SYM_Lit(32)};
-  declInst.parameters[5] = {"LEN_W",SYM_Lit(20)};
+  declInst.parameters = PushArray<Parameter>(globalPermanent,5);
+  int index = 0;
+  //declInst.parameters[index++] = {"ADDR_W",SYM_Lit(32)};
+  declInst.parameters[index++] = {"DATA_W",SYM_Lit(32)};
+  declInst.parameters[index++] = {"DELAY_W",SYM_Lit(7)};
+  declInst.parameters[index++] = {"AXI_ADDR_W",SYM_Lit(32)};
+  declInst.parameters[index++] = {"AXI_DATA_W",SYM_Lit(32)};
+  declInst.parameters[index++] = {"LEN_W",SYM_Lit(20)};
+  Assert(declInst.parameters.size == index;
 
   Pair<Accelerator*,AcceleratorMapping*> baseCopy = CopyAcceleratorWithMapping(mergedAccel,AcceleratorPurpose_BASE,true,globalPermanent);
 
@@ -2876,14 +2877,16 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
   declInst.type = FUDeclarationType_MERGED;
 
   // TODO: Kinda hacked approach to this
-  declInst.parameters = PushArray<Parameter>(globalPermanent,6);
+  declInst.parameters = PushArray<Parameter>(globalPermanent,5);
 
-  declInst.parameters[0] = {"ADDR_W",SYM_Lit(32)};
-  declInst.parameters[1] = {"DATA_W",SYM_Lit(32)};
-  declInst.parameters[2] = {"DELAY_W",SYM_Lit(7)};
-  declInst.parameters[3] = {"AXI_ADDR_W",SYM_Lit(32)};
-  declInst.parameters[4] = {"AXI_DATA_W",SYM_Lit(32)};
-  declInst.parameters[5] = {"LEN_W",SYM_Lit(20)};
+  int index = 0;
+  //declInst.parameters[index++] = {"ADDR_W",SYM_Lit(32)};
+  declInst.parameters[index++] = {"DATA_W",SYM_Lit(32)};
+  declInst.parameters[index++] = {"DELAY_W",SYM_Lit(7)};
+  declInst.parameters[index++] = {"AXI_ADDR_W",SYM_Lit(32)};
+  declInst.parameters[index++] = {"AXI_DATA_W",SYM_Lit(32)};
+  declInst.parameters[index++] = {"LEN_W",SYM_Lit(20)};
+  Assert(declInst.parameters.size == index;
 
   declInst.name = PushString(globalPermanent,name);
 

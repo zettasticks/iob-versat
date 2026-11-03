@@ -242,13 +242,15 @@ bool DECL_RegisterMeta(String name,SP_Node* module){
   // TODO: We need to standardize this. We need to have all the params that are set by default in all the interfaces.
   //       If a standard external memory interface uses DATA_W, then we need to have DATA_W as a param otherwise
   //       the instantiation code does not know that we have DATA_W dependencies.
-  Array<DECL_Param> params = PushArray<DECL_Param>(DECL_State.arena,6);
-  params[0] = {"ADDR_W",SYM_32};
-  params[1] = {"DATA_W",SYM_32};
-  params[2] = {"LEN_W",SYM_32};
-  params[3] = {"DELAY_W",SYM_32};
-  params[4] = {"AXI_DATA_W",SYM_32};
-  params[5] = {"AXI_ADDR_W",SYM_32};
+  Array<DECL_Param> params = PushArray<DECL_Param>(DECL_State.arena,5);
+  int index = 0;
+  //params[index++] = {"ADDR_W",SYM_32};
+  params[index++] = {"DATA_W",SYM_32};
+  params[index++] = {"LEN_W",SYM_32};
+  params[index++] = {"DELAY_W",SYM_32};
+  params[index++] = {"AXI_DATA_W",SYM_32};
+  params[index++] = {"AXI_ADDR_W",SYM_32};
+  Assert(index == params.size);
 
   DECL_Meta* node = PushStruct<DECL_Meta>(DECL_State.arena);
   node->name = PushString(DECL_State.arena,name);

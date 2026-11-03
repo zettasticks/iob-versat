@@ -51,14 +51,6 @@ class iob_versat(iob_module):
                     "descr": "Data bus width",
                 },
                 {
-                    "name": "ADDR_W",
-                    "type": "P",
-                    "val": "`IOB_VERSAT_SWREG_ADDR_W",
-                    "min": "NA",
-                    "max": "NA",
-                    "descr": "Address bus width",
-                },
-                {
                     "name": "WDATA_W",
                     "type": "P",
                     "val": "1",
@@ -313,7 +305,6 @@ def CreateVersatClass(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,d
         @classmethod
         def _setup_confs(cls):
             confs = [
-                {'name':'ADDR_W', 'type':'P', 'val':str(ADDR_W), 'min':'1', 'max':'?', 'descr':'description here'},
                 {'name':'DATA_W', 'type':'P', 'val':'32', 'min':'1', 'max':'?', 'descr':'description here'},
                 {
                     "name": "MEM_ADDR_OFFSET",

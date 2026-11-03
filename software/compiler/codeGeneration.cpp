@@ -448,7 +448,15 @@ String GEN_OutputCircuitSource(FUDeclaration* module,Arena* out){
       m->InputIndexed("unit_valid_%d",i);
     }
 
-    m->Input("addr",SYM_AddrW);
+    // TODO: We should not calculate this in here.
+    SYM_Expr addrExpr = SYM_0;
+    for(int i = 0; i < module->memoryMapped.size; i++){
+      SYM_Expr expr = HW_GetAddrSize(module->memoryMapped[i].inst,0);
+      addrExpr = SYM_Max(addrExpr,expr);
+    }
+
+    // MARK
+    m->Input("addr",addrExpr);
     m->Input("wstrb",SYM_DataStrobeW);
     m->Input("wdata",SYM_DataW);
     m->Output("rvalid");
@@ -547,6 +555,9 @@ GEN_TopContent GEN_OutputTopLevel(GEN_TopInfo* info,Arena* out){
       d->PushString("`define VERSAT_EXPORT_EXTERNAL_MEMORY\n");
       u->PushString("`undef  VERSAT_EXPORT_EXTERNAL_MEMORY\n");
     }
+
+    d->PushString("`define VERSAT_ADDR_W %d\n",info->addressBits);
+    u->PushString("`undef  VERSAT_ADDR_W\n");
 
     versatDefines = EndString(out,d);
     versatUndefs = EndString(out,u);
@@ -1277,16 +1288,16 @@ end
     if(globalOptions.useDMA){
       String content = R"FOO(
 reg [LEN_W-1:0] dma_length;
-reg [ADDR_W-1:0] dma_internal_address_start;
+reg [`VERSAT_ADDR_W-1:0] dma_internal_address_start;
 reg [AXI_ADDR_W-1:0] dma_external_addr_start;
 
 wire dma_ready;
-wire [ADDR_W-1:0] dma_addr_in;
+wire [`VERSAT_ADDR_W-1:0] dma_addr_in;
 wire [AXI_DATA_W-1:0] dma_rdata;
 
 wire dma_start;
 
-SimpleDMA #(.ADDR_W(ADDR_W),.DATA_W(DATA_W),.AXI_ADDR_W(AXI_ADDR_W)) dma (
+SimpleDMA #(.ADDR_W(`VERSAT_ADDR_W),.DATA_W(DATA_W),.AXI_ADDR_W(AXI_ADDR_W)) dma (
   .m_databus_ready(databus_ready[`nIO - 1]),
   .m_databus_valid(databus_valid[`nIO - 1]),
   .m_databus_addr(databus_addr[`nIO - 1]),
@@ -1311,7 +1322,7 @@ SimpleDMA #(.ADDR_W(ADDR_W),.DATA_W(DATA_W),.AXI_ADDR_W(AXI_ADDR_W)) dma (
   .rst(rst_int)
 );
 
-JoinTwoSimple #(.DATA_W(DATA_W),.ADDR_W(ADDR_W)) joiner (
+JoinTwoSimple #(.DATA_W(DATA_W),.ADDR_W(`VERSAT_ADDR_W)) joiner (
   .m0_valid(dma_ready),
   .m0_data(dma_rdata),
   .m0_addr(dma_addr_in),
@@ -1418,7 +1429,7 @@ assign data_wstrb = csr_wstrb;
       m->StartInstance("versat_configurations","configs");
 
       // TODO: This should be all the global params that Versat cares about. We need to standardize this and properly define all the global parameters
-      m->InstanceParam("ADDR_W","ADDR_W");
+      //m->InstanceParam("ADDR_W","ADDR_W");
       m->InstanceParam("DATA_W","DATA_W");
       m->InstanceParam("AXI_DATA_W","AXI_DATA_W");
       m->InstanceParam("AXI_ADDR_W","AXI_ADDR_W");
@@ -1550,8 +1561,16 @@ assign data_wstrb = csr_wstrb;
     }
 
     if(decl->memoryMapped.size > 0){
+      // TODO: nocheckin: Push this to declaration, remove logic from code gen.
+      SYM_Expr addrExpr = SYM_0;
+      for(int i = 0; i < decl->memoryMapped.size; i++){
+        SYM_Expr expr = HW_GetAddrSize(decl->memoryMapped[i].inst,0);
+        addrExpr = SYM_Max(addrExpr,expr);
+      }
+      String addr = SYM_Repr(addrExpr,temp);
+
       m->PortConnect("wstrb","data_wstrb");
-      m->PortConnect("addr",SF("csr_addr[ADDR_W-1:0]"));
+      m->PortConnect("addr",SF("csr_addr[(%.*s)-1:0]",UN(addr)));
       m->PortConnect("rdata",SF("unitRData"));
       m->PortConnect("rvalid",SF("unitRValid"));
       m->PortConnect("wdata","data_data");
@@ -1685,7 +1704,7 @@ String GEN_OutputHardwareConfigurations(GEN_TopInfo* info,Arena* out){
   m->Module("versat_configurations");
   {
     // TODO: We probably want to generate this from the parameters of the declaration, instead of hardcoded like this.
-    m->ModuleParam("ADDR_W",32);
+    //m->ModuleParam("ADDR_W",32);
     m->ModuleParam("DATA_W",32);
     m->ModuleParam("AXI_ADDR_W",32);
     m->ModuleParam("AXI_DATA_W",globalOptions.databusDataSize);
@@ -1704,7 +1723,7 @@ String GEN_OutputHardwareConfigurations(GEN_TopInfo* info,Arena* out){
     m->Input("memoryMappedAddr");
     m->Input("data_write");
 
-    m->Input("address",SYM_AddrW);
+    m->Input("address",info->addressBits);
     m->Input("data_wstrb",SYM_DataStrobeW);
     m->Input("data_data",SYM_DataW);
 
@@ -2907,7 +2926,7 @@ String GEN_OutputVerilatorHardwareWrapper(GEN_TopInfo* info,Arena* out){
     m->ModuleParam(p.name,p.val);
   }
 #endif
-  m->ModuleParam("ADDR_W",32);
+  //m->ModuleParam("ADDR_W",32);
   m->ModuleParam("DATA_W",32);
   m->ModuleParam("LEN_W",32);
   m->ModuleParam("DELAY_W",32);
@@ -2980,7 +2999,7 @@ String GEN_OutputVerilatorHardwareWrapper(GEN_TopInfo* info,Arena* out){
       m->InputIndexed("unit_valid_%d",i);
     }
 
-    m->Input("addr",SYM_AddrW);
+    m->Input("addr",info->addressBits);
     m->Input("wstrb",SYM_DataStrobeW);
     m->Input("wdata",SYM_DataW);
     m->Output("rvalid");
@@ -3078,12 +3097,13 @@ String GEN_OutputVerilatorHardwareWrapper(GEN_TopInfo* info,Arena* out){
   m->StartInstance(module->name,"TOP");
 
   for(DECL_Param p : decl->parameters){
+    // nocheckin
     // TODO: nocheckin HACK
-    if(p.name == "ADDR_W"){
-      m->InstanceParam(p.name,SYM_AddrW);
-    } else {
+    //if(p.name == "ADDR_W"){
+    //  m->InstanceParam(p.name,SYM_AddrW);
+    //} else {
       m->InstanceParam(p.name,p.val);
-    }
+    //}
   }
 
   // Instance
@@ -3156,8 +3176,17 @@ String GEN_OutputVerilatorHardwareWrapper(GEN_TopInfo* info,Arena* out){
   }
 
   if(module->memoryMapped.size > 0){
+    // TODO: nocheckin: Push this to declaration, remove logic from code gen.
+    SYM_Expr addrExpr = SYM_0;
+    for(int i = 0; i < module->memoryMapped.size; i++){
+      SYM_Expr expr = HW_GetAddrSize(module->memoryMapped[i].inst,0);
+      addrExpr = SYM_Max(addrExpr,expr);
+    }
+    String addr = SYM_Repr(addrExpr,temp);
+
+
     m->PortConnect("wstrb","wstrb");
-    m->PortConnect("addr",SF("addr"));
+    m->PortConnect("addr",SF("addr[(%.*s)-1:0]",UN(addr)));
     m->PortConnect("rdata",SF("rdata"));
     m->PortConnect("rvalid",SF("rvalid"));
     m->PortConnect("wdata","wdata");
@@ -3897,6 +3926,7 @@ String GEN_OutputTestbench(FUDeclaration* decl,Arena* out){
   for(Parameter p : decl->parameters){
     String repr = SYM_Repr(p.defaultVal,temp);
 
+    // TODO: Figure this out someway
     // NOTE: Since AXI_ADDR_W is usually used to instantiate a memory,
     // need to severely reduce size otherwise simulation can get stuck
     // and not even a warning is given
@@ -3983,7 +4013,7 @@ String GEN_OutputTestbench(FUDeclaration* decl,Arena* out){
 
     m->StartInstance("SimHelper_DatabusMem","DatabusMem");
     m->InstanceParam("DATA_W",dataW);
-    m->InstanceParam("ADDR_W",addrW);
+    m->InstanceParam("ADDR_W","`VERSAT_ADDR_W");
     m->InstanceParam("LEN_W",lenW);
     
     m->PortConnect(INT_IOb,"_0");

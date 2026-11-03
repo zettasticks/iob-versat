@@ -16,7 +16,7 @@ VERILATOR_ARGS += -GAXI_DATA_W=@{databusDataSize}
 VERILATOR_ARGS += -GDATA_W=32
 VERILATOR_ARGS += -GDELAY_W=20
 VERILATOR_ARGS += -GLEN_W=20
-VERILATOR_ARGS += -GADDR_W=@{addressSize}
+#VERILATOR_ARGS += -GADDR_W=@{addressSize}
 VERILATOR_ARGS += @{traceType}
 
 all: libaccel.a
