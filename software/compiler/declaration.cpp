@@ -982,9 +982,36 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
 
     unit->extraDelay[offset] = d->extraDelay;
   }
-
   Assert(delays.edgeDelays == nullptr);
 
+  // Propagate composite units delays ===========================================
+  for(COM_Unit* unit = graph.units.head; unit; unit = unit->next){
+    if(DECL_IsComposite(unit->decl)){
+      for(int i = 0; i < unit->extraDelay.size; i++){
+        unit->extraDelay[i] += unit->decl->extraDelays[i];
+      }
+    }
+  }
+
+  // Compute calculated delays ==================================================
+  auto b = PushList<int>(temp);
+  for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
+    for(int i = 0; i < ptr->extraDelay.size; i++){
+      if(i < ptr->decl->numberInputDelays){
+        *b->PushElem() = ptr->extraDelay[i];
+      }
+    }
+  }
+  for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
+    for(int i = 0; i < ptr->extraDelay.size; i++){
+      if(i >= ptr->decl->numberInputDelays){
+        *b->PushElem() = ptr->extraDelay[i];
+      }
+    }
+  }
+  Array<int> storedDelays = PushArray(out,b);
+
+  // Compute all graph related data =============================================
   // TODO: Share and static
   TrieSet<DECL_StaticWire>* statics = PushTrieSet<DECL_StaticWire>(temp);
   int configCount = 0;
@@ -1018,7 +1045,7 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
     stateCount += decl->states.size;
     inputDelayCount += decl->numberInputDelays;
     outputDelayCount += decl->numberOutputDelays;
-    donesCount += decl->numberDones;
+    donesCount += (decl->singleInterfaces & DECL_SingleInterface_DONE);
     memMappedCount += decl->memoryMapped.size;
     externalCount += decl->externalMemory.size;
     databusCount += decl->numberDatabus;
@@ -1032,8 +1059,6 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
   res->meta = meta;
   res->parameters = DECL_Copy(normalizedParams,out);
 
-  // MARK
-
   res->configs = PushArray<Wire>(out,configCount);
   res->states = PushArray<Wire>(out,stateCount);
   res->inputs = PushArray<DECL_PortInfo>(out,delays.inputDelays.size);
@@ -1045,6 +1070,8 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
   res->singleInterfaces = single;
   res->numberInputDelays = inputDelayCount;
   res->numberOutputDelays = outputDelayCount;
+  res->extraDelays = storedDelays;
+
   res->numberDatabus = databusCount;
   res->numberDones = donesCount;
 
@@ -1209,7 +1236,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
     ptr = ptr->next;
   }
 
-  // TODO: nocheckin: copied from COM_InstantiateModule, refactor if possible
+  // TODO: nocheckin: copied from COM_InstantiateModule, compress
   FREE_ARENA(envArena);
   FREE_ARENA(envErrorArena);
   COM_Env envInst = {};
@@ -1240,6 +1267,34 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
       LL_Append(funcHead,funcTail,next,func);
     }
   }
+
+  // TODO: nocheckin: Copied from InstantiateModule, compress
+  // Propagate composite units delays ===========================================
+  for(COM_Unit* unit = graph.units.head; unit; unit = unit->next){
+    if(DECL_IsComposite(unit->decl)){
+      for(int i = 0; i < unit->extraDelay.size; i++){
+        unit->extraDelay[i] += unit->decl->extraDelays[i];
+      }
+    }
+  }
+
+  // Compute calculated delays ==================================================
+  auto b = PushList<int>(temp);
+  for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
+    for(int i = 0; i < ptr->extraDelay.size; i++){
+      if(i < ptr->decl->numberInputDelays){
+        *b->PushElem() = ptr->extraDelay[i];
+      }
+    }
+  }
+  for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
+    for(int i = 0; i < ptr->extraDelay.size; i++){
+      if(i >= ptr->decl->numberInputDelays){
+        *b->PushElem() = ptr->extraDelay[i];
+      }
+    }
+  }
+  Array<int> storedDelays = PushArray(out,b);
 
   // TODO: Share and Static
   // TODO: Copy from instantiateModule, reorganize.
@@ -1301,6 +1356,8 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   res->singleInterfaces = single;
   res->numberInputDelays = inputDelayCount;
   res->numberOutputDelays = outputDelayCount;
+  res->extraDelays = storedDelays;
+
   res->numberDatabus = databusCount;
   res->numberDones = donesCount;
   res->singleInterfaces = single;

@@ -146,7 +146,7 @@
    wire enB;
 
    //write enables
-   wire wrA = valid? we : (enA_int & in0_wr & ~extA); //addrgen on & input on & input isn't address
+   wire wrA = valid ? we : (enA_int & in0_wr & ~extA); //addrgen on & input on & input isn't address
    wire wrB = (enB & in1_wr & ~extB);
 
    //port addresses and enables

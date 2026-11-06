@@ -262,11 +262,7 @@ void GEN_EmitInstanciateUnits(VEmitter* m,COM_Unit* units,COM_Edge* edges){
 
       m->PortConnect("wstrb","wstrb");
 
-      if(decl->type == DeclarationType_SINGLE){
-        m->PortConnect("addr",SF("addr[%d-1:0]",addrSize));
-      } else if(DECL_IsComposite(decl)){
-        m->PortConnect("addr","addr");
-      }
+      m->PortConnect("addr",SF("addr[%d-1:0]",addrSize));
       m->PortConnect("rdata",SF("unitRData[%d]",mmSeen));
       m->PortConnect("rvalid",SF("unitRValid[%d]",mmSeen));
       m->PortConnect("wdata","wdata");
@@ -2384,7 +2380,6 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
       }
 
       for(COM_Struct def : func->structs){
-        DEBUG_BREAK();
         c->Struct(SF("%.*s_%.*s",UN(def.originalModule),UN(def.name)));
         for(COM_StructElem elem : def.elems){
           c->VarDeclare(elem.typeName,elem.name);
@@ -2453,7 +2448,6 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
         c->InsertCode(comp.cCode);
       }
 #endif
-        
       FULL_SWITCH(func->type){
       case COM_FunctionType_NIL:{
         Assert(false);
@@ -2574,6 +2568,7 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
               options.extVarName = stmt->asAddr.addrVarName;
               options.memPort = access.port;
               options.dir = access.dir;
+              DEBUG_BREAK();
               
               CodeNode* top = EmitStatements(access,temp,options);
               Recurse(Recurse,top);
@@ -2818,8 +2813,8 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
 #endif
 
     if(names.size > 1){
-      for(int i = 0; i <  allDelays.size; i++){
-        auto delayArray  =  allDelays[i];
+      for(int i = 0; i < allDelays.size; i++){
+        auto delayArray = allDelays[i];
         c->ArrayDeclareBlock("unsigned int",SF("delayBuffer_%d",i),true);
 
         for(auto d : delayArray){
@@ -3042,8 +3037,6 @@ String GEN_OutputVerilatorHardwareWrapper(GEN_TopInfo* info,Arena* out){
 
   for(int i = 0; i < decl->externalMemory.size; i++){
     HW_Instance ext = decl->externalMemory[i];
-    // nocheckin
-    //SYM_Expr addrSize = SYM_16;
     SYM_Expr addrSize = HW_GetAddrSize(ext,0);
     Assert(!IsNil(addrSize));
 
@@ -3097,13 +3090,7 @@ String GEN_OutputVerilatorHardwareWrapper(GEN_TopInfo* info,Arena* out){
   m->StartInstance(module->name,"TOP");
 
   for(DECL_Param p : decl->parameters){
-    // nocheckin
-    // TODO: nocheckin HACK
-    //if(p.name == "ADDR_W"){
-    //  m->InstanceParam(p.name,SYM_AddrW);
-    //} else {
-      m->InstanceParam(p.name,p.val);
-    //}
+    m->InstanceParam(p.name,p.val);
   }
 
   // Instance

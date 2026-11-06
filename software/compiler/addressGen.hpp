@@ -124,7 +124,7 @@ void   Print(AddressAccess* access);
 // ======================================
 // Compilation 
 
-AddressAccess* CompileAddressGen(Env* env,Array<Token> inputs,Array<AddressGenForDef> loops,SYM_Expr addr,String content);
+AddressAccess* CompileAddressGen(Array<AddressGenForDef2> loops,SYM_Expr addr);
 
 // ======================================
 // Manipulation
