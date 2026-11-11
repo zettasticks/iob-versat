@@ -25,10 +25,6 @@ struct MERGE_Result{
   bool error;
 };
 
-MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out);
-
-String MERGE_GetValidMuxName(COM_Unit* units,int muxInserted,Arena* out);
-
 struct ConsolidationGraphOptions{
   //Array<SpecificMergeNodes> specifics;
   int order;
@@ -68,25 +64,20 @@ struct ConsolidationGraph{
 
 struct ConsolidationResult{
   ConsolidationGraph graph;
-  //Pool<MERGE_Map> specificsAdded;
   int upperBound;
 };
-
-#if 0
-struct CliqueState{
-  int max;
-  int upperBound;
-  int startI;
-  int iterations;
-  Time start;
-  bool found;
-};
-#endif
 
 struct MERGE_CliqueResult{
   BitArray result;
   bool didTimeout;
 };
+
+
+MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out);
+
+String MERGE_GetValidMuxName(COM_Unit* units,int muxInserted,Arena* out);
+
+COM_Unit* MERGE_GetMergeIndexUnit(COM_Unit* unit,int mergeIndex);
 
 ConsolidationGraph MERGE_GenerateConsolidationGraph(COM_Unit* unit,COM_Edge* edge,COM_Graph toMap,ConsolidationGraphOptions options,Arena* out);
 

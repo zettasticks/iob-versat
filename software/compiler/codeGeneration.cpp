@@ -4,6 +4,7 @@
 #include "globals.hpp"
 #include "codeGeneration_meta.hpp"
 #include "addressGen.hpp"
+#include "merge.hpp"
 
 #include "CEmitter.hpp"
 
@@ -1995,16 +1996,14 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
         if(entry->childs){
           c->Union();
 
-          NOT_IMPLEMENTED("Missing merge stuff");
-#if 0          
-          for(SingleTypeStructElement typeAndName : entry.typeAndNames){
-            if(typeAndName.arraySize > 1){
-              c->Member(typeAndName.type,typeAndName.name,typeAndName.arraySize);
-            } else {
-              c->Member(typeAndName.type,typeAndName.name);
+          for(GEN_StructElem* child = entry->childs; child; child = child->next){
+            String typeName = entry->simpleTypename;
+            if(Empty(typeName)){
+              typeName = SF("%.*sState",UN(child->type->name));
             }
+
+            c->Member(typeName,child->name,0);
           }
-#endif
 
           c->EndStruct();
         } else {
@@ -2380,7 +2379,7 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
       }
 
       for(COM_Struct def : func->structs){
-        c->Struct(SF("%.*s_%.*s",UN(def.originalModule),UN(def.name)));
+        c->Struct(def.name); //SF("%.*s_%.*s",UN(def.originalModule),UN(def.name)));
         for(COM_StructElem elem : def.elems){
           c->VarDeclare(elem.typeName,elem.name);
         }
@@ -2916,12 +2915,6 @@ String GEN_OutputVerilatorHardwareWrapper(GEN_TopInfo* info,Arena* out){
   m->Timescale("1ns","1ps");
 
   m->Module("Versat_verilator_wrapper");
-#if 0
-  for(DECL_Param p : decl->parameters){
-    m->ModuleParam(p.name,p.val);
-  }
-#endif
-  //m->ModuleParam("ADDR_W",32);
   m->ModuleParam("DATA_W",32);
   m->ModuleParam("LEN_W",32);
   m->ModuleParam("DELAY_W",32);
@@ -4246,31 +4239,29 @@ GEN_StructInfo* GEN_GenerateConfigStruct(COM_Unit* top,GEN_StructInfoList* allSt
   if(top->decl->type == DeclarationType_MERGED){
     GEN_StructElem *childHead = 0,*childTail = 0;
 
-    COM_Unit* start = top->decl->fixedDelays.units.head->mergeNext;
-    for(; start; start = start->mergeNext){
-      int mergeIndex = start->mergeIndex;
+    COM_Unit* graphStart = top->decl->fixedDelays.units.head;
+
+    for(int mergeIndex = 0; mergeIndex < top->decl->typesMerged.size; mergeIndex++){
       String typeName = top->decl->typesMerged[mergeIndex];
       String mergeName = top->decl->mergedNames[mergeIndex];
 
       // Create merge structure =====================================================
-      // TODO: Could change function to operate on structElem level and top level creates the structInfo
       GEN_StructElem *subMergeHead = 0,*subMergeTail = 0;
 
       int padInserted = 0;
-      for(COM_Unit* ptr = start; ptr; ptr = ptr->next){
+      for(COM_Unit* ptr = graphStart; ptr; ptr = ptr->next){
         if(ptr->decl->configs.size == 0){
           continue;
         }
 
         GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
         elem->type = GEN_GenerateConfigStruct(ptr,allStructs,out);
-        
-        // TODO: Do we actually care wether a unit belongs or not to a given merge graph?
-        //       Now that functions are properly compiled?
-        if(ptr->doesNotBelong){
+
+        COM_Unit* reconUnit = MERGE_GetMergeIndexUnit(ptr,mergeIndex);
+        if(IsNil(reconUnit)){
           elem->name = PushString(out,"pad_%d",padInserted++);
         } else {
-          elem->name = ptr->name;
+          elem->name = reconUnit->name;
         }
         LL_Append(subMergeHead,subMergeTail,next,elem);
       }
@@ -4283,7 +4274,7 @@ GEN_StructInfo* GEN_GenerateConfigStruct(COM_Unit* top,GEN_StructInfoList* allSt
 
       LL_Append(childHead,childTail,next,elem);
     }
-    
+   
     GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
     elem->childs = childHead;
     LL_Append(head,tail,next,elem);
@@ -4329,39 +4320,54 @@ GEN_StructInfo* GEN_GenerateStateStruct(COM_Unit* top,GEN_StructInfoList* allStr
     return info;
   }
 
-  for(COM_Unit* ptr = top->decl->fixedDelays.units.head; ptr; ptr = ptr->next){
-    if(ptr->decl->states.size == 0){
-      continue;
-    }
+  if(top->decl->type == DeclarationType_MERGED){
+    GEN_StructElem *childHead = 0,*childTail = 0;
 
-    if(false /* ptr->isMerge */){
-#if 0
-      GEN_StructElem* mergeHead = 0;
-      GEN_StructElem* mergeTail = 0;
+    COM_Unit* graphStart = top->decl->fixedDelays.units.head;
 
-      COM_Unit* newTop = top->decl->fixedDelays.units.head;
+    for(int mergeIndex = 0; mergeIndex < top->decl->typesMerged.size; mergeIndex++){
+      String typeName = top->decl->typesMerged[mergeIndex];
+      String mergeName = top->decl->mergedNames[mergeIndex];
 
-      int partIndex = 0;
-      for(COM_Unit* newPtr = newTop; newPtr; partIndex++,newPtr = newPtr->mergeNext){
-        MergePartition part = ptr->decl->info.infos[partIndex];
-        
-        String partName = part.name;
+      // Create merge structure =====================================================
+      GEN_StructElem *subMergeHead = 0,*subMergeTail = 0;
 
-        GEN_StructInfo* info = GEN_GenerateConfigStruct(partName,newPtr,out);
+      int padInserted = 0;
+      for(COM_Unit* ptr = graphStart; ptr; ptr = ptr->next){
+        if(ptr->decl->states.size == 0){
+          continue;
+        }
 
         GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
-        elem->name = PushString(out,partName);
-        elem->type = info;
+        elem->type = GEN_GenerateStateStruct(ptr,allStructs,out);
 
-        LL_Append(mergeHead,mergeTail,next,elem);
+        COM_Unit* reconUnit = MERGE_GetMergeIndexUnit(ptr,mergeIndex);
+        if(IsNil(reconUnit)){
+          elem->name = PushString(out,"pad_%d",padInserted++);
+        } else {
+          elem->name = reconUnit->name;
+        }
+        LL_Append(subMergeHead,subMergeTail,next,elem);
       }
 
-      GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
-      elem->childs = mergeHead;
+      GEN_StructInfo* info = GEN_AddStruct(allStructs,typeName,subMergeHead,out);
 
-      LL_Append(head,tail,next,elem);
-#endif
-    } else {
+      GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
+      elem->name = mergeName;
+      elem->type = info;
+
+      LL_Append(childHead,childTail,next,elem);
+    }
+   
+    GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
+    elem->childs = childHead;
+    LL_Append(head,tail,next,elem);
+  } else {
+    for(COM_Unit* ptr = top->decl->fixedDelays.units.head; ptr; ptr = ptr->next){
+      if(ptr->decl->states.size == 0){
+        continue;
+      }
+
       GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
       elem->type = GEN_GenerateStateStruct(ptr,allStructs,out);
       elem->name = ptr->name;

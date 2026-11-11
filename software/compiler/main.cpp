@@ -410,8 +410,6 @@ int main(int argc,char* argv[]){
   
   FUDeclaration* topType = DECL_GetType(topLevelTypeStr,params);
 
-  DEBUG_BREAK();
-
   if(IsNil(topType)){
     printf("Did not find module named: '%.*s'\n",UN(topLevelTypeStr));
     return -1;

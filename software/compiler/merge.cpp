@@ -1,11 +1,11 @@
 #include "merge.hpp"
+#include "filesystem.hpp"
 
 #if 0
 
 #include "accelerator.hpp"
 #include "configurations.hpp"
 #include "declaration.hpp"
-#include "filesystem.hpp"
 #include "globals.hpp"
 #include "textualRepresentation.hpp"
 #include "symbolic.hpp"
@@ -3775,16 +3775,11 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
   int size = types.size;
   Assert(size >= 2);
 
-  Array<COM_Graph> flattened = PushArray<COM_Graph>(temp,size);
-  for(int i = 0; i < size; i++){
-    flattened[i] = COM_Flatten(types[i]->baseGraph,out);
-
-    COM_DebugOutputDotGraph(SF("Flattened%d.dot",i),"Flattened graph",flattened[i].units.head,flattened[i].edges.head,COM_DefaultReprFunction);
-  }
-
   Array<COM_Graph> reconGraphs = PushArray<COM_Graph>(out,size);
   for(int i = 0; i < size; i++){
-    reconGraphs[i] = flattened[i];
+    reconGraphs[i] = COM_Flatten(types[i]->baseGraph,out);
+
+    COM_DebugOutputDotGraph(SF("Flattened%d.dot",i),"Flattened graph",reconGraphs[i].units.head,reconGraphs[i].edges.head,COM_DefaultReprFunction);
   }
 
   COM_Graph mergedGraph = {};
@@ -3799,16 +3794,30 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
 
   int upperBound = INT_MAX;
   for(int i = 0; i < size; i++){
-    COM_Graph graph = reconGraphs[i];
-    ConsolidationGraph CG = MERGE_GenerateConsolidationGraph(unitHead,edgeHead,graph,{},temp);
+    COM_Graph recon = reconGraphs[i];
+    ConsolidationGraph CG = MERGE_GenerateConsolidationGraph(unitHead,edgeHead,recon,{},temp);
     MERGE_DebugOutputCG(CG,SF("ConsolidationGraph_%d.dot",i));
     MERGE_CliqueResult result = MERGE_MaxClique(CG,upperBound,Seconds(10),temp);
+
+#if 1
+    printf("==============\n");
+    printf("Max clique found:\n");
+    for(int i : result.result){
+      MERGE_Map map = CG.nodes[i];
+      
+      auto b = StartString(temp);
+      MERGE_Repr(b,&map);
+      String str = EndString(temp,b);
+
+      printf("%.*s\n",UN(str));
+    }
+    printf("==============\n");
+#endif
+
     MERGE_DebugOutputCG(CG,SF("MaxClique_%d.dot",i),&result.result);
     
-    // Store the mapping from recon to graph directly inside nodes and edges ======
+    // Initialize unit and edge mappings ==========================================
     BitArray bestClique = result.result;
-    COM_ClearGeneralPtr(graph.units.head);
-    COM_ClearGeneralPtr(graph.edges.head);
     for(int i = 0; i < CG.nodes.size; i++){
       int isValid = bestClique.Get(i);
       if(!isValid){
@@ -3828,7 +3837,7 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
     }
 
     // Create any unit that has not been mapped already ===========================
-    for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
+    for(COM_Unit* ptr = recon.units.head; ptr; ptr = ptr->next){
       if(mapReconUnitToGraph->Exists(ptr)){
         continue;
       }
@@ -3838,21 +3847,34 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
       mapReconUnitToGraph->Insert(ptr,node);
     }
 
-    // Create any edge that has not been mapped already ===========================
-    for(COM_Edge* ptr = graph.edges.head; ptr; ptr = ptr->next){
-      if(mapReconEdgeToGraph->Exists(ptr)){
+    // Create any edge that goes from mapped to not mapped ========================
+    for(COM_Edge* reconEdge = recon.edges.head; reconEdge; reconEdge = reconEdge->next){
+      if(mapReconEdgeToGraph->Exists(reconEdge)){
         continue;
       }
 
-      COM_Edge* newEdge = PushStruct<COM_Edge>(out);
-      newEdge->in = mapReconUnitToGraph->GetOrFail(ptr->in);
-      newEdge->inPort = ptr->inPort;
-      newEdge->out = mapReconUnitToGraph->GetOrFail(ptr->out);
-      newEdge->outPort = ptr->outPort;
-      newEdge->delay = ptr->delay;
-      mapReconEdgeToGraph->Insert(ptr,newEdge);
+      COM_Edge possibleNew = {};
+      possibleNew.in = mapReconUnitToGraph->GetOrFail(reconEdge->in);
+      possibleNew.inPort = reconEdge->inPort;
+      possibleNew.out = mapReconUnitToGraph->GetOrFail(reconEdge->out);
+      possibleNew.outPort = reconEdge->outPort;
+      possibleNew.delay = reconEdge->delay;
 
-      LL_Append(edgeHead,edgeTail,next,newEdge);
+      COM_Edge* exists = 0;
+      for(COM_Edge* edgePtr = edgeHead; edgePtr; edgePtr = edgePtr->next){
+        if(Equal(possibleNew,*edgePtr)){
+          exists = edgePtr;
+          break;
+        }
+      }
+
+      if(!exists){
+        COM_Edge* newEdge = PushStruct<COM_Edge>(out);
+        *newEdge = possibleNew;
+        LL_Append(edgeHead,edgeTail,next,newEdge);
+
+        mapReconEdgeToGraph->Insert(reconEdge,newEdge);
+      }
     }
   }
 
@@ -4062,36 +4084,39 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
     }
   }
 
-#if 0
-  // Temporarely on hold since recon graphs do not match 1-to-1 with the merged graph.
-  // We do not create superflouous nodes in the recon graphs from the other graph nodes,
-  // meaning that we cannot just do this the dumb way.
-
-  // Set graph pointers =========================================================
-  Array<COM_Unit*> reconPointers = PushArray<COM_Unit*>(temp,size);
   for(int i = 0; i < size; i++){
-    reconPointers[i] = reconGraphs[i].units.head;
+    COM_DebugOutputDotGraph(SF("Final_Recon%d.dot",i),"Recon",reconGraphs[i].units.head,reconGraphs[i].edges.head,COM_DefaultReprFunction);
   }
+  COM_DebugOutputDotGraph("Final_Merged.dot","MergedGraph",unitHead,edgeHead,COM_DefaultReprFunction);
 
   for(COM_Unit* ptr = mergedGraph.units.head; ptr; ptr = ptr->next){
-    ptr->mergeNext = reconPointers[0];
-    reconPointers[0]->mergePrev = ptr;
-
+    ptr->mergeIndex = -1;
+  }
+ 
+  // Store recon units in the units merge list ==================================
+  for(COM_Unit* trueUnit = mergedGraph.units.head; trueUnit; trueUnit = trueUnit->next){
+    COM_Unit* mergePtr = trueUnit;
     for(int i = 0; i < size; i++){
-      if(i > 0){
-        reconPointers[i]->mergePrev = reconPointers[i-1];
-      }
-      if(i < size - 1){
-        reconPointers[i]->mergeNext = reconPointers[i+1];
-      }
-    }
 
-    for(int i = 0; i < size; i++){
-      reconPointers[i] = reconPointers[i]->next;
+      // Find recon unit that maps to true unit =====================================
+      COM_Unit* reconUnit = nullptr;
+      for(COM_Unit* recon = reconGraphs[i].units.head; recon; recon = recon->next){
+        COM_Unit* map = mapReconUnitToGraph->GetOrElse(recon,nullptr);
+        if(map == trueUnit){
+          reconUnit = recon;
+          break;
+        }
+      }
+      
+      // Add recon node to the true unit merge list =================================
+      if(reconUnit){
+        mergePtr->mergeNext = reconUnit;
+        mergePtr = reconUnit;
+        reconUnit->mergeIndex = i;
+      }
     }
   }
-#endif
-    
+
   // Resolve duplicated unit names by merging names =============================
   int index = 0;
   for(COM_Unit* unit = mergedGraph.units.head; unit; unit = unit->next){
@@ -4114,8 +4139,7 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
     if(!Empty(b)){
       name = EndString(out,b);
     }
-
-    unit->name = PushString(out,"%.*s_%d",UN(name),index++);
+    unit->name = name;
   }
 
   MERGE_Result res = {};
@@ -4158,6 +4182,15 @@ String MERGE_GetValidMuxName(COM_Unit* units,int muxInserted,Arena* out){
   return possibleName;
 }
 
+COM_Unit* MERGE_GetMergeIndexUnit(COM_Unit* unit,int mergeIndex){
+  for(COM_Unit* ptr = unit; ptr; ptr = ptr->mergeNext){
+    if(ptr->mergeIndex == mergeIndex){
+      return ptr;
+    }
+  }
+
+  return &COM_Unit_Nil;
+}
 
 // Start ======================================================================
 
@@ -4225,16 +4258,13 @@ bool NodeConflict(COM_Unit* first,COM_Unit* second){
 }
 
 bool NodeMappingConflict(COM_Edge edge1,COM_Edge edge2){
-#if 0
-  PortInstance p00 = edge1.units[0];
-  PortInstance p01 = edge1.units[1];
-  PortInstance p10 = edge2.units[0];
-  PortInstance p11 = edge2.units[1];
-#endif
+  COM_Port p00 = edge1.units[0];
+  COM_Port p01 = edge1.units[1];
+  COM_Port p10 = edge2.units[0];
+  COM_Port p11 = edge2.units[1];
 
-#if 0
-  if(NodeConflict(p00.inst) || NodeConflict(p01.inst) || 
-     NodeConflict(p10.inst) || NodeConflict(p11.inst)){
+  if(NodeConflict(p00.unit) || NodeConflict(p01.unit) || 
+     NodeConflict(p10.unit) || NodeConflict(p11.unit)){
     return true;
   }
 
@@ -4244,34 +4274,32 @@ bool NodeMappingConflict(COM_Edge edge1,COM_Edge edge2){
   }
 #endif
      
-  if(p00.inst == p10.inst && p01.inst != p11.inst){
+  if(p00.unit == p10.unit && p01.unit != p11.unit){
     return true;
   }
-  if(p00.inst == p11.inst && p01.inst != p10.inst){
+  if(p00.unit == p11.unit && p01.unit != p10.unit){
     return true;
   }
-  if(p00.inst != p10.inst && p01.inst == p11.inst){
+  if(p00.unit != p10.unit && p01.unit == p11.unit){
     return true;
   }
-  if(p00.inst != p11.inst && p01.inst == p10.inst){
+  if(p00.unit != p11.unit && p01.unit == p10.unit){
     return true;
   }
-#endif
 
   return false;
 }
 
 bool EqualPortMapping(COM_Unit* unit0,COM_Unit* unit1){
-#if 1
   FUDeclaration* d0 = unit0->decl;
   FUDeclaration* d1 = unit1->decl;
 
   if(d0 == BasicDeclaration::input && d1 == BasicDeclaration::input){ // Check the special case for inputs
-      if(unit0->special == unit1->special){
-        return true;
-      } else {
-        return false;
-      }
+    if(unit0->special == unit1->special){
+      return true;
+    } else {
+      return false;
+    }
   }
 
   if(NodeConflict(unit0,unit1)){
@@ -4280,7 +4308,6 @@ bool EqualPortMapping(COM_Unit* unit0,COM_Unit* unit1){
   
   bool res = (d0->meta == d1->meta);
   return res;
-#endif
 }
 
 bool MappingConflict(MERGE_Map map1,MERGE_Map map2){
@@ -4362,7 +4389,6 @@ ConsolidationGraph MERGE_GenerateConsolidationGraph(COM_Unit* units,COM_Edge* ed
 
   for(COM_Edge* edge0 = edges; edge0; edge0 = edge0->next){
     for(COM_Edge* edge1 = toMap.edges.head; edge1; edge1 = edge1->next){
-      
       if(!(EqualPortMapping(edge0->units[0].unit,edge1->units[0].unit) &&
            EqualPortMapping(edge0->units[1].unit,edge1->units[1].unit))){
         continue;
@@ -4406,6 +4432,16 @@ ConsolidationGraph MERGE_GenerateConsolidationGraph(COM_Unit* units,COM_Edge* ed
     for(int j = i + 1; j < size; j++){
       MERGE_Map map0 = nodes[i];
       MERGE_Map map1 = nodes[j];
+
+#if 0
+      auto b = StartString(temp);
+      MERGE_Repr(b,&map0);
+      b->PushString(" : ");
+      MERGE_Repr(b,&map1);
+      String str = EndString(temp,b);
+
+      printf("%.*s\n",UN(str));
+#endif
 
       if(MappingConflict(map0,map1)){
         continue;
@@ -4497,6 +4533,8 @@ void Clique(CliqueState* state,BitArray nodes,int index,IndexRecord* record,int 
 MERGE_CliqueResult MERGE_MaxClique(ConsolidationGraph graph,int upperBound,Time MAX_CLIQUE_TIME,Arena* out){
   TEMP_REGION(temp,out);
 
+  int size = graph.nodes.size;
+
   struct Work{
     Work* next;
     Work* prev;
@@ -4507,12 +4545,6 @@ MERGE_CliqueResult MERGE_MaxClique(ConsolidationGraph graph,int upperBound,Time 
     int nodesSet;
   };
 
-  int size = graph.nodes.size;
-
-  BitArray maxCliqueFound = {};
-  maxCliqueFound.Init(out,size);
-  int maxFoundSoFar = 0;
-
   Work* workHead = 0;
   Work* workTail = 0;
   Work* workFree = 0;
@@ -4522,6 +4554,11 @@ MERGE_CliqueResult MERGE_MaxClique(ConsolidationGraph graph,int upperBound,Time 
     if(workFree){
       res = workFree;
       LL_PopFrontNoTail(workFree,next);
+
+      BitArray saved = res->nodes;
+
+      *res = {};
+      res->nodes = saved;
     } else {
       res = PushStruct<Work>(temp);
       res->nodes.Init(temp,size);
@@ -4530,10 +4567,11 @@ MERGE_CliqueResult MERGE_MaxClique(ConsolidationGraph graph,int upperBound,Time 
     return res;
   };
 
-  Work topLevel = {};
+  BitArray maxCliqueFound = {};
+  maxCliqueFound.Init(out,size);
+  int maxFoundSoFar = 0;
 
   Work* top = AllocateWork();
-  top->parent = &topLevel;
   top->nodes.Fill(1);
   FIFO_Push(workHead,workTail,next,prev,top);
 
@@ -4542,7 +4580,12 @@ MERGE_CliqueResult MERGE_MaxClique(ConsolidationGraph graph,int upperBound,Time 
 
 #if 0
     String repr = Repr(w->nodes,temp);
-    printf("%p %d %d: %.*s\n",w,w->nodesSet,w->onePastLastIndex,UN(repr));
+    int level = 0;
+    for(Work* ptr = w; ptr; ptr = ptr->parent){
+      level += 1;
+    }
+    printf("Max: %d,Level: %d\n",maxFoundSoFar,level);
+    printf("%d %d: %.*s\n",w->nodesSet,w->onePastLastIndex,UN(repr));
 #endif
     
     // Node whose children finished processing ====================================
@@ -4550,7 +4593,7 @@ MERGE_CliqueResult MERGE_MaxClique(ConsolidationGraph graph,int upperBound,Time 
       FIFO_Pop(workHead,workTail,next,prev);
       LL_PushNoTail(workFree,next,w);
       continue;
-    } 
+    }
 
     while(w->onePastLastIndex < size){
       int index = w->nodes.FirstBitSetIndex(w->onePastLastIndex);
@@ -4564,8 +4607,12 @@ MERGE_CliqueResult MERGE_MaxClique(ConsolidationGraph graph,int upperBound,Time 
           maxFoundSoFar = w->nodesSet;
           maxCliqueFound.Fill(0);
 
+          //printf("\n\nUpdated max\n\n\n");
           for(Work* ptr = w->parent; ptr; ptr = ptr->parent){
-            maxCliqueFound.Set(ptr->onePastLastIndex - 1,1);
+            //printf("%d\n",ptr->onePastLastIndex - 1);
+            if(ptr->onePastLastIndex > 0){
+              maxCliqueFound.Set(ptr->onePastLastIndex - 1,1);
+            }
           }
         }
 
@@ -4582,7 +4629,9 @@ MERGE_CliqueResult MERGE_MaxClique(ConsolidationGraph graph,int upperBound,Time 
         node->nodesSet = w->nodesSet + 1;
 
         // Optimization, no point in processing if maximum is smaller than already found =
-        if(node->nodesSet + node->nodes.GetNumberBitsSet() < maxFoundSoFar){
+        if(node->nodesSet + node->nodes.GetNumberBitsSet() <= maxFoundSoFar){
+          // We allocate work since we need to also allocate the bitarray but 
+          // we do not need to process further so just put it back into the free list
           LL_PushNoTail(workFree,next,node);
         } else {
           FIFO_Push(workHead,workTail,next,prev,node);
@@ -4603,10 +4652,16 @@ MERGE_CliqueResult MERGE_MaxClique(ConsolidationGraph graph,int upperBound,Time 
   MERGE_CliqueResult res = {};
   res.result = maxCliqueFound;
   res.didTimeout = false;
+
+#if 0
+  printf("\n\nOIASHNJDIUOAH\n\n");
+  for(int i : res.result){
+    printf("A: %d\n",i);
+  }
+#endif
+
   return res;
 }
-
-#include "filesystem.hpp"
 
 void MERGE_Repr(StringBuilder* b,MERGE_Map* map){
   switch(map->type){
@@ -4637,11 +4692,9 @@ void MERGE_DebugOutputCG(ConsolidationGraph graph,String name,BitArray* optional
   for(int i = 0; i < graph.nodes.size; i++){
     MERGE_Map* node = &graph.nodes[i];
 
-#if 1
     if(optionalValid && !optionalValid->Get(i)){
       continue;
     }
-#endif
 
     b->PushString("\t\"");
     MERGE_Repr(b,node);
@@ -4649,19 +4702,15 @@ void MERGE_DebugOutputCG(ConsolidationGraph graph,String name,BitArray* optional
   }
 
   for(int i = 0; i < graph.nodes.size; i++){
-#if 1
     if(optionalValid && !optionalValid->Get(i)){
       continue;
     }
-#endif
 
     MERGE_Map* node1 = &graph.nodes[i];
     for(int ii = i + 1; ii < graph.edges.size; ii++){
-#if 1
       if(optionalValid && !optionalValid->Get(ii)){
         continue;
       }
-#endif
       if(!graph.edges[i].Get(ii)){
         continue;
       }

@@ -532,12 +532,12 @@ GroupIterator IterateGroup(Env* env,VarGroup* group,Arena* out);
 struct SP_Node{
   union {
     SP_Node* next;
-    SP_Node* first;
+    //SP_Node* first;
   };
 
   union {
     SP_Node* childs;
-    SP_Node* second;
+    //SP_Node* second;
   };
 
   SP_Type type;
@@ -575,8 +575,7 @@ String SP_Repr(SP_Node* top,Arena* out);
 // ======================================
 // Parsing helpers
 
-SP_Node* ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower);
-SP_Node* SP_ParseExpression(Parser* parser,Arena* out);
+SP_Node* SP_ParseExpression(Parser* parser,Arena* out,int bindingPower = 99);
 SP_Node* SP_ParseRange(Parser* parser,Arena* out);
 SP_Node* SP_ParseVar(Parser* parser,Arena* out);
 SP_Node* SP_ParseVarDeclaration(Parser* parser,Arena* out);
@@ -596,5 +595,4 @@ SP_Node* SP_ParseSpec(String content,Arena* out);
 // ======================================
 // Helpers
 
-SP_Node*     SP_UnpackExpr(SP_Node* exprNode);
 SP_NodeList  SP_Flatten(SP_Node* top,Arena* out);

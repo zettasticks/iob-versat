@@ -40,7 +40,7 @@ struct COM_Unit{
   COM_Unit* next;
   COM_Unit* prev;
   COM_Unit* mergeNext;
-  COM_Unit* mergePrev; // Instead of prev we probably only care about returning to node 0.
+  //COM_Unit* mergePrev; // Instead of prev we probably only care about returning to node 0.
   int mergeIndex;
 
   // NOTE: General purpose pointer to help map from units to temporary
@@ -388,7 +388,6 @@ struct COM_StructElem{
 };
 
 struct COM_Struct{
-  String originalModule;
   String name;
   Array<COM_StructElem> elems;
 };
@@ -433,6 +432,7 @@ struct COM_DebugRepr{
 
 bool IsNil(COM_Ent ent);
 bool IsNil(COM_ConnectInfo* con);
+bool IsNil(COM_Unit* unit);
 
 bool COM_Ent_IsVar(COM_EntType in);
 bool COM_Ent_IsArray(COM_EntType in);
@@ -443,6 +443,8 @@ bool COM_Ent_IsUnitLike(COM_EntType type);
 void           COM_Copy(COM_Unit* out,COM_Unit* in);
 COM_Unit*      COM_Copy(COM_Unit* unit,Arena* out);
 COM_CopyResult COM_Copy(COM_Graph in,bool computeMapping,Arena* out);
+
+bool Equal(COM_Edge lhs,COM_Edge rhs);
 
 // ======================================
 // Constant expressions and computations

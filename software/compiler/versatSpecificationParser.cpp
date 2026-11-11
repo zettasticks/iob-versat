@@ -3434,38 +3434,17 @@ String SP_Repr(SP_Node* top,Arena* out){
       return;
     }
 
-    bool exprType = SP_Type_IsExpr(node->type);
-    bool isExprContainer = (node->type == SP_Type_EXPR);
     String name = SP_Type_Name(node->type);
     b->PushSpaces(level * 2);
 
-    if(isExprContainer){
-      b->PushString("N: %.*s ",UN(name));
-      if(!Empty(node->token.val)){
-        b->PushString("%.*s",UN(node->token.val));
-      }
-      b->PushString("\n");
-      
-      Recurse(Recurse,node->childs,level + 1);
-    } else if(exprType){
-      b->PushString("E: %.*s ",UN(name));
-      if(!Empty(node->token.val)){
-        b->PushString("%.*s",UN(node->token.val));
-      }
-      b->PushString("\n");
+    b->PushString("T: %.*s ",UN(name));
+    if(!Empty(node->token.val)){
+      b->PushString("%.*s",UN(node->token.val));
+    }
+    b->PushString("\n");
 
-      Recurse(Recurse,node->first,level + 1);
-      Recurse(Recurse,node->second,level + 1);
-    } else {
-      b->PushString("N: %.*s ",UN(name));
-      if(!Empty(node->token.val)){
-        b->PushString("%.*s",UN(node->token.val));
-      }
-      b->PushString("\n");
-
-      for(SP_Node* ptr = node->childs; ptr; ptr = ptr->next){
-        Recurse(Recurse,ptr,level + 1);
-      }
+    for(SP_Node* ptr = node->childs; ptr; ptr = ptr->next){
+      Recurse(Recurse,ptr,level + 1);
     }
   };
 
@@ -3475,7 +3454,7 @@ String SP_Repr(SP_Node* top,Arena* out){
   return res;
 }
 
-SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
+SP_Node* SP_ParseExpression(Parser* parser,Arena* out,int bindingPower){
   TEMP_REGION(temp,out);
 
   SP_Node* bottomUnary = nullptr;
@@ -3500,7 +3479,7 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
     }
 
     if(parsed){
-      parsed->first = topUnary;
+      parsed->childs = topUnary;
       continue;
     }
 
@@ -3514,7 +3493,7 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
   if(peek.type == '('){
     parser->ExpectNext('(');
 
-    atom = SP_ParseExpressionInternal(parser,out,99);
+    atom = SP_ParseExpression(parser,out,99);
 
     parser->ExpectNext(')');
   } else if(peek.type == TokenType_NUMBER){
@@ -3533,7 +3512,7 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
           break;
         }
 
-        SP_Node* arg = SP_ParseExpressionInternal(parser,out,99);
+        SP_Node* arg = SP_ParseExpression(parser,out,99);
         SP_Append(argHead,argTail,arg);
 
         if(parser->IfNextToken(',')){
@@ -3544,9 +3523,8 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
       }
 
       parser->ExpectNext(')');
-      var = SP_PushNode(out,SP_Type_FUNC_CALL,name,0);
-      var->second = argHead;
-    } else {
+      var = SP_PushNode(out,SP_Type_FUNC_CALL,name,argHead);
+   } else {
       var = SP_PushNode(out,SP_Type_VAR,name,0);
     }
 
@@ -3563,7 +3541,7 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
               break;
             }
 
-            SP_Node* arg = SP_ParseExpressionInternal(parser,out,99);
+            SP_Node* arg = SP_ParseExpression(parser,out,99);
             SP_Append(argHead,argTail,arg);
 
             if(parser->IfNextToken(',')){
@@ -3574,11 +3552,10 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
           }
 
           SP_Node* nameNode = SP_PushNode(out,SP_Type_VAR,name,0);
+          nameNode->next = argHead;
 
           parser->ExpectNext(')');
-          var = SP_PushNode(out,SP_Type_FUNC_CALL,access,nullptr);
-          var->first = nameNode;
-          var->second = argHead;
+          var = SP_PushNode(out,SP_Type_FUNC_CALL,access,nameNode);
         } else {
           var = SP_PushNode(out,SP_Type_HIER_ACCESS,access,var);
         }
@@ -3613,27 +3590,23 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
   }
 
   if(topUnary){
-    bottomUnary->first = atom;
+    bottomUnary->childs = atom;
     atom = topUnary;
   }
 
   if(parser->IfNextToken(TokenType_DELAY_START)){
     SP_Node* delay = SP_ParseRange(parser,out);
     
-    SP_Node* access = SP_PushNode(out,SP_Type_DELAY_ACCESS,{},0);
-    access->first = atom;
-    access->second = delay;
-
+    SP_Node* access = SP_PushNode(out,SP_Type_DELAY_ACCESS,{},atom);
     atom = access;
 
     parser->ExpectNext(TokenType_DELAY_END);
   }
 
   if(parser->IfNextToken(TokenType_DOUBLE_DOT)){
-    SP_Node* range = SP_PushNode(out,SP_Type_RANGE,{},0);
-    range->first = atom;
-    range->second = SP_ParseExpressionInternal(parser,out,99);
+    atom->next = SP_ParseExpression(parser,out,99);
 
+    SP_Node* range = SP_PushNode(out,SP_Type_RANGE,{},atom);
     atom = range;
   }
 
@@ -3672,13 +3645,10 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
         if(info.bindingPower < bindingPower){
           parser->NextToken();
 
-          SP_Node* right = SP_ParseExpressionInternal(parser,out,info.bindingPower);
+          SP_Node* right = SP_ParseExpression(parser,out,info.bindingPower);
+          atom->next = right;
       
-          SP_Node* op = SP_PushNode(out,info.op,{},0);
-          op->first = atom;
-          op->second = right;
-
-          atom = op;
+          atom = SP_PushNode(out,info.op,{},atom);
           continueOuter = true;
           break;
         }
@@ -3695,29 +3665,7 @@ SP_Node* SP_ParseExpressionInternal(Parser* parser,Arena* out,int bindingPower){
   return atom;
 }
 
-SP_Node* SP_ParseExpression(Parser* parser,Arena* out){
-  SP_Node* expr = SP_ParseExpressionInternal(parser,out,99);
-
-  SP_Node* res = SP_PushNode(out,SP_Type_EXPR,{},expr);
-  return res;
-}
-
 SP_Node* SP_ParseRange(Parser* parser,Arena* out){
-#if 0
-  SP_Node* first = SP_ParseExpressionInternal(parser,out,99);
-
-  SP_Node* second = first;
-  if(parser->IfNextToken(TokenType_DOUBLE_DOT)){
-    second = SP_ParseExpressionInternal(parser,out,99);
-  }
-
-  SP_Node* range = SP_PushNode(out,SP_Type_RANGE,{},0);
-  range->first = first;
-  range->second = second;
-
-  SP_Node* res = SP_PushNode(out,SP_Type_EXPR,{},range);
-#endif
-  // Because expressions can be range the parse range is no longer needed, I think
   SP_Node* res = SP_ParseExpression(parser,out);
   return res;
 }
@@ -4427,19 +4375,6 @@ SP_Node* SP_ParseSpec(String content,Arena* out){
 // ======================================
 // Helpers
 
-SP_Node* SP_UnpackExpr(SP_Node* exprNode){
-  if(!exprNode){
-    return nullptr;
-  }
-
-  SP_Node* node = exprNode;
-  if(node->type == SP_Type_EXPR){
-    node = node->childs;
-  }
-
-  return node;
-}
-
 SP_NodeList SP_Flatten(SP_Node* top,Arena* out){
   SP_NodeNode* head = 0;
   SP_NodeNode* tail = 0;
@@ -4453,18 +4388,8 @@ SP_NodeList SP_Flatten(SP_Node* top,Arena* out){
     toAdd->node = node;
     LL_Append(head,tail,next,toAdd);
 
-    bool exprType = SP_Type_IsExpr(node->type);
-    bool isExprContainer = (node->type == SP_Type_EXPR);
-
-    if(isExprContainer){
-      Recurse(Recurse,node->childs);
-    } else if(exprType){
-      Recurse(Recurse,node->first);
-      Recurse(Recurse,node->second);
-    } else {
-      for(SP_Node* ptr = node->childs; ptr; ptr = ptr->next){
-        Recurse(Recurse,ptr);
-      }
+    for(SP_Node* ptr = node->childs; ptr; ptr = ptr->next){
+      Recurse(Recurse,ptr);
     }
   };
 

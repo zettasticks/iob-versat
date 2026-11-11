@@ -383,7 +383,7 @@ char StringBuilder::GetLastCharacterOrElse(char other){
   StringNode* ptr = this->tail;
 
   if(ptr && ptr->used > 0){
-    return ptr->buffer[ptr->used];
+    return ptr->buffer[ptr->used - 1];
   }
 
   return other;
@@ -648,7 +648,7 @@ int BitArray::Get(int index){
 }
 
 void BitArray::Set(int index,bool value){
-  Assert(index < this->bitSize);
+  Assert(index >= 0 && index < this->bitSize);
 
   int byteIndex = index / 8;
   int bitIndex = index % 8;

@@ -1191,51 +1191,6 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   // Merge recon info into a single graph =======================================
   COM_Unit* head = graph.units.head;
 
-  COM_Unit* ptr = head;
-  Array<COM_Unit*> columnPointers = PushArray<COM_Unit*>(temp,size);
-  while(ptr){
-    COM_Unit* mergePtr = ptr;
-    ptr->mergeIndex = -1;
-    
-    for(int i = 0; i < size; i++){
-      COM_Graph recon = merge.reconGraphs[i];
-      
-      COM_Unit* store = PushStruct<COM_Unit>(out);
-
-      bool found = false;
-      for(COM_Unit* reconUnit = recon.units.head; reconUnit; reconUnit = reconUnit->next){
-        COM_Unit* mapped = merge.mapReconUnitToGraph->GetOrElse(reconUnit,nullptr);
-
-        if(mapped == ptr){
-          *store = *mapped;
-          found = true;
-          break;
-        }
-      }
-
-      if(!found){
-        *store = *ptr;
-        store->doesNotBelong = true;
-      }
-
-      store->next = 0,store->prev = 0,store->mergeNext = 0,store->mergePrev = 0;
-      store->mergeIndex = i;
-
-      mergePtr->mergeNext = store;
-      store->mergePrev = mergePtr;
-
-      // Use next pointer to point to next node =====================================
-      if(columnPointers[i]){
-        columnPointers[i]->next = store;
-      } 
-      columnPointers[i] = store;
-      
-      mergePtr = store;
-    }
-
-    ptr = ptr->next;
-  }
-
   // TODO: nocheckin: copied from COM_InstantiateModule, compress
   FREE_ARENA(envArena);
   FREE_ARENA(envErrorArena);
@@ -1270,7 +1225,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
 
   // TODO: nocheckin: Copied from InstantiateModule, compress
   // Propagate composite units delays ===========================================
-  for(COM_Unit* unit = graph.units.head; unit; unit = unit->next){
+  for(COM_Unit* unit = head; unit; unit = unit->next){
     if(DECL_IsComposite(unit->decl)){
       for(int i = 0; i < unit->extraDelay.size; i++){
         unit->extraDelay[i] += unit->decl->extraDelays[i];
@@ -1280,14 +1235,14 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
 
   // Compute calculated delays ==================================================
   auto b = PushList<int>(temp);
-  for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
+  for(COM_Unit* ptr = head; ptr; ptr = ptr->next){
     for(int i = 0; i < ptr->extraDelay.size; i++){
       if(i < ptr->decl->numberInputDelays){
         *b->PushElem() = ptr->extraDelay[i];
       }
     }
   }
-  for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
+  for(COM_Unit* ptr = head; ptr; ptr = ptr->next){
     for(int i = 0; i < ptr->extraDelay.size; i++){
       if(i >= ptr->decl->numberInputDelays){
         *b->PushElem() = ptr->extraDelay[i];
@@ -1308,7 +1263,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   int externalCount = 0;
   int databusCount = 0;
   DECL_SingleInterface single = {};
-  for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
+  for(COM_Unit* ptr = head; ptr; ptr = ptr->next){
     FUDeclaration* decl = ptr->decl;
 
     if(!ptr->isStatic){
@@ -1373,7 +1328,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
     int configIndex = 0;
     int memMappedIndex = 0;
     int externalIndex = 0;
-    for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
+    for(COM_Unit* ptr = head; ptr; ptr = ptr->next){
       for(Wire w : ptr->decl->configs){
         res->configs[configIndex] = w;
         res->configs[configIndex].name = PushString(out,"%.*s_%.*s",UN(ptr->name),UN(res->configs[configIndex].name));
