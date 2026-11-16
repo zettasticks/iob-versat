@@ -68,6 +68,10 @@ static void RegisterOperators(){
   for(unsigned int i = 0; i < ARRAY_SIZE(unary); i++){
     FUDeclaration* decl = DECL_RegisterFU(unary[i].name,DeclarationType_SINGLE);
 
+    decl->meta = PushStruct<DECL_Meta>(DECL_State.arena);
+    decl->meta->type = DECL_MetaType_SIMPLE;
+    decl->meta->name = unary[i].name;
+
     decl->type = DeclarationType_SINGLE;
     decl->inputs = PushArray<DECL_PortInfo>(DECL_State.arena,1);
     decl->outputs = PushArray<DECL_PortInfo>(DECL_State.arena,1);
@@ -76,6 +80,10 @@ static void RegisterOperators(){
 
   for(unsigned int i = 0; i < ARRAY_SIZE(binary); i++){
     FUDeclaration* decl = DECL_RegisterFU(binary[i].name,DeclarationType_SINGLE);
+
+    decl->meta = PushStruct<DECL_Meta>(DECL_State.arena);
+    decl->meta->type = DECL_MetaType_SIMPLE;
+    decl->meta->name = unary[i].name;
 
     decl->inputs = PushArray<DECL_PortInfo>(DECL_State.arena,2);
     decl->outputs = PushArray<DECL_PortInfo>(DECL_State.arena,1);
@@ -169,6 +177,12 @@ bool DECL_HasVariableInputs(FUDeclaration* decl){
 bool DECL_IsComposite(FUDeclaration* decl){
   bool res = (decl->type == DeclarationType_COMPOSITE ||
               decl->type == DeclarationType_MERGED);
+  return res;
+}
+
+bool DECL_IsMergeMultiplexer(FUDeclaration* decl){
+  // TODO: Properly implement this
+  bool res = (decl->meta->name == "CombMux8");
   return res;
 }
 
@@ -1361,4 +1375,12 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   }
   
   return res;
+}
+
+// ======================================
+// Merge graph
+
+COM_Unit* DECL_GetMergeReconStart(FUDeclaration* decl){
+  COM_Unit* unit = decl->fixedDelays.units.head->mergeNext;
+  return unit;
 }

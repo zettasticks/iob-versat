@@ -2139,17 +2139,14 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     }
     auto specToVar = EndString(temp,d);
 
-#if 0
     auto f = StartString(temp);
     for(ConfigComputation comp : func->extraComputations){
       f->PushString("    ");
       Repr(comp.cCode,f,false);
       f->PushString("\n");
     }
-#endif
-    String computations = {};//EndString(temp,f);
+    String computations = EndString(temp,f);
 
-#if 1
     String varDeclareList = JoinStrings(list,",",temp);
     String varDeclare = PushString(temp,"{%.*s}",UN(varDeclareList));
       
@@ -2205,9 +2202,7 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     _VERSAT_totalSize = bytesUsed;
   }
                    )FOO";
-#endif
 
-#if 1
     TE_PushScope();
 
     TE_SetString("allStuff",allStuff);
@@ -2219,7 +2214,6 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     TE_PopScope();
     
     c->RawLine(inst);
-#endif
       
     c->Return("_VERSAT_totalSize");
 
@@ -2249,7 +2243,6 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     String mergeName = {}; //part.name;
 
 #if 0
-
     // Output simulation functions if they exist ==================================
     for(COM_FunctionNode* funcNode = decl->funcs; funcNode; funcNode = funcNode->next){
       COM_Function* func = &funcNode->v;
@@ -2442,7 +2435,7 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
       }
 #endif
 
-#if 0
+#if 1
       for(ConfigComputation comp : func->extraComputations){
         c->InsertCode(comp.cCode);
       }
@@ -2689,11 +2682,6 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
   TE_SetString("userConfigFunctions",content);
   }
 #endif
-  
-#if 0
-  Array<String> names = Extract(info.infos,temp,&MergePartition::name);
-  Array<Array<MuxInfo>> muxInfo = CalculateMuxInformation(&iter,temp);
-#endif
 
   {
     CEmitter* c = StartCCode(CCode1,CCode2);
@@ -2706,56 +2694,64 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     TE_SetString("memMappedAddresses",content);
   }
 
+  auto CalculateDelays = [](COM_Unit* head,Arena* out) -> Array<int> {
+    TEMP_REGION(temp,out);
+
+    auto b = PushList<int>(temp);
+    for(COM_Unit* ptr = head; ptr; ptr = ptr->next){
+      for(int i = 0; i < ptr->extraDelay.size; i++){
+        if(i < ptr->decl->numberInputDelays){
+          *b->PushElem() = ptr->extraDelay[i];
+        }
+      }
+    }
+    for(COM_Unit* ptr = head; ptr; ptr = ptr->next){
+      for(int i = 0; i < ptr->extraDelay.size; i++){
+        if(i >= ptr->decl->numberInputDelays){
+          *b->PushElem() = ptr->extraDelay[i];
+        }
+      }
+    }
+    
+    Array<int> res = PushArray(out,b);
+    return res;
+  };
+
+  struct MuxInfo{
+    int port;
+    String name;
+  };
+  auto CalculateMux = [](COM_Unit* head,Arena* out) -> Array<MuxInfo> {
+    TEMP_REGION(temp,out);
+
+    auto b = PushList<MuxInfo>(temp);
+    for(COM_Unit* ptr = head; ptr; ptr = ptr->next){
+      if(DECL_IsMergeMultiplexer(ptr->decl)){
+        *b->PushElem() = {ptr->muxPort,ptr->name};
+      }
+    }
+    Array<MuxInfo> res = PushArray(out,b);
+    return res;
+  };
+
   {
     CEmitter* c = StartCCode(CCode1,CCode2);
 
     // TODO: The delay order being hardcoded is a bit problematic I think
     // Input delays first, output delays last =====================================
     c->VarBlock();
-    for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
-      for(int i = 0; i < ptr->extraDelay.size; i++){
-        if(i < ptr->decl->numberInputDelays){
-          c->Elem(PushString(temp,"0x%x",ptr->extraDelay[i]));
-        }
-      }
-    }
-    for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
-      for(int i = 0; i < ptr->extraDelay.size; i++){
-        if(i >= ptr->decl->numberInputDelays){
-          c->Elem(PushString(temp,"0x%x",ptr->extraDelay[i]));
-        }
-      }
+
+    Array<int> delays = CalculateDelays(units,temp);
+    for(int val : delays){
+      c->Elem(PushString(temp,"0x%x",val));
     }
 
     String content = PushASTRepr(c,temp);
     TE_SetString("delayBlock",content);
   }
 
+  // Static defines =============================================================
 #if 0
-  // Accelerator header
-  auto arr = StartGrowableArray<int>(temp);
-  for(InstanceInfo& t : info.infos[0].info){
-    if(!t.isComposite){
-      for(int d : t.extraDelay){
-        *arr.PushElem() = d;
-      }
-    }
-  }
-  Array<int> delays = EndArray(arr);
-
-  {
-    CEmitter* c = StartCCode(CCode1,CCode2);
-
-    c->VarBlock();
-    for(auto d : delays){
-      c->Elem(PushString(temp,"0x%x",d));
-    }
-    c->EndBlock();
-
-    String content = PushASTRepr(c,temp);
-    TE_SetString("delayBlock",content);
-  }
-
   {
     CEmitter* c = StartCCode(CCode1,CCode2);
 
@@ -2766,23 +2762,20 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     String content = PushASTRepr(c,temp);
     TE_SetString("allStaticDefines",content);
   }
+#endif
 
-  {
-    CEmitter* c = StartCCode(CCode1,CCode2);
-
-    // TODO: Check what is going on with variable delay, current tests all pass even if this is set to false.
-    bool hasVariableDelay = false;
+  // Variable delays ============================================================
+  bool hasVariableDelay = 0;
+  for(COM_Unit* ptr = decl->fixedDelays.units.head; ptr; ptr = ptr->next){
+    if(ptr->decl == DECL_GetVariableBufferType()){
+      hasVariableDelay = 1;
+    }
+  }
 
 #if 0
-    for(int i = 0; i <  info.infos.size; i++){
-      for(AccelInfoIterator iter = StartIteration(&info,i); iter.IsValid(); iter = iter.Next()){
-        InstanceInfo* info = iter.CurrentUnit();
-
-        if(info->specialType == SpecialUnitType_VARIABLE_BUFFER){
-          hasVariableDelay = true;
-        }
-      }
-    }
+  // TODO: Check what is going on with variable delay, current tests all pass even if this is set to false.
+  {
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
     if(hasVariableDelay){
       for(int i = 0; i <  info.infos.size; i++){
@@ -2809,31 +2802,44 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
         
       c->EndBlock();
     }
+
+    String content = PushASTRepr(c,temp);
+    TE_SetString("variableDelay",content);
+  }
 #endif
+  
+  // Activate merge function ====================================================
+#if 1
+  {
+    CEmitter* c = StartCCode(CCode1,CCode2);
 
-    if(names.size > 1){
-      for(int i = 0; i < allDelays.size; i++){
-        auto delayArray = allDelays[i];
-        c->ArrayDeclareBlock("unsigned int",SF("delayBuffer_%d",i),true);
+    if(decl->mergedNames.size > 1){
+      {
+        int mergeIndex = 0;
+        for(COM_Unit* ptr = DECL_GetMergeReconStart(decl); ptr; mergeIndex++,ptr = ptr->mergeNext){
+          Array<int> delays = CalculateDelays(ptr,temp);
 
-        for(auto d : delayArray){
-          c->Elem(PushString(temp,"0x%x",d));
+          c->ArrayDeclareBlock("unsigned int",SF("delayBuffer_%d",mergeIndex),true);
+
+          for(auto d : delays){
+            c->Elem(PushString(temp,"0x%x",d));
+          }
+
+          c->EndBlock();
         }
-
-        c->EndBlock();
       }
 
       c->ArrayDeclareBlock("unsigned int*","delayBuffers",true);
 
-      for(int i = 0; i < names.size; i++){
+      for(int i = 0; i < decl->mergedNames.size; i++){
         c->Elem(SF("delayBuffer_%d",i));
       }
         
       c->EndBlock();
 
       c->Enum("MergeType");
-      for(int i = 0; i <  names.size; i++){
-        auto name  =  names[i];
+      for(int i = 0; i <  decl->mergedNames.size; i++){
+        auto name  =  decl->typesMerged[i];
         c->EnumMember(SF("MergeType_%.*s",UN(name)),SF("%d",i));
       }
       c->EndEnum();
@@ -2843,16 +2849,20 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
 
       c->Assignment("int asInt","(int) type");
 
-      if(muxInfo.size > 0){
+      {
+        int mergeIndex = 0;
         c->SwitchBlock("type");
-        for(int i = 0 ; i < names.size; i++){
-          c->CaseBlock(SF("MergeType_%.*s",UN(names[i])));
 
-          for(auto info : muxInfo[i]){
-            c->Assignment(SF("accelConfig->%.*s.sel",UN(info.name)),SF("%d",info.val));
+        for(COM_Unit* ptr = DECL_GetMergeReconStart(decl); ptr; mergeIndex++,ptr = ptr->mergeNext){
+          Array<MuxInfo> muxInfo = CalculateMux(ptr,temp);
+          c->CaseBlock(SF("MergeType_%.*s",UN(decl->typesMerged[mergeIndex])));
+
+          for(MuxInfo info : muxInfo){
+            c->Assignment(SF("accelConfig->%.*s.%.*s.sel",UN(decl->mergedNames[0]),UN(info.name)),SF("%d",info.port));
           }
           c->EndBlock();
         }
+
         c->EndBlock();
       }
 
@@ -2881,6 +2891,7 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     }
       
     String content = PushASTRepr(c,temp);
+    DEBUG_BREAK();
     TE_SetString("mergeStuff",content);
   }
 #endif

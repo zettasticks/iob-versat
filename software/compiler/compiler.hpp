@@ -72,6 +72,8 @@ struct COM_Unit{
   // TODO: We probably wanna take another look at this.
   Array<int> extraDelay;
 
+  int muxPort; // If merge mux then store the port that needs to be set to activate merged graph
+
 #if 0
   int configPos;
   int statePos;
@@ -211,6 +213,8 @@ enum COM_EntType{
   COM_EntType_GENERATED_UNIT,
 
   COM_EntType_LOOP_VAR,
+  COM_EntType_GEN_VAR,
+  COM_EntType_COMP,
 
   COM_EntType_MERGE_TYPE,
 
@@ -240,17 +244,19 @@ struct COM_Ent{
   String name;
 
   COM_ArrayInfo* array;
-  Token token;
   COM_Unit* unit;
   FUDeclaration* decl;
-  int currentValue;
-  int scope;
   SP_Node* node;
   SP_Node* leftoverRange;
+  COM_Function* func;
+
   Direction dir;
   String wireName;
+
+  Token token;
+  int currentValue;
+  int scope;
   int port;
-  COM_Function* func;
 };
 extern COM_Ent COM_Ent_Nil;
 
@@ -266,29 +272,18 @@ struct COM_EntPort{
 };
 extern COM_EntPort COM_EntPort_Nil;
 
-struct COM_Env{
-  Arena* outArena;
-  Arena* arena;
-  Arena* errorArena;
-
-  int shareIndex;
-  int tempIndex;
-
-  COM_Graph graph;
- 
-  int scope;
-  COM_EntNode*entFreeList;
-  COM_EntNode* entHead;
-  COM_EntNode* entTail;
-  
-  bool anyError;
-};
-
 struct COM_ConstantResult{
   int value;
   bool anyError;
   bool nonConstant : 1;
   bool divByZero : 1;
+};
+
+struct COM_CompNode{
+  COM_CompNode* next;
+  String varName;
+  String funcName;
+  Array<SYM_Expr> args;
 };
 
 // ======================================
@@ -392,6 +387,11 @@ struct COM_Struct{
   Array<COM_StructElem> elems;
 };
 
+struct ConfigComputation{
+  String outputName;
+  CAST* cCode;
+};
+
 struct COM_Function{
   COM_FunctionType type;
   String name;
@@ -399,6 +399,7 @@ struct COM_Function{
   COM_Stmt* stmts;
   Array<COM_Struct> structs;
   String returnType;
+  Array<ConfigComputation> extraComputations;
 };
 
 // What is the most raw form of storing this stuff?
@@ -416,6 +417,39 @@ struct COM_Module{
   String name;
   COM_Graph graph;
   COM_FunctionNode* funcs;
+};
+
+// ======================================
+// Env
+
+struct COM_Env{
+  Arena* outArena;
+  Arena* arena;
+  Arena* errorArena;
+
+  String moduleName;
+
+  int shareIndex;
+  int tempIndex;
+  int inputIndex;
+
+  COM_FunctionNode* funcHead;
+  COM_FunctionNode* funcTail;
+
+  COM_Unit* outputUnit;
+
+  COM_Graph graph;
+ 
+  int scope;
+  COM_EntNode* entFreeList;
+  COM_EntNode* entHead;
+  COM_EntNode* entTail;
+
+  int compIndex;
+  COM_CompNode* compHead;
+  COM_CompNode* compTail;
+  
+  bool anyError;
 };
 
 // ======================================
@@ -465,12 +499,20 @@ COM_FunctionNode*   COM_CompileFunction(COM_Env* env,SP_Node* topNode,String mod
 // ======================================
 // Compilation
 
+void       COM_CompileStatement(COM_Env* env,SP_Node* top,Arena* out);
 COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelParams,Arena* out);
 
 // ======================================
 // Env
 
+// TODO: The reason that we want to preserve the token is because we need location info in order to 
+//       accurately report errors to the user and display the error location correctly.
+//       It might be better if we just separated the location info into a different structured and 
+//       stopped using tokens altogether. Every name is just a string and error location is a different
+//       data strucure that can even be generated if needed (to support reporting errors on generated unit names).
+
 COM_Ent* COM_PushEnt(COM_Env* env,COM_Unit* unit,Token nameToken,COM_EntType type);
+COM_Ent* COM_PushEnt(COM_Env* env,COM_Unit* unit,COM_EntType type);
 COM_Ent* COM_PushEnt(COM_Env* env,String name,COM_EntType type);
 COM_Ent* COM_PushEnt(COM_Env* env,Token name,COM_EntType type);
 

@@ -3564,9 +3564,10 @@ SP_Node* SP_ParseExpression(Parser* parser,Arena* out,int bindingPower){
       }
     
       if(parser->IfNextToken('[')){
-        SP_Node* expr = SP_ParseExpression(parser,out);
-        var->next = expr;
-        var = SP_PushNode(out,SP_Type_RANGE_ACCESS,{},var);
+        SP_Node* range = SP_ParseExpression(parser,out);
+
+        var->next = range;
+        var = SP_PushNode(out,SP_Type_ARRAY_ACCESS,{},var);
 
         parser->ExpectNext(']');
 
@@ -3685,7 +3686,7 @@ SP_Node* SP_ParseVar(Parser* parser,Arena* out){
     SP_Node* range = SP_ParseRange(parser,out);
 
     var->next = range;
-    var = SP_PushNode(out,SP_Type_RANGE_ACCESS,{},var);
+    var = SP_PushNode(out,SP_Type_ARRAY_ACCESS,{},var);
 
     parser->ExpectNext(']');
   }
@@ -3718,7 +3719,7 @@ SP_Node* SP_ParseVarDeclaration(Parser* parser,Arena* out){
     SP_Node* range = SP_ParseRange(parser,out);
 
     var->next = range;
-    var = SP_PushNode(out,SP_Type_RANGE_ACCESS,{},var);
+    var = SP_PushNode(out,SP_Type_ARRAY_ACCESS,{},var);
     
     parser->ExpectNext(']');
   }
@@ -3999,7 +4000,7 @@ SP_Node* SP_ParseConfigStatements(Parser* parser,Arena* out){
         parser->ExpectNext(';');
         type = SP_Type_EQUALITY;
       } else if(parser->IfNextToken(';')){
-        type = SP_Type_FUNCTION_CALL;
+        type = SP_Type_FUNC_CALL;
       }
 
       SP_Node* stmt = SP_PushNode(out,type,{},lhs);
@@ -4396,4 +4397,20 @@ SP_NodeList SP_Flatten(SP_Node* top,Arena* out){
   Recurse(Recurse,top);
   
   return {.head = head,.tail = tail};
+}
+
+SP_Node* SP_GetRangeExpression(SP_Node* node){
+  SP_Node* expr = &SP_Node_Nil;
+
+  if(node && node->type == SP_Type_ARRAY_ACCESS){
+    expr = node->childs->next;
+  }
+  if(node && node->type == SP_Type_DELAY_ACCESS){
+    expr = node->childs->next;
+  }
+  if(node && node->type == SP_Type_PORT_ACCESS){
+    expr = node->childs->next;
+  }
+
+  return expr;
 }

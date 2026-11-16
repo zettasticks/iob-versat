@@ -3799,7 +3799,7 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
     MERGE_DebugOutputCG(CG,SF("ConsolidationGraph_%d.dot",i));
     MERGE_CliqueResult result = MERGE_MaxClique(CG,upperBound,Seconds(10),temp);
 
-#if 1
+#if 0
     printf("==============\n");
     printf("Max clique found:\n");
     for(int i : result.result){
@@ -4097,7 +4097,6 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
   for(COM_Unit* trueUnit = mergedGraph.units.head; trueUnit; trueUnit = trueUnit->next){
     COM_Unit* mergePtr = trueUnit;
     for(int i = 0; i < size; i++){
-
       // Find recon unit that maps to true unit =====================================
       COM_Unit* reconUnit = nullptr;
       for(COM_Unit* recon = reconGraphs[i].units.head; recon; recon = recon->next){
@@ -4140,6 +4139,17 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
       name = EndString(out,b);
     }
     unit->name = name;
+  }
+
+  // Store multiplexer selected port ============================================
+  for(int i = 0; i < size; i++){
+    COM_Graph recon = reconGraphs[i];
+
+    for(COM_Edge* edge = recon.edges.head; edge; edge = edge->next){
+      if(DECL_IsMergeMultiplexer(edge->in->decl)){
+        edge->in->muxPort = edge->inPort;
+      }
+    }
   }
 
   MERGE_Result res = {};

@@ -178,6 +178,8 @@ bool DECL_IsVersatGenerated(FUDeclaration* decl);
 bool DECL_IsVersatOperation(FUDeclaration* decl);
 bool DECL_IsComposite(FUDeclaration* decl);
 
+bool DECL_IsMergeMultiplexer(FUDeclaration* decl);
+
 // NOTE: Units that can have any number of inputs. Not predefined.
 bool DECL_HasVariableInputs(FUDeclaration* decl);
 
@@ -211,3 +213,8 @@ FUDeclaration* DECL_GetVariableBufferType();
 FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normalizedParams);
 FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normalizedParams);
 FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalizedParams);
+
+// ======================================
+// Merge graph
+
+COM_Unit* DECL_GetMergeReconStart(FUDeclaration* decl);

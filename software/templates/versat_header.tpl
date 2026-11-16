@@ -148,12 +148,10 @@ static inline iptr ALIGN(iptr base,iptr alignment){
 
 //extern volatile AcceleratorStatic* accelStatic;
 
+// MARK
 @{allStaticDefines}
-
+@{variableDelay}
 @{mergeStuff}
-
-static bool forceDoubleLoop = false;
-static bool forceSingleLoop = false;
 
 // ============================================================================
 // User configuration functions, user defined inside the specification file
