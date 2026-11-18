@@ -88,6 +88,13 @@ struct DECL_MMInfo{
   String addrName;
 };
 
+struct DECL_MergeData{
+  String typeName;
+  String mergeName;
+  
+  Array<int> calculatedDelays;
+};
+
 struct FUDeclaration{
   DECL_Meta* meta;
   Array<DECL_Param> parameters; // All parameters even if equal to default values.
@@ -113,7 +120,7 @@ struct FUDeclaration{
   //int numberDelays;
   int numberInputDelays;
   int numberOutputDelays;
-  Array<int> extraDelays;
+  Array<int> extraDelays; // NOTE: Only for module units. Merge units use the calculated delays.
 
   String operation;
   int numberDatabus;
@@ -127,8 +134,7 @@ struct FUDeclaration{
   COM_Graph fixedDelays;
 
   // Merge specific data ========================================================
-  Array<String> typesMerged;
-  Array<String> mergedNames;
+  Array<DECL_MergeData> mergeData;
 
   COM_FunctionNode* funcs;
 

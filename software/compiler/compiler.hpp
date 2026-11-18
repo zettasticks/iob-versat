@@ -368,6 +368,7 @@ struct COM_FuncParam{
   String name;
   bool isDyn;
   bool usedOnLoopExpressions;
+  bool usedOnExtraComputations;
 };
 
 enum COM_FunctionType{

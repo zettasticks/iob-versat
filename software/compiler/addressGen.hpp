@@ -24,11 +24,15 @@ struct AddressGenForDef{
   MathExpression* endSym;
 };
 
+
 // nocheckin
+struct SP_Node;
 struct AddressGenForDef2{
   String loopVariable;
   SYM_Expr startSym;
   SYM_Expr endSym;
+  SP_Node* startNode;
+  SP_Node* endNode;
 };
 
 // TODO: Is there a point to separating the internal and external stuff at this point?

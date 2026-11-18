@@ -1024,6 +1024,7 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
     }
   }
   Array<int> storedDelays = PushArray(out,b);
+  DEBUG_BREAK();
 
   // Compute all graph related data =============================================
   // TODO: Share and static
@@ -1165,8 +1166,8 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
     }
   }
   Array<FUDeclaration*> types = PushArray<FUDeclaration*>(temp,mergeCount);
-  Array<String> typesMerged = PushArray<String>(out,mergeCount);
-  Array<String> mergedNames = PushArray<String>(out,mergeCount);
+
+  Array<DECL_MergeData> mergeData = PushArray<DECL_MergeData>(out,mergeCount);
 
   int index = 0;
   for(SP_Node* ptr = top->childs; ptr; index += 1,ptr = ptr->next){
@@ -1181,8 +1182,8 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
     }
 
     types[index] = type;
-    typesMerged[index] = type->name;
-    mergedNames[index] = name;
+    mergeData[index].typeName = type->name;
+    mergeData[index].mergeName = name;
   }
 
   // Pack params ================================================================
@@ -1202,8 +1203,12 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   COM_Graph graph = merge.mergedGraph;
   int size = merge.reconGraphs.size;
 
-  // Merge recon info into a single graph =======================================
-  COM_Unit* head = graph.units.head;
+  // Calculate final recon delays ===============================================
+  Array<COM_DelayResult> delays = PushArray<COM_DelayResult>(temp,size);
+  for(int i = 0; i < size; i++){
+    COM_UnitNodeList order  = COM_CalculateDAGOrder(merge.reconGraphs[i],temp);
+    delays[i] = COM_CalculateDelay(merge.reconGraphs[i],order,temp);
+  }
 
   // TODO: nocheckin: copied from COM_InstantiateModule, compress
   FREE_ARENA(envArena);
@@ -1237,33 +1242,68 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
     }
   }
 
+  // Store port delays on units =================================================
+  for(int i = 0; i < size; i++){
+    for(COM_Unit* unit = merge.reconGraphs[i].units.head; unit; unit = unit->next){
+      int totalDelays = unit->decl->numberInputDelays + unit->decl->numberOutputDelays;
+      unit->extraDelay = PushArray<int>(out,totalDelays);
+    }
+
+    for(COM_PortDelay* d = delays[i].portDelays; d; d = d->next){
+      COM_Unit* unit = d->unit;
+      FUDeclaration* decl = unit->decl;
+
+      int offset = d->port;
+      if(d->dir == Direction_OUTPUT){
+        offset += unit->decl->numberInputDelays;
+      }
+
+      if(unit->extraDelay[offset] != 0){
+        LOCATION();
+        printf("Unit already has delays set\nCheck what is happening\nIt might happen for output delays but its also an error since we need edges to agree on the same delay.\n");
+        continue;
+      }
+
+      unit->extraDelay[offset] = d->extraDelay;
+    }
+    if(delays[i].edgeDelays){
+      TEST_MARK_VAL("Merge graph appears to have edge delays.");
+    }
+    //Assert(delays[i].edgeDelays == nullptr);
+  }
+
   // TODO: nocheckin: Copied from InstantiateModule, compress
   // Propagate composite units delays ===========================================
-  for(COM_Unit* unit = head; unit; unit = unit->next){
-    if(DECL_IsComposite(unit->decl)){
-      for(int i = 0; i < unit->extraDelay.size; i++){
-        unit->extraDelay[i] += unit->decl->extraDelays[i];
+  for(int i = 0; i < size; i++){
+    for(COM_Unit* unit = merge.reconGraphs[i].units.head; unit; unit = unit->next){
+      if(DECL_IsComposite(unit->decl)){
+        for(int i = 0; i < unit->extraDelay.size; i++){
+          unit->extraDelay[i] += unit->decl->extraDelays[i];
+        }
       }
     }
   }
 
   // Compute calculated delays ==================================================
-  auto b = PushList<int>(temp);
-  for(COM_Unit* ptr = head; ptr; ptr = ptr->next){
-    for(int i = 0; i < ptr->extraDelay.size; i++){
-      if(i < ptr->decl->numberInputDelays){
-        *b->PushElem() = ptr->extraDelay[i];
+  for(int i = 0; i < size; i++){
+    auto b = PushList<int>(temp);
+    for(COM_Unit* ptr = merge.reconGraphs[i].units.head; ptr; ptr = ptr->next){
+      for(int i = 0; i < ptr->extraDelay.size; i++){
+        if(i < ptr->decl->numberInputDelays){
+          *b->PushElem() = ptr->extraDelay[i];
+        }
       }
     }
-  }
-  for(COM_Unit* ptr = head; ptr; ptr = ptr->next){
-    for(int i = 0; i < ptr->extraDelay.size; i++){
-      if(i >= ptr->decl->numberInputDelays){
-        *b->PushElem() = ptr->extraDelay[i];
+    for(COM_Unit* ptr = merge.reconGraphs[i].units.head; ptr; ptr = ptr->next){
+      for(int i = 0; i < ptr->extraDelay.size; i++){
+        if(i >= ptr->decl->numberInputDelays){
+          *b->PushElem() = ptr->extraDelay[i];
+        }
       }
     }
+    Array<int> storedDelays = PushArray(out,b);
+    mergeData[i].calculatedDelays = storedDelays;
   }
-  Array<int> storedDelays = PushArray(out,b);
 
   // TODO: Share and Static
   // TODO: Copy from instantiateModule, reorganize.
@@ -1277,7 +1317,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   int externalCount = 0;
   int databusCount = 0;
   DECL_SingleInterface single = {};
-  for(COM_Unit* ptr = head; ptr; ptr = ptr->next){
+  for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
     FUDeclaration* decl = ptr->decl;
 
     if(!ptr->isStatic){
@@ -1325,15 +1365,14 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   res->singleInterfaces = single;
   res->numberInputDelays = inputDelayCount;
   res->numberOutputDelays = outputDelayCount;
-  res->extraDelays = storedDelays;
+  res->extraDelays = mergeData[0].calculatedDelays;
 
   res->numberDatabus = databusCount;
   res->numberDones = donesCount;
   res->singleInterfaces = single;
   res->baseGraph = graph;
   res->fixedDelays = graph;
-  res->typesMerged = typesMerged;
-  res->mergedNames = mergedNames;
+  res->mergeData = mergeData;
   res->funcs = funcHead;
   res->error = error;
 
@@ -1342,7 +1381,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
     int configIndex = 0;
     int memMappedIndex = 0;
     int externalIndex = 0;
-    for(COM_Unit* ptr = head; ptr; ptr = ptr->next){
+    for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
       for(Wire w : ptr->decl->configs){
         res->configs[configIndex] = w;
         res->configs[configIndex].name = PushString(out,"%.*s_%.*s",UN(ptr->name),UN(res->configs[configIndex].name));
