@@ -4207,12 +4207,12 @@ GEN_StructInfo* GEN_GenerateConfigStruct(COM_Unit* top,GEN_StructInfoList* allSt
         
     return info;
   }
-    
+  
   if(top->decl->type == DeclarationType_MERGED){
     GEN_StructElem *childHead = 0,*childTail = 0;
-        
+    
     COM_Unit* graphStart = top->decl->fixedDelays.units.head;
-        
+    
     for(int mergeIndex = 0; mergeIndex < top->decl->mergeData.size; mergeIndex++){
       String typeName = top->decl->mergeData[mergeIndex].typeName;
       String mergeName = top->decl->mergeData[mergeIndex].mergeName;

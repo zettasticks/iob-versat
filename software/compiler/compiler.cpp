@@ -10,7 +10,8 @@
 readonly COM_Unit COM_Unit_Nil = {.decl = &FUDeclaration_Nil};
 readonly COM_Port COM_Port_Nil = {.unit = &COM_Unit_Nil};
 readonly COM_ArrayInfo COM_ArrayInfo_Nil = {};
-readonly COM_Ent COM_Ent_Nil = {.array = &COM_ArrayInfo_Nil,.unit = &COM_Unit_Nil,.decl = &FUDeclaration_Nil};
+readonly COM_Function COM_Function_Nil = {};
+readonly COM_Ent COM_Ent_Nil = {.array = &COM_ArrayInfo_Nil,.unit = &COM_Unit_Nil,.decl = &FUDeclaration_Nil,.func = &COM_Function_Nil};
 COM_EntPort COM_EntPort_Nil = {.ent = COM_Ent_Nil};
 COM_ConnectInfo COM_ConnectInfo_Nil = {.ent = COM_Ent_Nil};
 
@@ -531,7 +532,7 @@ COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail){
       COM_Ent var = COM_ResolveEntity(env,varNode,false);
 
       String funcName = node->token.val;
-      COM_Function* func = 0;
+      COM_Function* func = &COM_Function_Nil;
       for(COM_FunctionNode* f = var.decl->funcs; f; f = f->next){
         if(f->v.name == funcName){
           func = &f->v;
@@ -978,8 +979,6 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
   // Unpack statements ==========================================================
   auto structList = PushList<COM_Struct>(temp);
   auto structElems = PushList<COM_StructElem>(temp);
-  
-  DEBUG_BREAK();
 
   COM_Stmt* stmtHead = 0;
   COM_Stmt* stmtTail = 0;
@@ -1250,6 +1249,17 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
         stmt->type = COM_StmtType_ASSIGN;
         stmt->asAssign.lhs = PushString(out,name);
         stmt->asAssign.rhs = PushString(out,"%.*s.%.*s",UN(rhsEnt.name),UN(rhsEnt.wireName));
+      }
+
+      if(!stmt && isState && COM_Ent_IsExpr(rhsEnt.type)){
+        String name = lhsNode->token.val;
+        SYM_Expr asExpr = COM_SymbolicFromExpression(env,rhsNode);
+        String repr = SYM_Repr(asExpr,out);
+
+        stmt = PushStruct<COM_Stmt>(out);
+        stmt->type = COM_StmtType_ASSIGN;
+        stmt->asAssign.lhs = PushString(out,name);
+        stmt->asAssign.rhs = repr;
       }
 
       if(!stmt && isState && rhsEnt.type == COM_EntType_STATE){
@@ -1581,7 +1591,7 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
 // ======================================
 // Compilation
 
-void COM_CompileStatement(COM_Env* env,SP_Node* top,Arena* out){
+void COM_CompileStatement(COM_Env* env,SP_Node* top,Array<COM_Param> topLevelParams,Arena* out){
   switch(top->type){
   case SP_Type_FOR_LOOP:{
     Token varName = top->token;
@@ -1597,7 +1607,7 @@ void COM_CompileStatement(COM_Env* env,SP_Node* top,Arena* out){
       ent->currentValue = i;
 
       for(SP_Node* ptr = childs; ptr; ptr = ptr->next){
-        COM_CompileStatement(env,ptr,out);
+        COM_CompileStatement(env,ptr,topLevelParams,out);
       }
     }
     COM_PopScope(env);
@@ -1612,22 +1622,41 @@ void COM_CompileStatement(COM_Env* env,SP_Node* top,Arena* out){
     COM_Ent* ent = COM_PushEnt(env,in,name,COM_EntType_MODULE_UNIT);
   } break;
   case SP_Type_PARAM_DECL:{
+    // TODO: This is wrong, we already have normalized params 
+    //       in the declaration portion of the code that properly 
+
     Token paramName = top->token;
-    SP_Node* expr = top->childs;
+    SP_Node* defaultExpr = top->childs;
 
-    COM_Ent* var = COM_PushEnt(env,paramName,COM_EntType_PARAM);
-    COM_ConstantResult valuation = COM_ComputeConstantValue(env,expr);
-
-    if(valuation.anyError){
-      COM_ReportError(env,"Error evaluation expression, needs to be constant but it is not",expr);
+    COM_Param* override = 0;
+    for(COM_Param& p : topLevelParams){
+      if(p.name == paramName.val){
+        override = &p;
+        break;
+      }
     }
 
-    // TODO: Override value with topLevelParams
+    COM_Ent* var = COM_PushEnt(env,paramName,COM_EntType_PARAM);
+    if(override){
+      SYM_EvaluateResult eval = SYM_ConstantEvaluate(override->val);
+      var->currentValue = eval.result;
+
+      if(eval.nonConstantValue){
+        ENTER_DEBUG();
+        COM_ReportError(env,"Error evaluation expression, needs to be constant but it is not");
+      }
+    } else {
+      COM_ConstantResult valuation = COM_ComputeConstantValue(env,defaultExpr);
+
+      if(valuation.anyError){
+        COM_ReportError(env,"Error evaluation expression, needs to be constant but it is not",defaultExpr);
+      }
             
-    var->currentValue = valuation.value;
+      var->currentValue = valuation.value;
+    }
   } break;
       
-  case SP_Type_VARIABLE_DECL:{
+  case SP_Type_VAR_DECL:{
     TEMP_REGION(temp,out);
 
     String typeName = top->token.val;
@@ -1888,17 +1917,16 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
   DEBUG_TOP(moduleName);
 
   FREE_ARENA(envArena);
-  FREE_ARENA(envErrorArena);
   COM_Env envInst = {};
   COM_Env* env = &envInst;
   env->outArena = out;
   env->arena = envArena;
-  env->errorArena = envErrorArena;
+  env->errorArena = envArena;
   env->moduleName = moduleName;
 
   int inputIndex = 0;
   for(SP_Node* ptr = moduleDef->childs; ptr; ptr = ptr->next){
-    COM_CompileStatement(env,ptr,out);
+    COM_CompileStatement(env,ptr,topLevelParams,out);
   }
 
   if(env->anyError){
@@ -2133,7 +2161,7 @@ String COM_DebugPushDotGraph(String name,COM_Unit* units,COM_Edge* edges,Arena* 
     DOT_Info* info = l->PushElem();
     *info = Repr(ptr,nullptr,out);
     info->name = PushString(out,"%p",ptr);
-    info->middleContent = ptr->name;
+    info->middleContent = PushString(out,"%.*s_%d",UN(ptr->name),ptr->id);
   }
   for(COM_Edge* con = edges; con; con = con->next){
     DOT_Info* info = l->PushElem();
@@ -2788,27 +2816,32 @@ COM_Graph COM_Flatten(COM_Graph in,Arena* out){
     }
   }
 
-  FREE_ARENA(mapArena);
   while(workHead){
-    BLOCK_REGION(mapArena);
-
     Work* w = workHead;
     LL_PopFront(workHead,workTail,next);
 
     COM_Unit* unit = w->toProcess;
 
     // Maps from default graph to unit in new flattened graph.
-    TrieMap<COM_Unit*,COM_Unit*>* unitMap = PushTrieMap<COM_Unit*,COM_Unit*>(mapArena);
+    TrieMap<COM_Unit*,COM_Unit*>* unitMap = PushTrieMap<COM_Unit*,COM_Unit*>(temp);
     
     COM_Graph subGraph = unit->decl->baseGraph;
     COM_Unit* outputUnit = COM_GetOutputUnit(subGraph);
       
     for(COM_Unit* u = subGraph.units.head; u; u = u->next){
-      COM_Unit* newUnit = COM_PushUnit(&graph,u->name,u->decl,out);
+      // Never add input or output units
+      if(DECL_IsInput(u->decl) || DECL_IsOutput(u->decl)){
+        continue;
+      }
+
+      String newName = PushString(out,"%.*s_%.*s",UN(unit->name),UN(u->name));
+
+      COM_Unit* newUnit = COM_PushUnit(&graph,newName,u->decl,out);
       unitMap->Insert(u,newUnit);
 
       if(DECL_IsComposite(newUnit->decl)){
         Work* w = PushStruct<Work>(temp);
+        w->toProcess = newUnit;
         LL_Append(workHead,workTail,next,w);
       }
     }
@@ -2870,15 +2903,16 @@ COM_Graph COM_Flatten(COM_Graph in,Arena* out){
     }
 
     // Remove edges marked to remove ==============================================
-    {
+    if(1){
       COM_Edge* next = 0;
       COM_Edge* prev = 0;
       for(COM_Edge* ptr = graph.edges.head; ptr; ptr = next){
-        next = ptr;
+        next = ptr->next;
 
         if(ptr->general == MARK_TO_DELETE){
           ptr->general = 0;
           LL_Remove(graph.edges.head,graph.edges.tail,next,prev,ptr);
+          ptr->next = 0;
           LL_PushNoTail(graph.freeEdges,next,ptr);
         } else {
           prev = ptr;
@@ -2887,14 +2921,15 @@ COM_Graph COM_Flatten(COM_Graph in,Arena* out){
     }
 
     // Remove the unit ============================================================
-    {
+    if(1){
       COM_Unit* next = 0;
       COM_Unit* prev = 0;
       for(COM_Unit* ptr = graph.units.head; ptr; ptr = next){
-        next = ptr;
+        next = ptr->next;
 
         if(ptr == unit){
           LL_Remove(graph.units.head,graph.units.tail,next,prev,ptr);
+          ptr->next = 0;
           LL_PushNoTail(graph.freeUnits,next,ptr);
         } else {
           prev = ptr;

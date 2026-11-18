@@ -500,7 +500,7 @@ COM_FunctionNode*   COM_CompileFunction(COM_Env* env,SP_Node* topNode,String mod
 // ======================================
 // Compilation
 
-void       COM_CompileStatement(COM_Env* env,SP_Node* top,Arena* out);
+void       COM_CompileStatement(COM_Env* env,SP_Node* top,Array<COM_Param> topLevelParams,Arena* out);
 COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelParams,Arena* out);
 
 // ======================================

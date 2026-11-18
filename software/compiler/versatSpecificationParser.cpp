@@ -3863,7 +3863,7 @@ SP_Node* SP_ParseInstanceDeclaration(Parser* parser,Arena* out){
     parser->ExpectNext(';');
   }
 
-  SP_Node* res = SP_PushNode(out,SP_Type_VARIABLE_DECL,typeName,head);
+  SP_Node* res = SP_PushNode(out,SP_Type_VAR_DECL,typeName,head);
   return res;
 }
 
@@ -4269,8 +4269,7 @@ SP_Node* SP_ParseSpec(String content,Arena* out){
   Parser* parser = StartParsing(TokenizeFunction,content,parseArena,{});
   parser->debug = 0;
 
-  SP_Node* head = 0;
-  SP_Node* tail = 0;
+  SP_Node *modulesHead = 0,*modulesTail = 0;
   while(!parser->Done()){
     Token tok = parser->PeekToken();
 
@@ -4280,6 +4279,37 @@ SP_Node* SP_ParseSpec(String content,Arena* out){
     } else if(tok.type == TokenType_KEYWORD_MERGE){
       parser->Advance(tok);
       Token name = parser->NextToken();
+
+      SP_Node* head = 0;
+      SP_Node* tail = 0;
+
+      if(parser->IfNextToken('#')){
+        parser->ExpectNext('(');
+    
+        while(!parser->Done()){
+          if(parser->IfPeekToken(')')){
+            break;
+          }
+
+          Token name = parser->ExpectNext(TokenType_IDENTIFIER);
+
+          SP_Node* defaultVal = nullptr;
+          if(parser->IfNextToken('=')){
+            defaultVal = SP_ParseExpression(parser,out);
+          }  
+
+          SP_Node* param = SP_PushNode(out,SP_Type_PARAM_DECL,name,defaultVal);
+          SP_Append(head,tail,param);
+      
+          if(parser->IfNextToken(',')){
+            continue;
+          } else {
+            break;
+          }
+        }
+
+        parser->ExpectNext(')');
+      }
 
       Token peek = parser->PeekToken();
 
@@ -4309,9 +4339,6 @@ SP_Node* SP_ParseSpec(String content,Arena* out){
         parser->Advance(peek);
         parser->ExpectNext(')');
 
-        SP_Node* head = 0;
-        SP_Node* tail = 0;
-
         parser->ExpectNext('{');
         int state = 0;
         while(!parser->Done()){
@@ -4332,10 +4359,42 @@ SP_Node* SP_ParseSpec(String content,Arena* out){
             node = SP_ParseConfigFunction(parser,out);
           } else {
             Token typeName = parser->ExpectNext(TokenType_IDENTIFIER);
+
+            SP_Node* paramHead = 0;
+            SP_Node* paramTail = 0;
+
+            if(parser->IfNextToken('#')){
+              parser->ExpectNext('(');
+              while(!parser->Done()){
+                if(parser->IfPeekToken(')')){
+                  break;
+                }
+
+                parser->ExpectNext('.');
+                Token parameterName = parser->ExpectNext(TokenType_IDENTIFIER);
+                parser->ExpectNext('(');
+                SP_Node* expr = SP_ParseExpression(parser,out);
+                parser->ExpectNext(')');
+
+                SP_Node* param = SP_PushNode(out,SP_Type_PARAM,parameterName,expr);
+                SP_Append(paramHead,paramTail,param);
+
+                if(parser->IfNextToken(',')){
+                  continue;
+                } else {
+                  break;
+                }
+              }
+
+              parser->ExpectNext(')');
+            }
+
             Token name = parser->ExpectNext(TokenType_IDENTIFIER);
 
             SP_Node* nameNode = SP_PushNode(out,SP_Type_VAR,name,0);
-            node = SP_PushNode(out,SP_Type_VAR_DECL,typeName,nameNode);
+            SP_Append(paramHead,paramTail,nameNode);
+             
+            node = SP_PushNode(out,SP_Type_VAR_DECL,typeName,paramHead);
 
             parser->ExpectNext(';');
           }
@@ -4355,7 +4414,7 @@ SP_Node* SP_ParseSpec(String content,Arena* out){
       parser->Synch({TokenType_KEYWORD_MODULE,TokenType_KEYWORD_MERGE});
     }
 
-    LL_Append(head,tail,next,node);
+    LL_Append(modulesHead,modulesTail,next,node);
   }
 
   if(!Empty(parser->errors)){
@@ -4368,7 +4427,7 @@ SP_Node* SP_ParseSpec(String content,Arena* out){
 
   SP_Node* top = PushStruct<SP_Node>(out);
   top->type = SP_Type_TOP;
-  top->childs = head;
+  top->childs = modulesHead;
 
   return top;
 }

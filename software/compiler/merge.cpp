@@ -3779,6 +3779,13 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
   for(int i = 0; i < size; i++){
     reconGraphs[i] = COM_Flatten(types[i]->baseGraph,out);
 
+    {
+      int index = 0;
+      for(COM_Unit* ptr = reconGraphs[i].units.head; ptr; ptr = ptr->next){
+        ptr->id = index++;
+      }
+    }
+
     COM_DebugOutputDotGraph(SF("Flattened%d.dot",i),"Flattened graph",reconGraphs[i].units.head,reconGraphs[i].edges.head,COM_DefaultReprFunction);
   }
 
@@ -3797,7 +3804,7 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
     COM_Graph recon = reconGraphs[i];
     ConsolidationGraph CG = MERGE_GenerateConsolidationGraph(unitHead,edgeHead,recon,{},temp);
     MERGE_DebugOutputCG(CG,SF("ConsolidationGraph_%d.dot",i));
-    MERGE_CliqueResult result = MERGE_MaxClique(CG,upperBound,Seconds(10),temp);
+    MERGE_CliqueResult result = MERGE_MaxClique(CG,upperBound,Seconds(1),temp);
 
 #if 0
     printf("==============\n");
@@ -3874,6 +3881,14 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
         LL_Append(edgeHead,edgeTail,next,newEdge);
 
         mapReconEdgeToGraph->Insert(reconEdge,newEdge);
+      }
+    }
+    
+    // Updated ids every iteration to help debug graphs ===========================
+    {
+      int index = 0;
+      for(COM_Unit* unit = unitHead; unit; unit = unit->next){
+        unit->id = index++;
       }
     }
   }
@@ -4407,7 +4422,8 @@ ConsolidationGraph MERGE_GenerateConsolidationGraph(COM_Unit* units,COM_Edge* ed
       if(edge0->delay != edge1->delay){
         continue;
       }
-      
+
+      DEBUG_BREAK();
 
       MERGE_Map* node = nodeList->PushElem();
       node->type = MERGE_MapType_EDGE;
@@ -4585,8 +4601,13 @@ MERGE_CliqueResult MERGE_MaxClique(ConsolidationGraph graph,int upperBound,Time 
   top->nodes.Fill(1);
   FIFO_Push(workHead,workTail,next,prev,top);
 
+  Time startTime = GetTime();
   while(workTail){
     Work* w = workTail;
+
+    if((GetTime() - startTime) > MAX_CLIQUE_TIME){
+      break;
+    }
 
 #if 0
     String repr = Repr(w->nodes,temp);
@@ -4674,13 +4695,28 @@ MERGE_CliqueResult MERGE_MaxClique(ConsolidationGraph graph,int upperBound,Time 
 }
 
 void MERGE_Repr(StringBuilder* b,MERGE_Map* map){
+  auto PushUnit = [&b](COM_Unit* unit){
+    b->PushString("%.*s_%d",UN(unit->name),unit->id);
+  };
+  auto PushPort = [&b](COM_Port port){
+    b->PushString("%.*s_%d:%d",UN(port.unit->name),port.unit->id,port.port);
+  };
+  
   switch(map->type){
     case MERGE_MapType_NIL: b->PushString("<ERROR: NoType>"); break;
     case MERGE_MapType_NODE:{
-      b->PushString("%.*s - %.*s",UN(map->units[0]->name),UN(map->units[1]->name)); break;
-    }
+      PushUnit(map->units[0]);
+      b->PushString(" - ");
+      PushUnit(map->units[1]);
+    } break;
     case MERGE_MapType_EDGE: {
-      b->PushString("%.*s - %.*s || %.*s - %.*s",UN(map->edges[0]->units[0].unit->name),UN(map->edges[0]->units[1].unit->name),UN(map->edges[1]->units[0].unit->name),UN(map->edges[1]->units[1].unit->name));
+      PushPort(map->edges[0]->units[0]);
+      b->PushString(" - ");
+      PushPort(map->edges[0]->units[1]);
+      b->PushString(" || ");
+      PushPort(map->edges[1]->units[0]);
+      b->PushString(" - ");
+      PushPort(map->edges[1]->units[1]);
     } break;
   }
 }

@@ -249,22 +249,39 @@ bool DECL_RegisterMeta(String name,V_Node* module){
 }
 
 bool DECL_RegisterMeta(String name,SP_Node* module){
+  Arena* out = DECL_State.arena;
+  TEMP_REGION(temp,out);
+
   DECL_Meta* exists = 0;
   LL_Find(DECL_State.metaHead,next,exists,it->name == name);
   Assert(!exists); // TODO: Proper solve this, either report error or allow overriding
 
-  // TODO: We need to standardize this. We need to have all the params that are set by default in all the interfaces.
-  //       If a standard external memory interface uses DATA_W, then we need to have DATA_W as a param otherwise
-  //       the instantiation code does not know that we have DATA_W dependencies.
-  Array<DECL_Param> params = PushArray<DECL_Param>(DECL_State.arena,5);
-  int index = 0;
-  //params[index++] = {"ADDR_W",SYM_32};
-  params[index++] = {"DATA_W",SYM_32};
-  params[index++] = {"LEN_W",SYM_32};
-  params[index++] = {"DELAY_W",SYM_32};
-  params[index++] = {"AXI_DATA_W",SYM_32};
-  params[index++] = {"AXI_ADDR_W",SYM_32};
-  Assert(index == params.size);
+  // NOTE: We need an environment since params can depend on other params.
+  //       
+  FREE_ARENA(envArena);
+  COM_Env envInst = {};
+  COM_Env* env = &envInst;
+  env->outArena = out;
+  env->arena = envArena;
+  env->errorArena = envArena;
+  
+  auto b = PushList<DECL_Param>(temp);
+  *b->PushElem() = {"DATA_W",SYM_32};
+  *b->PushElem() = {"LEN_W",SYM_32};
+  *b->PushElem() = {"DELAY_W",SYM_32};
+  *b->PushElem() = {"AXI_DATA_W",SYM_32};
+  *b->PushElem() = {"AXI_ADDR_W",SYM_32};
+
+  for(SP_Node* node = module->childs; node; node = node->next){
+    if(node->type == SP_Type_PARAM_DECL){
+      SYM_Expr expr = COM_SymbolicFromExpression(env,node->childs);
+
+      DECL_Param* p = b->PushElem();
+      p->name = PushString(DECL_State.arena,node->token.val);
+      p->val = expr;
+    }
+  }
+  Array<DECL_Param> params = PushArray(DECL_State.arena,b);
 
   DECL_Meta* node = PushStruct<DECL_Meta>(DECL_State.arena);
   node->name = PushString(DECL_State.arena,name);
@@ -996,7 +1013,10 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
 
     unit->extraDelay[offset] = d->extraDelay;
   }
-  Assert(delays.edgeDelays == nullptr);
+  if(delays.edgeDelays != nullptr){
+    TEST_MARK_VAL("Edge delays are not null");
+  }
+  //Assert(delays.edgeDelays == nullptr);
 
   // Propagate composite units delays ===========================================
   for(COM_Unit* unit = graph.units.head; unit; unit = unit->next){
@@ -1024,7 +1044,6 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
     }
   }
   Array<int> storedDelays = PushArray(out,b);
-  DEBUG_BREAK();
 
   // Compute all graph related data =============================================
   // TODO: Share and static
@@ -1159,6 +1178,25 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   String repr = SP_Repr(top,temp);
   printf("%.*s\n",UN(repr));
 
+  // TODO: nocheckin: copied from COM_InstantiateModule, compress
+  FREE_ARENA(envArena);
+  COM_Env envInst = {};
+  COM_Env* env = &envInst;
+  env->outArena = out;
+  env->arena = envArena;
+  env->errorArena = envArena;
+
+  // Add params to environment ==================================================
+  for(DECL_Param param : normalizedParams){
+    SYM_EvaluateResult eval = SYM_ConstantEvaluate(param.val);
+    if(!eval.Error()){
+      COM_Ent* var = COM_PushEnt(env,param.name,COM_EntType_PARAM);
+
+      var->currentValue = eval.result;
+    }
+  }
+
+  // Unpack merge types and names ===============================================
   int mergeCount = 0;
   for(SP_Node* ptr = top->childs; ptr; ptr = ptr->next){
     if(ptr->type == SP_Type_VAR_DECL){
@@ -1166,24 +1204,45 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
     }
   }
   Array<FUDeclaration*> types = PushArray<FUDeclaration*>(temp,mergeCount);
-
   Array<DECL_MergeData> mergeData = PushArray<DECL_MergeData>(out,mergeCount);
 
   int index = 0;
-  for(SP_Node* ptr = top->childs; ptr; index += 1,ptr = ptr->next){
+  for(SP_Node* ptr = top->childs; ptr; ptr = ptr->next){
     if(ptr->type != SP_Type_VAR_DECL){
       continue;
     }
 
-    FUDeclaration* type = DECL_GetType(ptr->token.val,{});
-    String name = type->name;
-    if(ptr->childs && ptr->childs->type == SP_Type_VAR){
-      name = PushString(out,ptr->childs->token.val);
+    String typeName = ptr->token.val;
+    SP_Node* varNode = nullptr;
+
+    auto b = PushList<DECL_Param>(temp);
+    for(SP_Node* child = ptr->childs; child; child = child->next){
+      if(child->type == SP_Type_PARAM){
+        SYM_Expr expr = COM_SymbolicFromExpression(env,child->childs);
+
+        DECL_Param* p = b->PushElem();
+        p->name = child->token.val;
+        p->val = expr;
+      }
+      if(child->type == SP_Type_VAR){
+        varNode = child;
+      }
     }
+    Array<DECL_Param> params = PushArray(temp,b);
+
+    FUDeclaration* type = DECL_GetType(typeName,params);
+    String name = typeName;
+    if(varNode){
+      name = PushString(out,varNode->token.val);
+    }
+
+    COM_Ent* ent = COM_PushEnt(env,name,COM_EntType_MERGE_TYPE);
+    ent->decl = type;
 
     types[index] = type;
     mergeData[index].typeName = type->name;
     mergeData[index].mergeName = name;
+    index += 1;
   }
 
   // Pack params ================================================================
@@ -1208,25 +1267,6 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   for(int i = 0; i < size; i++){
     COM_UnitNodeList order  = COM_CalculateDAGOrder(merge.reconGraphs[i],temp);
     delays[i] = COM_CalculateDelay(merge.reconGraphs[i],order,temp);
-  }
-
-  // TODO: nocheckin: copied from COM_InstantiateModule, compress
-  FREE_ARENA(envArena);
-  FREE_ARENA(envErrorArena);
-  COM_Env envInst = {};
-  COM_Env* env = &envInst;
-  env->outArena = out;
-  env->arena = envArena;
-  env->errorArena = envErrorArena;
-
-  for(SP_Node* ptr = top->childs; ptr; ptr = ptr->next){
-    if(ptr->type == SP_Type_VAR_DECL){
-      String typeName = ptr->token.val;
-      String name = ptr->childs->token.val;
-
-      COM_Ent* ent = COM_PushEnt(env,name,COM_EntType_MERGE_TYPE);
-      ent->decl = DECL_GetType(typeName,{});
-    }
   }
 
   COM_FunctionNode *funcHead = 0,*funcTail = 0;
@@ -1345,6 +1385,8 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
     databusCount += decl->numberDatabus;
     single |= decl->singleInterfaces;
   }
+
+  DEBUG_BREAK();
 
   // Pack =======================================================================
   String name = PushString(out,meta->name); // TODO: Serialize if needed.

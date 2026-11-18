@@ -134,7 +134,7 @@ def RunVersat(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,debug_pat
         versat_args.append("--profile")
 
     if(extra):
-        versat_args.append(extra)
+        versat_args.append(" ".join(extra))
 
     print(*versat_args,"\n",file=sys.stderr)
     result = None
@@ -169,6 +169,8 @@ def SaveSetupInfo(filepath,lines):
 
 def CreateVersatClass(versat_spec,versat_top,versat_extra,build_dir,axi_data_w,debug_path=None,profile=None,extraFlags=None):
     versat_dir = os.path.dirname(__file__)
+
+    print("VERSAT_CLASS:",profile,extraFlags,file=sys.stderr)
 
     versatSetupFilepath = os.path.realpath(build_dir + "/software/versatSetup.txt")
     alreadyRunned = os.path.isfile(versatSetupFilepath)
