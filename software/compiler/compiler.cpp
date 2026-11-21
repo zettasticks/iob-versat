@@ -161,6 +161,44 @@ bool Equal(COM_Edge lhs,COM_Edge rhs){
 }
 
 // ======================================
+// Generated naming 
+
+COM_GenName COM_GetValidName(COM_Unit* unitStart,String nameFormat,int index,Arena* out){
+  ArenaMark mark = MarkArena(out);
+
+  String possible = {};
+  int i = index;
+  for(; i < 65536; i += 1){
+    possible = PushString(out,"%.*s_%d",UN(nameFormat),i);
+
+    bool exists = 0;
+    for(COM_Unit* ptr = unitStart; ptr; ptr = ptr->next){
+      if(ptr->name == possible){
+        exists = 1;
+      }
+    }
+    
+    if(exists){
+      PopMark(mark);
+      continue;
+    }
+
+    break;
+  }
+
+  if(i >= 65536){
+    // TODO: Better error reporting
+    printf("Reached a limit in unit generation, cannot have more that 65536 units\n");
+    exit(-1);
+  }
+
+  COM_GenName res = {};
+  res.name = possible;
+  res.index = i;
+  return res;
+}
+
+// ======================================
 // Constant expressions and computations
 
 SYM_Expr COM_SymbolicFromExpression(COM_Env* env,SP_Node* node){
@@ -635,29 +673,31 @@ COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail){
         res.func = func;
       } break;
       case SP_Type_ARRAY_ACCESS:{
-        COM_Ent varSide = COM_ResolveEntity(env,node->childs,false);
-        SP_Node* rangeExpr = SP_GetRangeExpression(node);
+        COM_Ent varSide = COM_ResolveEntity(env,node->childs,canFail);
+        if(!IsNil(varSide)){
+          SP_Node* rangeExpr = SP_GetRangeExpression(node);
     
-        COM_ConstantResult val = COM_ComputeConstantValue(env,rangeExpr);
+          COM_ConstantResult val = COM_ComputeConstantValue(env,rangeExpr);
 
-        if(!val.divByZero){
-          bool constant = !val.nonConstant;
+          if(!val.divByZero){
+            bool constant = !val.nonConstant;
 
-          if(constant){
-            if(COM_Ent_IsArray(varSide.type)){
-              res = COM_ArrayAccess(env,varSide,val.value);
-            } else {
-              res = varSide;
-              res.leftoverRange = rangeExpr;
+            if(constant){
+              if(COM_Ent_IsArray(varSide.type)){
+                res = COM_ArrayAccess(env,varSide,val.value);
+              } else {
+                res = varSide;
+                res.leftoverRange = rangeExpr;
+              }
             }
-          }
 
-          if(!constant){
-            if(COM_Ent_IsArray(varSide.type)){
-              COM_ReportError(env,"Cannot have a non constant expression inside an array access",rangeExpr);
-            } else {
-              res = varSide;
-              res.leftoverRange = rangeExpr;
+            if(!constant){
+              if(COM_Ent_IsArray(varSide.type)){
+                COM_ReportError(env,"Cannot have a non constant expression inside an array access",rangeExpr);
+              } else {
+                res = varSide;
+                res.leftoverRange = rangeExpr;
+              }
             }
           }
         }
@@ -765,17 +805,19 @@ COM_EntPort COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out){
         while(vars.size > 1){
           int nextAmountOfUnits = 0;
           int index = 0;
-
+          int genNameIndex = 0;
           while(index < vars.size){
             if(index + 2 <= vars.size){
               COM_Ent lhs = vars[index];
               COM_Ent rhs = vars[index+1];
 
-              COM_Unit* join = COM_PushUnit(&env->graph,"TEST",decl,out);
-              COM_Ent* ent = COM_PushEnt(env,"TEST",COM_EntType_GENERATED_UNIT);
+              COM_GenName genName = COM_GetValidName(env->graph.units.head,decl->name,genNameIndex,out);
+              genNameIndex = genName.index + 1;
+
+              COM_Unit* join = COM_PushUnit(&env->graph,genName.name,decl,out);
+              COM_Ent* ent = COM_PushEnt(env,genName.name,COM_EntType_GENERATED_UNIT);
               ent->unit = join;
               ent->decl = join->decl;
-              //ent->
 
               COM_Edge* lhsEdge = COM_PushEdge(&env->graph,out);
               COM_Edge* rhsEdge = COM_PushEdge(&env->graph,out);
@@ -870,7 +912,7 @@ COM_EntPort COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out){
   return res;
 };
 
-COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String moduleName,Arena* out){
+COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String moduleName,bool isMerge,Arena* out){
   TEMP_REGION(temp,out);
 
   SP_Node* ptr = topNode;
@@ -980,6 +1022,7 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
   auto structList = PushList<COM_Struct>(temp);
   auto structElems = PushList<COM_StructElem>(temp);
 
+  FUDeclaration* mergeDeclarationToActivate = 0;
   COM_Stmt* stmtHead = 0;
   COM_Stmt* stmtTail = 0;
   for(Work* work = equalHead; work; work = work->next){
@@ -1029,7 +1072,7 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
       }
     }
     Array<AddressGenForDef2> genLoops = PushArray(temp,genLoopList);
-    Array<AddressGenForDef2> forLoops = PushArray(temp,forLoopList);
+    Array<AddressGenForDef2> forLoops = PushArray(out,forLoopList);
 
     ReverseInPlace(genLoops);
     ReverseInPlace(forLoops);
@@ -1100,6 +1143,14 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
       if(!stmt && lhsEnt.type == COM_EntType_FUNCTION_CALL){
         String unitName = lhsEnt.name;
         COM_Function* func = lhsEnt.func;
+
+        if(isMerge){
+          if(mergeDeclarationToActivate && lhsEnt.decl != mergeDeclarationToActivate){
+            COM_ReportError(env,"Trying to configure two different merge types at the same time",lhsNode);
+          }
+          
+          mergeDeclarationToActivate = lhsEnt.decl;
+        }
 
         // We handle stmt creating in here automatically
         ignore = 1;
@@ -1254,14 +1305,18 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
       if(!stmt && isState && COM_Ent_IsExpr(rhsEnt.type)){
         String name = lhsNode->token.val;
         SYM_Expr asExpr = COM_SymbolicFromExpression(env,rhsNode);
-        String repr = SYM_Repr(asExpr,out);
+
+        COM_StructElem* elem = structElems->PushElem();
+        elem->typeName = "iptr";
+        elem->name = PushString(out,name);
 
         stmt = PushStruct<COM_Stmt>(out);
         stmt->type = COM_StmtType_ASSIGN;
         stmt->asAssign.lhs = PushString(out,name);
-        stmt->asAssign.rhs = repr;
+        stmt->asAssign.rhsExpr = asExpr;
       }
 
+      // The equivalent to function call for state ==================================
       if(!stmt && isState && rhsEnt.type == COM_EntType_STATE){
         String name = lhsNode->token.val;
         COM_Function* func = rhsEnt.func;
@@ -1287,7 +1342,13 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
           stmt = PushStruct<COM_Stmt>(out);
           stmt->type = COM_StmtType_ASSIGN;
           stmt->asAssign.lhs = PushString(out,"%.*s.%.*s",UN(name),UN(s->asAssign.lhs));
-          stmt->asAssign.rhs = PushString(out,"%.*s.%.*s",UN(rhsEnt.name),UN(s->asAssign.rhs));
+          
+          // TODO: This is stupid and is equal to what we do inside codeGen. Fix in here and in code gen.
+          if(Empty(s->asAssign.rhs)){
+            stmt->asAssign.rhsExpr = s->asAssign.rhsExpr;
+          } else {
+            stmt->asAssign.rhs = PushString(out,"%.*s.%.*s",UN(rhsEnt.name),UN(s->asAssign.rhs));
+          }
 
           LL_Append(stmtHead,stmtTail,next,stmt);
         }
@@ -1481,9 +1542,7 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
     
     comp->outputName = PushString(out,varName);
 
-    FREE_ARENA(CCode1);
-    FREE_ARENA(CCode2);
-    CEmitter* c = StartCCode(out,CCode2);
+    CEmitter* c = StartCCode(out,temp);
 
     auto CheckIfUsed = [&](SYM_Expr expr){
       TEMP_REGION(temp,nullptr);
@@ -1584,6 +1643,7 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
   func->v.structs = PushArray(out,structList);
   func->v.returnType = isState ? PushString(out,"%.*s_Struct",UN(func->v.name)) : String("void");
   func->v.extraComputations = comp;
+  func->v.mergeDeclarationToActivate = mergeDeclarationToActivate;
 
   return func;
 }
@@ -1894,7 +1954,7 @@ void COM_CompileStatement(COM_Env* env,SP_Node* top,Array<COM_Param> topLevelPar
   case SP_Type_FUNC_STATE:
   case SP_Type_FUNC_MEM:
   case SP_Type_FUNC_CONFIG:{
-    COM_FunctionNode* func = COM_CompileFunction(env,top,env->moduleName,out);
+    COM_FunctionNode* func = COM_CompileFunction(env,top,env->moduleName,false,out);
     LL_Append(env->funcHead,env->funcTail,next,func);
   } break;
 
@@ -1902,19 +1962,17 @@ void COM_CompileStatement(COM_Env* env,SP_Node* top,Array<COM_Param> topLevelPar
   };
 }
 
-COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelParams,Arena* out){
+COM_Module COM_InstantiateModule(SP_Node* moduleDef,String serializedName,Array<COM_Param> topLevelParams,Arena* out){
   TEMP_REGION(temp,out);
 
   Assert(moduleDef->type = SP_Type_MODULE_DECL);
-
-  String moduleName = moduleDef->token.val;
 
 #if 1
   String repr = SP_Repr(moduleDef,temp);
   printf("%.*s\n",UN(repr));
 #endif
   
-  DEBUG_TOP(moduleName);
+  DEBUG_TOP(serializedName);
 
   FREE_ARENA(envArena);
   COM_Env envInst = {};
@@ -1922,7 +1980,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
   env->outArena = out;
   env->arena = envArena;
   env->errorArena = envArena;
-  env->moduleName = moduleName;
+  env->moduleName = serializedName;
 
   int inputIndex = 0;
   for(SP_Node* ptr = moduleDef->childs; ptr; ptr = ptr->next){
@@ -1952,7 +2010,7 @@ COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelPar
 
   // Pack =======================================================================
   COM_Module mod = {}; 
-  mod.name = PushString(out,moduleName);
+  mod.name = PushString(out,serializedName);
   mod.graph = env->graph;
   mod.funcs = env->funcHead;
   

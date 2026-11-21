@@ -2029,12 +2029,7 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
   {
     CEmitter* c = StartCCode(temp,CCode2);
         
-    bool isMerge = false;
-#if 0
-    if(info.infos.size > 1){
-      isMerge = true;
-    }
-#endif
+    bool isMerge = decl->mergeData.size > 1;
         
     // Move this to meta stuff.
     auto ConfigVarTypeToName = [](COM_ArgType varType) -> String{
@@ -2351,12 +2346,7 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
   // Collect all state structs and output them ==================================
   for(COM_FunctionNode* funcNode = decl->funcs; funcNode; funcNode = funcNode->next){
     COM_Function* func = &funcNode->v;
-    bool isState = (func->type == COM_FunctionType_STATE);
-            
-    if(!isState){
-      continue;
-    }
-            
+
     for(COM_Struct def : func->structs){
       c->Struct(def.name); //SF("%.*s_%.*s",UN(def.originalModule),UN(def.name)));
       for(COM_StructElem elem : def.elems){
@@ -2370,6 +2360,7 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
   for(COM_FunctionNode* funcNode = decl->funcs; funcNode; funcNode = funcNode->next){
     COM_Function* func = &funcNode->v;
     bool isState = (func->type == COM_FunctionType_STATE);
+    bool isConfig = (func->type == COM_FunctionType_CONFIG);
             
     String returnType = func->returnType;
     if(returnType != "void"){
@@ -2381,6 +2372,12 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
             
     for(COM_FuncParam var : func->params){
       c->Argument(ConfigVarTypeToName(var.type),var.name);
+    }
+
+    FUDeclaration* mergeDecl = funcNode->v.mergeDeclarationToActivate;
+    if(isMerge && mergeDecl){
+      String raw = PushString(temp,"ActivateMergedAccelerator(MergeType_%.*s);\n",UN(mergeDecl->name));
+      c->RawLine(raw);
     }
             
 #if 0
@@ -2396,12 +2393,9 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
 #endif
             
     String assignStarter = "accelConfig";
-            
-#if 1
     if(isState){
       assignStarter = "accelState";
     }
-#endif
             
     // Because of merge, need to generate the config pointer that allow us to access the named members directly.
 #if 0
@@ -2421,13 +2415,12 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     }
 #endif
             
-#if 1
     if(!isState){
       for(ConfigComputation comp : func->extraComputations){
         c->InsertCode(comp.cCode);
       }
     }
-#endif
+
     FULL_SWITCH(func->type){
     case COM_FunctionType_NIL:{
       Assert(false);
@@ -2455,7 +2448,14 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
       for(COM_Stmt* stmt = func->stmts; stmt; stmt = stmt->next){
         Assert(stmt->type == COM_StmtType_ASSIGN);
         String lhs = PushString(temp,"res.%.*s",UN(stmt->asAssign.lhs));
-        String rhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(stmt->asAssign.rhs));
+
+        String rhs = {};
+        if(Empty(stmt->asAssign.rhs)){
+          rhs = SYM_Repr(stmt->asAssign.rhsExpr,temp);
+        } else {
+          rhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(stmt->asAssign.rhs));
+        }
+
         c->Assignment(lhs,rhs);
       }        
                     
@@ -2548,7 +2548,6 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
           options.extVarName = stmt->asAddr.addrVarName;
           options.memPort = access.port;
           options.dir = access.dir;
-          DEBUG_BREAK();
                                 
           CodeNode* top = EmitStatements(access,temp,options);
           Recurse(Recurse,top);
@@ -2814,7 +2813,7 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
         int mergeIndex = 0;
         c->SwitchBlock("type");
                 
-        for(COM_Unit* ptr = DECL_GetMergeReconStart(decl); ptr; mergeIndex++,ptr = ptr->mergeNext){
+        for(COM_Unit* ptr = DECL_GetMergeReconStartUnit(decl); ptr; mergeIndex++,ptr = ptr->mergeNext){
           Array<MuxInfo> muxInfo = CalculateMux(ptr,temp);
           c->CaseBlock(SF("MergeType_%.*s",UN(decl->mergeData[mergeIndex].typeName)));
                     

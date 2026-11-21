@@ -212,6 +212,35 @@ Array<DECL_Param> DECL_Copy(Array<DECL_Param> in,Arena* out){
 }
 
 // ======================================
+// Name mangling
+
+String DECL_MangleName(String name,Array<DECL_Param> params,Arena* out){
+  TEMP_REGION(temp,out);
+
+  auto b = StartString(temp);
+  b->PushString(name);
+
+  for(int i = 0; i <  params.size; i++){
+    DECL_Param p = params[i];
+
+    b->PushString("_");
+    b->PushString(p.name);
+    b->PushString("_");
+    String symRepr = SYM_Repr(p.val,temp);
+    for(char ch : symRepr){
+      if(IsWhitespace(ch,true)){
+        b->PushChar('_');
+      } else {
+        b->PushChar(ch);
+      }
+    }
+  }
+
+  String res = EndString(out,b);
+  return res;
+}
+
+// ======================================
 // Register (does not exist)
 
 bool DECL_RegisterMeta(String name,V_Node* module){
@@ -219,11 +248,15 @@ bool DECL_RegisterMeta(String name,V_Node* module){
 
   DECL_Meta* exists = 0;
   LL_Find(DECL_State.metaHead,next,exists,it->name == name);
+  if(exists){
+    return true;
+  }
+  
   Assert(!exists); // TODO: Proper solve this, either report error or allow overriding
 
   // TODO: We assuming that there is no duplicated param or anything like that.
   bool anyError = 0;
-  auto l = PushList<DECL_Param>(temp);
+  auto l = PushList<DECL_ParamDef>(temp);
   for(V_Node* ptr = module->childs; ptr; ptr = ptr->next){
     if(ptr->type == V_NodeType_PARAMETER){
       String name = ptr->token.val;
@@ -231,9 +264,9 @@ bool DECL_RegisterMeta(String name,V_Node* module){
       V_SymConvResult converted = V_ConvertToSym(ptr->childs,{});
 
       anyError |= converted.error;
-      DECL_Param* p = l->PushElem();
+      DECL_ParamDef* p = l->PushElem();
       p->name = PushString(DECL_State.arena,name);
-      p->val = converted.res;
+      p->defaultVal = converted.res;
     }
   }
 
@@ -245,7 +278,7 @@ bool DECL_RegisterMeta(String name,V_Node* module){
   node->anyError |= anyError;
   LL_Append(DECL_State.metaHead,DECL_State.metaTail,next,node);
   
-  return node;
+  return false;
 }
 
 bool DECL_RegisterMeta(String name,SP_Node* module){
@@ -254,6 +287,11 @@ bool DECL_RegisterMeta(String name,SP_Node* module){
 
   DECL_Meta* exists = 0;
   LL_Find(DECL_State.metaHead,next,exists,it->name == name);
+
+  if(exists){
+    return true;
+  }
+
   Assert(!exists); // TODO: Proper solve this, either report error or allow overriding
 
   // NOTE: We need an environment since params can depend on other params.
@@ -265,7 +303,7 @@ bool DECL_RegisterMeta(String name,SP_Node* module){
   env->arena = envArena;
   env->errorArena = envArena;
   
-  auto b = PushList<DECL_Param>(temp);
+  auto b = PushList<DECL_ParamDef>(temp);
   *b->PushElem() = {"DATA_W",SYM_32};
   *b->PushElem() = {"LEN_W",SYM_32};
   *b->PushElem() = {"DELAY_W",SYM_32};
@@ -276,12 +314,13 @@ bool DECL_RegisterMeta(String name,SP_Node* module){
     if(node->type == SP_Type_PARAM_DECL){
       SYM_Expr expr = COM_SymbolicFromExpression(env,node->childs);
 
-      DECL_Param* p = b->PushElem();
+      DECL_ParamDef* p = b->PushElem();
       p->name = PushString(DECL_State.arena,node->token.val);
-      p->val = expr;
+      p->defaultVal = expr;
+      p->flags = DECL_ParamFlags_INFLUENCES_GRAPH;
     }
   }
-  Array<DECL_Param> params = PushArray(DECL_State.arena,b);
+  Array<DECL_ParamDef> params = PushArray(DECL_State.arena,b);
 
   DECL_Meta* node = PushStruct<DECL_Meta>(DECL_State.arena);
   node->name = PushString(DECL_State.arena,name);
@@ -295,7 +334,7 @@ bool DECL_RegisterMeta(String name,SP_Node* module){
   node->params = params;
   LL_Append(DECL_State.metaHead,DECL_State.metaTail,next,node);
 
-  return node;
+  return false;
 }
 
 FUDeclaration* DECL_RegisterFU(String name,DeclarationType type){
@@ -312,7 +351,7 @@ FUDeclaration* DECL_RegisterFU(String name,DeclarationType type){
 // ======================================
 // Get or create if needed
 
-FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params){
+FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params,bool isTopLevel){
   TEMP_REGION(temp,DECL_State.arena);
 
   FUDeclaration* res = &FUDeclaration_Nil;
@@ -332,16 +371,20 @@ FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params){
   //       we might also want to be able to instantiate declarations with expressions for parameters.
   //       At which point things become a bit more complicated and I rather have automatic tests in place
   //       before any change 
-  Array<DECL_Param> defaultParams = {};
+  Array<DECL_ParamDef> defaultParams = {};
   Array<DECL_Param> normalizedParams = {};
   if(metaExists){
     defaultParams = metaExists->params;
 
+#if 0
     if(params.size == 0){
       normalizedParams = defaultParams;
     } else {
+#endif
+
+
       auto l = PushList<DECL_Param>(temp);
-      for(DECL_Param def : defaultParams){
+      for(DECL_ParamDef def : defaultParams){
         bool paramExists = 0;
         DECL_Param param = {};
 
@@ -357,11 +400,17 @@ FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params){
         if(paramExists){
           *l->PushElem() = param;
         } else {
-          *l->PushElem() = def;
+          DECL_Param* p = l->PushElem();
+          p->name = def.name;
+          p->val = def.defaultVal;
+          //= def;
         }
       }
       normalizedParams = PushArray(temp,l);
+
+#if 0
     }
+#endif
 
     Assert(normalizedParams.size == defaultParams.size);
   } else {
@@ -395,13 +444,13 @@ FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params){
 
   if(res == &FUDeclaration_Nil && metaExists){
     if(metaExists->type == DECL_MetaType_SIMPLE){
-      res = DECL_InstantiateSimple(metaExists,normalizedParams);
+      res = DECL_InstantiateSimple(metaExists,normalizedParams,isTopLevel);
     }
     if(metaExists->type == DECL_MetaType_MODULE){
-      res = DECL_InstantiateModule(metaExists,normalizedParams);
+      res = DECL_InstantiateModule(metaExists,normalizedParams,isTopLevel);
     }
     if(metaExists->type == DECL_MetaType_MERGE){
-      res = DECL_InstantiateMerge(metaExists,normalizedParams);
+      res = DECL_InstantiateMerge(metaExists,normalizedParams,isTopLevel);
     }
   }
 
@@ -432,7 +481,7 @@ FUDeclaration* DECL_GetVariableBufferType(){
 // ======================================
 // Instantiation
 
-FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normalizedParams){
+FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normalizedParams,bool isTopLevel){
   TEMP_REGION(temp,DECL_State.arena);
 
   V_Node* top = meta->simpleUnit;
@@ -947,13 +996,49 @@ FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normaliz
   return res;
 }
 
-FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normalizedParams){
+FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normalizedParams,bool isTopLevel){
   Arena* out = DECL_State.arena;
   TEMP_REGION(temp,out);
 
   DEBUG_TOP(meta->name);
   DEBUG_STAGE("Start");
-  
+
+  if(currentlyDebugging){
+    String name = DECL_MangleName(meta->name,normalizedParams,temp);
+    DEBUG_LOG(SF("Instantiating %.*s",UN(name)));
+  }
+
+  // Serialize name =============================================================
+  String serializedName = {};
+  if(!isTopLevel){
+    auto b = StartString(temp);
+    b->PushString(meta->name);
+    for(int i = 0; i < normalizedParams.size; i++){
+      DECL_ParamDef def = meta->params[i];
+      DECL_Param p = normalizedParams[i];
+
+      Assert(def.name == p.name && "Normalized params must match meta, simpler if so");
+
+      if(def.flags & DECL_ParamFlags_INFLUENCES_GRAPH){
+        b->PushString("_");
+        b->PushString(p.name);
+        b->PushString("_");
+        String symRepr = SYM_Repr(p.val,temp);
+        for(char ch : symRepr){
+          if(IsWhitespace(ch,true)){
+            b->PushChar('_');
+          } else {
+            b->PushChar(ch);
+          }
+        }
+      }
+    }
+    serializedName = EndString(out,b);
+  }
+  if(isTopLevel){
+    serializedName = meta->name;
+  }
+
   // Pack params and compile ====================================================
   TrieMap<String,SYM_Expr>* paramReplace = PushTrieMap<String,SYM_Expr>(temp);
   Array<COM_Param> comParams = PushArray<COM_Param>(temp,normalizedParams.size);
@@ -963,7 +1048,7 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
 
     paramReplace->Insert(normalizedParams[i].name,normalizedParams[i].val);
   }
-  COM_Module module = COM_InstantiateModule(meta->compositeUnit,comParams,out);
+  COM_Module module = COM_InstantiateModule(meta->compositeUnit,serializedName,comParams,out);
   COM_Graph baseGraph = COM_Copy(module.graph,false,out).result;
 
   COM_Graph graph = module.graph;
@@ -1087,7 +1172,7 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
   }
 
   // Pack =======================================================================
-  String name = meta->name; // TODO: Serialize if needed.
+  String name = serializedName;
   FUDeclaration* res = DECL_RegisterFU(name,DeclarationType_COMPOSITE);
 
   res->meta = meta;
@@ -1166,7 +1251,7 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
   return res;
 }
 
-FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalizedParams){
+FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalizedParams,bool isTopLevel){
   Arena* out = DECL_State.arena;
   TEMP_REGION(temp,out);
 
@@ -1269,15 +1354,45 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
     delays[i] = COM_CalculateDelay(merge.reconGraphs[i],order,temp);
   }
 
-  COM_FunctionNode *funcHead = 0,*funcTail = 0;
+  // Serialize name =============================================================
+  String serializedName = {};
+  if(!isTopLevel){
+    auto b = StartString(temp);
+    b->PushString(meta->name);
+    for(int i = 0; i < normalizedParams.size; i++){
+      DECL_ParamDef def = meta->params[i];
+      DECL_Param p = normalizedParams[i];
 
+      Assert(def.name == p.name && "Normalized params must match meta, simpler if so");
+
+      if(def.flags & DECL_ParamFlags_INFLUENCES_GRAPH){
+        b->PushString("_");
+        b->PushString(p.name);
+        b->PushString("_");
+        String symRepr = SYM_Repr(p.val,temp);
+        for(char ch : symRepr){
+          if(IsWhitespace(ch,true)){
+            b->PushChar('_');
+          } else {
+            b->PushChar(ch);
+          }
+        }
+      }
+    }
+    serializedName = EndString(out,b);
+  }
+  if(isTopLevel){
+    serializedName = meta->name;
+  }
+  
+  COM_FunctionNode *funcHead = 0,*funcTail = 0;
   for(SP_Node* ptr = top->childs; ptr; ptr = ptr->next){
     bool isFunction = (ptr->type == SP_Type_FUNC_STATE ||
                        ptr->type == SP_Type_FUNC_MEM ||
                        ptr->type == SP_Type_FUNC_CONFIG);
 
     if(isFunction){
-      COM_FunctionNode* func = COM_CompileFunction(env,ptr,meta->name,out);
+      COM_FunctionNode* func = COM_CompileFunction(env,ptr,serializedName,true,out);
       LL_Append(funcHead,funcTail,next,func);
     }
   }
@@ -1386,8 +1501,6 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
     single |= decl->singleInterfaces;
   }
 
-  DEBUG_BREAK();
-
   // Pack =======================================================================
   String name = PushString(out,meta->name); // TODO: Serialize if needed.
   FUDeclaration* res = DECL_RegisterFU(name,DeclarationType_MERGED);
@@ -1461,7 +1574,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
 // ======================================
 // Merge graph
 
-COM_Unit* DECL_GetMergeReconStart(FUDeclaration* decl){
+COM_Unit* DECL_GetMergeReconStartUnit(FUDeclaration* decl){
   COM_Unit* unit = decl->fixedDelays.units.head->mergeNext;
   return unit;
 }

@@ -334,6 +334,7 @@ struct COM_Stmt{
       String rhs;
       
       SYM_Expr rhsExpr;
+
     } asAssign;
     struct {
       String unitAddressName;
@@ -401,6 +402,7 @@ struct COM_Function{
   Array<COM_Struct> structs;
   String returnType;
   Array<ConfigComputation> extraComputations;
+  FUDeclaration* mergeDeclarationToActivate;
 };
 
 // What is the most raw form of storing this stuff?
@@ -462,6 +464,11 @@ struct COM_DebugRepr{
   String tailContent;
 };
 
+struct COM_GenName{
+  String name;
+  int index;
+};
+
 // ======================================
 // Type stuff
 
@@ -482,6 +489,11 @@ COM_CopyResult COM_Copy(COM_Graph in,bool computeMapping,Arena* out);
 bool Equal(COM_Edge lhs,COM_Edge rhs);
 
 // ======================================
+// Generated naming 
+
+COM_GenName COM_GetValidName(COM_Unit* unitStart,String nameFormat,int index,Arena* out);
+
+// ======================================
 // Constant expressions and computations
 
 SYM_Expr           COM_SymbolicFromExpression(COM_Env* env,SP_Node* expr);
@@ -495,13 +507,13 @@ COM_RangeValues     COM_CalculateRange(COM_Env* env,SP_Node* range);
 COM_Ent             COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail);
 COM_EntPort         COM_InstantiateExpression(COM_Env* env,SP_Node* top,Arena* out);
 
-COM_FunctionNode*   COM_CompileFunction(COM_Env* env,SP_Node* topNode,String module,Arena* out);
+COM_FunctionNode*   COM_CompileFunction(COM_Env* env,SP_Node* topNode,String module,bool isMerge,Arena* out);
 
 // ======================================
 // Compilation
 
 void       COM_CompileStatement(COM_Env* env,SP_Node* top,Array<COM_Param> topLevelParams,Arena* out);
-COM_Module COM_InstantiateModule(SP_Node* moduleDef,Array<COM_Param> topLevelParams,Arena* out);
+COM_Module COM_InstantiateModule(SP_Node* moduleDef,String serializedName,Array<COM_Param> topLevelParams,Arena* out);
 
 // ======================================
 // Env

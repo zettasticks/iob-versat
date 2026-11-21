@@ -51,3 +51,6 @@ LocationNode* DEBUG_AddLocation_(LocationNode* topTail,Arena* out,iptr TAG = 0);
 
 String DEBUG_Repr(LocationNode* head,Arena* out);
 Array<LocationNode*> DEBUG_DepthFirst(LocationNode* head,Arena* out);
+
+void DEBUG_Log(const char* filename,int line,String content);
+#define DEBUG_LOG(STR) DEBUG_Log(__FILE__,__LINE__,STR);

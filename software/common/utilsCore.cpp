@@ -73,6 +73,7 @@ char* StaticFormat(const char* format,...){
 
   if(written == BUFFER_SIZE - 1){
     Assert(false); // NOTE: We are probably using StaticFormat in a situation where we shouldn't.
+    exit(-1);
   }
 
   currentBuffer = (currentBuffer + 1) % 4;

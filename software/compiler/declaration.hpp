@@ -35,6 +35,18 @@ enum SpecialUnitType{
   SpecialUnitType_VARIABLE_BUFFER = 4
 };
 
+enum DECL_ParamFlags{
+  DECL_ParamFlags_NIL = 0,
+  // TODO: Proper implementation of this probably requires adding another step where we separate compilation and instantiation into individual parts.
+  DECL_ParamFlags_INFLUENCES_GRAPH = (1 << 1)
+};
+
+struct DECL_ParamDef{
+  String name;
+  SYM_Expr defaultVal;
+  DECL_ParamFlags flags;
+};
+
 struct DECL_Param{
   String name;
   SYM_Expr val;
@@ -52,7 +64,7 @@ enum DeclarationType{
 struct DECL_PortInfo{
   SYM_Expr size;
   int delay;
-  Array<int> inputDependencies; // empty means depends on all inputs.
+  Array<int> inputDependencies; // Empty means depends on all inputs.
 };
 
 enum DECL_MetaType{
@@ -67,7 +79,7 @@ struct DECL_Meta{
   DECL_MetaType type;
   String name;
 
-  Array<DECL_Param> params;
+  Array<DECL_ParamDef> params;
 
   bool anyError;
 
@@ -153,15 +165,6 @@ namespace BasicDeclaration{
 
   extern FUDeclaration* input;
   extern FUDeclaration* output;
-
-#if 0
-  extern FUDeclaration* variableBuffer;
-  extern FUDeclaration* fixedBuffer;
-  extern FUDeclaration* multiplexer;
-  extern FUDeclaration* combMultiplexer;
-  extern FUDeclaration* stridedMerge;
-  extern FUDeclaration* pipelineRegister;
-#endif
 }
 
 // ======================================
@@ -199,6 +202,14 @@ void DECL_Init();
 
 Array<DECL_Param> DECL_Copy(Array<DECL_Param> in,Arena* out);
 
+// ======================================
+// Name mangling
+
+String DECL_MangleName(String name,Array<DECL_Param> params,Arena* out);
+
+// ======================================
+// Meta register
+
 // Returns true if already exists
 // TODO: Could we just reuse the node struct and have everything use the same struct?
 bool DECL_RegisterMeta(String name,V_Node* module);
@@ -209,18 +220,18 @@ FUDeclaration* DECL_RegisterFU(String name,DeclarationType type);
 // ======================================
 // Get or create if needed
 
-FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params);
+FUDeclaration* DECL_GetType(String name,Array<DECL_Param> params,bool isTopLevel = false);
 FUDeclaration* DECL_GetBufferType(int delay);
 FUDeclaration* DECL_GetVariableBufferType();
 
 // ======================================
 // Instantiation
 
-FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normalizedParams);
-FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normalizedParams);
-FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalizedParams);
+FUDeclaration* DECL_InstantiateSimple(DECL_Meta* meta,Array<DECL_Param> normalizedParams,bool isTopLevel);
+FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normalizedParams,bool isTopLevel);
+FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalizedParams,bool isTopLevel);
 
 // ======================================
-// Merge graph
+// Merge graph getter
 
-COM_Unit* DECL_GetMergeReconStart(FUDeclaration* decl);
+COM_Unit* DECL_GetMergeReconStartUnit(FUDeclaration* decl);

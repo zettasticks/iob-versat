@@ -824,3 +824,10 @@ Array<LocationNode*> DEBUG_DepthFirst(LocationNode* head,Arena* out){
   return res;
 
 }
+
+void DEBUG_Log(const char* filename,int line,String content){
+  if(currentlyDebugging){
+    printf("At pos: %s:%d\n",filename,line);
+    printf("%.*s\n",UN(content));
+  }
+}
