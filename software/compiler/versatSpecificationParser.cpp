@@ -4050,7 +4050,28 @@ SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out){
   Token funcName = parser->ExpectNext(TokenType_IDENTIFIER);
 
   // Parse function inputs ======================================================
-  if(type == SP_Type_FUNC_MEM || type == SP_Type_FUNC_CONFIG){
+  bool isInherit = 0;
+  if(parser->IfNextToken('=')){
+    bool found = 0;
+    if(!found && parser->IfNextToken(TokenType_KEYWORD_INHERIT)){
+      SP_Node* atom = SP_ParseExpression(parser,out);
+      SP_Node* node = SP_PushNode(out,SP_Type_INHERIT,{},atom);
+      SP_Append(head,tail,node);
+
+      isInherit = 1;
+      found = 1;
+    }
+
+    if(found){
+      parser->ExpectNext(';');
+    }
+
+    if(!found){
+      parser->ReportError("Expected a keyword");
+    }
+  }
+
+  if(!isInherit && (type == SP_Type_FUNC_MEM || type == SP_Type_FUNC_CONFIG)){
     parser->ExpectNext('(');
   
     while(!parser->Done()){
@@ -4094,9 +4115,11 @@ SP_Node* SP_ParseConfigFunction(Parser* parser,Arena* out){
     parser->ExpectNext(')');
   }
 
-  SP_Node* configs = SP_ParseConfigStatements(parser,out);
-  SP_Append(head,tail,configs);
-  
+  if(!isInherit){
+    SP_Node* configs = SP_ParseConfigStatements(parser,out);
+    SP_Append(head,tail,configs);
+  }  
+
   SP_Node* func = SP_PushNode(out,type,funcName,head);
 
   return func;
@@ -4256,6 +4279,7 @@ SP_Node* SP_ParseSpec(String content,Arena* out){
       if(id == "mem")        type = TokenType_KEYWORD_MEM;
       if(id == "gen")        type = TokenType_KEYWORD_GEN;
       if(id == "for")        type = TokenType_KEYWORD_FOR;
+      if(id == "inherit")    type = TokenType_KEYWORD_INHERIT;
 
       if(type != TokenType_INVALID){
         res.type = type;

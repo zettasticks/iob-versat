@@ -3938,7 +3938,7 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
         Array<DECL_Param> params = PushArray<DECL_Param>(temp,1);
         params[0].name = "SIZE";
         params[0].val = SYM_Lit(edgeCount);
-        graphMux->decl = DECL_GetType("CombMux8",params);
+        graphMux->decl = DECL_GetType("CombMux16",params);
         graphMux->numberInputs = graphMux->decl->inputs.size;
         graphMux->name = MERGE_GetValidMuxName(unitHead,muxInserted++,out);
 
@@ -4422,8 +4422,6 @@ ConsolidationGraph MERGE_GenerateConsolidationGraph(COM_Unit* units,COM_Edge* ed
       if(edge0->delay != edge1->delay){
         continue;
       }
-
-      DEBUG_BREAK();
 
       MERGE_Map* node = nodeList->PushElem();
       node->type = MERGE_MapType_EDGE;

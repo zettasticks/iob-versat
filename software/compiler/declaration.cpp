@@ -182,7 +182,7 @@ bool DECL_IsComposite(FUDeclaration* decl){
 
 bool DECL_IsMergeMultiplexer(FUDeclaration* decl){
   // TODO: Properly implement this
-  bool res = (decl->meta->name == "CombMux8");
+  bool res = (decl->meta->name == "CombMux8" || (decl->meta->name == "CombMux16"));
   return res;
 }
 
@@ -214,30 +214,39 @@ Array<DECL_Param> DECL_Copy(Array<DECL_Param> in,Arena* out){
 // ======================================
 // Name mangling
 
-String DECL_MangleName(String name,Array<DECL_Param> params,Arena* out){
+String DECL_MangleName(DECL_Meta* meta,Array<DECL_Param> params,bool isTopLevel,Arena* out){
   TEMP_REGION(temp,out);
+  String mangledName = {};
+  if(!isTopLevel){
+    auto b = StartString(temp);
+    b->PushString(meta->name);
+    for(int i = 0; i < params.size; i++){
+      DECL_ParamDef def = meta->params[i];
+      DECL_Param p = params[i];
 
-  auto b = StartString(temp);
-  b->PushString(name);
+      Assert(def.name == p.name && "Normalized params must match meta, simpler if so");
 
-  for(int i = 0; i <  params.size; i++){
-    DECL_Param p = params[i];
-
-    b->PushString("_");
-    b->PushString(p.name);
-    b->PushString("_");
-    String symRepr = SYM_Repr(p.val,temp);
-    for(char ch : symRepr){
-      if(IsWhitespace(ch,true)){
-        b->PushChar('_');
-      } else {
-        b->PushChar(ch);
+      if(def.flags & DECL_ParamFlags_INFLUENCES_GRAPH){
+        b->PushString("_");
+        b->PushString(p.name);
+        b->PushString("_");
+        String symRepr = SYM_Repr(p.val,temp);
+        for(char ch : symRepr){
+          if(IsWhitespace(ch,true)){
+            b->PushChar('_');
+          } else {
+            b->PushChar(ch);
+          }
+        }
       }
     }
+    mangledName = EndString(out,b);
+  }
+  if(isTopLevel){
+    mangledName = meta->name;
   }
 
-  String res = EndString(out,b);
-  return res;
+  return mangledName;
 }
 
 // ======================================
@@ -1003,40 +1012,10 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
   DEBUG_TOP(meta->name);
   DEBUG_STAGE("Start");
 
+  String mangledName = DECL_MangleName(meta,normalizedParams,isTopLevel,out);
+
   if(currentlyDebugging){
-    String name = DECL_MangleName(meta->name,normalizedParams,temp);
-    DEBUG_LOG(SF("Instantiating %.*s",UN(name)));
-  }
-
-  // Serialize name =============================================================
-  String serializedName = {};
-  if(!isTopLevel){
-    auto b = StartString(temp);
-    b->PushString(meta->name);
-    for(int i = 0; i < normalizedParams.size; i++){
-      DECL_ParamDef def = meta->params[i];
-      DECL_Param p = normalizedParams[i];
-
-      Assert(def.name == p.name && "Normalized params must match meta, simpler if so");
-
-      if(def.flags & DECL_ParamFlags_INFLUENCES_GRAPH){
-        b->PushString("_");
-        b->PushString(p.name);
-        b->PushString("_");
-        String symRepr = SYM_Repr(p.val,temp);
-        for(char ch : symRepr){
-          if(IsWhitespace(ch,true)){
-            b->PushChar('_');
-          } else {
-            b->PushChar(ch);
-          }
-        }
-      }
-    }
-    serializedName = EndString(out,b);
-  }
-  if(isTopLevel){
-    serializedName = meta->name;
+    DEBUG_LOG(SF("Instantiating %.*s",UN(mangledName)));
   }
 
   // Pack params and compile ====================================================
@@ -1048,7 +1027,7 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
 
     paramReplace->Insert(normalizedParams[i].name,normalizedParams[i].val);
   }
-  COM_Module module = COM_InstantiateModule(meta->compositeUnit,serializedName,comParams,out);
+  COM_Module module = COM_InstantiateModule(meta->compositeUnit,mangledName,comParams,out);
   COM_Graph baseGraph = COM_Copy(module.graph,false,out).result;
 
   COM_Graph graph = module.graph;
@@ -1172,7 +1151,7 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
   }
 
   // Pack =======================================================================
-  String name = serializedName;
+  String name = mangledName;
   FUDeclaration* res = DECL_RegisterFU(name,DeclarationType_COMPOSITE);
 
   res->meta = meta;
@@ -1260,8 +1239,14 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   
   SP_Node* top = meta->compositeUnit;
 
-  String repr = SP_Repr(top,temp);
-  printf("%.*s\n",UN(repr));
+  String mangledName = DECL_MangleName(meta,normalizedParams,isTopLevel,out);
+
+  if(currentlyDebugging){
+    DEBUG_LOG(SF("Instantiating %.*s",UN(mangledName)));
+
+    String repr = SP_Repr(top,temp);
+    printf("%.*s\n",UN(repr));
+  }
 
   // TODO: nocheckin: copied from COM_InstantiateModule, compress
   FREE_ARENA(envArena);
@@ -1353,37 +1338,6 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
     COM_UnitNodeList order  = COM_CalculateDAGOrder(merge.reconGraphs[i],temp);
     delays[i] = COM_CalculateDelay(merge.reconGraphs[i],order,temp);
   }
-
-  // Serialize name =============================================================
-  String serializedName = {};
-  if(!isTopLevel){
-    auto b = StartString(temp);
-    b->PushString(meta->name);
-    for(int i = 0; i < normalizedParams.size; i++){
-      DECL_ParamDef def = meta->params[i];
-      DECL_Param p = normalizedParams[i];
-
-      Assert(def.name == p.name && "Normalized params must match meta, simpler if so");
-
-      if(def.flags & DECL_ParamFlags_INFLUENCES_GRAPH){
-        b->PushString("_");
-        b->PushString(p.name);
-        b->PushString("_");
-        String symRepr = SYM_Repr(p.val,temp);
-        for(char ch : symRepr){
-          if(IsWhitespace(ch,true)){
-            b->PushChar('_');
-          } else {
-            b->PushChar(ch);
-          }
-        }
-      }
-    }
-    serializedName = EndString(out,b);
-  }
-  if(isTopLevel){
-    serializedName = meta->name;
-  }
   
   COM_FunctionNode *funcHead = 0,*funcTail = 0;
   for(SP_Node* ptr = top->childs; ptr; ptr = ptr->next){
@@ -1392,7 +1346,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
                        ptr->type == SP_Type_FUNC_CONFIG);
 
     if(isFunction){
-      COM_FunctionNode* func = COM_CompileFunction(env,ptr,serializedName,true,out);
+      COM_FunctionNode* func = COM_CompileFunction(env,ptr,mangledName,true,out);
       LL_Append(funcHead,funcTail,next,func);
     }
   }
@@ -1441,24 +1395,51 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
 
   // Compute calculated delays ==================================================
   for(int i = 0; i < size; i++){
-    auto b = PushList<int>(temp);
-    for(COM_Unit* ptr = merge.reconGraphs[i].units.head; ptr; ptr = ptr->next){
-      for(int i = 0; i < ptr->extraDelay.size; i++){
-        if(i < ptr->decl->numberInputDelays){
-          *b->PushElem() = ptr->extraDelay[i];
+    auto inputDelayList = PushList<int>(temp);
+    auto outputDelayList = PushList<int>(temp);
+    auto delayList = PushList<int>(temp);
+
+    auto muxList = PushList<DECL_MuxInfo>(temp);
+    for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
+      COM_Unit* reconUnit = 0;
+      for(COM_Unit* recon = ptr->mergeNext; recon; recon = recon->mergeNext){
+        if(recon->mergeIndex == i){
+          reconUnit = recon;
+          break;
+        }
+      }
+
+      if(reconUnit){
+        for(int i = 0; i < reconUnit->extraDelay.size; i++){
+          if(i < reconUnit->decl->numberInputDelays){
+            *inputDelayList->PushElem() = reconUnit->extraDelay[i];
+          }
+        }
+        for(int i = 0; i < reconUnit->extraDelay.size; i++){
+          if(i >= reconUnit->decl->numberInputDelays){
+            *outputDelayList->PushElem() = reconUnit->extraDelay[i];
+          }
+        }
+      } else {
+        for(int i = 0; i < ptr->decl->numberInputDelays + ptr->decl->numberOutputDelays; i++){
+          *delayList->PushElem() = 0;
         }
       }
     }
-    for(COM_Unit* ptr = merge.reconGraphs[i].units.head; ptr; ptr = ptr->next){
-      for(int i = 0; i < ptr->extraDelay.size; i++){
-        if(i >= ptr->decl->numberInputDelays){
-          *b->PushElem() = ptr->extraDelay[i];
-        }
-      }
+
+    for(auto i : inputDelayList){
+      *delayList->PushElem() = i;
     }
-    Array<int> storedDelays = PushArray(out,b);
+    for(auto i : outputDelayList){
+      *delayList->PushElem() = i;
+    }
+
+    Array<int> storedDelays = PushArray(out,delayList);
     mergeData[i].calculatedDelays = storedDelays;
   }
+
+  
+  
 
   // TODO: Share and Static
   // TODO: Copy from instantiateModule, reorganize.
@@ -1567,7 +1548,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
       }
     }
   }
-  
+
   return res;
 }
 

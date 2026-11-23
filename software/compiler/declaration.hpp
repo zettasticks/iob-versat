@@ -100,11 +100,17 @@ struct DECL_MMInfo{
   String addrName;
 };
 
+struct DECL_MuxInfo{
+  String unitName;
+  int port;
+};
+
 struct DECL_MergeData{
   String typeName;
   String mergeName;
   
   Array<int> calculatedDelays;
+  Array<DECL_MuxInfo> muxConfigs;
 };
 
 struct FUDeclaration{
@@ -205,7 +211,7 @@ Array<DECL_Param> DECL_Copy(Array<DECL_Param> in,Arena* out);
 // ======================================
 // Name mangling
 
-String DECL_MangleName(String name,Array<DECL_Param> params,Arena* out);
+String DECL_MangleName(DECL_Meta* meta,Array<DECL_Param> params,bool isTopLevel,Arena* out);
 
 // ======================================
 // Meta register

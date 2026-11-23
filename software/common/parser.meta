@@ -41,6 +41,7 @@ table TokenTable(name,enumVal,customRepr){
   KEYWORD_MEM                       ''    ''
   KEYWORD_GEN                       ''    ''
   KEYWORD_FOR                       ''    ''
+  KEYWORD_INHERIT                   ''    ''
   VERILOG_DEFINE                    ''    ''
   VERILOG_UNDEF                     ''    ''
   VERILOG_TIMESCALE                 ''    ''

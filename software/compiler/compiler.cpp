@@ -596,25 +596,21 @@ COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail){
         FUDeclaration* decl = varSide.decl;
 
         COM_EntType type = {};
-        String wireName = {};
-        Direction dir = Direction_NONE;
-        int port = 0;
-        COM_Function* func = 0;
+        String wireOrStateName = varSide.wireOrStateName;
+        Direction dir = varSide.dir;
+        int port = varSide.port;
+        COM_Function* func = varSide.func;
 
-        if(!type && varSide.type == COM_EntType_MERGE_TYPE){
-          for(COM_FunctionNode* node = decl->funcs; node; node = node->next){
-            if(node->v.name == name){
-              type = COM_EntType_STATE;
-              func = &node->v;
-              break;
-            }
-          }
+        if(!type && varSide.type == COM_EntType_FUNCTION && varSide.func->type == COM_FunctionType_STATE){
+          type = COM_EntType_STATE_ACCESS;
+          wireOrStateName = access.val;
+          func = varSide.func;
         }
 
-        if(!type && varSide.type == COM_EntType_MODULE_UNIT){
+        if(!type){
           for(COM_FunctionNode* node = decl->funcs; node; node = node->next){
-            if(node->v.name == name && node->v.type == COM_FunctionType_STATE){
-              type = COM_EntType_STATE;
+            if(node->v.name == name){
+              type = COM_EntType_FUNCTION;
               func = &node->v;
               break;
             }
@@ -636,7 +632,7 @@ COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail){
           for(Wire w : decl->configs){
             if(w.name == name){
               type = COM_EntType_VAR_WITH_CONFIG;
-              wireName = w.name;
+              wireOrStateName = w.name;
               break;
             }
           }
@@ -646,7 +642,7 @@ COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail){
           for(Wire w : decl->states){
             if(w.name == name){
               type = COM_EntType_VAR_WITH_STATE;
-              wireName = w.name;
+              wireOrStateName = w.name;
               break;
             }
           }
@@ -667,7 +663,7 @@ COM_Ent COM_ResolveEntity(COM_Env* env,SP_Node* varAccessNode,bool canFail){
 
         res = varSide;
         res.type = type;
-        res.wireName = wireName;
+        res.wireOrStateName = wireOrStateName;
         res.dir = dir;
         res.port = port;
         res.func = func;
@@ -930,6 +926,7 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
   defer{COM_PopScope(env);};
 
   // Process arguments and get statements =======================================
+  bool isInherit = 0;
   auto paramList = PushList<COM_FuncParam>(temp);
   SP_Node* stmtGroup = nullptr;
   for(SP_Node* input = ptr->childs; input; input = input->next){
@@ -958,6 +955,7 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
           }
     } break;
     case SP_Type_STMT_LIST: stmtGroup = input; break;
+    case SP_Type_INHERIT: isInherit = 1; break;
     default: handled = 0;
     };
     Assert(handled);
@@ -969,7 +967,7 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
   Array<COM_FuncParam> params = PushArray<COM_FuncParam>(out,paramList);
       
   // NOTE We always have a stmt group even if function is empty =================
-  Assert(stmtGroup->next == nullptr);
+  Assert((stmtGroup && stmtGroup->next == nullptr) || isInherit);
 
   // Flatten for loops into individual groups ===================================
   struct Work{
@@ -982,6 +980,10 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
 
   Work* head = &start;
   Work* tail = &start;
+
+  if(isInherit){
+    head = 0;
+  }
 
   // NOTE: Only contain leaf nodes, loops can be accesssed by following parent node
   Work* equalHead = 0;
@@ -1025,510 +1027,578 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
   FUDeclaration* mergeDeclarationToActivate = 0;
   COM_Stmt* stmtHead = 0;
   COM_Stmt* stmtTail = 0;
-  for(Work* work = equalHead; work; work = work->next){
-    // Pack loops =================================================================
-    auto genLoopList = PushList<AddressGenForDef2>(temp);
-    auto forLoopList = PushList<AddressGenForDef2>(temp);
+  COM_Function inheritedFunc = {};
+  if(isInherit){
+    COM_Ent ent = COM_ResolveEntity(env,topNode->childs->childs,false);
+    inheritedFunc = *ent.func;
 
-    for(Work* ptr = work->parent; ptr; ptr = ptr->parent){
-      SP_Node* forLoop = ptr->node;
-      Assert(forLoop->type == SP_Type_FOR_LOOP || 
-             forLoop->type == SP_Type_GEN_LOOP);
+    inheritedFunc.name = PushString(out,funcName);
 
-      Token loopVar = forLoop->token;
+    if(isMerge){
+      mergeDeclarationToActivate = ent.decl;
+    }
 
-      SP_Node* rangeExpr = forLoop->childs;
-      Assert(rangeExpr->type == SP_Type_RANGE);
+    // Add module name to every assign stmt that has an lhs =======================
+    for(COM_Stmt* stmt = inheritedFunc.stmts; stmt; stmt = stmt->next){
+      COM_Stmt* copy = PushStruct<COM_Stmt>(out);
+      *copy = *stmt;
+      copy->next = 0;
 
-      SP_Node* start = rangeExpr->childs;
-      SP_Node* end = rangeExpr->childs->next;
-
-      AddressGenForDef2* loop = {};
-      if(forLoop->type == SP_Type_GEN_LOOP){
-        loop = genLoopList->PushElem();
-      } else {
-        loop = forLoopList->PushElem();
+      if(copy->type == COM_StmtType_ASSIGN){
+        copy->asAssign.lhs = PushString(out,"%.*s.%.*s",UN(ent.name),UN(copy->asAssign.lhs));
       }
-            
-      loop->loopVariable = loopVar.val;
-      loop->startNode = start;
-      loop->endNode = end;
-        
-      // Store if params are used in loop expressions ===============================
-      SP_NodeList flattenedStart = SP_Flatten(start,temp);
-      SP_NodeList flattenedEnd = SP_Flatten(end,temp);
-      flattenedStart.tail->next = flattenedEnd.head;
+      if(copy->type == COM_StmtType_ADDR_GEN){
+        copy->asAddr.unitName = PushString(out,"%.*s.%.*s",UN(ent.name),UN(copy->asAddr.unitName));
+      }
 
-      for(SP_NodeNode* n = flattenedStart.head; n; n = n->next){
-        SP_Node* node = n->node;
-        if(node->type == SP_Type_VAR){
-          String name = node->token.val;
-          for(COM_FuncParam& p : params){
-            if(p.name == name){
-              p.usedOnLoopExpressions = true;
+      LL_Append(stmtHead,stmtTail,next,copy);
+    }
+    inheritedFunc.stmts = stmtHead;
+  } else {
+    for(Work* work = equalHead; work; work = work->next){
+      // Pack loops =================================================================
+      auto genLoopList = PushList<AddressGenForDef2>(temp);
+      auto forLoopList = PushList<AddressGenForDef2>(temp);
+
+      for(Work* ptr = work->parent; ptr; ptr = ptr->parent){
+        SP_Node* forLoop = ptr->node;
+        Assert(forLoop->type == SP_Type_FOR_LOOP || 
+               forLoop->type == SP_Type_GEN_LOOP);
+
+        Token loopVar = forLoop->token;
+
+        SP_Node* rangeExpr = forLoop->childs;
+        Assert(rangeExpr->type == SP_Type_RANGE);
+
+        SP_Node* start = rangeExpr->childs;
+        SP_Node* end = rangeExpr->childs->next;
+
+        AddressGenForDef2* loop = {};
+        if(forLoop->type == SP_Type_GEN_LOOP){
+          loop = genLoopList->PushElem();
+        } else {
+          loop = forLoopList->PushElem();
+        }
+            
+        loop->loopVariable = loopVar.val;
+        loop->startNode = start;
+        loop->endNode = end;
+        
+        // Store if params are used in loop expressions ===============================
+        SP_NodeList flattenedStart = SP_Flatten(start,temp);
+        SP_NodeList flattenedEnd = SP_Flatten(end,temp);
+        flattenedStart.tail->next = flattenedEnd.head;
+
+        for(SP_NodeNode* n = flattenedStart.head; n; n = n->next){
+          SP_Node* node = n->node;
+          if(node->type == SP_Type_VAR){
+            String name = node->token.val;
+            for(COM_FuncParam& p : params){
+              if(p.name == name){
+                p.usedOnLoopExpressions = true;
+              }
             }
           }
         }
       }
-    }
-    Array<AddressGenForDef2> genLoops = PushArray(temp,genLoopList);
-    Array<AddressGenForDef2> forLoops = PushArray(out,forLoopList);
+      Array<AddressGenForDef2> genLoops = PushArray(temp,genLoopList);
+      Array<AddressGenForDef2> forLoops = PushArray(out,forLoopList);
 
-    ReverseInPlace(genLoops);
-    ReverseInPlace(forLoops);
+      ReverseInPlace(genLoops);
+      ReverseInPlace(forLoops);
 
-    // Init gen loops =============================================================
-    Array<int> gen      = PushArray<int>(temp,genLoops.size);
-    Array<int> genStart = PushArray<int>(temp,genLoops.size);
-    Array<int> genEnd   = PushArray<int>(temp,genLoops.size);
-    bool genError = 0;
-    for(int i = 0; i <  genLoops.size; i++){
-      AddressGenForDef2 loop  =  genLoops[i];
-      COM_ConstantResult start = COM_ComputeConstantValue(env,loop.startNode);
-      COM_ConstantResult end   = COM_ComputeConstantValue(env,loop.endNode);
+      // Init gen loops =============================================================
+      Array<int> gen      = PushArray<int>(temp,genLoops.size);
+      Array<int> genStart = PushArray<int>(temp,genLoops.size);
+      Array<int> genEnd   = PushArray<int>(temp,genLoops.size);
+      bool genError = 0;
+      for(int i = 0; i <  genLoops.size; i++){
+        AddressGenForDef2 loop  =  genLoops[i];
+        COM_ConstantResult start = COM_ComputeConstantValue(env,loop.startNode);
+        COM_ConstantResult end   = COM_ComputeConstantValue(env,loop.endNode);
 
-      gen[i]      = start.value;
-      genStart[i] = start.value;
-      genEnd[i]   = end.value;
-      genError   |= start.anyError || end.anyError;
-    }
-
-    int genLoopSize = genLoops.size;
-    if(Empty(gen)){
-      gen = PushArray<int>(temp,1);
-      genStart = PushArray<int>(temp,1);
-      genEnd = PushArray<int>(temp,1);
-
-      gen[0] = 0;
-      genStart[0] = 0;
-      genEnd[0] = 1;
-      genLoopSize = 0;
-    }
-
-    for(; DIM_IsValid(gen,genEnd); DIM_IncrementInPlace(gen,genStart,genEnd)){
-      COM_PushScope(env);
-      defer{COM_PopScope(env);};
-
-      // Push gen values ============================================================
-      for(int i = 0; i < genLoopSize; i++){
-        AddressGenForDef2 loopInfo = genLoops[i];
-        int value = gen[i];
-        
-        COM_Ent* ent = COM_PushEnt(env,loopInfo.loopVariable,COM_EntType_GEN_VAR);
-        ent->currentValue = value;
+        gen[i]      = start.value;
+        genStart[i] = start.value;
+        genEnd[i]   = end.value;
+        genError   |= start.anyError || end.anyError;
       }
 
-      // Push loop variables in entity ==============================================
-      for(AddressGenForDef2& loop : forLoops){
-        // TODO: We need to do these calculations in here since the loop expressions might depend on 
-        //       gen values.
-        loop.startSym = COM_SymbolicFromExpression(env,loop.startNode);
-        loop.endSym = COM_SymbolicFromExpression(env,loop.endNode);
+      int genLoopSize = genLoops.size;
+      if(Empty(gen)){
+        gen = PushArray<int>(temp,1);
+        genStart = PushArray<int>(temp,1);
+        genEnd = PushArray<int>(temp,1);
 
-        COM_PushEnt(env,loop.loopVariable,COM_EntType_LOOP_VAR);
-      } 
+        gen[0] = 0;
+        genStart[0] = 0;
+        genEnd[0] = 1;
+        genLoopSize = 0;
+      }
+
+      for(; DIM_IsValid(gen,genEnd); DIM_IncrementInPlace(gen,genStart,genEnd)){
+        COM_PushScope(env);
+        defer{COM_PopScope(env);};
+
+        // Push gen values ============================================================
+        for(int i = 0; i < genLoopSize; i++){
+          AddressGenForDef2 loopInfo = genLoops[i];
+          int value = gen[i];
         
-      SP_Node* equalityOrFunction = work->node;
-      SP_Node* lhsNode = equalityOrFunction->childs;
-      SP_Node* rhsNode = equalityOrFunction->childs->next;
+          COM_Ent* ent = COM_PushEnt(env,loopInfo.loopVariable,COM_EntType_GEN_VAR);
+          ent->currentValue = value;
+        }
 
-      // Unpack entities ============================================================
-      COM_Ent lhsEnt = COM_ResolveEntity(env,lhsNode,true);
-      COM_Ent rhsEnt = COM_ResolveEntity(env,rhsNode,true);
+        // Push loop variables in entity ==============================================
+        for(AddressGenForDef2& loop : forLoops){
+          // TODO: We need to do these calculations in here since the loop expressions might depend on 
+          //       gen values.
+          loop.startSym = COM_SymbolicFromExpression(env,loop.startNode);
+          loop.endSym = COM_SymbolicFromExpression(env,loop.endNode);
 
-      bool ignore = false;
-      COM_Stmt* stmt = nullptr;
+          COM_PushEnt(env,loop.loopVariable,COM_EntType_LOOP_VAR);
+        } 
+        
+        SP_Node* equalityOrFunction = work->node;
+        SP_Node* lhsNode = equalityOrFunction->childs;
+        SP_Node* rhsNode = equalityOrFunction->childs->next;
 
-      // Handle single functions (config and mem) =====================================
-      if(!stmt && lhsEnt.type == COM_EntType_FUNCTION_CALL){
-        String unitName = lhsEnt.name;
-        COM_Function* func = lhsEnt.func;
+        // Unpack entities ============================================================
+        COM_Ent lhsEnt = COM_ResolveEntity(env,lhsNode,true);
+        COM_Ent rhsEnt = COM_ResolveEntity(env,rhsNode,true);
 
-        if(isMerge){
-          if(mergeDeclarationToActivate && lhsEnt.decl != mergeDeclarationToActivate){
-            COM_ReportError(env,"Trying to configure two different merge types at the same time",lhsNode);
-          }
+        bool ignore = false;
+        COM_Stmt* stmt = nullptr;
+
+        // Handle single functions (config and mem) =====================================
+        if(!stmt && lhsEnt.type == COM_EntType_FUNCTION_CALL){
+          String unitName = lhsEnt.name;
+          COM_Function* func = lhsEnt.func;
+
+          if(isMerge){
+            if(mergeDeclarationToActivate && lhsEnt.decl != mergeDeclarationToActivate){
+              COM_ReportError(env,"Trying to configure two different merge types at the same time",lhsNode);
+            }
           
-          mergeDeclarationToActivate = lhsEnt.decl;
-        }
+            mergeDeclarationToActivate = lhsEnt.decl;
+          }
 
-        // We handle stmt creating in here automatically
-        ignore = 1;
+          // We handle stmt creating in here automatically
+          ignore = 1;
 
-        // Map arg to parameter =======================================================
-        TrieMap<String,SYM_Expr>* paramToArg = PushTrieMap<String,SYM_Expr>(temp);
-        int paramIndex = 0;
-        SP_Node* arg = lhsEnt.node;
+          // Map arg to parameter =======================================================
+          TrieMap<String,SYM_Expr>* paramToArg = PushTrieMap<String,SYM_Expr>(temp);
+          int paramIndex = 0;
+          SP_Node* arg = lhsEnt.node;
 
-        int size = 0;
-        for(SP_Node* ptr = arg; ptr; ptr = ptr->next){
-          size += 1;
-        }
-        Array<SP_Node*> args = PushArray<SP_Node*>(temp,size);
-        int index = 0;
-        for(SP_Node* ptr = arg; ptr; ptr = ptr->next){
-          args[index++] = ptr;
-        }        
+          int size = 0;
+          for(SP_Node* ptr = arg; ptr; ptr = ptr->next){
+            size += 1;
+          }
+          Array<SP_Node*> args = PushArray<SP_Node*>(temp,size);
+          int index = 0;
+          for(SP_Node* ptr = arg; ptr; ptr = ptr->next){
+            args[index++] = ptr;
+          }        
 
-        for(; paramIndex < func->params.size && arg; arg = arg->next,paramIndex++){
-          COM_FuncParam param = func->params[paramIndex];
+          for(; paramIndex < func->params.size && arg; arg = arg->next,paramIndex++){
+            COM_FuncParam param = func->params[paramIndex];
 
-          SYM_Expr argAsExpr = COM_SymbolicFromExpression(env,arg);
-          paramToArg->Insert(param.name,argAsExpr);
-        }
+            SYM_Expr argAsExpr = COM_SymbolicFromExpression(env,arg);
+            paramToArg->Insert(param.name,argAsExpr);
+          }
         
-        if((paramIndex >= func->params.size && arg != nullptr) ||
-           (paramIndex  < func->params.size && arg == nullptr)){
-          // TODO: Better error reporting
-          COM_ReportError(env,"Number of arguments does not match function parameter count",{});
-        }
+          if((paramIndex >= func->params.size && arg != nullptr) ||
+             (paramIndex  < func->params.size && arg == nullptr)){
+            // TODO: Better error reporting
+            COM_ReportError(env,"Number of arguments does not match function parameter count",{});
+          }
             
-        // Need to map the function to our side =======================================
-        for(COM_Stmt* node = func->stmts; node; node = node->next){
-          switch(node->type){
-          case COM_StmtType_NIL: Assert(false); break;
-          case COM_StmtType_ASSIGN: {
-            COM_Stmt* stmt = PushStruct<COM_Stmt>(out);
-            stmt->type = COM_StmtType_ASSIGN;
-            stmt->asAssign.lhs = PushString(out,"%.*s.%.*s",UN(unitName),UN(node->asAssign.lhs));
-            stmt->asAssign.rhsExpr = SYM_Replace(node->asAssign.rhsExpr,paramToArg);
-            stmt->asAssign.rhs = SYM_Repr(stmt->asAssign.rhsExpr,out);
+          // Need to map the function to our side =======================================
+          for(COM_Stmt* node = func->stmts; node; node = node->next){
+            switch(node->type){
+            case COM_StmtType_NIL: Assert(false); break;
+            case COM_StmtType_ASSIGN: {
+              COM_Stmt* stmt = PushStruct<COM_Stmt>(out);
+              stmt->type = COM_StmtType_ASSIGN;
+              stmt->asAssign.lhs = PushString(out,"%.*s.%.*s",UN(unitName),UN(node->asAssign.lhs));
+              stmt->asAssign.rhsExpr = SYM_Replace(node->asAssign.rhsExpr,paramToArg);
+              stmt->asAssign.rhs = SYM_Repr(stmt->asAssign.rhsExpr,out);
                   
-            LL_Append(stmtHead,stmtTail,next,stmt);
-          } break;
-          case COM_StmtType_ADDR_GEN:{
-            // Need to propagate usedOn Info ==============================================
-            for(int i = 0; i < func->params.size; i++){
-              COM_FuncParam p = func->params[i];
+              LL_Append(stmtHead,stmtTail,next,stmt);
+            } break;
+            case COM_StmtType_ADDR_GEN:{
+              // Need to propagate usedOn Info ==============================================
+              for(int i = 0; i < func->params.size; i++){
+                COM_FuncParam p = func->params[i];
 
-              SP_Node* arg = &SP_Node_Nil;
-              if(i < args.size){
-                arg = args[i];
-              }
+                SP_Node* arg = &SP_Node_Nil;
+                if(i < args.size){
+                  arg = args[i];
+                }
 
-              SP_NodeList flattened = SP_Flatten(arg,temp);
-              for(SP_NodeNode* node = flattened.head; node; node = node->next){
-                SP_Node* n = node->node;
+                SP_NodeList flattened = SP_Flatten(arg,temp);
+                for(SP_NodeNode* node = flattened.head; node; node = node->next){
+                  SP_Node* n = node->node;
                 
-                if(n->type == SP_Type_VAR){
-                  String name = n->token.val;
-                  for(COM_FuncParam& param : params){
-                    if(param.name == name){
-                      param.usedOnLoopExpressions   = p.usedOnLoopExpressions;
-                      param.usedOnExtraComputations = p.usedOnExtraComputations;
+                  if(n->type == SP_Type_VAR){
+                    String name = n->token.val;
+                    for(COM_FuncParam& param : params){
+                      if(param.name == name){
+                        param.usedOnLoopExpressions   = p.usedOnLoopExpressions;
+                        param.usedOnExtraComputations = p.usedOnExtraComputations;
+                      }
                     }
                   }
                 }
               }
-            }
 
-            // Compute true loops =========================================================
-            int trueLoopSize = forLoops.size + node->asAddr.accessLoops.size;
-            Array<AddressGenForDef2> trueLoops = PushArray<AddressGenForDef2>(out,trueLoopSize);
-            int index = 0;
-            for(int i = 0; i < forLoops.size; i++){
-              trueLoops[index++] = forLoops[i];
-            }
-            for(int i = 0; i < node->asAddr.accessLoops.size; i++){
-              trueLoops[index].startSym = SYM_Replace(node->asAddr.accessLoops[i].startSym,paramToArg);
-              trueLoops[index].endSym = SYM_Replace(node->asAddr.accessLoops[i].endSym,paramToArg);
-              // TODO: Need to check what happens in here (var collision and stuff)
-              trueLoops[index].loopVariable = node->asAddr.accessLoops[i].loopVariable;
-              index += 1;
-            }
-
-            SYM_Expr trueExpr = SYM_Replace(node->asAddr.accessExpr,paramToArg);
-            AddressAccess* access = CompileAddressGen(trueLoops,trueExpr);
-
-            COM_Stmt* stmt = PushStruct<COM_Stmt>(out);
-            stmt->type = COM_StmtType_ADDR_GEN;
-            stmt->asAddr.unitName = PushString(out,"%.*s.%.*s",UN(unitName),UN(node->asAddr.unitName));
-            stmt->asAddr.addrVarName = node->asAddr.addrVarName;
-            stmt->asAddr.maxLoopSize = node->asAddr.maxLoopSize;
-            stmt->asAddr.access.access = access;
-            stmt->asAddr.access.dir = node->asAddr.access.dir;
-            stmt->asAddr.access.port = node->asAddr.access.port;
-            stmt->asAddr.access.inst.type = node->asAddr.access.inst.type;
-            stmt->asAddr.access.inst.loopsSupported = node->asAddr.access.inst.type;
-
-            stmt->asAddr.accessExpr = node->asAddr.accessExpr;
-            stmt->asAddr.accessLoops = trueLoops;
-
-            LL_Append(stmtHead,stmtTail,next,stmt);
-          } break;
-          case COM_StmtType_MEM_COPY:{
-            COM_Stmt* stmt = PushStruct<COM_Stmt>(out);
-            stmt->type = COM_StmtType_MEM_COPY;
-            stmt->asMem.unitAddressName = PushString(out,"%.*s_%.*s",UN(unitName),UN(node->asMem.unitAddressName));
-
-            int addrIndex = -1;
-            for(int i = 0; i < func->params.size; i++){
-              COM_FuncParam p = func->params[i];
-              if(p.name == node->asMem.addrVarName){
-                addrIndex = i;
-                break;
+              // Compute true loops =========================================================
+              int trueLoopSize = forLoops.size + node->asAddr.accessLoops.size;
+              Array<AddressGenForDef2> trueLoops = PushArray<AddressGenForDef2>(out,trueLoopSize);
+              int index = 0;
+              for(int i = 0; i < forLoops.size; i++){
+                trueLoops[index++] = forLoops[i];
               }
-            }
-            Assert(addrIndex != -1 && "This cannot fail, means that stmt data is not synced with func data");
+              for(int i = 0; i < node->asAddr.accessLoops.size; i++){
+                trueLoops[index].startSym = SYM_Replace(node->asAddr.accessLoops[i].startSym,paramToArg);
+                trueLoops[index].endSym = SYM_Replace(node->asAddr.accessLoops[i].endSym,paramToArg);
+                // TODO: Need to check what happens in here (var collision and stuff)
+                trueLoops[index].loopVariable = node->asAddr.accessLoops[i].loopVariable;
+                index += 1;
+              }
 
-            SP_Node* arg = args[addrIndex];
-            SYM_Expr expr = COM_SymbolicFromExpression(env,arg);
+              SYM_Expr trueExpr = SYM_Replace(node->asAddr.accessExpr,paramToArg);
+              AddressAccess* access = CompileAddressGen(trueLoops,trueExpr);
+
+              COM_Stmt* stmt = PushStruct<COM_Stmt>(out);
+              stmt->type = COM_StmtType_ADDR_GEN;
+              stmt->asAddr.unitName = PushString(out,"%.*s.%.*s",UN(unitName),UN(node->asAddr.unitName));
+              stmt->asAddr.addrVarName = node->asAddr.addrVarName;
+              stmt->asAddr.maxLoopSize = node->asAddr.maxLoopSize;
+              stmt->asAddr.access.access = access;
+              stmt->asAddr.access.dir = node->asAddr.access.dir;
+              stmt->asAddr.access.port = node->asAddr.access.port;
+              stmt->asAddr.access.inst.type = node->asAddr.access.inst.type;
+              stmt->asAddr.access.inst.loopsSupported = node->asAddr.access.inst.type;
+
+              stmt->asAddr.accessExpr = node->asAddr.accessExpr;
+              stmt->asAddr.accessLoops = trueLoops;
+
+              LL_Append(stmtHead,stmtTail,next,stmt);
+            } break;
+            case COM_StmtType_MEM_COPY:{
+              COM_Stmt* stmt = PushStruct<COM_Stmt>(out);
+              stmt->type = COM_StmtType_MEM_COPY;
+              stmt->asMem.unitAddressName = PushString(out,"%.*s_%.*s",UN(unitName),UN(node->asMem.unitAddressName));
+
+              int addrIndex = -1;
+              for(int i = 0; i < func->params.size; i++){
+                COM_FuncParam p = func->params[i];
+                if(p.name == node->asMem.addrVarName){
+                  addrIndex = i;
+                  break;
+                }
+              }
+              Assert(addrIndex != -1 && "This cannot fail, means that stmt data is not synced with func data");
+
+              SP_Node* arg = args[addrIndex];
+              SYM_Expr expr = COM_SymbolicFromExpression(env,arg);
             
-            stmt->asMem.addrVarName = SYM_Repr(expr,out);
-            stmt->asMem.sizeExpr = SYM_Replace(node->asMem.sizeExpr,paramToArg);
-            stmt->asMem.dir = node->asMem.dir;
-            LL_Append(stmtHead,stmtTail,next,stmt);
-          } break;
-          }
-        }
-      }
-
-      // Handle state ===============================================================
-      if(isState && lhsNode->type != SP_Type_VAR){
-        COM_ReportError(env,"LHS of state function must be a simple name",lhsNode);
-      }
-
-      if(!stmt && isState && rhsEnt.type == COM_EntType_VAR_WITH_STATE){
-        String name = lhsNode->token.val;
-
-        COM_StructElem* elem = structElems->PushElem();
-        elem->typeName = "iptr";
-        elem->name = PushString(out,name);
-
-        // TODO: Need to unpack the rhs as well.
-        stmt = PushStruct<COM_Stmt>(out);
-        stmt->type = COM_StmtType_ASSIGN;
-        stmt->asAssign.lhs = PushString(out,name);
-        stmt->asAssign.rhs = PushString(out,"%.*s.%.*s",UN(rhsEnt.name),UN(rhsEnt.wireName));
-      }
-
-      if(!stmt && isState && COM_Ent_IsExpr(rhsEnt.type)){
-        String name = lhsNode->token.val;
-        SYM_Expr asExpr = COM_SymbolicFromExpression(env,rhsNode);
-
-        COM_StructElem* elem = structElems->PushElem();
-        elem->typeName = "iptr";
-        elem->name = PushString(out,name);
-
-        stmt = PushStruct<COM_Stmt>(out);
-        stmt->type = COM_StmtType_ASSIGN;
-        stmt->asAssign.lhs = PushString(out,name);
-        stmt->asAssign.rhsExpr = asExpr;
-      }
-
-      // The equivalent to function call for state ==================================
-      if(!stmt && isState && rhsEnt.type == COM_EntType_STATE){
-        String name = lhsNode->token.val;
-        COM_Function* func = rhsEnt.func;
-
-        ignore = 1;
-
-        for(COM_Struct structDef : func->structs){
-          COM_Struct* alreadyExists = 0;
-          for(SingleLink<COM_Struct>* ptr = structList->head; ptr; ptr = ptr->next){
-            COM_Struct* elem = &ptr->elem;
-            if(elem->name == structDef.name){
-              alreadyExists = elem;
+              stmt->asMem.addrVarName = SYM_Repr(expr,out);
+              stmt->asMem.sizeExpr = SYM_Replace(node->asMem.sizeExpr,paramToArg);
+              stmt->asMem.dir = node->asMem.dir;
+              LL_Append(stmtHead,stmtTail,next,stmt);
+            } break;
             }
           }
-
-          if(!alreadyExists){
-            COM_Struct* newStruct = structList->PushElem();
-            *newStruct = structDef;
-          }
         }
 
-        for(COM_Stmt* s = func->stmts; s; s = s->next){
+        // Handle state ===============================================================
+        if(isState && lhsNode->type != SP_Type_VAR){
+          COM_ReportError(env,"LHS of state function must be a simple name",lhsNode);
+        }
+
+        if(!stmt && isState && rhsEnt.type == COM_EntType_VAR_WITH_STATE){
+          String name = lhsNode->token.val;
+
+          COM_StructElem* elem = structElems->PushElem();
+          elem->typeName = "iptr";
+          elem->name = PushString(out,name);
+
+          // TODO: Need to unpack the rhs as well.
           stmt = PushStruct<COM_Stmt>(out);
           stmt->type = COM_StmtType_ASSIGN;
-          stmt->asAssign.lhs = PushString(out,"%.*s.%.*s",UN(name),UN(s->asAssign.lhs));
-          
-          // TODO: This is stupid and is equal to what we do inside codeGen. Fix in here and in code gen.
-          if(Empty(s->asAssign.rhs)){
-            stmt->asAssign.rhsExpr = s->asAssign.rhsExpr;
-          } else {
-            stmt->asAssign.rhs = PushString(out,"%.*s.%.*s",UN(rhsEnt.name),UN(s->asAssign.rhs));
+          stmt->asAssign.lhs = PushString(out,name);
+          stmt->asAssign.rhs = PushString(out,"%.*s.%.*s",UN(rhsEnt.name),UN(rhsEnt.wireOrStateName));
+        }
+
+        if(!stmt && isState && rhsEnt.type == COM_EntType_STATE_ACCESS){
+          String name = lhsNode->token.val;
+
+          COM_StructElem* elem = structElems->PushElem();
+          elem->typeName = "iptr";
+          elem->name = PushString(out,name);
+
+          COM_Stmt* foundStmt = 0;
+          for(COM_Stmt* stmt = rhsEnt.func->stmts; stmt; stmt = stmt->next){
+            if(stmt->asAssign.lhs == rhsEnt.wireOrStateName){
+              foundStmt = stmt;
+              break;
+            }
           }
 
-          LL_Append(stmtHead,stmtTail,next,stmt);
+          if(!foundStmt){
+            // TODO: Better error reporting
+            COM_ReportError(env,"Did not find name on state structure",rhsNode);
+          }
+
+
+          if(foundStmt){
+            // TODO: Need to unpack the rhs as well.
+            stmt = PushStruct<COM_Stmt>(out);
+            stmt->type = COM_StmtType_ASSIGN;
+            stmt->asAssign.lhs = PushString(out,name);
+            
+            if(!Empty(foundStmt->asAssign.rhs)){
+              stmt->asAssign.rhs = PushString(out,"%.*s.%.*s",UN(rhsEnt.name),UN(foundStmt->asAssign.rhs));
+            }
+            stmt->asAssign.rhsExpr = foundStmt->asAssign.rhsExpr;
+          }
         }
+
+        if(!stmt && isState && COM_Ent_IsExpr(rhsEnt.type)){
+          String name = lhsNode->token.val;
+          SYM_Expr asExpr = COM_SymbolicFromExpression(env,rhsNode);
+
+          COM_StructElem* elem = structElems->PushElem();
+          elem->typeName = "iptr";
+          elem->name = PushString(out,name);
+
+          stmt = PushStruct<COM_Stmt>(out);
+          stmt->type = COM_StmtType_ASSIGN;
+          stmt->asAssign.lhs = PushString(out,name);
+          stmt->asAssign.rhsExpr = asExpr;
+        }
+
+        // The equivalent to function call for state ==================================
+        if(!stmt && isState && rhsEnt.type == COM_EntType_FUNCTION){
+          if(rhsEnt.func->type != COM_FunctionType_STATE){
+            COM_ReportError(env,"Function is not state type");
+          }
+
+          String name = lhsNode->token.val;
+          COM_Function* func = rhsEnt.func;
+
+          ignore = 1;
+
+          for(COM_Struct structDef : func->structs){
+            COM_Struct* alreadyExists = 0;
+            for(SingleLink<COM_Struct>* ptr = structList->head; ptr; ptr = ptr->next){
+              COM_Struct* elem = &ptr->elem;
+              if(elem->name == structDef.name){
+                alreadyExists = elem;
+              }
+            }
+
+            if(!alreadyExists){
+              COM_Struct* newStruct = structList->PushElem();
+              *newStruct = structDef;
+            }
+          }
+
+          for(COM_Stmt* s = func->stmts; s; s = s->next){
+            stmt = PushStruct<COM_Stmt>(out);
+            stmt->type = COM_StmtType_ASSIGN;
+            stmt->asAssign.lhs = PushString(out,"%.*s.%.*s",UN(name),UN(s->asAssign.lhs));
           
-        COM_StructElem* elem = structElems->PushElem();
-        elem->typeName = PushString(out,"%.*s_%.*s_Struct",UN(rhsEnt.decl->name),UN(func->name));
-        elem->name = PushString(out,name);
-      }
+            // TODO: This is stupid and is equal to what we do inside codeGen. Fix in here and in code gen.
+            if(Empty(s->asAssign.rhs)){
+              stmt->asAssign.rhsExpr = s->asAssign.rhsExpr;
+            } else {
+              stmt->asAssign.rhs = PushString(out,"%.*s.%.*s",UN(rhsEnt.name),UN(s->asAssign.rhs));
+            }
 
-      if(!stmt && !ignore && isState){
-        COM_ReportError(env,"RHS of state function must be a state wire or a state struct",rhsNode);
-      }
-
-      // Handle mem =================================================================
-      if(!stmt && isMem && (lhsEnt.leftoverRange || rhsEnt.leftoverRange)){
-        if(lhsEnt.type != COM_EntType_MODULE_UNIT &&
-           rhsEnt.type != COM_EntType_MODULE_UNIT){
-          COM_ReportError(env,"Either lhs or rhs needs to be a unit",topNode);
-          ignore = 1;
-        }
-        if(forLoops.size > 1){
-          COM_ReportError(env,"We do not support more than one loop for memory transfers",topNode);
-          ignore = 1;
+            LL_Append(stmtHead,stmtTail,next,stmt);
+          }
+          
+          COM_StructElem* elem = structElems->PushElem();
+          elem->typeName = PushString(out,"%.*s_%.*s_Struct",UN(rhsEnt.decl->name),UN(func->name));
+          elem->name = PushString(out,name);
         }
 
-        SYM_Expr expr = SYM_1;
-        if(forLoops.size == 1){
-          SYM_Expr start = forLoops[0].startSym;
-          SYM_Expr end = forLoops[0].endSym;
-
-          expr = end - start;
+        if(!stmt && !ignore && isState){
+          COM_ReportError(env,"RHS of state function must be a state wire or a state struct",rhsNode);
         }
 
-        String unitName = {};
-        String addrName = {};
-        Direction dir = {};
-        if(lhsEnt.type == COM_EntType_MODULE_UNIT){
-          dir = Direction_READ;
-          unitName = PushString(out,"%.*s_addr",UN(lhsEnt.name));
-          addrName = rhsEnt.name;
+        // Handle mem =================================================================
+        if(!stmt && isMem && (lhsEnt.leftoverRange || rhsEnt.leftoverRange)){
+          if(lhsEnt.type != COM_EntType_MODULE_UNIT &&
+             rhsEnt.type != COM_EntType_MODULE_UNIT){
+            COM_ReportError(env,"Either lhs or rhs needs to be a unit",topNode);
+            ignore = 1;
+          }
+          if(forLoops.size > 1){
+            COM_ReportError(env,"We do not support more than one loop for memory transfers",topNode);
+            ignore = 1;
+          }
+
+          SYM_Expr expr = SYM_1;
+          if(forLoops.size == 1){
+            SYM_Expr start = forLoops[0].startSym;
+            SYM_Expr end = forLoops[0].endSym;
+
+            expr = end - start;
+          }
+
+          String unitName = {};
+          String addrName = {};
+          Direction dir = {};
+          if(lhsEnt.type == COM_EntType_MODULE_UNIT){
+            dir = Direction_READ;
+            unitName = PushString(out,"%.*s_addr",UN(lhsEnt.name));
+            addrName = rhsEnt.name;
+          }
+          if(rhsEnt.type == COM_EntType_MODULE_UNIT){
+            dir = Direction_WRITE;
+            unitName = PushString(out,"%.*s_addr",UN(rhsEnt.name));
+            addrName = lhsEnt.name;
+          }
+
+          stmt = PushStruct<COM_Stmt>(out);
+          stmt->type = COM_StmtType_MEM_COPY;
+          stmt->asMem.unitAddressName = unitName;
+          stmt->asMem.addrVarName = addrName;
+          stmt->asMem.sizeExpr = expr;
+          stmt->asMem.dir = dir;
         }
-        if(rhsEnt.type == COM_EntType_MODULE_UNIT){
-          dir = Direction_WRITE;
-          unitName = PushString(out,"%.*s_addr",UN(rhsEnt.name));
-          addrName = lhsEnt.name;
+
+        if(!stmt && !ignore && isMem){
+          COM_ReportError(env,"Memory operations need a range like expression X[a] = y or x = Y[a]",rhsNode);
         }
 
-        stmt = PushStruct<COM_Stmt>(out);
-        stmt->type = COM_StmtType_MEM_COPY;
-        stmt->asMem.unitAddressName = unitName;
-        stmt->asMem.addrVarName = addrName;
-        stmt->asMem.sizeExpr = expr;
-        stmt->asMem.dir = dir;
-      }
+        // Handle config ==============================================================
+        if(!stmt && isConfig && lhsEnt.type == COM_EntType_VAR_WITH_CONFIG){
+          SYM_Expr expr = COM_SymbolicFromExpression(env,rhsNode);
 
-      if(!stmt && !ignore && isMem){
-        COM_ReportError(env,"Memory operations need a range like expression X[a] = y or x = Y[a]",rhsNode);
-      }
+          stmt = PushStruct<COM_Stmt>(out);
+          stmt->type = COM_StmtType_ASSIGN;
+          stmt->asAssign.lhs = PushString(out,"%.*s.%.*s",UN(lhsEnt.name),UN(lhsEnt.wireOrStateName));
+          stmt->asAssign.rhsExpr = expr;
+          stmt->asAssign.rhs = SYM_Repr(stmt->asAssign.rhsExpr,out);
+        }
 
-      // Handle config ==============================================================
-      if(!stmt && isConfig && lhsEnt.type == COM_EntType_VAR_WITH_CONFIG){
-        SYM_Expr expr = COM_SymbolicFromExpression(env,rhsNode);
+        if(!stmt && isConfig && lhsEnt.type == COM_EntType_MODULE_UNIT){
+          bool isRhsExpr = SP_Type_IsExpr(rhsNode->type);
 
-        stmt = PushStruct<COM_Stmt>(out);
-        stmt->type = COM_StmtType_ASSIGN;
-        stmt->asAssign.lhs = PushString(out,"%.*s.%.*s",UN(lhsEnt.name),UN(lhsEnt.wireName));
-        stmt->asAssign.rhsExpr = expr;
-        stmt->asAssign.rhs = SYM_Repr(stmt->asAssign.rhsExpr,out);
-      }
+          if(!stmt && rhsEnt.leftoverRange){
+            SYM_Expr expr = COM_SymbolicFromExpression(env,rhsEnt.leftoverRange);
+            AddressAccess* access = CompileAddressGen(forLoops,expr);
 
-      if(!stmt && isConfig && lhsEnt.type == COM_EntType_MODULE_UNIT){
-        bool isRhsExpr = SP_Type_IsExpr(rhsNode->type);
+            // TODO: Need to set current data based on the unit declaration.
+            stmt = PushStruct<COM_Stmt>(out);
+            stmt->type = COM_StmtType_ADDR_GEN;
+            stmt->asAddr.unitName = lhsEnt.name;
+            stmt->asAddr.addrVarName = rhsEnt.name;
 
-        if(!stmt && rhsEnt.leftoverRange){
-          SYM_Expr expr = COM_SymbolicFromExpression(env,rhsEnt.leftoverRange);
+            // TODO: Max size does not come from external memory, it must come from one of the address
+            //       gen wires.
+            stmt->asAddr.maxLoopSize = HW_GetAddrSize(lhsEnt.decl->externalMemory[0],0);
+            stmt->asAddr.access.access = access;
+            stmt->asAddr.access.dir = Direction_READ;
+            stmt->asAddr.access.inst.type = AddressGenType_READ;
+            stmt->asAddr.access.inst.loopsSupported = lhsEnt.decl->supportedAddressGen.loopsSupported;
+
+            // TODO: nocheckin: Resolve this
+            stmt->asAddr.accessExpr = expr;
+            stmt->asAddr.accessLoops = forLoops;
+          }
+
+          if(!stmt && lhsEnt.decl->supportedAddressGen.type == AddressGenType_GEN && isRhsExpr){
+            SYM_Expr expr = COM_SymbolicFromExpression(env,rhsNode);
+            AddressAccess* access = CompileAddressGen(forLoops,expr);
+
+            // TODO: Need to set current data based on the unit declaration.
+            stmt = PushStruct<COM_Stmt>(out);
+            stmt->type = COM_StmtType_ADDR_GEN;
+            // TODO: Need to figure this out 
+            stmt->asAddr.maxLoopSize = SYM_32;
+            stmt->asAddr.unitName = lhsEnt.name;
+            stmt->asAddr.addrVarName = {};
+            stmt->asAddr.access.access = access;
+            stmt->asAddr.access.inst.type = AddressGenType_GEN;
+            stmt->asAddr.access.inst.loopsSupported = lhsEnt.decl->supportedAddressGen.loopsSupported;
+
+            // TODO: nocheckin: Resolve this
+            stmt->asAddr.accessExpr = expr;
+            stmt->asAddr.accessLoops = forLoops;
+          }
+
+          if(!stmt){
+            COM_ReportError(env,"Unexpected expression",rhsNode);
+            ignore = 1;
+          }
+        }
+
+        if(!stmt && isConfig && lhsEnt.leftoverRange){
+          if(rhsEnt.type != COM_EntType_MODULE_UNIT){
+            COM_ReportError(env,"Expected an unit on the right side",rhsNode);
+            ignore = 1;
+          }
+
+          SYM_Expr expr = COM_SymbolicFromExpression(env,lhsEnt.leftoverRange);
           AddressAccess* access = CompileAddressGen(forLoops,expr);
 
           // TODO: Need to set current data based on the unit declaration.
           stmt = PushStruct<COM_Stmt>(out);
           stmt->type = COM_StmtType_ADDR_GEN;
-          stmt->asAddr.unitName = lhsEnt.name;
-          stmt->asAddr.addrVarName = rhsEnt.name;
-
-          // TODO: Max size does not come from external memory, it must come from one of the address
-          //       gen wires.
-          stmt->asAddr.maxLoopSize = HW_GetAddrSize(lhsEnt.decl->externalMemory[0],0);
+          stmt->asAddr.maxLoopSize = HW_GetAddrSize(rhsEnt.decl->externalMemory[0],0);
+          stmt->asAddr.unitName = rhsEnt.name;
+          stmt->asAddr.addrVarName = lhsEnt.name;
           stmt->asAddr.access.access = access;
           stmt->asAddr.access.dir = Direction_READ;
           stmt->asAddr.access.inst.type = AddressGenType_READ;
-          stmt->asAddr.access.inst.loopsSupported = lhsEnt.decl->supportedAddressGen.loopsSupported;
+          stmt->asAddr.access.inst.loopsSupported = rhsEnt.decl->supportedAddressGen.loopsSupported;
 
           // TODO: nocheckin: Resolve this
           stmt->asAddr.accessExpr = expr;
           stmt->asAddr.accessLoops = forLoops;
         }
 
-        if(!stmt && lhsEnt.decl->supportedAddressGen.type == AddressGenType_GEN && isRhsExpr){
+        if(!stmt && isConfig && COM_Ent_IsWire(lhsEnt.type)){
+          stmt = PushStruct<COM_Stmt>(out);
+          stmt->type = COM_StmtType_ASSIGN;
+          stmt->asAssign.lhs = PushString(out,"%.*s.%.*s",UN(lhsEnt.name),UN(lhsEnt.wireOrStateName));
+ 
+          SYM_Expr asExpr = COM_SymbolicFromExpression(env,rhsNode);
+          stmt->asAssign.rhs = SYM_Repr(asExpr,out);
+        }
+
+        if(!stmt && isConfig && lhsEnt.type == COM_EntType_VAR_WITH_VIRTUAL_MEM){
           SYM_Expr expr = COM_SymbolicFromExpression(env,rhsNode);
           AddressAccess* access = CompileAddressGen(forLoops,expr);
-
-          // TODO: Need to set current data based on the unit declaration.
+        
           stmt = PushStruct<COM_Stmt>(out);
           stmt->type = COM_StmtType_ADDR_GEN;
-          // TODO: Need to figure this out 
-          stmt->asAddr.maxLoopSize = SYM_32;
           stmt->asAddr.unitName = lhsEnt.name;
-          stmt->asAddr.addrVarName = {};
+          stmt->asAddr.maxLoopSize = HW_GetAddrSize(lhsEnt.decl->externalMemory[0],0);
           stmt->asAddr.access.access = access;
-          stmt->asAddr.access.inst.type = AddressGenType_GEN;
+          stmt->asAddr.access.inst.type = AddressGenType_MEM;
           stmt->asAddr.access.inst.loopsSupported = lhsEnt.decl->supportedAddressGen.loopsSupported;
-
+          stmt->asAddr.access.dir = lhsEnt.dir;
+          stmt->asAddr.access.port = lhsEnt.port;
+        
           // TODO: nocheckin: Resolve this
           stmt->asAddr.accessExpr = expr;
           stmt->asAddr.accessLoops = forLoops;
         }
 
-        if(!stmt){
-          COM_ReportError(env,"Unexpected expression",rhsNode);
-          ignore = 1;
+        Assert((stmt || ignore) && "Missing some processing");
+        if(stmt && !ignore){
+          LL_Append(stmtHead,stmtTail,next,stmt);
         }
-      }
+      } // GenLoop
+    }
 
-      if(!stmt && isConfig && lhsEnt.leftoverRange){
-        if(rhsEnt.type != COM_EntType_MODULE_UNIT){
-          COM_ReportError(env,"Expected an unit on the right side",rhsNode);
-          ignore = 1;
-        }
-
-        SYM_Expr expr = COM_SymbolicFromExpression(env,lhsEnt.leftoverRange);
-        AddressAccess* access = CompileAddressGen(forLoops,expr);
-
-        // TODO: Need to set current data based on the unit declaration.
-        stmt = PushStruct<COM_Stmt>(out);
-        stmt->type = COM_StmtType_ADDR_GEN;
-        stmt->asAddr.maxLoopSize = HW_GetAddrSize(rhsEnt.decl->externalMemory[0],0);
-        stmt->asAddr.unitName = rhsEnt.name;
-        stmt->asAddr.addrVarName = lhsEnt.name;
-        stmt->asAddr.access.access = access;
-        stmt->asAddr.access.dir = Direction_READ;
-        stmt->asAddr.access.inst.type = AddressGenType_READ;
-        stmt->asAddr.access.inst.loopsSupported = rhsEnt.decl->supportedAddressGen.loopsSupported;
-
-        // TODO: nocheckin: Resolve this
-        stmt->asAddr.accessExpr = expr;
-        stmt->asAddr.accessLoops = forLoops;
-      }
-
-      if(!stmt && isConfig && COM_Ent_IsWire(lhsEnt.type)){
-        stmt = PushStruct<COM_Stmt>(out);
-        stmt->type = COM_StmtType_ASSIGN;
-        stmt->asAssign.lhs = PushString(out,"%.*s.%.*s",UN(lhsEnt.name),UN(lhsEnt.wireName));
- 
-        SYM_Expr asExpr = COM_SymbolicFromExpression(env,rhsNode);
-        stmt->asAssign.rhs = SYM_Repr(asExpr,out);
-      }
-
-      if(!stmt && isConfig && lhsEnt.type == COM_EntType_VAR_WITH_VIRTUAL_MEM){
-        SYM_Expr expr = COM_SymbolicFromExpression(env,rhsNode);
-        AddressAccess* access = CompileAddressGen(forLoops,expr);
-        
-        stmt = PushStruct<COM_Stmt>(out);
-        stmt->type = COM_StmtType_ADDR_GEN;
-        stmt->asAddr.unitName = lhsEnt.name;
-        stmt->asAddr.maxLoopSize = HW_GetAddrSize(lhsEnt.decl->externalMemory[0],0);
-        stmt->asAddr.access.access = access;
-        stmt->asAddr.access.inst.type = AddressGenType_MEM;
-        stmt->asAddr.access.inst.loopsSupported = lhsEnt.decl->supportedAddressGen.loopsSupported;
-        stmt->asAddr.access.dir = lhsEnt.dir;
-        stmt->asAddr.access.port = lhsEnt.port;
-        
-        // TODO: nocheckin: Resolve this
-        stmt->asAddr.accessExpr = expr;
-        stmt->asAddr.accessLoops = forLoops;
-      }
-
-      Assert((stmt || ignore) && "Missing some processing");
-      if(stmt && !ignore){
-        LL_Append(stmtHead,stmtTail,next,stmt);
-      }
-    } // GenLoop
   }
 
   // Handle extra computations ==================================================
@@ -1636,13 +1706,18 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
 
   // Pack into function =========================================================
   COM_FunctionNode* func = PushStruct<COM_FunctionNode>(out);
-  func->v.name = funcName;
-  func->v.stmts = stmtHead;
-  func->v.type = funcType;
-  func->v.params = params;
-  func->v.structs = PushArray(out,structList);
-  func->v.returnType = isState ? PushString(out,"%.*s_Struct",UN(func->v.name)) : String("void");
-  func->v.extraComputations = comp;
+
+  if(isInherit){
+    func->v = inheritedFunc;
+  } else {
+    func->v.name = funcName;
+    func->v.stmts = stmtHead;
+    func->v.type = funcType;
+    func->v.params = params;
+    func->v.structs = PushArray(out,structList);
+    func->v.returnType = isState ? PushString(out,"%.*s_Struct",UN(func->v.name)) : String("void");
+    func->v.extraComputations = comp;
+  }
   func->v.mergeDeclarationToActivate = mergeDeclarationToActivate;
 
   return func;

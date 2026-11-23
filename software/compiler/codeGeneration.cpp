@@ -2023,6 +2023,8 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     String content = PushASTRepr(c,temp);
     TE_SetString("stateStructs",content);
   }
+
+  bool doNotAddDeclNameToGeneratedFunctions = 1;
     
   // Output user config functions ===============================================
 #if 1
@@ -2070,6 +2072,10 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     };
             
     String fullFunctionName = PushString(temp,"%.*s_%.*s_Size",UN(decl->name),UN(func->name));
+    if(doNotAddDeclNameToGeneratedFunctions){
+      fullFunctionName = PushString(out,"%.*s_Size",UN(func->name));
+    }
+
     c->FunctionBlock("static inline int",fullFunctionName);
             
     auto list = PushList<String>(temp);
@@ -2230,6 +2236,7 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
             
     if(func->simLoops->type != ConfigSimStatementType_NIL){
       String fullFunctionName = PushString(temp,"%.*s_SIMULATE",UN(func->fullName));
+
       c->FunctionBlock("static inline void",fullFunctionName);
                 
       for(ConfigVariable var : func->variables){
@@ -2368,6 +2375,10 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     }
             
     String fullFunctionName = PushString(temp,"%.*s_%.*s",UN(decl->name),UN(func->name));
+    if(doNotAddDeclNameToGeneratedFunctions){
+      fullFunctionName = func->name;
+    }
+
     c->FunctionBlock(SF("static inline %.*s",UN(returnType)),fullFunctionName);
             
     for(COM_FuncParam var : func->params){
@@ -2680,7 +2691,8 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     String content = PushASTRepr(c,temp);
     TE_SetString("memMappedAddresses",content);
   }
-   
+
+  // TODO: This stuff should be moved to data calculation. We do not want to calculate anything in the codeGen path.
   struct MuxInfo{
     int port;
     String name;
@@ -2851,7 +2863,6 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     }
         
     String content = PushASTRepr(c,temp);
-    DEBUG_BREAK();
     TE_SetString("mergeStuff",content);
   }
 #endif

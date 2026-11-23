@@ -29,6 +29,7 @@ table NodeTable(name,isExprType,constantOpCount,varAccess){
   MODIFIER_STATIC      0   0   0
   MODIFIER_SHARE       0   0   0
   MODIFIER_SIM         0   0   0
+  INHERIT              0   0   0
   PARAM                0   0   0
   VARIABLE_DECL        0   0   0
   VAR_GROUP            0   0   0

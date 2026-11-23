@@ -74,6 +74,12 @@ struct COM_Unit{
 
   int muxPort; // If merge mux then store the port that needs to be set to activate merged graph
 
+  bool doesNotBelong; // For merge units, if true then this unit does not actually exist for the given partition
+
+  // Delay stuff ================================================================
+  // TODO: The only thing that we actually need is to store extra delay, right?
+  //       It is the only piece of data that code generation actually needs in order to function.
+
 #if 0
   int configPos;
   int statePos;
@@ -86,12 +92,6 @@ struct COM_Unit{
   Array<int> individualWiresConfigPos;
   Array<bool> individualWiresShared;
 #endif
-
-  bool doesNotBelong; // For merge units, if true then this unit does not actually exist for the given partition
-
-  // Delay stuff ================================================================
-  // TODO: The only thing that we actually need is to store extra delay, right?
-  //       It is the only piece of data that code generation actually needs in order to function.
 
 #if 0
   int calculatedDelay; // TODO: This is not what we actually want, since latency and delays should be calculated based on port info instead of unit. We still keep the same unit delay for now.
@@ -223,7 +223,9 @@ enum COM_EntType{
   COM_EntType_ARG_DYN,
   COM_EntType_ARG_BUFFER,
 
-  COM_EntType_STATE,
+  COM_EntType_FUNCTION,
+
+  COM_EntType_STATE_ACCESS,
   COM_EntType_FUNCTION_CALL,
   
   // Var.Wire
@@ -251,7 +253,7 @@ struct COM_Ent{
   COM_Function* func;
 
   Direction dir;
-  String wireName;
+  String wireOrStateName;
 
   Token token;
   int currentValue;
@@ -331,10 +333,10 @@ struct COM_Stmt{
   union {
     struct {
       String lhs;
-      String rhs;
       
+      // Wether rhs is empty or not is important (if empty then use rhsExpr). Kinda clubersome and error prone. 
+      String rhs;
       SYM_Expr rhsExpr;
-
     } asAssign;
     struct {
       String unitAddressName;
@@ -350,7 +352,7 @@ struct COM_Stmt{
       AccessAndType access;
       SYM_Expr maxLoopSize;
 
-      // TODO: This is a bit forced as we try to preserve as much data as possible to allow hierarchical handling.
+      // TODO: This is a bit forced as we need the extra loops data to properly implement the address gen stuff.
       // NOTE: Needed for hierarchical  
       Array<AddressGenForDef2> accessLoops;
       SYM_Expr accessExpr;
