@@ -294,7 +294,7 @@ struct StringBuilder{
 };
 
 StringBuilder* StartString(Arena* arena);
-String EndString(Arena* out,StringBuilder* builder);
+String PushString(Arena* out,StringBuilder* builder);
 
 bool Empty(StringBuilder* b);
 

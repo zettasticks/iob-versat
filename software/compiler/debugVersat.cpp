@@ -87,7 +87,7 @@ String GenerateDotGraph(DOT_Graph graph,Arena* out){
 
   result->PushString("}\n");
 
-  return EndString(out,result);
+  return PushString(out,result);
 }
 
 void OutputContentToFile(String filepath,String content){
@@ -224,7 +224,7 @@ String DEBUG_GetDebugRegionFilepath(String filename,Arena* out){
     builder->PushString("/");
     builder->PushString(filename);
 
-    res = EndString(out,builder);
+    res = PushString(out,builder);
   }
 
   return res;

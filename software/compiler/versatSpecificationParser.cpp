@@ -3449,7 +3449,7 @@ String SP_Repr(SP_Node* top,Arena* out){
   };
 
   Recurse(Recurse,top,0);
-  String res = EndString(out,b);
+  String res = PushString(out,b);
 
   return res;
 }

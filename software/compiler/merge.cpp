@@ -2894,8 +2894,6 @@ FUDeclaration* Merge2(Array<FUDeclaration*> types,
 
   // ======================================
   // Calculate and fix delays
-
-  // MERGE
   Array<DAGOrderNodes> reconOrder = PushArray<DAGOrderNodes>(temp,size);
   Array<CalculateDelayResult> reconDelay = PushArray<CalculateDelayResult>(temp,size);
 
@@ -4141,6 +4139,11 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
       for(COM_Unit* reconUnit = reconGraphs[i].units.head; reconUnit; reconUnit = reconUnit->next){
         COM_Unit* mapped = mapReconUnitToGraph->GetOrElse(reconUnit,nullptr);
         if(mapped == unit){
+          String soFar = PushString(temp,b);
+          if(soFar == reconUnit->name){
+            continue;
+          }
+
           if(b->GetLastCharacterOrElse(0) != 0){
             b->PushString("_");
           }
@@ -4151,7 +4154,7 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
 
     String name = unit->name;
     if(!Empty(b)){
-      name = EndString(out,b);
+      name = PushString(out,b);
     }
     unit->name = name;
   }
@@ -4776,7 +4779,7 @@ void MERGE_DebugOutputCG(ConsolidationGraph graph,String name,BitArray* optional
   
   FILE* outputFile = OpenFileAndCreateDirectories(filePath,"w",FilePurpose_DEBUG_INFO);
   if(outputFile){
-    String content = EndString(temp,b);
+    String content = PushString(temp,b);
     fprintf(outputFile,"%.*s",UN(content));
     fclose(outputFile);
   }

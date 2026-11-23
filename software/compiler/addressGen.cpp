@@ -120,7 +120,7 @@ String PushRepr(Arena* out,AddressAccess* access){
   // TODO: Performance
   auto b = StartString(temp);
   Repr(b,access);
-  return EndString(out,b);
+  return PushString(out,b);
 }
 
 void Print(AddressAccess* access){
@@ -582,11 +582,11 @@ static void EmitDebugAddressGenInfo(AddressAccess* access,CEmitter* c){
 
   auto builder = StartString(temp);
   Repr(builder,access->internal);
-  String internalStr = EndString(temp,builder);
+  String internalStr = PushString(temp,builder);
 
   builder = StartString(temp);
   Repr(builder,access->external);
-  String externalStr = EndString(temp,builder);
+  String externalStr = PushString(temp,builder);
 
   c->Comment("[DEBUG] Internal address");
   c->Comment(internalStr);

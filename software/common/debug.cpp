@@ -798,7 +798,7 @@ String DEBUG_Repr(LocationNode* head,Arena* out){
   for(LocationNode* ptr = head; ptr; ptr = ptr->next){
     Recurse(Recurse,ptr,0);
   }
-  String res = EndString(out,b);
+  String res = PushString(out,b);
 
   return res;
 }

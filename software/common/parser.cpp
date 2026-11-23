@@ -150,7 +150,7 @@ void Parser::ReportUnexpectedToken(Token token,BracketList<TokenType> expectedLi
     builder->PushString("  '%.*s'\n",UN(repr));
   }
 
-  *errors->PushElem() = EndString(this->arena,builder);
+  *errors->PushElem() = PushString(this->arena,builder);
   ENTER_DEBUG();
 }
 
@@ -293,7 +293,7 @@ Token Parser::ExpectNext(TokenType type,ParsingOptions opts){
       b->PushString("%.*s:%d\n",UN(l.functionName),l.line);
     }
 
-    ReportError(EndString(temp,b));
+    ReportError(PushString(temp,b));
     ENTER_DEBUG();
   }
 

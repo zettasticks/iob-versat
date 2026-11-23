@@ -249,7 +249,7 @@ String CEmitter::EndExpressionAsString(Arena* out){
 
   Recurse(Recurse,top);
 
-  String result = EndString(out,builder);
+  String result = PushString(out,builder);
   this->expressionList = nullptr;
   return result;
 }
@@ -709,7 +709,7 @@ String PushASTRepr(CEmitter* e,Arena* out,bool cppStyle,int level){
 
   Repr(ast,b,cppStyle,level);
 
-  return EndString(out,b);
+  return PushString(out,b);
 }
 
 void Repr(CAST* top,StringBuilder* b,bool cppStyle,int level){

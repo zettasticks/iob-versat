@@ -1168,7 +1168,7 @@ String GetTypeName(Type* in,Arena* out){
 
   StringBuilder* b = StartString(temp);
   GetTypeName(b,in);
-  String res = EndString(out,b);
+  String res = PushString(out,b);
   return res;
 }
 
@@ -1238,7 +1238,7 @@ Array<String> GetValue(Node* node,Arena* out){
       }
 
       Array<String> res = PushArray<String>(temp,1);
-      res[0] = EndString(out,b);
+      res[0] = PushString(out,b);
       return res;
     }
 
@@ -1810,7 +1810,7 @@ int main(int argc,const char* argv[]){
         }
         b->PushString("\n}");
 
-        String allValues = EndString(out,b);
+        String allValues = PushString(out,b);
 
         h->PushString("extern Array<%.*s> %.*s;\n",UN(type->token.id),UN(arrayName));
 
@@ -2069,8 +2069,8 @@ int main(int argc,const char* argv[]){
 
       h->PushString("#endif // META_INCLUDED_%.*s\n",UN(fileNameWithoutDot));
 
-      String headerContent = EndString(temp,h);
-      String sourceContent = EndString(temp,c);
+      String headerContent = PushString(temp,h);
+      String sourceContent = PushString(temp,c);
 
       if(headerContent.size > 0){
         const char* name = SF("%.*s",UN(metaHeaderPath));

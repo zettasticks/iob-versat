@@ -144,7 +144,7 @@ String TE_ProcessTemplate(Arena* out,String tmpl,bool ignoreMissing){
   auto b = StartString(temp);
   TE_ProcessTemplate(b,tmpl,ignoreMissing);
 
-  String content = EndString(out,b);
+  String content = PushString(out,b);
   
   return content;
 }
@@ -204,7 +204,7 @@ String TE_Substitute(String tmpl,String* valuesToReplace,Arena* out){
     }
   }
 
-  return EndString(out,b);
+  return PushString(out,b);
 }
 
 void TE_PushScope(){

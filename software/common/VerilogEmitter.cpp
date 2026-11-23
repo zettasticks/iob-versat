@@ -1508,5 +1508,5 @@ String EndVCodeAndPrint(VEmitter* v,Arena* out){
 
   Repr(ast,builder);
 
-  return EndString(out,builder);
+  return PushString(out,builder);
 }

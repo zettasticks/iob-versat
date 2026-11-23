@@ -197,7 +197,7 @@ String PushRepr(LoopLinearSum* sum,Arena* out){
   TEMP_REGION(temp,out);
   auto builder = StartString(temp);
   Repr(builder,sum);
-  String res = EndString(out,builder);
+  String res = PushString(out,builder);
   return res;
 }
 
@@ -1459,7 +1459,7 @@ String SYM_ReprHier(SYM_Expr expr,Arena* out){
 
   Recurse(Recurse,expr);
 
-  String res = EndString(out,b);
+  String res = PushString(out,b);
   return res;
 }
 
@@ -1603,7 +1603,7 @@ String SYM_Repr(SYM_Expr expr,Arena* out){
 
   SYM_Repr(b,expr);
 
-  String res = EndString(out,b);
+  String res = PushString(out,b);
   return res;
 }
 

@@ -448,7 +448,7 @@ String HW_GetWireRepresentation(HW_Interface* inter,int wireIndex,int port,int i
 
   auto b = StartString(temp);
   HW_GetWireRepresentation(b,inter,wireIndex,port,interface);
-  String res = EndString(out,b);
+  String res = PushString(out,b);
   return res;
 }
 
@@ -480,7 +480,7 @@ String HW_GetWireRepresentation(HW_Instance* inst,int wireIndex,Arena* out){
 
   auto b = StartString(temp);
   HW_GetWireRepresentation(b,inst,wireIndex);
-  String res = EndString(out,b);
+  String res = PushString(out,b);
   return res;
 }
 

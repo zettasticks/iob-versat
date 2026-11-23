@@ -840,7 +840,7 @@ String PushPointingString(Arena* out,int startPos,int size){
     builder->PushString("^");
   }
 
-  return EndString(out,builder);
+  return PushString(out,builder);
 }
 
 Array<Value> ExtractValues(const char* format,String tok,Arena* out){

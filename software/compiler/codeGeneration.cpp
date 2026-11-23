@@ -130,7 +130,7 @@ void GEN_EmitCombOperations(VEmitter* m,COM_Unit* units,COM_Edge* edges){
             b->PushString(wireNames[index]);
           }
         }
-        String expr = EndString(temp,b);
+        String expr = PushString(temp,b);
                 
         String identifier = data->outputInfo[0].wireName;
         m->Set(identifier,expr);
@@ -502,7 +502,7 @@ String GEN_OutputCircuitSource(FUDeclaration* module,Arena* out){
   VAST* ast = EndVCode(m);
   StringBuilder* b = StartString(temp);
   Repr(ast,b);
-  String content = EndString(out,b);
+  String content = PushString(out,b);
     
   COM_ClearGeneralPtr(units);
     
@@ -556,8 +556,8 @@ GEN_TopContent GEN_OutputTopLevel(GEN_TopInfo* info,Arena* out){
     d->PushString("`define VERSAT_ADDR_W %d\n",info->addressBits);
     u->PushString("`undef  VERSAT_ADDR_W\n");
         
-    versatDefines = EndString(out,d);
-    versatUndefs = EndString(out,u);
+    versatDefines = PushString(out,d);
+    versatUndefs = PushString(out,u);
   }
     
   // NOTE: We want to minimize the amount of changes in the top filepath ==========
@@ -653,7 +653,7 @@ GEN_TopContent GEN_OutputTopLevel(GEN_TopInfo* info,Arena* out){
     VAST* ast = EndVCode(m);
     StringBuilder* b = StartString(temp);
     Repr(ast,b);
-    externalMemInst = EndString(out,b);
+    externalMemInst = PushString(out,b);
   }
     
   String externalMemWires = {};
@@ -723,7 +723,7 @@ GEN_TopContent GEN_OutputTopLevel(GEN_TopInfo* info,Arena* out){
     VAST* ast = EndVCode(m);
     StringBuilder* b = StartString(temp);
     Repr(ast,b);
-    externalMemWires = EndString(out,b);
+    externalMemWires = PushString(out,b);
   }
     
   String externalMemPorts = {};
@@ -772,7 +772,7 @@ GEN_TopContent GEN_OutputTopLevel(GEN_TopInfo* info,Arena* out){
     VAST* ast = EndVCode(m);
     StringBuilder* b = StartString(temp);
     Repr(ast,b);
-    externalMemPorts = EndString(out,b);
+    externalMemPorts = PushString(out,b);
   }
     
   String externalMemPortmap = {};
@@ -806,7 +806,7 @@ GEN_TopContent GEN_OutputTopLevel(GEN_TopInfo* info,Arena* out){
     VAST* ast = EndVCode(m);
     StringBuilder* b = StartString(temp);
     Repr(ast,b);
-    externalMemPortmap = EndString(out,b);
+    externalMemPortmap = PushString(out,b);
   }
     
   // TODO: Need to add some form of error checking and handling inside the script for the case where verilator root is not found
@@ -897,7 +897,7 @@ String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out){
     m->EndPortGroup();
     auto b = StartString(temp);
     Repr(EndVCode(m),b);
-    String content = EndString(temp,b);
+    String content = PushString(temp,b);
     TE_SetString("externalMemPorts",content);
   }
     
@@ -918,7 +918,7 @@ String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out){
         
     auto b = StartString(temp);
     Repr(ast,b);
-    String content = EndString(temp,b);
+    String content = PushString(temp,b);
     TE_SetString("emitIO",content);
   }
     
@@ -927,7 +927,7 @@ String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out){
     GEN_EmitConnectOutputsToOut(m,units,edges);
     auto b = StartString(temp);
     Repr(EndVCode(m),b);
-    String content = EndString(temp,b);
+    String content = PushString(temp,b);
         
     TE_SetString("assignOuts",content);
   }
@@ -948,7 +948,7 @@ String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out){
     }
     auto b = StartString(temp);
     Repr(EndVCode(m),b);
-    String content = EndString(temp,b);
+    String content = PushString(temp,b);
         
     TE_SetString("wireDecls",content);
   }
@@ -1387,7 +1387,7 @@ String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out){
         
     auto b = StartString(temp);
     Repr(EndVCode(m),b);
-    String content = EndString(temp,b);
+    String content = PushString(temp,b);
     TE_SetString("unitsMappedDecl",content);
   } else {
     TE_SetString("unitsMappedDecl",{});
@@ -1407,7 +1407,7 @@ String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out){
         
     auto b = StartString(temp);
     Repr(EndVCode(m),b);
-    String content = EndString(temp,b);
+    String content = PushString(temp,b);
         
     TE_SetString("unitsRData",content);
   }
@@ -1456,7 +1456,7 @@ String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out){
         
     auto b = StartString(temp);
     Repr(EndVCode(m),b);
-    String content = EndString(temp,b);
+    String content = PushString(temp,b);
         
     TE_SetString("configurationDecl",content);
   }
@@ -1494,7 +1494,7 @@ String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out){
         
     auto b = StartString(temp);
     Repr(EndVCode(m),b);
-    String content = EndString(temp,b);
+    String content = PushString(temp,b);
         
     TE_SetString("stateDecl",content);
   }
@@ -1619,7 +1619,7 @@ String GEN_OutputHardwareInstance(GEN_TopInfo* info,Arena* out){
         
     auto b = StartString(temp);
     Repr(EndVCode(m),b);
-    String content = EndString(temp,b);
+    String content = PushString(temp,b);
     TE_SetString("topUnit",content);
   }
     
@@ -1652,7 +1652,7 @@ String GEN_OutputVerilatorMakefile(GEN_TopInfo* info,Array<String> unitsGenerate
       s->PushString("$(HARDWARE_FOLDER)/%.*s ",UN(name));
     }
         
-    TE_SetString("hardwareUnits",EndString(temp,s));
+    TE_SetString("hardwareUnits",PushString(temp,s));
   }
     
   {  
@@ -1661,7 +1661,7 @@ String GEN_OutputVerilatorMakefile(GEN_TopInfo* info,Array<String> unitsGenerate
       s->PushString("$(HARDWARE_FOLDER)/%.*s.v ",UN(name));
     }
         
-    TE_SetString("moduleUnits",EndString(temp,s));
+    TE_SetString("moduleUnits",PushString(temp,s));
   }
     
   TE_SetNumber("addressSize",info->addressBits);
@@ -1912,7 +1912,7 @@ String GEN_OutputHardwareConfigurations(GEN_TopInfo* info,Arena* out){
   VAST* ast = EndVCode(m);
   StringBuilder* b = StartString(temp);
   Repr(ast,b);
-  String content = EndString(out,b);
+  String content = PushString(out,b);
   return content;
 }
 
@@ -2124,7 +2124,7 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
         d->PushString("    int %.*s = %.*sSpec->value;\n",UN(var.name),UN(var.name));
       }
     }
-    auto specToVar = EndString(temp,d);
+    auto specToVar = PushString(temp,d);
             
     auto f = StartString(temp);
     for(ConfigComputation comp : func->extraComputations){
@@ -2132,7 +2132,7 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
       Repr(comp.cCode,f,false);
       f->PushString("\n");
     }
-    String computations = EndString(temp,f);
+    String computations = PushString(temp,f);
             
     String varDeclareList = JoinStrings(list,",",temp);
     String varDeclare = PushString(temp,"{%.*s}",UN(varDeclareList));
@@ -2150,7 +2150,7 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
                             }
                      )FOO",UN(p.second),UN(p.first),UN(p.second));
     }
-    String allStuff = EndString(temp,b);
+    String allStuff = PushString(temp,b);
             
     String tmpl = R"FOO(
           for(int i = 0; i < VERSAT_ARRAY_SIZE(buffer); i++){
@@ -3190,7 +3190,7 @@ String GEN_OutputVerilatorHardwareWrapper(GEN_TopInfo* info,Arena* out){
   VAST* ast = EndVCode(m);
   StringBuilder* b = StartString(temp);
   Repr(ast,b);
-  String content = EndString(out,b);
+  String content = PushString(out,b);
     
   return content;
 }
@@ -3394,7 +3394,7 @@ String GEN_OutputVerilatorSoftwareWrapper(GEN_TopInfo* info,Arena* out){
       vals->Insert("i",PushString(temp,"%d",i));
       TE_SimpleSubstitute(s,simulateBusTemplate,vals);
     }
-    String content = EndString(temp,s);
+    String content = PushString(temp,s);
         
     TE_SetString("databusSim",content);
   }
@@ -4241,13 +4241,13 @@ GEN_StructInfo* GEN_GenerateConfigStruct(COM_Unit* top,GEN_StructInfoList* allSt
                 
         COM_Unit* reconUnit = MERGE_GetMergeIndexUnit(ptr,mergeIndex);
         if(IsNil(reconUnit)){
-          elem->name = PushString(out,"pad_%d",padInserted++);
+          elem->name = ptr->name;
         } else {
           elem->name = reconUnit->name;
         }
         LL_Append(subMergeHead,subMergeTail,next,elem);
       }
-            
+
       GEN_StructInfo* info = GEN_AddStruct(allStructs,typeName,subMergeHead,out);
             
       GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
@@ -4432,7 +4432,7 @@ String GEN_Repr(GEN_StructInfo* info,Arena* out){
     
   b->PushString("} %.*s;\n",UN(info->name));
     
-  String res = EndString(out,b);
+  String res = PushString(out,b);
   return res;
 }
 

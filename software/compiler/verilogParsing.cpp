@@ -1126,7 +1126,7 @@ V_ParsedNumber V_ParseNumber(const char* start,const char* end,Arena* out){
           asNumber /= 2;
         }
 
-        String reversedBinary = EndString(temp,b);
+        String reversedBinary = PushString(temp,b);
         asBinary = Reverse(reversedBinary,out);
       } else {
         for(char ch : afterBase){
@@ -1193,7 +1193,7 @@ V_ParsedNumber V_ParseNumber(const char* start,const char* end,Arena* out){
           }
         }
 
-        asBinary = EndString(out,b);
+        asBinary = PushString(out,b);
       }
     }
   }
@@ -2207,7 +2207,7 @@ String V_PreprocessVerilogFile(String content,Array<String> includeFilepaths,Are
     }
   }
 
-  String res = EndString(out,b);
+  String res = PushString(out,b);
 
   // TODO: Errors
   return res;
@@ -2262,7 +2262,7 @@ String V_Repr(V_Node* top,Arena* out){
   };
 
   Recurse(Recurse,top,0);
-  String res = EndString(out,b);
+  String res = PushString(out,b);
 
   return res;
 }

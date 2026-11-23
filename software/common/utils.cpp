@@ -55,7 +55,7 @@ String GetCommonPath(String path1,String path2,Arena* out){
     }
   }
 
-  return EndString(out,builder);
+  return PushString(out,builder);
 }
 
 String OS_NormalizePath(String in,Arena* out){
@@ -145,7 +145,7 @@ String PushEscapedString(Arena* out,String toEscape,char spaceSubstitute){
     }
   }
 
-  String res = EndString(out,builder);
+  String res = PushString(out,builder);
   return res;
 }
 
@@ -205,7 +205,7 @@ String JoinStrings(Array<String> strings,String separator,Arena* out){
     builder->PushString(str);
   }
 
-  return EndString(out,builder);
+  return PushString(out,builder);
 }
 
 String PushBinaryRepr(Arena* out,int number){
@@ -237,7 +237,7 @@ String JoinStrings(ArenaList<String>* strings,String separator,Arena* out){
     builder->PushString(str);
   }
 
-  return EndString(out,builder);
+  return PushString(out,builder);
 }
 
 GenericArenaListIterator IterateArenaList(void* list,int sizeOfType,int alignmentOfType){

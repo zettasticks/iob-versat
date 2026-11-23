@@ -1901,7 +1901,7 @@ void COM_CompileStatement(COM_Env* env,SP_Node* top,Array<COM_Param> topLevelPar
                 b->PushString("_%d",i);
               }
 
-              String name = EndString(out,b);
+              String name = PushString(out,b);
               COM_Unit* unit = COM_PushUnit(&env->graph,name,decl,env->outArena);
               unit->debug = modDebug;
               unit->isShared = modShare;
@@ -2282,7 +2282,7 @@ String COM_Repr(COM_Unit* top,Arena* out){
   for(COM_Unit* ptr = top; ptr; ptr = ptr->next){
     b->PushString("%.*s\n",UN(ptr->name));
   }
-  String res = EndString(out,b);
+  String res = PushString(out,b);
   return res;
 }
 

@@ -240,7 +240,7 @@ String DECL_MangleName(DECL_Meta* meta,Array<DECL_Param> params,bool isTopLevel,
         }
       }
     }
-    mangledName = EndString(out,b);
+    mangledName = PushString(out,b);
   }
   if(isTopLevel){
     mangledName = meta->name;

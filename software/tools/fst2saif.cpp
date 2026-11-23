@@ -381,7 +381,7 @@ int main(int argc,const char* argv[]){
   
   b->PushString(")");
 
-  String content = EndString(temp,b);
+  String content = PushString(temp,b);
 
   printf("%.*s\n",UN(content));
   

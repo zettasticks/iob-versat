@@ -672,7 +672,7 @@ void StringBuilder::PushString(const char* format,...){
   va_end(args);
 }
 
-String EndString(Arena* out,StringBuilder* builder){
+String PushString(Arena* out,StringBuilder* builder){
   int totalSize = 0;
   for(StringNode* ptr = builder->head; ptr != nullptr; ptr = ptr->next){
     totalSize += ptr->used;
@@ -713,7 +713,7 @@ String EscapeCString(String content,Arena* out){
     }
   }
 
-  return EndString(out,b);
+  return PushString(out,b);
 }
 
 void EscapeCString(StringBuilder* b,String content){
