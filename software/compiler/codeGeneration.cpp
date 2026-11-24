@@ -1927,6 +1927,9 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
   FREE_ARENA(CCode1);
   FREE_ARENA(CCode2);
     
+  GEN_StructInfo* configStruct = 0;
+  GEN_StructInfo* stateStruct = 0;
+
   {
     CEmitter* c = StartCCode(CCode1,CCode2);
         
@@ -1934,8 +1937,8 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     topLevel.name = typeName;
     topLevel.decl = decl;
     GEN_StructInfoList allStructs = {};
-    GEN_StructInfo* configStruct = GEN_GenerateConfigStruct(&topLevel,&allStructs,temp);
-        
+    configStruct = GEN_GenerateConfigStruct(&topLevel,&allStructs,temp);
+
     if(!configStruct){
       c->Struct(PushString(temp,"%.*s",UN(typeName)));
       c->EndStruct();
@@ -1982,7 +1985,7 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     topLevel.name = typeName;
     topLevel.decl = decl;
     GEN_StructInfoList allStructs = {};
-    GEN_StructInfo* stateStruct = GEN_GenerateStateStruct(&topLevel,&allStructs,temp);
+    stateStruct = GEN_GenerateStateStruct(&topLevel,&allStructs,temp);
         
     if(!stateStruct){
       c->Struct(PushString(temp,"%.*s",UN(typeName)));
@@ -2024,7 +2027,62 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     TE_SetString("stateStructs",content);
   }
 
-  bool doNotAddDeclNameToGeneratedFunctions = 1;
+  auto FindTrueHierName = [](GEN_StructInfo* info,HIER_Name topName,Arena* out) -> String{
+    TEMP_REGION(temp,out);
+
+    Array<HIER_Name> nodes = ParentToChildNodes(topName,temp);
+
+    auto GetStructElem = [](GEN_StructInfo* info,String name) -> GEN_StructElem*{
+      for(GEN_StructElem* elem = info->elements; elem; elem = elem->next){
+        if(elem->name == name){
+          return elem;
+        }
+
+        for(GEN_StructElem* child = elem->childs; child; child = child->next){
+          if(child->name == name){
+            return child;
+          }
+        }
+      }
+      return 0;
+    };
+
+    int index = 0;
+    GEN_StructInfo* ptr = info;
+    auto b = StartString(temp);
+    while(index < nodes.size){
+      HIER_Name current = nodes[index++];
+      String currentAttempt = current.node->name;
+
+      while(1){
+        GEN_StructElem* foundElem = GetStructElem(ptr,currentAttempt);
+
+        if(foundElem){
+          ptr = foundElem->type;
+          if(!Empty(b)){
+            b->PushString(".");
+          }
+          b->PushString(currentAttempt);
+          break;
+        }
+
+        if(!foundElem){
+          if(index >= nodes.size){
+            Assert(false && "Did not find valid name, this should not happen unless functions and graph go out of sync");
+          }
+
+          HIER_Name toTry = nodes[index++];
+          currentAttempt = PushString(temp,"%.*s_%.*s",UN(currentAttempt),UN(toTry.node->name));
+          continue;
+        }
+      }
+    }
+
+    String res = PushString(out,b);
+    return res;
+  };
+
+  bool doNotAddDeclNameToGeneratedFunctions = 0;
     
   // Output user config functions ===============================================
 #if 1
@@ -2457,14 +2515,25 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
       c->VarDeclare(returnType,"res","{}");
                     
       for(COM_Stmt* stmt = func->stmts; stmt; stmt = stmt->next){
-        Assert(stmt->type == COM_StmtType_ASSIGN);
-        String lhs = PushString(temp,"res.%.*s",UN(stmt->asAssign.lhs));
+        Assert(stmt->type == COM_StmtType_ASSIGN_EXPR || stmt->type == COM_StmtType_ASSIGN_VALUE);
+
+        String lhs = {};
+        if(stmt->type == COM_StmtType_ASSIGN_EXPR){
+          String fullLhsName = HIER_GetFullName(stmt->asAssignValue.lhs,".",temp);
+          lhs = PushString(temp,"res.%.*s",UN(fullLhsName));
+        }
+        if(stmt->type == COM_StmtType_ASSIGN_VALUE){
+          String fullLhsName = HIER_GetFullName(stmt->asAssignValue.lhs,".",temp);
+          lhs = PushString(temp,"res.%.*s",UN(fullLhsName));
+        }
 
         String rhs = {};
-        if(Empty(stmt->asAssign.rhs)){
-          rhs = SYM_Repr(stmt->asAssign.rhsExpr,temp);
-        } else {
-          rhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(stmt->asAssign.rhs));
+        if(stmt->type == COM_StmtType_ASSIGN_EXPR){
+          rhs = SYM_Repr(stmt->asAssignExpr.expr,temp);
+        }
+        if(stmt->type == COM_StmtType_ASSIGN_VALUE){
+          String fullRhsName = FindTrueHierName(stateStruct,stmt->asAssignValue.rhs,temp);
+          rhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(fullRhsName));
         }
 
         c->Assignment(lhs,rhs);
@@ -2477,24 +2546,30 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
       for(COM_Stmt* stmt = func->stmts; stmt; stmt = stmt->next){
         switch(stmt->type){
         case COM_StmtType_NIL: Assert(false);
-        case COM_StmtType_ASSIGN: {
-          String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(stmt->asAssign.lhs));
-          String repr = stmt->asAssign.rhs;
-                                
+        case COM_StmtType_ASSIGN_VALUE: {
+          String fullLhs = FindTrueHierName(configStruct,stmt->asAssignValue.lhs,temp);
+          String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(fullLhs));
+
+          String repr = FindTrueHierName(configStruct,stmt->asAssignValue.rhs,temp);
+
           c->Assignment(lhs,repr);
         } break;
-        // MARK
-                            
+        case COM_StmtType_ASSIGN_EXPR: {
+          String fullLhs = FindTrueHierName(configStruct,stmt->asAssignValue.lhs,temp);
+          String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(fullLhs));
+          String repr = SYM_Repr(stmt->asAssignExpr.expr,temp);
+
+          c->Assignment(lhs,repr);
+        } break;
         case COM_StmtType_ADDR_GEN: {
           c->RawLine("{");
                                 
           AccessAndType access = stmt->asAddr.access;
           AddressGenInst inst = access.inst;
-                                
-          String fullLhs = stmt->asAddr.unitName;
-                                
+
+          String fullLhs = FindTrueHierName(configStruct,stmt->asAddr.unitName,temp);
+
           bool pushStartToExt = (inst.type == AddressGenType_READ);
-                                
           String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(fullLhs));
                                 
           auto Recurse = [lhs,c,pushStartToExt,temp](auto Recurse,CodeNode* top) -> void{
@@ -2571,104 +2646,6 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
         } break;
         }
       }
-                    
-#if 0
-      for(ConfigStuff assign : func->stuff){
-        FULL_SWITCH(assign.type){
-        case ConfigStuffType_ASSIGNMENT:{
-          String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(assign.assign.lhs));
-          SYM_Expr rhs = assign.assign.rhs;
-          String repr = SYM_Repr(rhs,temp);
-                                
-          c->Assignment(lhs,repr);
-        } break;
-        case ConfigStuffType_ADDRESS_GEN:{
-          c->RawLine("{");
-                                
-          AccessAndType access = assign.access;
-          AddressGenInst inst = access.inst;
-                                
-          String fullLhs = HIER_GetFullName(assign.lhs,".",temp);
-                                
-          bool pushStartToExt = (inst.type == AddressGenType_READ);
-                                
-          String lhs = PushString(temp,"%.*s->%.*s",UN(assignStarter),UN(fullLhs));
-                                
-          auto Recurse = [lhs,c,pushStartToExt,temp](auto Recurse,CodeNode* top) -> void{
-            SYM_Expr startExpr = SYM_0;
-            if(pushStartToExt){
-              for(CodeNode* ptr = top; ptr; ptr = ptr->next){
-                if(ptr->name == "start"){
-                  startExpr = ptr->expr;
-                }
-              }
-            }
-                                    
-            for(CodeNode* ptr = top; ptr; ptr = ptr->next){
-              String repr = SYM_Repr(ptr->expr,temp);
-                                        
-              FULL_SWITCH(ptr->type){
-              case CodeNodeType_EMPTY:{
-                Recurse(Recurse,ptr->child);
-              } break;
-              case CodeNodeType_IF:{
-                c->If(repr);
-                Recurse(Recurse,ptr->child);
-                c->EndIf();
-              } break;
-              case CodeNodeType_COMMENT:{
-                c->Comment(ptr->name);
-              } break;
-              case CodeNodeType_DECLARE:{
-                String repr = SYM_Repr(ptr->expr,temp);
-                c->VarDeclare("int",ptr->name,repr);
-              } break;
-              case CodeNodeType_ASSIGN:{
-                if(pushStartToExt && ptr->name == "start"){
-                  continue;
-                }
-                                                
-                String fullName = PushString(temp,"%.*s.%.*s",UN(lhs),UN(ptr->name));
-                                                
-                if(pushStartToExt && ptr->name == "ext_addr"){
-                  if(!Equal(startExpr,SYM_0)){
-                    String startExprRepr = SYM_Repr(startExpr,temp);
-                    repr = PushString(temp,"(iptr) (((float*) %.*s) + (%.*s))",UN(repr),UN(startExprRepr));
-                  } else {
-                    repr = PushString(temp,"(iptr) (%.*s)",UN(repr));
-                  }
-                }
-                if(ptr->name == "length"){
-                  repr = PushString(temp,"(%.*s) * sizeof(float)",UN(repr));
-                }
-                if(ptr->name == "addr_shift"){
-                  repr = PushString(temp,"(%.*s) * sizeof(float)",UN(repr));
-                }
-                                                
-                c->Assignment(fullName,repr);
-              } break;
-            }
-            }
-          };
-                                
-          InstantiateOptions options = {};
-          options.type = inst.type;
-          options.extVarName = assign.pointerVarName;
-          options.memPort = access.port;
-          options.dir = access.dir;
-                                
-          CodeNode* top = EmitStatements(access,temp,options);
-          Recurse(Recurse,top);
-                                
-          c->RawLine("}");
-                                
-        } break;
-        case ConfigStuffType_MEMORY_TRANSFER:{
-          NOT_POSSIBLE();
-        } break;
-      }
-      }
-#endif
     } break;
   }
             
@@ -2683,10 +2660,19 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     
   {
     CEmitter* c = StartCCode(CCode1,CCode2);
-        
+
+    // nocheckin: Check if we are not doing something weird with this.
+    for(GEN_MMNameInfo i : info->memoryMappedNames){
+      GEN_MMInfo* e = i.info;
+      c->Define(SF("TOP_%.*s",UN(i.name)),PushString(temp,"((void*) (versat_base + memMappedStart + %d))",e->addrStart));
+    }
+
+#if 0        
+    // nocheckin
     for(GEN_MMInfo e : info->memoryMapped){
       c->Define(SF("TOP_%.*s",UN(e.addrName)),PushString(temp,"((void*) (versat_base + memMappedStart + %d))",e.addrStart));
     }
+#endif
         
     String content = PushASTRepr(c,temp);
     TE_SetString("memMappedAddresses",content);
@@ -4527,7 +4513,6 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
     stateIndex += 1;
   }
     
-    
   for(Wire w : topLevel->configs){
     GEN_Wire* c = configBuild->PushElem();
         
@@ -4619,9 +4604,8 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
       HuffmanNode* right;
             
       String addrName;
-      int addrIndex;
+      int globalLeafIndex;
       int bitCount;
-      bool isBitSet;
     };
         
     int size = topLevel->memoryMapped.size;
@@ -4643,17 +4627,17 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
             
       HuffmanNode* node = PushStruct<HuffmanNode>(temp);
       node->bitCount = eval.result;
-      node->addrIndex = i;
+      node->globalLeafIndex = i;
       node->addrName = addrName;
       DLL_Append(nodesHead,nodesTail,next,prev,node);
     }
         
     if(!error && size > 0){
-      HuffmanNode* allHead = 0;
-      HuffmanNode* allTail = 0;
+      HuffmanNode* leafHead = 0;
+      HuffmanNode* leafTail = 0;
             
       if(nodesHead && !nodesHead->next){
-        LL_Append(allHead,allTail,next,nodesHead);
+        LL_Append(leafHead,leafTail,next,nodesHead);
       }
             
       while(nodesHead && nodesHead->next){
@@ -4661,7 +4645,7 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
         HuffmanNode* smallestMin = 0;
         int biggestMinVal = INT_MAX;
         int smallestMinVal = INT_MAX;
-                
+
         // Find the two smallest ======================================================
         for(HuffmanNode* ptr = nodesHead; ptr; ptr = ptr->next){
           if(ptr->bitCount < smallestMinVal){
@@ -4680,32 +4664,31 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
         DLL_Remove(nodesHead,nodesTail,next,prev,biggestMin);
         DLL_Remove(nodesHead,nodesTail,next,prev,smallestMin);
                 
-        if(smallestMin->addrIndex != -1){
-          LL_Append(allHead,allTail,next,smallestMin);
+        if(smallestMin->globalLeafIndex != -1){
+          LL_Append(leafHead,leafTail,next,smallestMin);
         }
-        if(biggestMin->addrIndex != -1){
-          LL_Append(allHead,allTail,next,biggestMin);
+        if(biggestMin->globalLeafIndex != -1){
+          LL_Append(leafHead,leafTail,next,biggestMin);
         }
                 
         HuffmanNode* join = PushStruct<HuffmanNode>(temp);
-        join->addrIndex = -1;
+        join->globalLeafIndex = -1;
         join->bitCount = MAX(biggestMin->bitCount,smallestMin->bitCount) + 1;
         join->left = smallestMin;
         join->left->parent = join;
         join->right = biggestMin;
         join->right->parent = join;
-        join->right->isBitSet = 1;
         DLL_Append(nodesHead,nodesTail,next,prev,join);
       }
             
       HuffmanNode* top = nodesHead;
       memoryMappedBit = top->bitCount;
       memoryMapped = PushArray<GEN_MMInfo>(out,size);
-            
-      for(HuffmanNode* ptr = allHead; ptr; ptr = ptr->next){
-        Assert(ptr->addrIndex >= 0);
+
+      for(HuffmanNode* ptr = leafHead; ptr; ptr = ptr->next){
+        Assert(ptr->globalLeafIndex >= 0);
                 
-        int addrIndex = ptr->addrIndex;
+        int leafIndex = ptr->globalLeafIndex;
         int offset = ptr->bitCount;
         int maskSize = memoryMappedBit - offset;
                 
@@ -4713,24 +4696,38 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
         for(int i = 0; i < maskSize; i++){
           maskBuffer[i] = '0';
         }
-                
+
         int addrStart = 0;
-        for(HuffmanNode* parent = ptr; parent; parent = parent->parent){
+        HuffmanNode* prev = ptr;
+        for(HuffmanNode* parent = ptr->parent; parent; prev = parent,parent = parent->parent){
           int index = parent->bitCount - offset;
-          if(parent->isBitSet){
-            addrStart |= (1 << parent->bitCount);
-            maskBuffer[index] = '1';
+          int bit = 0;
+          if(parent->right == prev){
+            bit = 1;
+          }
+          if(bit){
+            addrStart |= (1 << prev->bitCount);
+            maskBuffer[maskSize - index] = '1';
           }
         }
-                
-        memoryMapped[addrIndex].decisionMask = String(maskBuffer,maskSize);
-        memoryMapped[addrIndex].addrStart = addrStart;
-        memoryMapped[addrIndex].addrName = ptr->addrName;
-        memoryMapped[addrIndex].addrSize = (1 << ptr->bitCount);
+
+        memoryMapped[leafIndex].decisionMask = String(maskBuffer,maskSize);
+        memoryMapped[leafIndex].addrStart = addrStart;
+        memoryMapped[leafIndex].addrName = ptr->addrName;
+        memoryMapped[leafIndex].addrSize = (1 << ptr->bitCount);
       }
     }
   }
-    
+
+  auto b = PushList<GEN_MMNameInfo>(temp);
+  for(DECL_MMMapNames names : topLevel->memoryMappedNames){
+    GEN_MMNameInfo* m = b->PushElem();
+
+    m->name = names.name;
+    m->info = &memoryMapped[names.trueIndex];
+  }
+  Array<GEN_MMNameInfo> memoryMappedNames = PushArray(out,b);
+
   // TODO: + 2 since we are dealing with byte addresses
   int configMemoryDecisionBit = log2i(totalConfigCount) + 2;
   int stateMemoryDecisionBit = log2i(stateCount) + 2;
@@ -4745,6 +4742,8 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
   res.decl = topLevel;
   res.registers = versatRegisters;
   res.memoryMapped = memoryMapped;
+  res.memoryMappedNames = memoryMappedNames;
+
   res.allConfigs = configWires;
   res.allStates = stateWires;
     

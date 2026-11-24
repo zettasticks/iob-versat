@@ -1190,6 +1190,7 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
 
   // TODO: We could change to store hierarchical names instead. That way we would have better information about the source of the config/state wire instead of collapsing the information immediatly.
   {
+    auto b = PushList<DECL_MMMapNames>(temp);
     int stateIndex = 0;
     int configIndex = 0;
     int memMappedIndex = 0;
@@ -1216,6 +1217,10 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
           res->memoryMapped[memMappedIndex].addrName = PushString(out,"%.*s_%.*s",UN(ptr->name),UN(e.addrName));
         }
 
+        DECL_MMMapNames* m = b->PushElem();
+        m->name = res->memoryMapped[memMappedIndex].addrName;
+        m->trueIndex = memMappedIndex;
+
         memMappedIndex += 1;
       }
       for(HW_Instance& inst : ptr->decl->externalMemory){
@@ -1225,6 +1230,7 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
         externalIndex += 1;
       }
     }
+    res->memoryMappedNames = PushArray(out,b);
   }
   
   return res;
@@ -1397,7 +1403,6 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   for(int i = 0; i < size; i++){
     auto inputDelayList = PushList<int>(temp);
     auto outputDelayList = PushList<int>(temp);
-    auto delayList = PushList<int>(temp);
 
     auto muxList = PushList<DECL_MuxInfo>(temp);
     for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
@@ -1414,19 +1419,21 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
           if(i < reconUnit->decl->numberInputDelays){
             *inputDelayList->PushElem() = reconUnit->extraDelay[i];
           }
-        }
-        for(int i = 0; i < reconUnit->extraDelay.size; i++){
           if(i >= reconUnit->decl->numberInputDelays){
             *outputDelayList->PushElem() = reconUnit->extraDelay[i];
           }
         }
       } else {
-        for(int i = 0; i < ptr->decl->numberInputDelays + ptr->decl->numberOutputDelays; i++){
-          *delayList->PushElem() = 0;
+        for(int i = 0; i < ptr->decl->numberInputDelays; i++){
+          *inputDelayList->PushElem() = 0;
+        }
+        for(int i = 0; i < ptr->decl->numberOutputDelays; i++){
+          *outputDelayList->PushElem() = 0;
         }
       }
     }
 
+    auto delayList = PushList<int>(temp);
     for(auto i : inputDelayList){
       *delayList->PushElem() = i;
     }
@@ -1437,9 +1444,6 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
     Array<int> storedDelays = PushArray(out,delayList);
     mergeData[i].calculatedDelays = storedDelays;
   }
-
-  
-  
 
   // TODO: Share and Static
   // TODO: Copy from instantiateModule, reorganize.
@@ -1512,6 +1516,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   res->funcs = funcHead;
   res->error = error;
 
+  auto b = PushList<DECL_MMMapNames>(temp);
   {
     int stateIndex = 0;
     int configIndex = 0;
@@ -1530,6 +1535,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
         res->states[stateIndex].sizeExpr = SYM_Replace(w.sizeExpr,paramReplace);
         stateIndex += 1;
       }
+
       for(DECL_MMInfo e : ptr->decl->memoryMapped){
         res->memoryMapped[memMappedIndex].inst = HW_InstantiateParams(e.inst,paramReplace,out);
         if(ptr->decl->type == DeclarationType_SINGLE){
@@ -1538,8 +1544,16 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
           res->memoryMapped[memMappedIndex].addrName = PushString(out,"%.*s_%.*s",UN(ptr->name),UN(e.addrName));
         }
 
+        for(int i = 0; i < size; i++){
+          String name = mergeData[i].mergeName;
+          DECL_MMMapNames* m = b->PushElem();
+          m->name = PushString(out,"%.*s_%.*s",UN(name),UN(res->memoryMapped[memMappedIndex].addrName));
+          m->trueIndex = memMappedIndex;
+        }
+
         memMappedIndex += 1;
       }
+
       for(HW_Instance& inst : ptr->decl->externalMemory){
         res->externalMemory[externalIndex] = HW_InstantiateParams(inst,paramReplace,out);
         res->externalMemory[externalIndex].index = externalIndex;
@@ -1548,6 +1562,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
       }
     }
   }
+  res->memoryMappedNames = PushArray(out,b);
 
   return res;
 }

@@ -4,8 +4,7 @@
 #include "versatSpecificationParser.hpp"
 #include "symbolic.hpp"
 #include "addressGen.hpp"
-
-// For std::function
+#include "hierName.hpp"
 #include "functional"
 
 struct FUDeclaration;
@@ -222,7 +221,6 @@ enum COM_EntType{
   COM_EntType_ARG_FIXED,
   COM_EntType_ARG_DYN,
   COM_EntType_ARG_BUFFER,
-
   COM_EntType_FUNCTION,
 
   COM_EntType_STATE_ACCESS,
@@ -321,7 +319,8 @@ struct COM_RangeValues{
 
 enum COM_StmtType{
   COM_StmtType_NIL,
-  COM_StmtType_ASSIGN,
+  COM_StmtType_ASSIGN_VALUE,
+  COM_StmtType_ASSIGN_EXPR,
   COM_StmtType_ADDR_GEN,
   COM_StmtType_MEM_COPY
 };
@@ -332,12 +331,13 @@ struct COM_Stmt{
 
   union {
     struct {
-      String lhs;
-      
-      // Wether rhs is empty or not is important (if empty then use rhsExpr). Kinda clubersome and error prone. 
-      String rhs;
-      SYM_Expr rhsExpr;
-    } asAssign;
+      HIER_Name lhs;
+      HIER_Name rhs;
+    } asAssignValue;
+    struct {
+      HIER_Name lhs;
+      SYM_Expr expr;
+    } asAssignExpr; 
     struct {
       String unitAddressName;
       String addrVarName;
@@ -346,7 +346,7 @@ struct COM_Stmt{
       Direction dir;
     } asMem;
     struct {
-      String unitName;
+      HIER_Name unitName;
       String addrVarName;
 
       AccessAndType access;

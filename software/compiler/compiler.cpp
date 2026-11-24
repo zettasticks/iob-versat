@@ -1044,11 +1044,17 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
       *copy = *stmt;
       copy->next = 0;
 
-      if(copy->type == COM_StmtType_ASSIGN){
-        copy->asAssign.lhs = PushString(out,"%.*s.%.*s",UN(ent.name),UN(copy->asAssign.lhs));
+      if(copy->type == COM_StmtType_ASSIGN_VALUE){
+        copy->asAssignValue.lhs = ent.name + copy->asAssignValue.lhs;
+      }
+      if(copy->type == COM_StmtType_ASSIGN_EXPR){
+        copy->asAssignExpr.lhs = ent.name + copy->asAssignExpr.lhs;
       }
       if(copy->type == COM_StmtType_ADDR_GEN){
-        copy->asAddr.unitName = PushString(out,"%.*s.%.*s",UN(ent.name),UN(copy->asAddr.unitName));
+        copy->asAddr.unitName = ent.name + copy->asAddr.unitName;
+      }
+      if(copy->type == COM_StmtType_MEM_COPY){
+        copy->asMem.unitAddressName = PushString(out,"%.*s_%.*s",UN(ent.name),UN(copy->asMem.unitAddressName));
       }
 
       LL_Append(stmtHead,stmtTail,next,copy);
@@ -1217,12 +1223,19 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
           for(COM_Stmt* node = func->stmts; node; node = node->next){
             switch(node->type){
             case COM_StmtType_NIL: Assert(false); break;
-            case COM_StmtType_ASSIGN: {
+            case COM_StmtType_ASSIGN_VALUE: {
               COM_Stmt* stmt = PushStruct<COM_Stmt>(out);
-              stmt->type = COM_StmtType_ASSIGN;
-              stmt->asAssign.lhs = PushString(out,"%.*s.%.*s",UN(unitName),UN(node->asAssign.lhs));
-              stmt->asAssign.rhsExpr = SYM_Replace(node->asAssign.rhsExpr,paramToArg);
-              stmt->asAssign.rhs = SYM_Repr(stmt->asAssign.rhsExpr,out);
+              stmt->type = COM_StmtType_ASSIGN_VALUE;
+              stmt->asAssignValue.lhs = unitName + node->asAssignValue.lhs;
+              stmt->asAssignValue.rhs = stmt->asAssignValue.rhs;
+                  
+              LL_Append(stmtHead,stmtTail,next,stmt);
+            } break;
+            case COM_StmtType_ASSIGN_EXPR: {
+              COM_Stmt* stmt = PushStruct<COM_Stmt>(out);
+              stmt->type = COM_StmtType_ASSIGN_EXPR;
+              stmt->asAssignExpr.lhs = unitName + node->asAssignExpr.lhs;
+              stmt->asAssignExpr.expr = SYM_Replace(node->asAssignExpr.expr,paramToArg);
                   
               LL_Append(stmtHead,stmtTail,next,stmt);
             } break;
@@ -1272,7 +1285,7 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
 
               COM_Stmt* stmt = PushStruct<COM_Stmt>(out);
               stmt->type = COM_StmtType_ADDR_GEN;
-              stmt->asAddr.unitName = PushString(out,"%.*s.%.*s",UN(unitName),UN(node->asAddr.unitName));
+              stmt->asAddr.unitName = unitName + node->asAddr.unitName;
               stmt->asAddr.addrVarName = node->asAddr.addrVarName;
               stmt->asAddr.maxLoopSize = node->asAddr.maxLoopSize;
               stmt->asAddr.access.access = access;
@@ -1327,9 +1340,9 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
 
           // TODO: Need to unpack the rhs as well.
           stmt = PushStruct<COM_Stmt>(out);
-          stmt->type = COM_StmtType_ASSIGN;
-          stmt->asAssign.lhs = PushString(out,name);
-          stmt->asAssign.rhs = PushString(out,"%.*s.%.*s",UN(rhsEnt.name),UN(rhsEnt.wireOrStateName));
+          stmt->type = COM_StmtType_ASSIGN_VALUE;
+          stmt->asAssignValue.lhs = name;
+          stmt->asAssignValue.rhs = rhsEnt.name + rhsEnt.wireOrStateName;
         }
 
         if(!stmt && isState && rhsEnt.type == COM_EntType_STATE_ACCESS){
@@ -1341,7 +1354,7 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
 
           COM_Stmt* foundStmt = 0;
           for(COM_Stmt* stmt = rhsEnt.func->stmts; stmt; stmt = stmt->next){
-            if(stmt->asAssign.lhs == rhsEnt.wireOrStateName){
+            if(stmt->asAssignValue.lhs.node->name == rhsEnt.wireOrStateName){
               foundStmt = stmt;
               break;
             }
@@ -1356,13 +1369,16 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
           if(foundStmt){
             // TODO: Need to unpack the rhs as well.
             stmt = PushStruct<COM_Stmt>(out);
-            stmt->type = COM_StmtType_ASSIGN;
-            stmt->asAssign.lhs = PushString(out,name);
-            
-            if(!Empty(foundStmt->asAssign.rhs)){
-              stmt->asAssign.rhs = PushString(out,"%.*s.%.*s",UN(rhsEnt.name),UN(foundStmt->asAssign.rhs));
+            stmt->type = foundStmt->type;
+
+            if(stmt->type == COM_StmtType_ASSIGN_VALUE){
+              stmt->asAssignValue.lhs = name;
+              stmt->asAssignValue.rhs = rhsEnt.name + foundStmt->asAssignValue.rhs;
             }
-            stmt->asAssign.rhsExpr = foundStmt->asAssign.rhsExpr;
+            if(stmt->type == COM_StmtType_ASSIGN_EXPR){
+              stmt->asAssignExpr.lhs = name;
+              stmt->asAssignExpr.expr = foundStmt->asAssignExpr.expr;
+            }
           }
         }
 
@@ -1375,9 +1391,9 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
           elem->name = PushString(out,name);
 
           stmt = PushStruct<COM_Stmt>(out);
-          stmt->type = COM_StmtType_ASSIGN;
-          stmt->asAssign.lhs = PushString(out,name);
-          stmt->asAssign.rhsExpr = asExpr;
+          stmt->type = COM_StmtType_ASSIGN_EXPR;
+          stmt->asAssignExpr.lhs = name;
+          stmt->asAssignExpr.expr = asExpr;
         }
 
         // The equivalent to function call for state ==================================
@@ -1408,14 +1424,15 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
 
           for(COM_Stmt* s = func->stmts; s; s = s->next){
             stmt = PushStruct<COM_Stmt>(out);
-            stmt->type = COM_StmtType_ASSIGN;
-            stmt->asAssign.lhs = PushString(out,"%.*s.%.*s",UN(name),UN(s->asAssign.lhs));
-          
-            // TODO: This is stupid and is equal to what we do inside codeGen. Fix in here and in code gen.
-            if(Empty(s->asAssign.rhs)){
-              stmt->asAssign.rhsExpr = s->asAssign.rhsExpr;
-            } else {
-              stmt->asAssign.rhs = PushString(out,"%.*s.%.*s",UN(rhsEnt.name),UN(s->asAssign.rhs));
+            stmt->type = s->type;
+
+            if(stmt->type == COM_StmtType_ASSIGN_VALUE){
+              stmt->asAssignValue.lhs = name + s->asAssignValue.lhs;
+              stmt->asAssignValue.rhs = rhsEnt.name + s->asAssignValue.rhs;
+            }
+            if(stmt->type == COM_StmtType_ASSIGN_EXPR){
+              stmt->asAssignExpr.lhs = name + s->asAssignExpr.lhs;
+              stmt->asAssignExpr.expr = s->asAssignExpr.expr;
             }
 
             LL_Append(stmtHead,stmtTail,next,stmt);
@@ -1481,10 +1498,9 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
           SYM_Expr expr = COM_SymbolicFromExpression(env,rhsNode);
 
           stmt = PushStruct<COM_Stmt>(out);
-          stmt->type = COM_StmtType_ASSIGN;
-          stmt->asAssign.lhs = PushString(out,"%.*s.%.*s",UN(lhsEnt.name),UN(lhsEnt.wireOrStateName));
-          stmt->asAssign.rhsExpr = expr;
-          stmt->asAssign.rhs = SYM_Repr(stmt->asAssign.rhsExpr,out);
+          stmt->type = COM_StmtType_ASSIGN_EXPR;
+          stmt->asAssignExpr.lhs = lhsEnt.name + lhsEnt.wireOrStateName;
+          stmt->asAssignExpr.expr = expr;
         }
 
         if(!stmt && isConfig && lhsEnt.type == COM_EntType_MODULE_UNIT){
@@ -1565,12 +1581,12 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
         }
 
         if(!stmt && isConfig && COM_Ent_IsWire(lhsEnt.type)){
-          stmt = PushStruct<COM_Stmt>(out);
-          stmt->type = COM_StmtType_ASSIGN;
-          stmt->asAssign.lhs = PushString(out,"%.*s.%.*s",UN(lhsEnt.name),UN(lhsEnt.wireOrStateName));
- 
           SYM_Expr asExpr = COM_SymbolicFromExpression(env,rhsNode);
-          stmt->asAssign.rhs = SYM_Repr(asExpr,out);
+
+          stmt = PushStruct<COM_Stmt>(out);
+          stmt->type = COM_StmtType_ASSIGN_EXPR;
+          stmt->asAssignExpr.lhs = lhsEnt.name + lhsEnt.wireOrStateName;
+          stmt->asAssignExpr.expr = asExpr;
         }
 
         if(!stmt && isConfig && lhsEnt.type == COM_EntType_VAR_WITH_VIRTUAL_MEM){

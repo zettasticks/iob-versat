@@ -24,7 +24,11 @@ void HIER_Init();
 
 bool HIER_IsValid(HIER_Name name);
 
+Array<HIER_Name> ParentToChildNodes(HIER_Name start,Arena* out);
+Array<HIER_Name> ChildToParentNodes(HIER_Name start,Arena* out);
+
 String HIER_GetFullName(HIER_Name name,String separator,Arena* out);
 HIER_Name HIER_GetChild(HIER_Name base);
 
 HIER_Name operator+(HIER_Name parent,HIER_Name bottom);
+//HIER_Name& operator+=(HIER_Name& parent,HIER_Name bottom);

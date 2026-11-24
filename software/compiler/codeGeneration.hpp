@@ -89,11 +89,18 @@ struct GEN_MMInfo{
   int    addrSize;
 };
 
+// nocheckin
+struct GEN_MMNameInfo{
+  String name;
+  GEN_MMInfo* info;
+};
+
 struct GEN_TopInfo{
   FUDeclaration* decl;
 
   Array<VersatRegister> registers;
   Array<GEN_MMInfo> memoryMapped;
+  Array<GEN_MMNameInfo> memoryMappedNames;
 
   Array<GEN_Wire> allConfigs;
   Array<GEN_Wire> allStates;

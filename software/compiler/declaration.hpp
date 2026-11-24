@@ -113,6 +113,12 @@ struct DECL_MergeData{
   Array<DECL_MuxInfo> muxConfigs;
 };
 
+// nocheckin
+struct DECL_MMMapNames{
+  int trueIndex;
+  String name;
+};
+
 struct FUDeclaration{
   DECL_Meta* meta;
   Array<DECL_Param> parameters; // All parameters even if equal to default values.
@@ -126,7 +132,7 @@ struct FUDeclaration{
   Array<Wire> states;
 
   Array<DECL_MMInfo> memoryMapped; // Only address can change, everything else must be standard
-  // TODO: We need to preserve the maximum size of 
+  Array<DECL_MMMapNames> memoryMappedNames; // nocheckin TODO: Added in a hacky way to resolve merge problem. If we proceed with this approach then take a look at module and simple declarations as well.
 
   Array<HW_Instance> externalMemory;  // For external memory we care about wire size. 
 

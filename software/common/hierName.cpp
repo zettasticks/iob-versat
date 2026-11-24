@@ -42,7 +42,7 @@ static HIER_Name GetOrAllocate(HIER_Name child,String name){
   return newNode;
 }
 
-static Array<HIER_Name> ParentToChildNodes(HIER_Name start,Arena* out){
+Array<HIER_Name> ParentToChildNodes(HIER_Name start,Arena* out){
   TEMP_REGION(temp,out);
 
   auto list = PushList<HIER_Name>(temp);
@@ -54,7 +54,7 @@ static Array<HIER_Name> ParentToChildNodes(HIER_Name start,Arena* out){
   return asArray;
 }
 
-static Array<HIER_Name> ChildToParentNodes(HIER_Name start,Arena* out){
+Array<HIER_Name> ChildToParentNodes(HIER_Name start,Arena* out){
   Array<HIER_Name> array = ParentToChildNodes(start,out);
   ReverseInPlace(array);
   
@@ -111,3 +111,17 @@ HIER_Name operator+(HIER_Name parent,HIER_Name bottom){
 
   return ptr;
 }
+
+/*
+HIER_Name& operator+=(HIER_Name& parent,HIER_Name bottom){
+  Array<HIER_Name> nodes = ChildToParentNodes(parent,temp);
+
+  HIER_Name ptr = bottom;
+  for(HIER_Name name : nodes){
+    ptr = GetOrAllocate(ptr,name.node->name);
+  }
+
+  parent = ptr;
+  return parent;
+}
+*/

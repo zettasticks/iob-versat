@@ -53,18 +53,11 @@ AddressAccess* CompileAddressGen(Array<AddressGenForDef2> loops,SYM_Expr addr){
   SYM_Expr finalExpression = loopExpression;
 
   // Building expression for the external address
-  // TODO: Handle parsing errors
   SYM_Expr normalized = symbolicExpr;
-
   Pair<SYM_Expr,SYM_Expr> pair = SYM_BreakDuty(normalized);
 
   SYM_Expr fullExpr = pair.first;
   SYM_Expr dutyDiv = pair.second;
-
-  SYM_Print(pair.first);
-  printf("\n");
-  SYM_Print(pair.second);
-  printf("\n");
 
   LoopLinearSum* expr = PushLoopLinearSumEmpty(temp);
   for(int i = 0; i < loopVars.size; i++){
