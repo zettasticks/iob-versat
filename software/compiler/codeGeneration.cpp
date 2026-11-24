@@ -2661,13 +2661,13 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
   {
     CEmitter* c = StartCCode(CCode1,CCode2);
 
+#if 1
     // nocheckin: Check if we are not doing something weird with this.
     for(GEN_MMNameInfo i : info->memoryMappedNames){
       GEN_MMInfo* e = i.info;
       c->Define(SF("TOP_%.*s",UN(i.name)),PushString(temp,"((void*) (versat_base + memMappedStart + %d))",e->addrStart));
     }
-
-#if 0        
+#else
     // nocheckin
     for(GEN_MMInfo e : info->memoryMapped){
       c->Define(SF("TOP_%.*s",UN(e.addrName)),PushString(temp,"((void*) (versat_base + memMappedStart + %d))",e.addrStart));
@@ -4612,7 +4612,7 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
     HuffmanNode* nodesHead = 0;
     HuffmanNode* nodesTail = 0;
     for(int i = 0; i < size; i++){
-      String addrName = topLevel->memoryMapped[i].addrName;
+      String addrName = HIER_GetFullName(topLevel->memoryMapped[i].addrName,"_",out);
       HW_Instance in = topLevel->memoryMapped[i].inst;
       SYM_Expr addrSize = HW_GetAddrSize(in,0);
       SYM_EvaluateResult eval = SYM_ConstantEvaluate(addrSize);
@@ -4719,14 +4719,18 @@ GEN_TopInfo GEN_CalculateTopInfo(FUDeclaration* topLevel,Arena* out){
     }
   }
 
+#if 1
   auto b = PushList<GEN_MMNameInfo>(temp);
   for(DECL_MMMapNames names : topLevel->memoryMappedNames){
     GEN_MMNameInfo* m = b->PushElem();
 
-    m->name = names.name;
+    m->name = HIER_GetFullName(names.name,"_",out);
     m->info = &memoryMapped[names.trueIndex];
   }
   Array<GEN_MMNameInfo> memoryMappedNames = PushArray(out,b);
+#else
+  Array<GEN_MMNameInfo> memoryMappedNames = {};
+#endif
 
   // TODO: + 2 since we are dealing with byte addresses
   int configMemoryDecisionBit = log2i(totalConfigCount) + 2;

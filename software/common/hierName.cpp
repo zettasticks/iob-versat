@@ -86,7 +86,7 @@ HIER_Name HIER_GetChild(HIER_Name base){
 }
 
 String HIER_GetFullName(HIER_Name name,String separator,Arena* out){
-  TEMP_REGION(temp,nullptr);
+  TEMP_REGION(temp,out);
 
   Array<HIER_Name> nodes = ParentToChildNodes(name,temp);
   int size = nodes.size;

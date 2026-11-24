@@ -1212,14 +1212,27 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
         res->memoryMapped[memMappedIndex].inst = HW_InstantiateParams(e.inst,paramReplace,out);
 
         if(ptr->decl->type == DeclarationType_SINGLE){
-          res->memoryMapped[memMappedIndex].addrName = PushString(out,"%.*s_addr",UN(ptr->name));
+          res->memoryMapped[memMappedIndex].addrName = ptr->name + HIER_Name("addr");
         } else {
-          res->memoryMapped[memMappedIndex].addrName = PushString(out,"%.*s_%.*s",UN(ptr->name),UN(e.addrName));
+          res->memoryMapped[memMappedIndex].addrName = ptr->name + e.addrName;
         }
 
-        DECL_MMMapNames* m = b->PushElem();
-        m->name = res->memoryMapped[memMappedIndex].addrName;
-        m->trueIndex = memMappedIndex;
+#if 0
+        for(COM_Unit* recon = ptr->mergeNext; recon; recon = recon->next){
+          if(recon->doesNotBelong){
+            continue;
+          }
+
+          DECL_MMMapNames* m = b->PushElem();
+
+          if(ptr->decl->type == DeclarationType_SINGLE){
+            m->name = recon->name + HIER_Name("addr");
+          } else {
+            m->name = recon->name + e.addrName;
+          }
+          m->trueIndex = memMappedIndex;
+        }
+#endif
 
         memMappedIndex += 1;
       }
@@ -1539,15 +1552,24 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
       for(DECL_MMInfo e : ptr->decl->memoryMapped){
         res->memoryMapped[memMappedIndex].inst = HW_InstantiateParams(e.inst,paramReplace,out);
         if(ptr->decl->type == DeclarationType_SINGLE){
-          res->memoryMapped[memMappedIndex].addrName = PushString(out,"%.*s_addr",UN(ptr->name));
+          res->memoryMapped[memMappedIndex].addrName = ptr->name + HIER_Name("addr");
         } else {
-          res->memoryMapped[memMappedIndex].addrName = PushString(out,"%.*s_%.*s",UN(ptr->name),UN(e.addrName));
+          res->memoryMapped[memMappedIndex].addrName = ptr->name + e.addrName; 
         }
 
-        for(int i = 0; i < size; i++){
-          String name = mergeData[i].mergeName;
+        for(COM_Unit* recon = ptr->mergeNext; recon; recon = recon->mergeNext){
+          if(recon->doesNotBelong){
+            continue;
+          }
+
           DECL_MMMapNames* m = b->PushElem();
-          m->name = PushString(out,"%.*s_%.*s",UN(name),UN(res->memoryMapped[memMappedIndex].addrName));
+
+          if(ptr->decl->type == DeclarationType_SINGLE){
+            m->name = recon->name + HIER_Name("addr");
+          } else {
+            m->name = recon->name + e.addrName;
+          }
+
           m->trueIndex = memMappedIndex;
         }
 

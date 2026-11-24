@@ -97,7 +97,8 @@ struct DECL_StaticWire{
 
 struct DECL_MMInfo{
   HW_Instance inst;
-  String addrName;
+  //String addrName;
+  HIER_Name addrName;
 };
 
 struct DECL_MuxInfo{
@@ -116,7 +117,7 @@ struct DECL_MergeData{
 // nocheckin
 struct DECL_MMMapNames{
   int trueIndex;
-  String name;
+  HIER_Name name;
 };
 
 struct FUDeclaration{

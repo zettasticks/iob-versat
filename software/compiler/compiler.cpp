@@ -1054,7 +1054,7 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
         copy->asAddr.unitName = ent.name + copy->asAddr.unitName;
       }
       if(copy->type == COM_StmtType_MEM_COPY){
-        copy->asMem.unitAddressName = PushString(out,"%.*s_%.*s",UN(ent.name),UN(copy->asMem.unitAddressName));
+        //copy->asMem.unitAddressName = PushString(out,"%.*s_%.*s",UN(ent.name),UN(copy->asMem.unitAddressName));
       }
 
       LL_Append(stmtHead,stmtTail,next,copy);
@@ -1302,7 +1302,12 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
             case COM_StmtType_MEM_COPY:{
               COM_Stmt* stmt = PushStruct<COM_Stmt>(out);
               stmt->type = COM_StmtType_MEM_COPY;
-              stmt->asMem.unitAddressName = PushString(out,"%.*s_%.*s",UN(unitName),UN(node->asMem.unitAddressName));
+
+              if(isMerge){
+                stmt->asMem.unitAddressName = node->asMem.unitAddressName;
+              } else {
+                stmt->asMem.unitAddressName = PushString(out,"%.*s_%.*s",UN(unitName),UN(node->asMem.unitAddressName));
+              }
 
               int addrIndex = -1;
               for(int i = 0; i < func->params.size; i++){
