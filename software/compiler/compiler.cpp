@@ -2433,7 +2433,7 @@ COM_UnitNodeList COM_CalculateDAGOrder(COM_Graph graph,Arena* outArena){
 
   COM_DebugOutputDotGraph("BeforeDAG.dot","BeforeDAGCalc",units,edges,COM_DefaultReprFunction);
 
-  bool debug = 1;
+  bool debug = 0;
 
   int MARK_NIL    = 0;
   int MARK_TEMP   = 1;

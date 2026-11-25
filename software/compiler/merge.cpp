@@ -3859,10 +3859,6 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
 
     // Create any edge that goes from mapped to not mapped ========================
     for(COM_Edge* reconEdge = recon.edges.head; reconEdge; reconEdge = reconEdge->next){
-      if(mapReconEdgeToGraph->Exists(reconEdge)){
-        continue;
-      }
-
       COM_Edge possibleNew = {};
       possibleNew.in = mapReconUnitToGraph->GetOrFail(reconEdge->in);
       possibleNew.inPort = reconEdge->inPort;
