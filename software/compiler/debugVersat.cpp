@@ -52,8 +52,8 @@ String GenerateDotGraph(DOT_Graph graph,Arena* out){
     }
     String color = graphPrintingColorTable[(int) c];
 
-    String name = node.name;
-    String label = node.middleContent;
+    String name = node.identifier;
+    String label = node.content;
     result->PushString("\t\"%.*s\" [color=%.*s label=\"%.*s\"];\n",UN(name),UN(color),UN(label));
   }
 
@@ -75,8 +75,8 @@ String GenerateDotGraph(DOT_Graph graph,Arena* out){
     if(!Empty(node.inContent)){
       result->PushString(" headlabel=\"%.*s\"",UN(node.inContent));
     }
-    if(!Empty(node.middleContent)){
-      result->PushString(" label=\"%.*s\"",UN(node.middleContent));
+    if(!Empty(node.content)){
+      result->PushString(" label=\"%.*s\"",UN(node.content));
     }
     if(!Empty(node.outContent)){
       result->PushString(" taillabel=\"%.*s\"",UN(node.outContent));

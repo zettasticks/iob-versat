@@ -249,8 +249,6 @@ SYM_Expr COM_SymbolicFromExpression(COM_Env* env,SP_Node* node){
     case SP_Type_VAR:{
       COM_Ent ent = COM_GetEnt(env,top->token,false);
 
-      //DEBUG_BREAK();
-
       int val = ent.currentValue;
       bool found = 1;
       switch(ent.type){
@@ -1054,7 +1052,7 @@ COM_FunctionNode* COM_CompileFunction(COM_Env* env,SP_Node* topNode,String modul
         copy->asAddr.unitName = ent.name + copy->asAddr.unitName;
       }
       if(copy->type == COM_StmtType_MEM_COPY){
-        //copy->asMem.unitAddressName = PushString(out,"%.*s_%.*s",UN(ent.name),UN(copy->asMem.unitAddressName));
+        copy->asMem.unitAddressName = PushString(out,"%.*s_%.*s",UN(ent.name),UN(copy->asMem.unitAddressName));
       }
 
       LL_Append(stmtHead,stmtTail,next,copy);
@@ -2314,15 +2312,15 @@ String COM_DebugPushDotGraph(String name,COM_Unit* units,COM_Edge* edges,Arena* 
   for(COM_Unit* ptr = units; ptr; ptr = ptr->next){
     DOT_Info* info = l->PushElem();
     *info = Repr(ptr,nullptr,out);
-    info->name = PushString(out,"%p",ptr);
-    info->middleContent = PushString(out,"%.*s_%d",UN(ptr->name),ptr->id);
+    if(Empty(info->identifier)) info->identifier = PushString(out,"%p",ptr);
+    if(Empty(info->content))    info->content = PushString(out,"%.*s_%d",UN(ptr->name),ptr->id);
   }
   for(COM_Edge* con = edges; con; con = con->next){
     DOT_Info* info = l->PushElem();
     *info = Repr(nullptr,con,out);
-    info->firstNode  = PushString(out,"%p",con->out);
-    info->secondNode = PushString(out,"%p",con->in);
-    info->middleContent = PushString(out,"%d -> %d",con->outPort,con->inPort);
+    if(Empty(info->firstNode))  info->firstNode  = PushString(out,"%p",con->out);
+    if(Empty(info->secondNode)) info->secondNode = PushString(out,"%p",con->in);
+    if(Empty(info->content))    info->content = PushString(out,"%d -> %d",con->outPort,con->inPort);
   }
 
   DOT_Graph content = {};
@@ -2433,7 +2431,9 @@ COM_UnitNodeList COM_CalculateDAGOrder(COM_Graph graph,Arena* outArena){
   COM_Unit* units = graph.units.head;
   COM_Edge* edges = graph.edges.head;
 
-  bool debug = 0;
+  COM_DebugOutputDotGraph("BeforeDAG.dot","BeforeDAGCalc",units,edges,COM_DefaultReprFunction);
+
+  bool debug = 1;
 
   int MARK_NIL    = 0;
   int MARK_TEMP   = 1;
@@ -2536,10 +2536,6 @@ COM_UnitNodeList COM_CalculateDAGOrder(COM_Graph graph,Arena* outArena){
 
         DLL_Append(head,tail,next,prev,ret);
 
-        if(DECL_IsSink(u->decl)){
-          continue;
-        }
-
         for(COM_Edge* edge = edges; edge; edge = edge->next){
           if(edge->out == u){
             Work* node = PushStruct<Work>(temp);
@@ -2569,7 +2565,7 @@ COM_UnitNodeList COM_CalculateDAGOrder(COM_Graph graph,Arena* outArena){
       DOT_Info res = {};
       if(unit){
         DAG_Data* data = (DAG_Data*) unit->general;
-        res.middleContent = PushString(out,"%.*s (%d)",UN(unit->name),data->order);
+        res.content = PushString(out,"%.*s (%d)",UN(unit->name),data->order);
       }
 
       return res;
@@ -2714,7 +2710,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
 
       // Output latency is the maximum of input latency of dependent nodes plus the units own output delay
       data->globalOutputLatency[outPort] = max + decl->outputs[outPort].delay;
-
+      
 #if 0
       // Align inputs so that they arrive at the unit at the same time ==============
       for(int index : dependPorts){
@@ -2751,7 +2747,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
         if(nodeDelay == INT_MAX){
           nodeDelay = 0;
         }
-        res.middleContent = PushString(out,"%.*s (%d)",UN(unit->name),nodeDelay);
+        res.content = PushString(out,"%.*s (%d)",UN(unit->name),nodeDelay);
       }
       if(edge){
         DELAY_Data* outData = (DELAY_Data*) edge->out->general;
@@ -2761,7 +2757,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
         int extraIn = inData->inputExtraDelay[edge->inPort];
 
         res.outContent = PushString(out,"(%d - %d)",outData->globalOutputLatency[edge->outPort],extraOut);
-        res.middleContent = PushString(out,"%d -> %d",edge->outPort,edge->inPort);
+        res.content = PushString(out,"%d -> %d",edge->outPort,edge->inPort);
         res.inContent = PushString(out,"(%d - %d)",inData->globalInputLatency[edge->inPort],extraIn);
       }
 
@@ -2786,7 +2782,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
         if(nodeDelay == INT_MAX){
           nodeDelay = 0;
         }
-        res.middleContent = PushString(out,"%.*s (%d)",UN(unit->name),nodeDelay);
+        res.content = PushString(out,"%.*s (%d)",UN(unit->name),nodeDelay);
       }
       if(edge){
         DELAY_Data* outData = (DELAY_Data*) edge->out->general;
@@ -2795,7 +2791,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
         int extraOut = outData->outputExtraDelay[edge->outPort];
         int extraIn = inData->inputExtraDelay[edge->inPort];
 
-        res.middleContent = PushString(out,"%d",extraOut + extraIn);
+        res.content = PushString(out,"%d",extraOut + extraIn);
       }
 
       return res;
@@ -2913,7 +2909,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
         if(nodeDelay == INT_MAX){
           nodeDelay = 0;
         }
-        res.middleContent = PushString(out,"%.*s (%d)",UN(unit->name),nodeDelay);
+        res.content = PushString(out,"%.*s (%d)",UN(unit->name),nodeDelay);
       }
       if(edge){
         for(COM_PortDelay* delay = portHead; delay; delay = delay->next){
@@ -2925,7 +2921,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
           }
         }
 
-        res.middleContent = PushString(out,"%d -> %d",edge->outPort,edge->inPort);
+        res.content = PushString(out,"%d -> %d",edge->outPort,edge->inPort);
       }
 
       return res;

@@ -25,9 +25,9 @@ struct DOT_Info{
   String firstNode;
   String secondNode;
 
-  String name;
+  String identifier;
   String outContent;
-  String middleContent;
+  String content;
   String inContent;
   Color color;
 };
