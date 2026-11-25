@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 
 module Buffer #(
-   parameter DELAY_W = 3,
+   parameter DELAY_W = 8,
    parameter DATA_W  = 32
 ) (
    //control
