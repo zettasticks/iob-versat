@@ -2726,30 +2726,19 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
 #endif
     
   // Variable delays ============================================================
-  bool hasVariableDelay = 0;
-  for(COM_Unit* ptr = decl->fixedDelays.units.head; ptr; ptr = ptr->next){
-    if(ptr->decl == DECL_GetVariableBufferType()){
-      hasVariableDelay = 1;
-    }
-  }
+  bool hasVariableDelay = decl->mergeData.size > 0 && decl->mergeData[0].variableDelays.size > 0;
     
-#if 0
+#if 1
   // TODO: Check what is going on with variable delay, current tests all pass even if this is set to false.
   {
     CEmitter* c = StartCCode(CCode1,CCode2);
         
     if(hasVariableDelay){
-      for(int i = 0; i <  info.infos.size; i++){
-        c->ArrayDeclareBlock("unsigned int",SF("bufferValues_%d",i),true);
-                
-        for(AccelInfoIterator iter = StartIteration(&info,i); iter.IsValid(); iter = iter.Step()){
-          InstanceInfo* info = iter.CurrentUnit();
-                    
-          if(info->specialType != SpecialUnitType_VARIABLE_BUFFER){
-            continue;
-          }
-                    
-          c->Elem(PushString(temp,"0x%x",info->variableBufferDelay));
+      for(int mergeIndex = 0; mergeIndex < decl->mergeData.size; mergeIndex++){
+        c->ArrayDeclareBlock("unsigned int",SF("bufferValues_%d",mergeIndex),true);
+
+        for(int val : decl->mergeData[mergeIndex].variableDelays){
+          c->Elem(PushString(temp,"0x%x",val));
         }
                 
         c->EndBlock();
@@ -2757,7 +2746,7 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
             
       c->ArrayDeclareBlock("unsigned int*","bufferValues",true);
             
-      for(int i = 0; i < info.infos.size; i++){
+      for(int i = 0; i < decl->mergeData.size; i++){
         c->Elem(SF("bufferValues_%d",i));
       }
             
@@ -2776,7 +2765,7 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
         
     if(decl->mergeData.size > 1){
       for(int mergeIndex = 0; mergeIndex < decl->mergeData.size; mergeIndex++){
-        Array<int> delays = decl->mergeData[mergeIndex].calculatedDelays;
+        Array<int> delays = decl->mergeData[mergeIndex].fixedDelays;
 
         c->ArrayDeclareBlock("unsigned int",SF("delayBuffer_%d",mergeIndex),true);
                     
@@ -2823,27 +2812,28 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
                 
         c->EndBlock();
       }
-            
+
       c->RawLine("VersatLoadDelay(delayBuffers[asInt]);");
-            
-#if 0
+
       if(hasVariableDelay){
-        int index = 0;
-        for(AccelInfoIterator iter = StartIteration(&info); iter.IsValid(); iter = iter.Step()){
-          InstanceInfo* info = iter.CurrentUnit();
+        int mergeIndex = 0;
+        c->SwitchBlock("type");
+                
+        for(COM_Unit* ptr = DECL_GetMergeReconStartUnit(decl); ptr; mergeIndex++,ptr = ptr->mergeNext){
+          c->CaseBlock(SF("MergeType_%.*s",UN(decl->mergeData[mergeIndex].typeName)));
                     
-          if(info->specialType != SpecialUnitType_VARIABLE_BUFFER){
-            continue;
+          for(COM_Unit* unit = ptr; unit; unit = unit->next){
+            if(unit->decl != DECL_GetVariableBufferType()){
+              continue;
+            }
+
+            c->Assignment(SF("accelConfig->%.*s.%.*s.amount",UN(decl->mergeData[0].mergeName),UN(unit->name)),SF("%d",unit->variableDelay));
           }
-                    
-          // Just to make sure. Variable buffers are Versat units so we can just assume that this holds.
-          Assert(info->configs.size == 1);
-                    
-          String name = GetStaticWireFullName(info,info->configs[0],temp);
-          c->Assignment(PushString(temp,"ACCEL_%.*s",UN(name)),SF("bufferValues[asInt][%d]",index++));
+          c->EndBlock();
         }
+                
+        c->EndBlock();
       }
-#endif
             
       c->EndBlock();
     }

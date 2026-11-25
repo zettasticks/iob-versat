@@ -2845,6 +2845,10 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
     bool isComputation = DECL_IsComputeWithDelay(edge->in->decl);
     bool canPushToOut  = DECL_IsSource(edge->out->decl);
     bool canPushToIn   = DECL_IsSink(edge->in->decl);
+    
+    if(edge->out->decl == DECL_GetVariableBufferType()){
+      canPushToOut = 1;
+   }
 
     // Already pushed delay for input and outputs =================================
     if(edge->out->decl == BasicDeclaration::input ||

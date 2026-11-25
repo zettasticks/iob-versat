@@ -110,7 +110,8 @@ struct DECL_MergeData{
   String typeName;
   String mergeName;
   
-  Array<int> calculatedDelays;
+  Array<int> fixedDelays;
+  Array<int> variableDelays;
   Array<DECL_MuxInfo> muxConfigs;
 };
 

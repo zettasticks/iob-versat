@@ -70,6 +70,7 @@ struct COM_Unit{
   // NOTE: First is input delays then output delays.
   // TODO: We probably wanna take another look at this.
   Array<int> extraDelay;
+  int variableDelay;
 
   int muxPort; // If merge mux then store the port that needs to be set to activate merged graph
 

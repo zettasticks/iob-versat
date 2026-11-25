@@ -1373,13 +1373,17 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
         offset += unit->decl->numberInputDelays;
       }
 
-      if(unit->extraDelay[offset] != 0){
-        LOCATION();
-        printf("Unit already has delays set\nCheck what is happening\nIt might happen for output delays but its also an error since we need edges to agree on the same delay.\n");
-        continue;
-      }
+      if(unit->decl == DECL_GetVariableBufferType()){
+        unit->variableDelay = d->extraDelay;
+      } else {
+        if(unit->extraDelay[offset] != 0){
+          LOCATION();
+          printf("Unit already has delays set\nCheck what is happening\nIt might happen for output delays but its also an error since we need edges to agree on the same delay.\n");
+          continue;
+        }
 
-      unit->extraDelay[offset] = d->extraDelay;
+        unit->extraDelay[offset] = d->extraDelay;
+      }
     }
     if(delays[i].edgeDelays){
       TEST_MARK_VAL("Merge graph appears to have edge delays.");
@@ -1397,6 +1401,34 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
         }
       }
     }
+  }
+
+  // Compute variable delays ====================================================
+  for(int i = 0; i < size; i++){
+    auto delayList = PushList<int>(temp);
+    
+    for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
+      bool isVariable = (ptr->decl == DECL_GetVariableBufferType());
+      if(!isVariable){
+        continue;
+      }
+
+      COM_Unit* reconUnit = 0;
+      for(COM_Unit* recon = ptr->mergeNext; recon; recon = recon->mergeNext){
+        if(recon->mergeIndex == i){
+          reconUnit = recon;
+          break;
+        }
+      }
+     
+      if(reconUnit){
+        *delayList->PushElem() = reconUnit->variableDelay;
+      } else {
+        *delayList->PushElem() = 0;
+      }
+    }
+
+    mergeData[i].variableDelays = PushArray(out,delayList);
   }
 
   // Compute calculated delays ==================================================
@@ -1442,7 +1474,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
     }
 
     Array<int> storedDelays = PushArray(out,delayList);
-    mergeData[i].calculatedDelays = storedDelays;
+    mergeData[i].fixedDelays = storedDelays;
   }
 
   // TODO: Share and Static
@@ -1505,7 +1537,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
   res->singleInterfaces = single;
   res->numberInputDelays = inputDelayCount;
   res->numberOutputDelays = outputDelayCount;
-  res->extraDelays = mergeData[0].calculatedDelays;
+  res->extraDelays = mergeData[0].fixedDelays;
 
   res->numberDatabus = databusCount;
   res->numberDones = donesCount;

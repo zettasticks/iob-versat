@@ -4059,36 +4059,45 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
       COM_UnitNodeList order  = COM_CalculateDAGOrder(reconGraphs[i],temp);
 
       DEBUG_STAGE(SF("RECON_DELAY_%d_%d",attempt,i));
-      COM_DelayResult  delays = COM_CalculateDelay(reconGraphs[i],order,temp);
+      COM_DelayResult  reconDelays = COM_CalculateDelay(reconGraphs[i],order,temp);
       
 #if 0
-      for(COM_EdgeDelay* delay = delays.edgeDelays; delay; delay = delay->next){
+      // Declaration is responsible for storing this value.
+      for(COM_PortDelay* reconDelay = reconDelays.portDelays; reconDelay; reconDelay = reconDelay->next){
+        if(reconDelay->unit->decl == DECL_GetVariableBufferType()){
+          //DEBUG_BREAK();
+        }
+      }
+#endif
+
+      // Edge delays on the recon graph
+      for(COM_EdgeDelay* reconDelay = reconDelays.edgeDelays; reconDelay; reconDelay = reconDelay->next){
         insertedBuffer = true;
-
         int bufferIndex = insertedBuffers++;
+        COM_Edge* reconEdge = reconDelay->edge;
 
-        printf("%d\n",bufferIndex);
-        COM_Unit* buffer = COM_PushUnit(&mergedGraph,SF("_versat_varBuffer%d",bufferIndex),varBufferType,out);
+        COM_Edge* graphEdge = mapReconEdgeToGraph->GetOrFail(reconEdge);
 
         // Insert on original graph
-        COM_Edge* edge = delay->edge;
-        edge->delay = 0;
-        COM_Edge* newGraphEdge = COM_InsertMiddle(&mergedGraph,edge,buffer,0,0,out);
+        COM_Unit* graphBuffer = COM_PushUnit(&mergedGraph,SF("_versat_varBuffer%d",bufferIndex),varBufferType,out);
+        graphEdge->delay = 0;
+        COM_Edge* newGraphEdge = COM_InsertMiddle(&mergedGraph,graphEdge,graphBuffer,0,0,out);
 
+        // Insert on the recons (including itself) ====================================
         for(int i = 0; i < size; i++){
           for(COM_Edge* reconEdge = reconGraphs[i].edges.head; reconEdge; reconEdge = reconEdge->next){
             COM_Edge* mapped = mapReconEdgeToGraph->GetOrFail(reconEdge);
-            if(mapped == edge){
-              COM_Unit* buffer = COM_PushUnit(&reconGraphs[i],SF("_versat_varBuffer%d",bufferIndex),varBufferType,out);
-              
+            if(mapped == graphEdge){
+              COM_Unit* reconBuffer = COM_PushUnit(&reconGraphs[i],SF("_versat_varBuffer%d",bufferIndex),varBufferType,out);
+              mapReconUnitToGraph->Insert(reconBuffer,graphBuffer);
+
               reconEdge->delay = 0;
-              COM_Edge* newReconEdge = COM_InsertMiddle(&reconGraphs[i],reconEdge,buffer,0,0,out);
+              COM_Edge* newReconEdge = COM_InsertMiddle(&reconGraphs[i],reconEdge,reconBuffer,0,0,out);
               mapReconEdgeToGraph->Insert(newReconEdge,newGraphEdge);
             }
           }
         }
       }
-#endif
     }
 
     if(attempt == maxLimit && !insertedBuffer){
