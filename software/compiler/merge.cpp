@@ -4079,7 +4079,7 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
         COM_Edge* graphEdge = mapReconEdgeToGraph->GetOrFail(reconEdge);
 
         // Insert on original graph
-        COM_Unit* graphBuffer = COM_PushUnit(&mergedGraph,SF("_versat_varBuffer%d",bufferIndex),varBufferType,out);
+        COM_Unit* graphBuffer = COM_PushUnit(&mergedGraph,SF("versat_varBuffer%d",bufferIndex),varBufferType,out);
         graphEdge->delay = 0;
         COM_Edge* newGraphEdge = COM_InsertMiddle(&mergedGraph,graphEdge,graphBuffer,0,0,out);
 
@@ -4088,7 +4088,7 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
           for(COM_Edge* reconEdge = reconGraphs[i].edges.head; reconEdge; reconEdge = reconEdge->next){
             COM_Edge* mapped = mapReconEdgeToGraph->GetOrFail(reconEdge);
             if(mapped == graphEdge){
-              COM_Unit* reconBuffer = COM_PushUnit(&reconGraphs[i],SF("_versat_varBuffer%d",bufferIndex),varBufferType,out);
+              COM_Unit* reconBuffer = COM_PushUnit(&reconGraphs[i],SF("versat_varBuffer%d",bufferIndex),varBufferType,out);
               mapReconUnitToGraph->Insert(reconBuffer,graphBuffer);
 
               reconEdge->delay = 0;
