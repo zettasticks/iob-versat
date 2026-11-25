@@ -2322,6 +2322,7 @@ String COM_DebugPushDotGraph(String name,COM_Unit* units,COM_Edge* edges,Arena* 
     *info = Repr(nullptr,con,out);
     info->firstNode  = PushString(out,"%p",con->out);
     info->secondNode = PushString(out,"%p",con->in);
+    info->middleContent = PushString(out,"%d -> %d",con->outPort,con->inPort);
   }
 
   DOT_Graph content = {};

@@ -3792,7 +3792,8 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
   COM_Unit*& unitTail = mergedGraph.units.tail;
   COM_Edge*& edgeHead = mergedGraph.edges.head;
   COM_Edge*& edgeTail = mergedGraph.edges.tail;
-  bool error = false;
+  bool error = 0;
+  bool debug = 0;
 
   TrieMap<COM_Unit*,COM_Unit*>* mapReconUnitToGraph = PushTrieMap<COM_Unit*,COM_Unit*>(out);
   TrieMap<COM_Edge*,COM_Edge*>* mapReconEdgeToGraph = PushTrieMap<COM_Edge*,COM_Edge*>(out);
@@ -3843,9 +3844,13 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
 
     // Create any unit that has not been mapped already ===========================
     for(COM_Unit* ptr = recon.units.head; ptr; ptr = ptr->next){
-      if(mapReconUnitToGraph->Exists(ptr)){
+      COM_Unit** map = mapReconUnitToGraph->Get(ptr);
+
+      if(map){
+        if(debug) printf("Unit: %.*s is mapped to: %.*s\n",UN(ptr->name),UN((*map)->name));
         continue;
       }
+      if(debug) printf("Adding unit: %.*s\n",UN(ptr->name));
 
       COM_Unit* node = COM_Copy(ptr, out);
       LL_Append(unitHead,unitTail,next,node);
@@ -3981,18 +3986,21 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
               mapReconEdgeToGraph->Insert(reconEdge,graphMuxEdge);
               LL_Append(newReconEdgeHead,newReconEdgeTail,next,reconEdge);
 
-              // Change edge to point to multiplexer port ===================================
-              int muxPort = freeMuxPort++;
-
-              edge->in = reconMux;
-              edge->inPort = muxPort;
-
               // Change edge on graph unless already changed by another recon ===============
               COM_Edge* graphEdge = mapReconEdgeToGraph->GetOrFail(edge);
+              int muxPort = 0;
               if(graphEdge->in != graphMux){
+                muxPort = freeMuxPort++;
+
                 graphEdge->in = graphMux;
                 graphEdge->inPort = muxPort;
+              } else {
+                muxPort = graphEdge->inPort;
               }
+
+              // Change edge to point to multiplexer port ===================================
+              edge->in = reconMux;
+              edge->inPort = muxPort;
             }
           }
 
