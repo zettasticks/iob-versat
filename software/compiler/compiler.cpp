@@ -2801,7 +2801,6 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
     COM_DebugOutputDotGraph("EdgeDelay.dot",label,units,edges,Repr);
   }
   
-  
   // Pack result ================================================================
   Array<int> inputDelays = PushArray<int>(outArena,inputCount);
   Array<int> outputLatencies = {};
@@ -2842,7 +2841,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
 
     int edgeTotalDelay = inputDelay + outputDelay;
     Assert(edgeTotalDelay >= 0);
-   
+
     bool isComputation = DECL_IsComputeWithDelay(edge->in->decl);
     bool canPushToOut  = DECL_IsSource(edge->out->decl);
     bool canPushToIn   = DECL_IsSink(edge->in->decl);
@@ -2878,7 +2877,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
       d->unit = edge->out;
       d->port = edge->outPort;
       d->dir = Direction_OUTPUT;
-      d->extraDelay = outputDelay;
+      d->extraDelay = edgeTotalDelay;
       outData->delaySet = true;
 
       LL_Append(portHead,portTail,next,d);
