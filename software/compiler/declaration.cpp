@@ -1404,9 +1404,21 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
     }
   }
 
+  // Calculate and store mux configuration info =================================
+  for(int i = 0; i < size; i++){
+    auto muxList = PushList<DECL_MuxInfo>(temp);
+    for(COM_Unit* ptr = merge.reconGraphs[i].units.head; ptr; ptr = ptr->next){
+      if(DECL_IsMergeMultiplexer(ptr->decl)){
+        *muxList->PushElem() = {ptr->name,ptr->muxPort};
+      }
+    }
+
+    mergeData[i].muxConfigs = PushArray(out,muxList);
+  }
+
   // Compute variable delays ====================================================
   for(int i = 0; i < size; i++){
-    auto delayList = PushList<int>(temp);
+    auto delayList = PushList<DECL_VariableDelay>(temp);
     
     for(COM_Unit* ptr = graph.units.head; ptr; ptr = ptr->next){
       bool isVariable = (ptr->decl == DECL_GetVariableBufferType());
@@ -1423,9 +1435,9 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
       }
      
       if(reconUnit){
-        *delayList->PushElem() = reconUnit->variableDelay;
+        *delayList->PushElem() = {ptr->name,reconUnit->variableDelay};
       } else {
-        *delayList->PushElem() = 0;
+        *delayList->PushElem() = {ptr->name,0};
       }
     }
 

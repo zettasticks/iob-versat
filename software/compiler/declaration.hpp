@@ -106,13 +106,18 @@ struct DECL_MuxInfo{
   int port;
 };
 
+struct DECL_VariableDelay{
+  String unitName;
+  int variableDelay;
+};
+
 struct DECL_MergeData{
   FUDeclaration* originalType;
   String typeName;
   String mergeName;
   
   Array<int> fixedDelays;
-  Array<int> variableDelays;
+  Array<DECL_VariableDelay> variableDelays;
   Array<DECL_MuxInfo> muxConfigs;
 };
 

@@ -2700,8 +2700,6 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
         max = 0;
       }
 
-      DEBUG_BREAK_IF(unit->name == "addBias");
-
       // Add extra latency on inputs to align =======================================
       for(int index : dependPorts){
         if(data->globalInputLatency[index] != max){

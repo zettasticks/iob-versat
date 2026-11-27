@@ -2677,24 +2677,6 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
     String content = PushASTRepr(c,temp);
     TE_SetString("memMappedAddresses",content);
   }
-
-  // TODO: This stuff should be moved to data calculation. We do not want to calculate anything in the codeGen path.
-  struct MuxInfo{
-    int port;
-    String name;
-  };
-  auto CalculateMux = [](COM_Unit* head,Arena* out) -> Array<MuxInfo> {
-    TEMP_REGION(temp,out);
-        
-    auto b = PushList<MuxInfo>(temp);
-    for(COM_Unit* ptr = head; ptr; ptr = ptr->next){
-      if(DECL_IsMergeMultiplexer(ptr->decl)){
-        *b->PushElem() = {ptr->muxPort,ptr->name};
-      }
-    }
-    Array<MuxInfo> res = PushArray(out,b);
-    return res;
-  };
     
   {
     CEmitter* c = StartCCode(CCode1,CCode2);
@@ -2737,8 +2719,8 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
       for(int mergeIndex = 0; mergeIndex < decl->mergeData.size; mergeIndex++){
         c->ArrayDeclareBlock("unsigned int",SF("bufferValues_%d",mergeIndex),true);
 
-        for(int val : decl->mergeData[mergeIndex].variableDelays){
-          c->Elem(PushString(temp,"0x%x",val));
+        for(DECL_VariableDelay val : decl->mergeData[mergeIndex].variableDelays){
+          c->Elem(PushString(temp,"0x%x",val.variableDelay));
         }
                 
         c->EndBlock();
@@ -2799,13 +2781,14 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
       {
         int mergeIndex = 0;
         c->SwitchBlock("type");
-                
-        for(COM_Unit* ptr = DECL_GetMergeReconStartUnit(decl); ptr; mergeIndex++,ptr = ptr->mergeNext){
-          Array<MuxInfo> muxInfo = CalculateMux(ptr,temp);
+
+        for(int mergeIndex = 0; mergeIndex < decl->mergeData.size; mergeIndex++){
+          String mergeName = decl->mergeData[mergeIndex].mergeName;
+
           c->CaseBlock(SF("MergeType_%.*s",UN(decl->mergeData[mergeIndex].typeName)));
-                    
-          for(MuxInfo info : muxInfo){
-            c->Assignment(SF("accelConfig->%.*s.%.*s.sel",UN(decl->mergeData[0].mergeName),UN(info.name)),SF("%d",info.port));
+
+          for(DECL_MuxInfo info : decl->mergeData[mergeIndex].muxConfigs){
+            c->Assignment(SF("accelConfig->%.*s.%.*s.sel",UN(mergeName),UN(info.unitName)),SF("%d",info.port));
           }
           c->EndBlock();
         }
@@ -2818,20 +2801,20 @@ String GEN_OutputHeader(GEN_TopInfo* info,Arena* out){
       if(hasVariableDelay){
         int mergeIndex = 0;
         c->SwitchBlock("type");
-                
-        for(COM_Unit* ptr = DECL_GetMergeReconStartUnit(decl); ptr; mergeIndex++,ptr = ptr->mergeNext){
-          c->CaseBlock(SF("MergeType_%.*s",UN(decl->mergeData[mergeIndex].typeName)));
-                    
-          for(COM_Unit* unit = ptr; unit; unit = unit->next){
-            if(unit->decl != DECL_GetVariableBufferType()){
-              continue;
-            }
 
-            c->Assignment(SF("accelConfig->%.*s.%.*s.amount",UN(decl->mergeData[0].mergeName),UN(unit->name)),SF("%d",unit->variableDelay));
+        for(int mergeIndex = 0; mergeIndex < decl->mergeData.size; mergeIndex++){
+          String mergeName = decl->mergeData[mergeIndex].mergeName;
+          String typeName = decl->mergeData[mergeIndex].typeName;
+
+          c->CaseBlock(SF("MergeType_%.*s",UN(typeName)));
+          
+          for(DECL_VariableDelay delay : decl->mergeData[mergeIndex].variableDelays){
+            c->Assignment(SF("accelConfig->%.*s.%.*s.amount",UN(mergeName),UN(delay.unitName)),SF("%d",delay.variableDelay));
+
           }
           c->EndBlock();
         }
-                
+
         c->EndBlock();
       }
             
@@ -3474,7 +3457,7 @@ String GEN_OutputVerilatorSoftwareWrapper(GEN_TopInfo* info,Arena* out){
         c->RawLine(TE_Substitute(format,values,temp));
       }
     }
-        
+
 #if 1
     c->RawLine(R"FOO(
                  AcceleratorConfig* config = (AcceleratorConfig*) &configBuffer;
