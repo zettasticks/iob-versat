@@ -673,10 +673,6 @@ Hierarchical Merge:
 Generated code does not take into account parameters when it should.
 - Some wires are given fixed sizes when they depend on verilog parameters. 
 
-Debugability:
-
-- We kinda lost the .dot files generated in order to help debug graph algorithms. Its not a big deal now but eventually would like to have them back, as the .dot files are the only proper way we currently have of debugging graph operations (which I do not think we will be doing much soon, but eventually need to address this).
-
 Wrapper:
 
 - The databus does not take into consideration the strobe of the databus.

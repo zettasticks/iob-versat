@@ -588,8 +588,8 @@ struct COM_EdgeDelay{
   bool isAny;
 };
 
-struct COM_PortDelay{
-  COM_PortDelay* next;
+struct COM_PortCycles{
+  COM_PortCycles* next;
 
   COM_Unit* unit;
   int port;
@@ -599,7 +599,7 @@ struct COM_PortDelay{
 
 struct COM_DelayResult{
   COM_EdgeDelay* edgeDelays;
-  COM_PortDelay* portDelays;
+  COM_PortCycles* portCyclesUntilValidData;
   Array<int> inputDelays;
   Array<int> outputLatencies;
 };

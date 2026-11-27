@@ -2593,20 +2593,19 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
 
   /* NOTE: How does this work?
 
-    For every node in order:
+    We start by calculating things using global latency. How many cycles it takes for valid data to reach a certain Port.
+    We iterate nodes, taking the global latency at the input of the node port and then adding the node latency to calculate the output latency. We then push that latency to the nodes further down, taking into account edge delays.
+    When a node contains multiple inputs we calculate the maximum and slow down the fastest path by adding a extra delay associated to the input port of the node. (If a node contains a global latency input of 5 and another global latency input of 4 then we need to slow down the input of 4 by 1 extra cycle in order for things to line up).
+    This extra delay is for inputs but we also have an extra delay for outputs in order to help support path based delays (where we use the information of which output port depends on which input port in order to improve timing). 
 
-    We start with the global latency at each input port. This is just the number of cycles it takes for
-    valid data to arrive at a port (or exit from a port) without regards for anything else.
+    Regardless, after running this step, the extra delays on the inputs and on the outputs can be combined into a single edge delay. This edge delay is the amount of cycles that we need to slow down the edge in order for data to align correctly. 
+    At this point, the work is done. We could just return this info and we could fix the graph by adding buffers that slow down the edges by this amount in order to line up the graphs. Furthermore, in order to calculate the cycles until valid data, we only need to use the global latency values previously calculated (plus any extra port delay).
+   However, in order to reduce the amount of units added to the graph, we can improve the calculated results by shifting the edge delays around. Any edge delay can be shifted down or up a node by ajusting the edge delays and the global latencies accordingly of the node inputs and outputs. We can move edge delays up, which involves increasing the inputs delays or we can move edge delays down which involves increasing the outputs delays. 
 
-    We calculate delays based on the ports themselves instead of caring about the unit (since we can calculate wether an output port depends on a given input port). 
+   TODO:
+   We try to move edge delays up as much as possible since source units can delay the production of data, thus avoiding having to insert a buffer when we can just have the source delay the production of data.
 
-    To align inputs we add extra latency to the ports if needed. Because multiple ports might depend on the same input port, we might need to also add extra latency to output ports and align inputs.
-
-    All these calculations are stored as extra latency associated to each port.
-
-    After this point, we propagate this information by setting the global latency of the input ports of the units connected to ours and continue until we finish all the nodes.
-
-    At the end, we end up with extra delays both in the input ports and the output ports. If we wanted we could just add a buffer equal to this sum and everything would line up correctly, but because we have units that can delay themselves, we do a step that tries to push these extra delays towards each edge of the graph (inputs / outputs) and then we pack this information for the output.
+   However a better algorithm might require representing all these constrains in some form of linear integer programming problem and having to solve constrains 
 
    */
 
@@ -2828,8 +2827,8 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
   //       we can then solve by minimization. Do not know if this is actually needed to obtain the minimum values
   //       but could try.
 
-  COM_PortDelay* portHead = 0;
-  COM_PortDelay* portTail = 0;
+  COM_PortCycles* portHead = 0;
+  COM_PortCycles* portTail = 0;
 
   COM_EdgeDelay* head = 0;
   COM_EdgeDelay* tail = 0;
@@ -2864,7 +2863,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
     if(isComputation || canPushToIn){
       canPushToIn = false;
 
-      COM_PortDelay* d = PushStruct<COM_PortDelay>(outArena);
+      COM_PortCycles* d = PushStruct<COM_PortCycles>(outArena);
       d->unit = edge->in;
       d->port = edge->inPort;
       d->dir = Direction_INPUT;
@@ -2879,7 +2878,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
     if(canPushToOut){
       canPushToIn = false;
 
-      COM_PortDelay* d = PushStruct<COM_PortDelay>(outArena);
+      COM_PortCycles* d = PushStruct<COM_PortCycles>(outArena);
       d->unit = edge->out;
       d->port = edge->outPort;
       d->dir = Direction_OUTPUT;
@@ -2917,7 +2916,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
         res.content = PushString(out,"%.*s (%d)",UN(unit->name),nodeDelay);
       }
       if(edge){
-        for(COM_PortDelay* delay = portHead; delay; delay = delay->next){
+        for(COM_PortCycles* delay = portHead; delay; delay = delay->next){
           if(edge->out == delay->unit){
             res.outContent = PushString(out,"%d",delay->extraDelay);
           }
@@ -2941,7 +2940,7 @@ COM_DelayResult COM_CalculateDelay(COM_Graph graph,COM_UnitNodeList order,Arena*
 
   COM_DelayResult res = {};
   res.edgeDelays = head;
-  res.portDelays = portHead;
+  res.portCyclesUntilValidData = portHead;
   res.inputDelays = inputDelays;
   res.outputLatencies = outputLatencies;
 

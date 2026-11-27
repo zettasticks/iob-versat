@@ -1060,7 +1060,7 @@ FUDeclaration* DECL_InstantiateModule(DECL_Meta* meta,Array<DECL_Param> normaliz
     unit->extraDelay = PushArray<int>(out,totalDelays);
   }
 
-  for(COM_PortDelay* d = delays.portDelays; d; d = d->next){
+  for(COM_PortCycles* d = delays.portCyclesUntilValidData; d; d = d->next){
     COM_Unit* unit = d->unit;
     FUDeclaration* decl = unit->decl;
 
@@ -1316,6 +1316,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
     ent->decl = type;
 
     types[index] = type;
+    mergeData[index].originalType = type;
     mergeData[index].typeName = type->name;
     mergeData[index].mergeName = name;
     index += 1;
@@ -1364,7 +1365,7 @@ FUDeclaration* DECL_InstantiateMerge(DECL_Meta* meta,Array<DECL_Param> normalize
       unit->extraDelay = PushArray<int>(out,totalDelays);
     }
 
-    for(COM_PortDelay* d = delays[i].portDelays; d; d = d->next){
+    for(COM_PortCycles* d = delays[i].portCyclesUntilValidData; d; d = d->next){
       COM_Unit* unit = d->unit;
       FUDeclaration* decl = unit->decl;
 

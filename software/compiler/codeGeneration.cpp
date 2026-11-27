@@ -3177,15 +3177,17 @@ String GEN_OutputVerilatorSoftwareWrapper(GEN_TopInfo* info,Arena* out){
   FUDeclaration* decl = info->decl;
     
   struct WireExtra{
+    COM_Unit* unit;
     String name;
-    Wire w;
     String source;
+    Wire w;
   };
     
   auto build = PushList<WireExtra>(temp);
   for(COM_Unit* unit = decl->baseGraph.units.head; unit; unit = unit->next){
     for(Wire config : unit->decl->configs){
       WireExtra* ptr = build->PushElem();
+      ptr->unit = unit;
       ptr->w = config;
       ptr->name = PushString(temp,"%.*s_%.*s",UN(unit->name),UN(config.name));
       ptr->source = "config->";
@@ -3229,18 +3231,19 @@ String GEN_OutputVerilatorSoftwareWrapper(GEN_TopInfo* info,Arena* out){
     TE_SetString("acceleratorState",content);
   }
     
-    
 #if 1
   {
     CEmitter* c = StartCCode(CCode1,CCode2);
         
     // TODO: BAD
     c->RawLine("AcceleratorConfig* config = (AcceleratorConfig*) &configBuffer;\n");
-        
-#if 0
-    EmitDisableReadsAndWrites(c,"config",&info);
-#endif
-        
+    
+    for(WireExtra w : allConfigsVerilatorSide){
+      if(w.unit->decl->supportedAddressGen.type == AddressGenType_READ && w.w.name == "enabled"){
+        c->Assignment(SF("config->%.*s",UN(w.name)),"0");
+      }
+    }
+
     String content = PushASTRepr(c,temp);
     TE_SetString("disableReadsAndWrites",content);
   }
@@ -3472,13 +3475,12 @@ String GEN_OutputVerilatorSoftwareWrapper(GEN_TopInfo* info,Arena* out){
       }
     }
         
-#if 0
+#if 1
     c->RawLine(R"FOO(
                  AcceleratorConfig* config = (AcceleratorConfig*) &configBuffer;
-                 AcceleratorStatic* statics = (AcceleratorStatic*) &staticBuffer;
                  memset(config,0,sizeof(AcceleratorConfig));)FOO");
 #endif
-        
+
     String content = PushASTRepr(c,temp);
     TE_SetString("resetExtraConfigs",content);
   }
@@ -3591,14 +3593,65 @@ String GEN_OutputFirmware(GEN_TopInfo* info,Arena* out){
     String fullName = PushString(temp,"VersatRegister_%.*s",UN(name));
     c->Define(fullName,SF("%d",i));
   }
-    
-#if 0
+
+  // Copied from OutputHeader, compress
+  FUDeclaration* decl = info->decl;
+  String typeName = decl->name;
+  COM_Unit topLevel = {};
+  topLevel.name = typeName;
+  topLevel.decl = decl;
+  GEN_StructInfoList allStructs = {};
+  GEN_StructInfo* configStruct = GEN_GenerateConfigStruct(&topLevel,&allStructs,temp);
+
+#if 1
   {
     CEmitter* c = StartCCode(CCode1,CCode2);
+
+    struct Work{
+      Work* parent;
+      String name;
+      int level;
+    };
+
+    auto Recurse = [&](auto Recurse,GEN_StructInfo* top,Work* parent){
+      if(!top){
+        return;
+      }
+
+      if(top->originalType->supportedAddressGen.type == AddressGenType_READ){
+        Array<String> content = PushArray<String>(temp,parent->level);
+
+        int index = 0;
+        for(Work* ptr = parent; ptr; index++,ptr = ptr->parent){
+          if(!Empty(ptr->name)){
+            content[index] = ptr->name;
+          }
+        }
+
+        ReverseInPlace(content);
+        String accessExpr = JoinStrings(content,".",temp);
+        c->Assignment(SF("accelConfig->%.*s.enabled",UN(accessExpr)),"0");
+      }
+
+      for(GEN_StructElem* elem = top->elements; elem; elem = elem->next){
+        Work w = {};
+        w.parent = parent;
+        w.level = parent->level + 1;
+
+        for(GEN_StructElem* child = elem->childs; child; child = child->next){
+          w.name = child->name;
+          Recurse(Recurse,child->type,&w);
+        }
+
+        w.name = elem->name;
+        Recurse(Recurse,elem->type,&w);
+      }
+    };
         
     // TODO: BAD
-    c->RawLine("AcceleratorConfig* config = (AcceleratorConfig*) accelConfig;\n");
-    EmitDisableReadsAndWrites(c,"config",info->info);
+    Work top = {};
+    //c->RawLine("AcceleratorConfig* config = (AcceleratorConfig*) accelConfig;\n");
+    Recurse(Recurse,configStruct,&top);
         
     String content = PushASTRepr(c,temp);
     TE_SetString("disableReadsAndWrites",content);
@@ -4188,7 +4241,7 @@ GEN_StructInfo* GEN_GenerateConfigStruct(COM_Unit* top,GEN_StructInfoList* allSt
         LL_Append(head,tail,next,elem);
       }
             
-      info = GEN_AddStruct(allStructs,decl->name,head,out);
+      info = GEN_AddStruct(allStructs,decl,head,out);
     }
         
     return info;
@@ -4200,6 +4253,7 @@ GEN_StructInfo* GEN_GenerateConfigStruct(COM_Unit* top,GEN_StructInfoList* allSt
     COM_Unit* graphStart = top->decl->fixedDelays.units.head;
     
     for(int mergeIndex = 0; mergeIndex < top->decl->mergeData.size; mergeIndex++){
+      FUDeclaration* originalType = top->decl->mergeData[mergeIndex].originalType;
       String typeName = top->decl->mergeData[mergeIndex].typeName;
       String mergeName = top->decl->mergeData[mergeIndex].mergeName;
             
@@ -4224,7 +4278,7 @@ GEN_StructInfo* GEN_GenerateConfigStruct(COM_Unit* top,GEN_StructInfoList* allSt
         LL_Append(subMergeHead,subMergeTail,next,elem);
       }
 
-      GEN_StructInfo* info = GEN_AddStruct(allStructs,typeName,subMergeHead,out);
+      GEN_StructInfo* info = GEN_AddStruct(allStructs,originalType,subMergeHead,out);
             
       GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
       elem->name = mergeName;
@@ -4249,7 +4303,7 @@ GEN_StructInfo* GEN_GenerateConfigStruct(COM_Unit* top,GEN_StructInfoList* allSt
     }
   }
     
-  GEN_StructInfo* res = GEN_AddStruct(allStructs,decl->name,head,out);
+  GEN_StructInfo* res = GEN_AddStruct(allStructs,decl,head,out);
     
   return res;
 }
@@ -4272,7 +4326,7 @@ GEN_StructInfo* GEN_GenerateStateStruct(COM_Unit* top,GEN_StructInfoList* allStr
         LL_Append(head,tail,next,elem);
       }
             
-      info = GEN_AddStruct(allStructs,decl->name,head,out);
+      info = GEN_AddStruct(allStructs,decl,head,out);
     }
         
     return info;
@@ -4284,6 +4338,7 @@ GEN_StructInfo* GEN_GenerateStateStruct(COM_Unit* top,GEN_StructInfoList* allStr
     COM_Unit* graphStart = top->decl->fixedDelays.units.head;
         
     for(int mergeIndex = 0; mergeIndex < top->decl->mergeData.size; mergeIndex++){
+      FUDeclaration* originalType = top->decl->mergeData[mergeIndex].originalType;
       String typeName = top->decl->mergeData[mergeIndex].typeName;
       String mergeName = top->decl->mergeData[mergeIndex].mergeName;
             
@@ -4308,7 +4363,7 @@ GEN_StructInfo* GEN_GenerateStateStruct(COM_Unit* top,GEN_StructInfoList* allStr
         LL_Append(subMergeHead,subMergeTail,next,elem);
       }
             
-      GEN_StructInfo* info = GEN_AddStruct(allStructs,typeName,subMergeHead,out);
+      GEN_StructInfo* info = GEN_AddStruct(allStructs,originalType,subMergeHead,out);
             
       GEN_StructElem* elem = PushStruct<GEN_StructElem>(out);
       elem->name = mergeName;
@@ -4333,20 +4388,21 @@ GEN_StructInfo* GEN_GenerateStateStruct(COM_Unit* top,GEN_StructInfoList* allStr
     }
   }
     
-  GEN_StructInfo* res = GEN_AddStruct(allStructs,decl->name,head,out);
+  GEN_StructInfo* res = GEN_AddStruct(allStructs,decl,head,out);
     
   return res;
 }
 
-GEN_StructInfo* GEN_AddStruct(GEN_StructInfoList* list,String name,GEN_StructElem* head,Arena* out){
+GEN_StructInfo* GEN_AddStruct(GEN_StructInfoList* list,FUDeclaration* type,GEN_StructElem* head,Arena* out){
   GEN_StructInfo* res = 0;
-  LL_Find(list->head,next,res,it->name == name);
-    
+  LL_Find(list->head,next,res,it->name == type->name);
+
   if(!res){
     res = PushStruct<GEN_StructInfo>(out);
     res->elements = head;
-    res->name = PushString(out,"%.*s",UN(name));
-        
+    res->name = PushString(out,"%.*s",UN(type->name));
+    res->originalType = type;
+
     LL_Append(list->head,list->tail,next,res);
   }
     

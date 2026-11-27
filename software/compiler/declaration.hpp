@@ -107,6 +107,7 @@ struct DECL_MuxInfo{
 };
 
 struct DECL_MergeData{
+  FUDeclaration* originalType;
   String typeName;
   String mergeName;
   

@@ -23,9 +23,12 @@
 
 struct GEN_StructInfo;
 
+// A struct elemenent. If union then childs contain the various possibilities
+// TODO: We might be able to reconcile structs and unions by assuming
+//       that a struct is just a one element union and work from there
 struct GEN_StructElem{
   GEN_StructElem* next;
-  GEN_StructElem* childs;
+  GEN_StructElem* childs; // For unions
 
   String name;
   
@@ -38,6 +41,7 @@ struct GEN_StructElem{
 struct GEN_StructInfo{
   GEN_StructInfo* next;
 
+  FUDeclaration* originalType;
   String name;
   GEN_StructElem* elements;
 };
@@ -53,7 +57,7 @@ struct GEN_StructInfoList{
 GEN_StructInfo* GEN_GenerateConfigStruct(COM_Unit* top,GEN_StructInfoList* allStructs,Arena* out);
 GEN_StructInfo* GEN_GenerateStateStruct(COM_Unit* top,GEN_StructInfoList* allStructs,Arena* out);
 
-GEN_StructInfo* GEN_AddStruct(GEN_StructInfoList* list,String name,GEN_StructElem* head,Arena* out);
+GEN_StructInfo* GEN_AddStruct(GEN_StructInfoList* list,FUDeclaration* originalType,GEN_StructElem* head,Arena* out);
 
 bool GEN_IsSimpleType(GEN_StructElem* elem);
 bool GEN_IsUnion(GEN_StructElem* top);
