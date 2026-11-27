@@ -3960,12 +3960,17 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
           COM_Unit *newReconMuxHead = 0,*newReconMuxTail = 0;
           COM_Edge *newReconEdgeHead = 0,*newReconEdgeTail = 0;
           
-          for(COM_Edge* edge = graph.edges.head; edge; edge = edge->next){
-            COM_Unit* reconUnit = edge->in;
+          bool foundEdge = 0;
+          for(COM_Edge* oldReconEdge = graph.edges.head; oldReconEdge; oldReconEdge = oldReconEdge->next){
+            COM_Unit* reconUnit = oldReconEdge->in;
             COM_Unit* graphNodeFromRecon = mapReconUnitToGraph->GetOrFail(reconUnit);
 
             // Recon edge is one of the edges multiple connected to a single unit port
-            if(unit == graphNodeFromRecon && edge->inPort == port){
+            if(unit == graphNodeFromRecon && oldReconEdge->inPort == port){
+              // Make sure that our thinking is correct in this approach
+              Assert(!foundEdge);
+              foundEdge = 1;
+
               // Create mux instance on recon graph =========================================
               COM_Unit* reconMux = COM_Copy(graphMux,out);
 
@@ -3981,9 +3986,9 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
 
               mapReconEdgeToGraph->Insert(reconEdge,graphMuxEdge);
               LL_Append(newReconEdgeHead,newReconEdgeTail,next,reconEdge);
-
+              
               // Change edge on graph unless already changed by another recon ===============
-              COM_Edge* graphEdge = mapReconEdgeToGraph->GetOrFail(edge);
+              COM_Edge* graphEdge = mapReconEdgeToGraph->GetOrFail(oldReconEdge);
               int muxPort = 0;
               if(graphEdge->in != graphMux){
                 muxPort = freeMuxPort++;
@@ -3994,12 +3999,13 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
                 muxPort = graphEdge->inPort;
               }
 
-              // Change edge to point to multiplexer port ===================================
-              edge->in = reconMux;
-              edge->inPort = muxPort;
+              // Change old edge to point to multiplexer port ===============================
+              oldReconEdge->in = reconMux;
+              oldReconEdge->inPort = muxPort;
             }
           }
 
+          // Added new mux units and edges into the recon graph =========================
           if(1){
             COM_Unit* next = 0;
             for(COM_Unit* ptr = newReconMuxHead; ptr; ptr = next){
@@ -4022,6 +4028,7 @@ MERGE_Result MERGE_Merge(Array<FUDeclaration*> types,Arena* out){
     }
   }
 
+  // Add new mux units and edges into the merged graph ==========================
   {
     COM_Unit* next = 0;
     for(COM_Unit* ptr = newMuxHead; ptr; ptr = next){
@@ -4437,6 +4444,12 @@ ConsolidationGraph MERGE_GenerateConsolidationGraph(COM_Unit* units,COM_Edge* ed
       }
 
       if(edge0->delay != edge1->delay){
+        continue;
+      }
+      if(edge0->outPort != edge1->outPort){
+        continue;
+      }
+      if(edge0->inPort != edge1->inPort){
         continue;
       }
 

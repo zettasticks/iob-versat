@@ -1,5 +1,32 @@
-#pragma once
+//
+// This file is a single header VCD library
+// Define VCD_LIB_IMPL before including the header file inside a compilation unit.
+// Something like:
+//
+// ...
+// #define VCD_LIB_IMPL
+// #include "vcdLib.h"
+//
 
+#ifndef VCD_LIB_INCLUDED
+#define VCD_LIB_INCLUDED
+
+#endif
+
+#ifdef VCD_LIB_IMPL
+
+
+#endif
+
+
+
+
+
+
+// ======================================
+// OLD CODE, NOT WORTH CHECKING.
+
+#if 0
 #include "utils.hpp"
 
 /*
@@ -111,3 +138,4 @@ void VCD_StartAdvance(VCD_Parser* parser);
 bool VCD_AdvanceFinished(VCD_Parser* parser);
 
 void VCD_Rollback(VCD_Parser* parser,VCD_Snapshot* snap);
+#endif

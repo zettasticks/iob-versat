@@ -556,7 +556,9 @@ void COM_ReportError(COM_Env* env,String msg,Token token);
 // ======================================
 // Repr
 
-String COM_Repr(COM_Unit* top,Arena* out);
+String COM_Repr(COM_Edge* top,Arena* out);
+void   COM_DebugRepr(COM_Unit* top);
+void   COM_DebugRepr(COM_Edge* top);
 
 //typedef DOT_Info COM_ReprFunction(COM_Unit* node,COM_Edge* edge,Arena* out);
 typedef std::function<DOT_Info(COM_Unit*,COM_Edge*,Arena*)> COM_ReprFunction;

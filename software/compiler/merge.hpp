@@ -26,7 +26,6 @@ struct MERGE_Result{
 };
 
 struct ConsolidationGraphOptions{
-  //Array<SpecificMergeNodes> specifics;
   int order;
   int difference;
   bool mapNodes;

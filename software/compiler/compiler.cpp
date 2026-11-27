@@ -2294,15 +2294,19 @@ void COM_ReportError(COM_Env* env,String msg,Token token){
 // ======================================
 // Repr
 
-String COM_Repr(COM_Unit* top,Arena* out){
-  TEMP_REGION(temp,out);
-
-  auto b = StartString(temp);
-  for(COM_Unit* ptr = top; ptr; ptr = ptr->next){
-    b->PushString("%.*s\n",UN(ptr->name));
-  }
-  String res = PushString(out,b);
+String COM_Repr(COM_Edge* top,Arena* out){
+  String res = PushString(out,"%.*s:%d -> %.*s:%d",UN(top->out->name),top->outPort,UN(top->in->name),top->inPort);
   return res;
+}
+
+void COM_DebugRepr(COM_Unit* top){
+  printf("%.*s\n",UN(top->name));
+}
+
+void COM_DebugRepr(COM_Edge* top){
+  TEMP_REGION(temp,nullptr);
+  String repr = COM_Repr(top,temp);
+  printf("%.*s\n",UN(repr));
 }
 
 String COM_DebugPushDotGraph(String name,COM_Unit* units,COM_Edge* edges,Arena* out,COM_ReprFunction Repr){
